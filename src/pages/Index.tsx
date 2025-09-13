@@ -164,7 +164,7 @@ function NestedComments({ comments, topicId }: { comments: Comment[]; topicId: s
 }
 //Added by Nikesh for nested comments
 
-//Commented by Nikesh for nested comments
+//Added by Nikesh for nested comments
 function TopicCard({ topic }: { topic: Topic }) {
   const [t, setT] = React.useState<{agree:number;neutral:number;disagree:number;total:number} | null>(null);
   React.useEffect(() => { (async () => setT(await fetchTrend(topic.id)))(); }, [topic.id]);
@@ -203,7 +203,7 @@ function TopicCard({ topic }: { topic: Topic }) {
     </div>
   );
 }
-//Commented by Nikesh for nested comments
+//Added by Nikesh for nested comments
 
 function TopicCard({ topic }: { topic: Topic }) {
   const [t, setT] = React.useState<Trend | null>(null);
