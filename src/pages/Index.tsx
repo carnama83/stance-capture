@@ -19,6 +19,24 @@ type Topic = {
   location_label?: string;
 };
 
+
+//Added by Nikesh for Nested Comment
+// === Nested Comments: types & mock ===
+type Comment = {
+  id: string;
+  parent_id: string | null;
+  topic_id: string;
+  user_display?: string;
+  body: string;
+  created_at: string;
+};
+
+const MOCK_COMMENTS: Record<string, Comment[]> = {
+  // Example seed; safe to leave empty if you want
+  // "t1": [{ id: "c1", parent_id: null, topic_id: "t1", user_display: "User", body: "Hello!", created_at: new Date().toISOString() }]
+};
+//Added by Nikesh for Nested Comment
+
 // Check if Supabase is configured
 const hasSupabase = !!(supabase && process.env.NODE_ENV);
 
@@ -46,6 +64,30 @@ function clamp(n: number) { return Math.max(0, Math.min(100, n)); }
 
 type Trend = { agree: number; neutral: number; disagree: number; total: number };
 
+//Added by Nikesh for nested comments
+/** Load comments for a topic from canonical `comments`; fallback to mocks */
+async function fetchComments(topicId: string): Promise<Comment[]> {
+  if (!sb) return MOCK_COMMENTS[topicId] ?? [];
+
+  const { data, error } = await sb
+    .from("comments")
+    .select("id,parent_id,topic_id,user_display,body,created_at")
+    .eq("topic_id", topicId)
+    .order("created_at", { ascending: true })
+    .limit(200);
+
+  if (error || !data) return MOCK_COMMENTS[topicId] ?? [];
+
+  return (data as any[]).map((c) => ({
+    id: String(c.id),
+    parent_id: c.parent_id ? String(c.parent_id) : null,
+    topic_id: String(c.topic_id ?? topicId),
+    user_display: c.user_display ?? "User",
+    body: c.body ?? "",
+    created_at: c.created_at ?? new Date().toISOString(),
+  }));
+}
+//Added by Nikesh for nested comments
 /** Fetch topics from canonical `topics` */
 async function fetchTopics(): Promise<Topic[]> {
   if (!sb) return MOCK_TOPICS;
@@ -173,39 +215,124 @@ function TrendMini({ agree, neutral }: { agree:number; neutral:number }) {
     </div>
   );
 }
+//Added by Nikesh for nested comments
+/** Compact nested comment preview (depth-2). Links to /topic/:id for full thread. */
+function NestedComments({ comments, topicId }: { comments: Comment[]; topicId: string }) {
+  const byParent = React.useMemo(() => {
+    const map = new Map<string | null, Comment[]>();
+    for (const c of comments) {
+      const k = c.parent_id as any;
+      if (!map.has(k)) map.set(k, []);
+      map.get(k)!.push(c);
+    }
+    return map;
+  }, [comments]);
 
-function TopicCard({ topic }: { topic: Topic }) {
-  const [t, setT] = React.useState<{agree:number;neutral:number;disagree:number;total:number} | null>(null);
-  React.useEffect(() => { (async () => setT(await fetchTrend(topic.id)))(); }, [topic.id]);
+  const roots = byParent.get(null) ?? [];
+
   return (
-    <div className="rounded-2xl border bg-white p-4 shadow-sm">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h3 className="text-base font-semibold leading-tight">{topic.title}</h3>
-          <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
-            <span>📍 {topic.location_label}</span><span>•</span><span className="capitalize">{topic.tier}</span>
-          </div>
+    <div className="mt-3 rounded-xl border bg-slate-50 p-3">
+      <div className="mb-2 text-xs font-medium text-slate-600">Discussion</div>
+      {roots.length === 0 ? (
+        <div className="text-xs text-slate-500">
+          Be the first to comment. <a href={`/topic/${topicId}`} className="underline">Open thread</a>
         </div>
-        <button className="rounded p-2 hover:bg-slate-50" aria-label="Open details">↗</button>
-      </div>
-      <p className="mt-2 text-sm text-slate-600">{topic.summary}</p>
-      {topic.tags && topic.tags.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-2">
-          {topic.tags.map((tag) => (
-            <span key={tag} className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{tag}</span>
+      ) : (
+        <div className="space-y-3">
+          {roots.slice(0, 2).map((c) => (
+            <div key={c.id} className="text-xs">
+              <div className="mb-1 text-slate-700">
+                <span className="font-medium">{c.user_display ?? "User"}</span>{" "}
+                <span className="text-slate-400">·</span>{" "}
+                {new Date(c.created_at).toLocaleDateString()}
+              </div>
+              <div className="rounded bg-white p-2 text-slate-700 shadow-sm">{c.body}</div>
+              {(byParent.get(c.id) ?? []).slice(0, 2).map((r) => (
+                <div key={r.id} className="mt-2 ml-4 border-l pl-3 text-slate-700">
+                  <span className="font-medium">{r.user_display ?? "User"}</span>{" "}
+                  <span className="text-slate-400">·</span>{" "}
+                  {new Date(r.created_at).toLocaleDateString()} — {r.body}
+                </div>
+              ))}
+            </div>
           ))}
-        </div>
-      )}
-      {t && (
-        <div className="mt-3 space-y-1">
-          <div className="text-xs text-slate-500">Trending (7d)</div>
-          <TrendMini agree={t.agree} neutral={t.neutral} />
-          <div className="text-right text-[11px] text-slate-500 tabular-nums">{t.agree}% · {t.total.toLocaleString()} votes</div>
+          <div className="text-right text-xs">
+            <a href={`/topic/${topicId}`} className="underline">View full thread →</a>
+          </div>
         </div>
       )}
     </div>
   );
 }
+//Added by Nikesh for nested comments
+
+//Commented by Nikesh for nested comments
+// function TopicCard({ topic }: { topic: Topic }) {
+//   const [t, setT] = React.useState<{agree:number;neutral:number;disagree:number;total:number} | null>(null);
+//   React.useEffect(() => { (async () => setT(await fetchTrend(topic.id)))(); }, [topic.id]);
+//   return (
+//     <div className="rounded-2xl border bg-white p-4 shadow-sm">
+//       <div className="flex items-start justify-between gap-3">
+//         <div>
+//           <h3 className="text-base font-semibold leading-tight">{topic.title}</h3>
+//           <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
+//             <span>📍 {topic.location_label}</span><span>•</span><span className="capitalize">{topic.tier}</span>
+//           </div>
+//         </div>
+//         <button className="rounded p-2 hover:bg-slate-50" aria-label="Open details">↗</button>
+//       </div>
+//       <p className="mt-2 text-sm text-slate-600">{topic.summary}</p>
+//       {topic.tags && topic.tags.length > 0 && (
+//         <div className="mt-2 flex flex-wrap gap-2">
+//           {topic.tags.map((tag) => (
+//             <span key={tag} className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{tag}</span>
+//           ))}
+//         </div>
+//       )}
+//       {t && (
+//         <div className="mt-3 space-y-1">
+//           <div className="text-xs text-slate-500">Trending (7d)</div>
+//           <TrendMini agree={t.agree} neutral={t.neutral} />
+//           <div className="text-right text-[11px] text-slate-500 tabular-nums">{t.agree}% · {t.total.toLocaleString()} votes</div>
+//         </div>
+//       )}
+//     </div>
+//   );
+// }
+//Commented by Nikesh for nested comments
+
+function TopicCard({ topic }: { topic: Topic }) {
+  const [t, setT] = React.useState<Trend | null>(null);
+  const [comments, setComments] = React.useState<Comment[]>([]);
+
+  React.useEffect(() => {
+    (async () => {
+      setT(await fetchTrend(topic.id));          // you already have fetchTrend
+      setComments(await fetchComments(topic.id));
+    })();
+  }, [topic.id]);
+
+  const tt = t ?? { agree: 0, neutral: 0, disagree: 0, total: 0 };
+
+  return (
+    <div className="rounded-2xl border bg-white p-4 shadow-sm">
+      {/* ... your existing title/summary/tags ... */}
+
+      {/* Trend mini bar shows even if empty */}
+      <div className="mt-3 space-y-1">
+        <div className="text-xs text-slate-500">{t ? "Trending (7d)" : "No trend data yet"}</div>
+        <TrendMini agree={tt.agree} neutral={tt.neutral} />
+        <div className="text-right text-[11px] text-slate-500 tabular-nums">
+          {tt.agree}% · {tt.total.toLocaleString()} votes
+        </div>
+      </div>
+
+      {/* NEW: nested comments preview */}
+      <NestedComments comments={comments} topicId={topic.id} />
+    </div>
+  );
+}
+
 
 function HeroCTA() {
   return (
