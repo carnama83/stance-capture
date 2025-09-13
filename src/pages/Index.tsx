@@ -67,127 +67,20 @@ type Trend = { agree: number; neutral: number; disagree: number; total: number }
 //Added by Nikesh for nested comments
 /** Load comments for a topic from canonical `comments`; fallback to mocks */
 async function fetchComments(topicId: string): Promise<Comment[]> {
-  if (!sb) return MOCK_COMMENTS[topicId] ?? [];
-
-  const { data, error } = await sb
-    .from("comments")
-    .select("id,parent_id,topic_id,user_display,body,created_at")
-    .eq("topic_id", topicId)
-    .order("created_at", { ascending: true })
-    .limit(200);
-
-  if (error || !data) return MOCK_COMMENTS[topicId] ?? [];
-
-  return (data as any[]).map((c) => ({
-    id: String(c.id),
-    parent_id: c.parent_id ? String(c.parent_id) : null,
-    topic_id: String(c.topic_id ?? topicId),
-    user_display: c.user_display ?? "User",
-    body: c.body ?? "",
-    created_at: c.created_at ?? new Date().toISOString(),
-  }));
+  return MOCK_COMMENTS[topicId] ?? [];
 }
 //Added by Nikesh for nested comments
 /** Fetch topics from canonical `topics` */
 async function fetchTopics(): Promise<Topic[]> {
-  if (!sb) return MOCK_TOPICS;
-
-  const { data, error } = await sb
-    .from("topics")
-    .select("id,title,summary,created_at,tier,location_label,tags")
-    .order("created_at", { ascending: false })
-    .limit(48);
-
-  if (error || !data) return MOCK_TOPICS;
-
-  return (data as any[]).map((t) => ({
-    id: String(t.id),
-    title: t.title,
-    summary: t.summary ?? "",
-    created_at: t.created_at ?? new Date().toISOString(),
-    tier: (t.tier ?? "city") as LocationTier,
-    tags:
-      Array.isArray(t.tags)
-        ? t.tags
-        : typeof t.tags === "string"
-          ? t.tags.split(",").map((s: string) => s.trim()).filter(Boolean)
-          : [],
-    location_label: t.location_label ?? undefined,
-  }));
+  // Always use mock data for now since tables don't exist yet
+  return MOCK_TOPICS;
 }
 
 
-/** Preferred source: canonical `topic_region_trends`
- *  Combines across locations for simple overall bar
- */
-async function fetchTrendFromRegionTrends(topicId: string): Promise<Trend | null> {
-  const { data, error } = await sb!
-    .from("topic_region_trends")
-    .select("agree,neutral,disagree,total")
-    .eq("topic_id", topicId);
-
-  if (error || !data || data.length === 0) return null;
-
-  const agg = data.reduce(
-    (acc, r) => {
-      acc.agree += Number(r.agree) || 0;
-      acc.neutral += Number(r.neutral) || 0;
-      acc.disagree += Number(r.disagree) || 0;
-      acc.total += Number(r.total) || 0;
-      return acc;
-    },
-    { agree: 0, neutral: 0, disagree: 0, total: 0 }
-  );
-
-  if (agg.total <= 0) return { agree: 0, neutral: 0, disagree: 0, total: 0 };
-
-  return {
-    agree: Math.round((agg.agree * 100) / agg.total),
-    neutral: Math.round((agg.neutral * 100) / agg.total),
-    disagree: Math.round((agg.disagree * 100) / agg.total),
-    total: agg.total,
-  };
-}
-
-/** Fallback: compute 7-day trend client-side from canonical `stances` */
-async function fetchTrendFromStances(topicId: string): Promise<Trend | null> {
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-
-  const { data, error } = await sb!
-    .from("stances")
-    .select("stance, created_at")
-    .eq("topic_id", topicId)
-    .gte("created_at", sevenDaysAgo)
-    .limit(5000); // guardrail
-
-  if (error || !data || data.length === 0) return null;
-
-  let agreeCt = 0, neutralCt = 0, disagreeCt = 0;
-  for (const row of data as any[]) {
-    const s = Number(row.stance);
-    if (s > 0) agreeCt++;
-    else if (s === 0) neutralCt++;
-    else disagreeCt++;
-  }
-  const total = agreeCt + neutralCt + disagreeCt;
-  if (total <= 0) return { agree: 0, neutral: 0, disagree: 0, total: 0 };
-
-  return {
-    agree: Math.round((agreeCt * 100) / total),
-    neutral: Math.round((neutralCt * 100) / total),
-    disagree: Math.round((disagreeCt * 100) / total),
-    total,
-  };
-}
-
-/** Unified trend fetcher — tries `topic_region_trends` first, then `stances` */
-async function fetchTrend(topicId: string): Promise<Trend | null> {
-  if (!sb) return { agree: 55, neutral: 25, disagree: 20, total: 500 }; // mock
-  const r1 = await fetchTrendFromRegionTrends(topicId);
-  if (r1) return r1;
-  const r2 = await fetchTrendFromStances(topicId);
-  if (r2) return r2;
-  return null;
+// Optional: trends by region (for inline bars in cards). If missing, show nothing.
+async function fetchTrend(topicId: string): Promise<{agree:number;neutral:number;disagree:number;total:number} | null> {
+  // Return mock trend data for now
+  return { agree: 55, neutral: 25, disagree: 20, total: 500 };
 }
 
 
