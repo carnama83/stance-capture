@@ -1,11 +1,13 @@
+
+// src/lib/supabaseClient.ts
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+
 console.log("[ENV CHECK]", {
   url: import.meta.env.VITE_SUPABASE_URL,
   keyPresent: Boolean(import.meta.env.VITE_SUPABASE_ANON_KEY),
 });
 
 
-// src/lib/supabaseClient.ts
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 /**
  * Vite expects env keys with the VITE_ prefix.
