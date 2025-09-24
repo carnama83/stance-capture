@@ -1,11 +1,4 @@
 
-console.log("[ENV CHECK]", {
-  url: import.meta.env.VITE_SUPABASE_URL,
-  keyPresent: Boolean(import.meta.env.VITE_SUPABASE_ANON_KEY ?? import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY),
-});
-
-
-
 - export function getSupabase() {
 -   try {
 -     const { createClient } = require("@supabase/supabase-js");
