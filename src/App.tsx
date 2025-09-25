@@ -13,7 +13,7 @@ import Profile from "./pages/Profile";
 import SettingsProfile from "./pages/SettingsProfile";
 import SettingsSecurity from "./pages/SettingsSecurity";
 import SettingsSessions from "./pages/SettingsSessions";
-
+import AdminIdentifiers from "./pages/AdminIdentifiers";
 
 const queryClient = new QueryClient();
 
@@ -32,7 +32,7 @@ const App = () => (
           <Route path="/settings/profile" element={<SettingsProfile />} />
           <Route path="/settings/security" element={<SettingsSecurity />} />
           <Route path="/settings/sessions" element={<SettingsSessions />} />
-          
+          <Route path="/admin/identifiers" element={<AdminIdentifiers />} />
           {/* Keep Index if you want it separately */}
           <Route path="/index" element={<Index />} />
 
