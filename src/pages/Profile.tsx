@@ -27,7 +27,7 @@ export default function Profile() {
   const [busy, setBusy] = React.useState(false);
   const [msg, setMsg] = React.useState<string | null>(null);
 
-  // ---- Guard: Supabase client present?
+  // Guard: Supabase client present?
   if (!sb) {
     return (
       <div className="mx-auto max-w-2xl p-6 space-y-4">
@@ -39,7 +39,7 @@ export default function Profile() {
     );
   }
 
-  // ---- Track session (prevents blank while restoring)
+  // Track session (prevents blank while restoring)
   React.useEffect(() => {
     let unsub: (() => void) | undefined;
     (async () => {
@@ -57,7 +57,7 @@ export default function Profile() {
     return () => unsub?.();
   }, [sb]);
 
-  // ---- Load or initialize profile for the logged-in user
+  // Load or initialize profile for the logged-in user
   React.useEffect(() => {
     let cancelled = false;
 
@@ -76,7 +76,7 @@ export default function Profile() {
 
         let profile = (data as ProfileRow) ?? null;
 
-        // If missing, initialize then re-fetch
+        // If missing, initialize via RPC then re-fetch
         if (!profile) {
           const { error: initErr } = await sb.rpc("init_user_after_signup");
           if (initErr) throw initErr;
@@ -103,13 +103,13 @@ export default function Profile() {
     if (uid) fetchOrInitProfile(uid);
   }, [sb, session?.user?.id]);
 
-  // ---- Derive handle (keeps your original logic)
+  // Derive handle (keeps your original display logic)
   const handle =
     row?.display_handle_mode === "username"
       ? row?.username || row?.random_id || ""
       : row?.random_id || row?.username || "";
 
-  // ---- Render states (no blank screen)
+  // Render states (no blank screen)
   return (
     <div className="mx-auto max-w-2xl p-6 space-y-4">
       <h1 className="text-2xl font-bold">My Profile</h1>
@@ -150,7 +150,6 @@ export default function Profile() {
             </div>
           </div>
 
-          {/* Optional: show DOB / location if present */}
           {(row.dob ||
             row.city_name ||
             row.county_name ||
@@ -164,12 +163,7 @@ export default function Profile() {
               <div>
                 <div className="text-slate-500">Location</div>
                 <div>
-                  {[
-                    row.city_name,
-                    row.county_name,
-                    row.state_code,
-                    row.country_code,
-                  ]
+                  {[row.city_name, row.county_name, row.state_code, row.country_code]
                     .filter(Boolean)
                     .join(" / ") || "—"}
                 </div>
