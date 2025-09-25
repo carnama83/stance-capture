@@ -11,6 +11,7 @@ import Login from "./pages/Login";
 import ResetPassword from "./pages/ResetPassword";
 import Profile from "./pages/Profile";
 import SettingsProfile from "./pages/SettingsProfile";
+import SettingsSecurity from "./pages/SettingsSecurity";
 
 const queryClient = new QueryClient();
 
@@ -27,7 +28,7 @@ const App = () => (
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/settings/profile" element={<SettingsProfile />} />
-
+          <Route path="/settings/security" element={<SettingsSecurity />} />
           {/* Keep Index if you want it separately */}
           <Route path="/index" element={<Index />} />
 
