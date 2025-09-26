@@ -28,7 +28,7 @@ type CityRow = {
 const cx = (...xs: Array<string | false | null | undefined>) =>
   xs.filter(Boolean).join(" ");
 
-// ---------- Geo data loader with loading flags & fallbacks ----------
+// ---------- Geo data loader (uses geo_*_v views) ----------
 function useGeoData() {
   const sb = React.useMemo(getSupabase, []);
   const [ready, setReady] = React.useState(false);
@@ -42,20 +42,24 @@ function useGeoData() {
   const [loadingCounties, setLoadingCounties] = React.useState(false);
   const [loadingCities, setLoadingCities] = React.useState(false);
 
+  // Countries
   React.useEffect(() => {
     (async () => {
       try {
-        if (sb) {
-          const c = await sb.from("countries").select("code,name").order("name");
-          if (c.data) setCountries(c.data);
+        if (!sb) return;
+        const r = await sb
+          .from("geo_countries_v")
+          .select("code,name")
+          .order("name");
+        if (r.error) {
+          console.warn("[countries] error:", r.error.message);
+        } else {
+          console.info(`[countries] loaded ${r.data?.length ?? 0} row(s)`);
         }
-      } catch {
-        /* no-op */
+        setCountries(r.data ?? []);
+      } catch (e) {
+        console.warn("[countries] exception:", e);
       } finally {
-        // Minimal fallback sample if tables don't exist:
-        setCountries((prev) =>
-          prev.length ? prev : [{ code: "US", name: "United States" }]
-        );
         setReady(true);
       }
     })();
@@ -65,18 +69,24 @@ function useGeoData() {
     async (country_code: string) => {
       setLoadingStates(true);
       try {
-        if (sb) {
-          const r = await sb
-            .from("states")
-            .select("code,name,country_code")
-            .eq("country_code", country_code)
-            .order("name");
-          setStates(r.data ?? []);
+        if (!sb) return;
+        const r = await sb
+          .from("geo_states_v")
+          .select("code,name,country_code")
+          .eq("country_code", country_code)
+          .order("name");
+        if (r.error) {
+          console.warn("[states] error:", r.error.message);
+          setStates([]);
         } else {
-          setStates([{ code: "NJ", name: "New Jersey", country_code }]);
+          console.info(
+            `[states] ${country_code} -> ${(r.data ?? []).length} row(s)`
+          );
+          setStates(r.data ?? []);
         }
-      } catch {
-        setStates([{ code: "NJ", name: "New Jersey", country_code }]);
+      } catch (e) {
+        console.warn("[states] exception:", e);
+        setStates([]);
       } finally {
         setLoadingStates(false);
       }
@@ -88,18 +98,24 @@ function useGeoData() {
     async (state_code: string) => {
       setLoadingCounties(true);
       try {
-        if (sb) {
-          const r = await sb
-            .from("counties")
-            .select("code,name,state_code")
-            .eq("state_code", state_code)
-            .order("name");
-          setCounties(r.data ?? []);
+        if (!sb) return;
+        const r = await sb
+          .from("geo_counties_v")
+          .select("code,name,state_code")
+          .eq("state_code", state_code)
+          .order("name");
+        if (r.error) {
+          console.warn("[counties] error:", r.error.message);
+          setCounties([]);
         } else {
-          setCounties([{ code: "34003", name: "Bergen County", state_code }]);
+          console.info(
+            `[counties] ${state_code} -> ${(r.data ?? []).length} row(s)`
+          );
+          setCounties(r.data ?? []);
         }
-      } catch {
-        setCounties([{ code: "34003", name: "Bergen County", state_code }]);
+      } catch (e) {
+        console.warn("[counties] exception:", e);
+        setCounties([]);
       } finally {
         setLoadingCounties(false);
       }
@@ -111,19 +127,27 @@ function useGeoData() {
     async (state_code: string, county_code?: string) => {
       setLoadingCities(true);
       try {
-        if (sb) {
-          let q = sb
-            .from("cities")
-            .select("id,name,state_code,county_code")
-            .eq("state_code", state_code);
+        if (!sb) return;
+        let q = sb
+          .from("geo_cities_v")
+          .select("id,name,state_code,county_code")
+          .eq("state_code", state_code);
         if (county_code) q = q.eq("county_code", county_code);
-          const r = await q.order("name");
-          setCities(r.data ?? []);
+        const r = await q.order("name");
+        if (r.error) {
+          console.warn("[cities] error:", r.error.message);
+          setCities([]);
         } else {
-          setCities([{ id: "paramus", name: "Paramus", state_code }]);
+          console.info(
+            `[cities] ${state_code}${county_code ? " / " + county_code : ""} -> ${
+              (r.data ?? []).length
+            } row(s)`
+          );
+          setCities(r.data ?? []);
         }
-      } catch {
-        setCities([{ id: "paramus", name: "Paramus", state_code }]);
+      } catch (e) {
+        console.warn("[cities] exception:", e);
+        setCities([]);
       } finally {
         setLoadingCities(false);
       }
@@ -270,6 +294,12 @@ function LocationPickerV2(props: {
               </option>
             ))}
           </select>
+          {/* Gentle hint if DB has no states for the selected country */}
+          {props.country && !loadingStates && states.length === 0 && (
+            <p className="mt-1 text-xs text-amber-600">
+              No states found for this country.
+            </p>
+          )}
           {props.errorState && (
             <p className="mt-1 text-xs text-rose-600">{props.errorState}</p>
           )}
@@ -415,7 +445,7 @@ export default function Signup() {
       } catch {
         /* fall through */
       }
-      // Fallback: direct equality (case-insensitive in your backend; most are stored lowercased)
+      // Fallback: direct equality
       try {
         const q = await sb
           ?.from("profiles")
@@ -479,7 +509,10 @@ export default function Signup() {
       let el: HTMLElement | null = null;
       if (key === "email") el = refEmail.current;
       else if (key === "password") el = refPassword.current;
-      else if (key === "dob") el = refDobContainer.current?.querySelector("input,select,textarea") as HTMLElement | null;
+      else if (key === "dob")
+        el = refDobContainer.current?.querySelector("input,select,textarea") as
+          | HTMLElement
+          | null;
       else if (key === "country") el = refCountry.current;
       if (el) {
         el.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -542,7 +575,12 @@ export default function Signup() {
         username: username.trim().toLowerCase() || null,
         gender,
         gender_self: gender === "self_described" ? genderSelf || null : null,
-        loc: { country: country || null, state: stateCode || null, county: countyCode || null, city: cityId || null },
+        loc: {
+          country: country || null,
+          state: stateCode || null,
+          county: countyCode || null,
+          city: cityId || null,
+        },
       };
       localStorage.setItem("postSignupProfile", JSON.stringify(payload));
     } catch {
@@ -654,7 +692,9 @@ export default function Signup() {
         {/* Optional username + rules + live availability */}
         <div>
           <div className="flex items-baseline justify-between">
-            <label className="block text-sm font-medium">Username (optional)</label>
+            <label className="block text-sm font-medium">
+              Username (optional)
+            </label>
             <span
               className={cx(
                 "text-xs",
@@ -689,7 +729,9 @@ export default function Signup() {
 
         {/* Gender (optional) */}
         <fieldset>
-          <legend className="block text-sm font-medium">Gender (optional)</legend>
+          <legend className="block text-sm font-medium">
+            Gender (optional)
+          </legend>
           <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-3">
             {(
               [
