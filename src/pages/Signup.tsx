@@ -3,7 +3,6 @@ import * as React from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { getSupabase } from "../lib/supabaseClient";
 import UsernameField from "../components/UsernameField";
-// We keep your existing DobField but add an explicit visible label for clarity.
 import { DobField } from "../components/DobField";
 
 // ---------- Types ----------
@@ -25,14 +24,23 @@ type CityRow = {
   country_code?: string;
 };
 
-// ---------- Geo data loader with safe fallbacks ----------
+// Small helper
+const cx = (...xs: Array<string | false | null | undefined>) =>
+  xs.filter(Boolean).join(" ");
+
+// ---------- Geo data loader with loading flags & fallbacks ----------
 function useGeoData() {
   const sb = React.useMemo(getSupabase, []);
   const [ready, setReady] = React.useState(false);
+
   const [countries, setCountries] = React.useState<Country[]>([]);
   const [states, setStates] = React.useState<StateRow[]>([]);
   const [counties, setCounties] = React.useState<CountyRow[]>([]);
   const [cities, setCities] = React.useState<CityRow[]>([]);
+
+  const [loadingStates, setLoadingStates] = React.useState(false);
+  const [loadingCounties, setLoadingCounties] = React.useState(false);
+  const [loadingCities, setLoadingCities] = React.useState(false);
 
   React.useEffect(() => {
     (async () => {
@@ -55,6 +63,7 @@ function useGeoData() {
 
   const loadStates = React.useCallback(
     async (country_code: string) => {
+      setLoadingStates(true);
       try {
         if (sb) {
           const r = await sb
@@ -62,13 +71,14 @@ function useGeoData() {
             .select("code,name,country_code")
             .eq("country_code", country_code)
             .order("name");
-          if (r.data) setStates(r.data);
-          else setStates([]);
+          setStates(r.data ?? []);
         } else {
           setStates([{ code: "NJ", name: "New Jersey", country_code }]);
         }
       } catch {
         setStates([{ code: "NJ", name: "New Jersey", country_code }]);
+      } finally {
+        setLoadingStates(false);
       }
     },
     [sb]
@@ -76,6 +86,7 @@ function useGeoData() {
 
   const loadCounties = React.useCallback(
     async (state_code: string) => {
+      setLoadingCounties(true);
       try {
         if (sb) {
           const r = await sb
@@ -83,13 +94,14 @@ function useGeoData() {
             .select("code,name,state_code")
             .eq("state_code", state_code)
             .order("name");
-          if (r.data) setCounties(r.data);
-          else setCounties([]);
+          setCounties(r.data ?? []);
         } else {
           setCounties([{ code: "34003", name: "Bergen County", state_code }]);
         }
       } catch {
         setCounties([{ code: "34003", name: "Bergen County", state_code }]);
+      } finally {
+        setLoadingCounties(false);
       }
     },
     [sb]
@@ -97,30 +109,44 @@ function useGeoData() {
 
   const loadCities = React.useCallback(
     async (state_code: string, county_code?: string) => {
+      setLoadingCities(true);
       try {
         if (sb) {
           let q = sb
             .from("cities")
             .select("id,name,state_code,county_code")
             .eq("state_code", state_code);
-          if (county_code) q = q.eq("county_code", county_code);
+        if (county_code) q = q.eq("county_code", county_code);
           const r = await q.order("name");
-          if (r.data) setCities(r.data);
-          else setCities([]);
+          setCities(r.data ?? []);
         } else {
           setCities([{ id: "paramus", name: "Paramus", state_code }]);
         }
       } catch {
         setCities([{ id: "paramus", name: "Paramus", state_code }]);
+      } finally {
+        setLoadingCities(false);
       }
     },
     [sb]
   );
 
-  return { ready, countries, states, counties, cities, loadStates, loadCounties, loadCities };
+  return {
+    ready,
+    countries,
+    states,
+    counties,
+    cities,
+    loadingStates,
+    loadingCounties,
+    loadingCities,
+    loadStates,
+    loadCounties,
+    loadCities,
+  };
 }
 
-// ---------- Location Picker V2 ----------
+// ---------- Location Picker V2 (with loading/disabled UI) ----------
 function LocationPickerV2(props: {
   country: string;
   setCountry: (v: string) => void;
@@ -130,9 +156,24 @@ function LocationPickerV2(props: {
   setCountyCode: (v: string) => void;
   cityId: string;
   setCityId: (v: string) => void;
+  errorCountry?: string;
+  errorState?: string;
+  errorCounty?: string;
+  errorCity?: string;
 }) {
-  const { ready, countries, states, counties, cities, loadStates, loadCounties, loadCities } =
-    useGeoData();
+  const {
+    ready,
+    countries,
+    states,
+    counties,
+    cities,
+    loadingStates,
+    loadingCounties,
+    loadingCities,
+    loadStates,
+    loadCounties,
+    loadCities,
+  } = useGeoData();
 
   // Parent→child resets
   React.useEffect(() => {
@@ -162,32 +203,43 @@ function LocationPickerV2(props: {
   }, [props.countyCode]);
 
   return (
-    <div className="space-y-2">
-      <label className="block text-sm font-medium">Location</label>
+    <div className="space-y-2" aria-live="polite">
+      <label className="block text-sm font-medium">
+        Location <span className="text-rose-600">*</span>
+      </label>
       <p className="text-xs text-muted-foreground">
         Used to personalize regional trends. You can change this later.
       </p>
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-        {/* Country */}
+        {/* Country (required) */}
         <div>
           <label htmlFor="country" className="block text-xs font-medium">
-            Country
+            Country <span className="text-rose-600">*</span>
           </label>
           <select
             id="country"
-            className="mt-1 w-full rounded-lg border p-2"
+            className={cx(
+              "mt-1 w-full rounded-lg border p-2",
+              props.errorCountry && "border-rose-500"
+            )}
             value={props.country}
             onChange={(e) => props.setCountry(e.target.value)}
             disabled={!ready}
+            aria-busy={!ready}
+            aria-invalid={!!props.errorCountry}
           >
-            <option value="">Select country</option>
+            {!ready && <option value="">Loading countries…</option>}
+            {ready && <option value="">Select country</option>}
             {countries.map((c) => (
               <option key={c.code} value={c.code}>
                 {c.name} ({c.code})
               </option>
             ))}
           </select>
+          {props.errorCountry && (
+            <p className="mt-1 text-xs text-rose-600">{props.errorCountry}</p>
+          )}
         </div>
 
         {/* State / Region */}
@@ -197,18 +249,30 @@ function LocationPickerV2(props: {
           </label>
           <select
             id="state"
-            className="mt-1 w-full rounded-lg border p-2"
+            className={cx(
+              "mt-1 w-full rounded-lg border p-2",
+              props.errorState && "border-rose-500"
+            )}
             value={props.stateCode}
             onChange={(e) => props.setStateCode(e.target.value)}
-            disabled={!props.country}
+            disabled={!props.country || loadingStates}
+            aria-busy={loadingStates}
+            aria-invalid={!!props.errorState}
           >
-            <option value="">Select state</option>
+            {!props.country && <option value="">Select country first</option>}
+            {props.country && loadingStates && (
+              <option value="">Loading states…</option>
+            )}
+            {props.country && !loadingStates && <option value="">Select state</option>}
             {states.map((s) => (
               <option key={s.code} value={s.code}>
                 {s.name} ({s.code})
               </option>
             ))}
           </select>
+          {props.errorState && (
+            <p className="mt-1 text-xs text-rose-600">{props.errorState}</p>
+          )}
         </div>
 
         {/* County (optional) */}
@@ -218,18 +282,30 @@ function LocationPickerV2(props: {
           </label>
           <select
             id="county"
-            className="mt-1 w-full rounded-lg border p-2"
+            className={cx(
+              "mt-1 w-full rounded-lg border p-2",
+              props.errorCounty && "border-rose-500"
+            )}
             value={props.countyCode}
             onChange={(e) => props.setCountyCode(e.target.value)}
-            disabled={!props.stateCode}
+            disabled={!props.stateCode || loadingCounties}
+            aria-busy={loadingCounties}
+            aria-invalid={!!props.errorCounty}
           >
-            <option value="">(None)</option>
+            {!props.stateCode && <option value="">Select state first</option>}
+            {props.stateCode && loadingCounties && (
+              <option value="">Loading counties…</option>
+            )}
+            {props.stateCode && !loadingCounties && <option value="">(None)</option>}
             {counties.map((k) => (
               <option key={k.code} value={k.code}>
                 {k.name}
               </option>
             ))}
           </select>
+          {props.errorCounty && (
+            <p className="mt-1 text-xs text-rose-600">{props.errorCounty}</p>
+          )}
         </div>
 
         {/* City (optional, searchable) */}
@@ -240,11 +316,22 @@ function LocationPickerV2(props: {
           <input
             id="city"
             list="city-options"
-            className="mt-1 w-full rounded-lg border p-2"
-            placeholder="Type to search…"
+            className={cx(
+              "mt-1 w-full rounded-lg border p-2",
+              props.errorCity && "border-rose-500"
+            )}
+            placeholder={
+              !props.stateCode
+                ? "Select state first"
+                : loadingCities
+                ? "Loading cities…"
+                : "Type to search…"
+            }
             value={props.cityId}
             onChange={(e) => props.setCityId(e.target.value)}
-            disabled={!props.stateCode}
+            disabled={!props.stateCode || loadingCities}
+            aria-busy={loadingCities}
+            aria-invalid={!!props.errorCity}
           />
           <datalist id="city-options">
             {cities.map((ct) => (
@@ -253,6 +340,9 @@ function LocationPickerV2(props: {
               </option>
             ))}
           </datalist>
+          {props.errorCity && (
+            <p className="mt-1 text-xs text-rose-600">{props.errorCity}</p>
+          )}
         </div>
       </div>
     </div>
@@ -264,23 +354,84 @@ export default function Signup() {
   const sb = React.useMemo(getSupabase, []);
   const nav = useNavigate();
 
+  // refs for autofocus/scroll-to-first-error
+  const refEmail = React.useRef<HTMLInputElement>(null);
+  const refPassword = React.useRef<HTMLInputElement>(null);
+  const refDobContainer = React.useRef<HTMLDivElement>(null);
+  const refCountry = React.useRef<HTMLSelectElement>(null);
+
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [username, setUsername] = React.useState("");
   const [dob, setDob] = React.useState(""); // "YYYY-MM-DD"
 
-  // #2 Gender fields
+  // Gender
   const [gender, setGender] = React.useState<Gender>("prefer_not_to_say");
   const [genderSelf, setGenderSelf] = React.useState("");
 
-  // #3 Location fields (codes/ids)
+  // Location (codes/ids)
   const [country, setCountry] = React.useState<string>("");
   const [stateCode, setStateCode] = React.useState<string>("");
   const [countyCode, setCountyCode] = React.useState<string>("");
   const [cityId, setCityId] = React.useState<string>("");
 
-  const [msg, setMsg] = React.useState<string | null>(null);
+  // Validation/errors
+  const [errors, setErrors] = React.useState<Record<string, string>>({});
   const [busy, setBusy] = React.useState(false);
+  const [msg, setMsg] = React.useState<string | null>(null);
+
+  // Username availability (helper hint)
+  type UStatus = "idle" | "invalid" | "checking" | "available" | "taken";
+  const [uStatus, setUStatus] = React.useState<UStatus>("idle");
+  const [uMessage, setUMessage] = React.useState<string>("");
+
+  const usernameRegex = /^[a-z0-9_]{3,20}$/;
+
+  // Live availability check (debounced)
+  React.useEffect(() => {
+    const u = username.trim().toLowerCase();
+    if (!u) {
+      setUStatus("idle");
+      setUMessage("Optional. Use 3–20 chars: a–z, 0–9, _");
+      return;
+    }
+    if (!usernameRegex.test(u)) {
+      setUStatus("invalid");
+      setUMessage("Use 3–20 chars: a–z, 0–9, _");
+      return;
+    }
+    setUStatus("checking");
+    setUMessage("Checking availability…");
+
+    const handle = setTimeout(async () => {
+      try {
+        // Try RPC if you created one
+        const rpc = await sb?.rpc("check_username_available", { p_username: u });
+        if (rpc && !rpc.error && typeof rpc.data === "boolean") {
+          setUStatus(rpc.data ? "available" : "taken");
+          setUMessage(rpc.data ? "Available ✓" : "Taken ✗");
+          return;
+        }
+      } catch {
+        /* fall through */
+      }
+      // Fallback: direct equality (case-insensitive in your backend; most are stored lowercased)
+      try {
+        const q = await sb
+          ?.from("profiles")
+          .select("username", { count: "exact", head: true })
+          .eq("username", u);
+        const taken = (q?.count ?? 0) > 0;
+        setUStatus(taken ? "taken" : "available");
+        setUMessage(taken ? "Taken ✗" : "Available ✓");
+      } catch {
+        setUStatus("idle");
+        setUMessage("Optional. Use 3–20 chars: a–z, 0–9, _");
+      }
+    }, 500);
+
+    return () => clearTimeout(handle);
+  }, [username, sb]);
 
   if (!sb) {
     return (
@@ -307,8 +458,38 @@ export default function Signup() {
     return age;
   }
 
+  function validate(): Record<string, string> {
+    const next: Record<string, string> = {};
+    if (!email) next.email = "Email is required.";
+    if (!password) next.password = "Password is required.";
+    if (!dob) next.dob = "Date of birth is required.";
+    const age = calcAge(dob);
+    if (dob && age !== null && age < 13) next.dob = "You must be at least 13 years old.";
+    if (!country) next.country = "Please select your country.";
+    if (username && !usernameRegex.test(username.trim().toLowerCase())) {
+      next.username = "Use 3–20 chars: a–z, 0–9, _";
+    }
+    return next;
+  }
+
+  function focusFirstError(errs: Record<string, string>) {
+    const order = ["email", "password", "dob", "country", "state", "county", "city", "username"];
+    for (const key of order) {
+      if (!errs[key]) continue;
+      let el: HTMLElement | null = null;
+      if (key === "email") el = refEmail.current;
+      else if (key === "password") el = refPassword.current;
+      else if (key === "dob") el = refDobContainer.current?.querySelector("input,select,textarea") as HTMLElement | null;
+      else if (key === "country") el = refCountry.current;
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        (el as any).focus?.();
+        break;
+      }
+    }
+  }
+
   async function finalizeOnboarding() {
-    // All calls are idempotent; safe to retry
     const init = await sb.rpc("init_user_after_signup");
     if (init.error) throw init.error;
 
@@ -316,7 +497,6 @@ export default function Signup() {
       const u = await sb.rpc("set_username", {
         p_username: username.trim().toLowerCase(),
       });
-      // If change-cap error, surface but don't hard fail sign-up
       if (u.error && !`${u.error.message}`.toLowerCase().includes("limit")) {
         throw u.error;
       }
@@ -327,10 +507,9 @@ export default function Signup() {
       if (d.error) throw d.error;
     }
 
-    // Gender via RPC (falls back to direct profile update if RPC missing)
     const g = await sb.rpc("profile_set_gender", {
       p_gender: gender,
-      p_gender_self: genderSelf || null,
+      p_gender_self: gender === "self_described" ? genderSelf || null : null,
     });
     if (g.error) {
       await sb
@@ -344,7 +523,6 @@ export default function Signup() {
         .single();
     }
 
-    // Location: require at least a country for Epic A (per your design)
     const hasAny = country || stateCode || countyCode || cityId;
     if (hasAny) {
       const l = await sb.rpc("set_user_location", {
@@ -364,12 +542,7 @@ export default function Signup() {
         username: username.trim().toLowerCase() || null,
         gender,
         gender_self: gender === "self_described" ? genderSelf || null : null,
-        loc: {
-          country: country || null,
-          state: stateCode || null,
-          county: countyCode || null,
-          city: cityId || null,
-        },
+        loc: { country: country || null, state: stateCode || null, county: countyCode || null, city: cityId || null },
       };
       localStorage.setItem("postSignupProfile", JSON.stringify(payload));
     } catch {
@@ -382,21 +555,10 @@ export default function Signup() {
     e.preventDefault();
     setMsg(null);
 
-    if (!email || !password) {
-      setMsg("Enter email and password.");
-      return;
-    }
-    if (!dob) {
-      setMsg("Please provide your date of birth.");
-      return;
-    }
-    const age = calcAge(dob);
-    if (age !== null && age < 13) {
-      setMsg("You must be at least 13 years old.");
-      return;
-    }
-    if (!country) {
-      setMsg("Please select at least your country.");
+    const next = validate();
+    setErrors(next);
+    if (Object.keys(next).length) {
+      focusFirstError(next);
       return;
     }
 
@@ -416,7 +578,7 @@ export default function Signup() {
         return;
       }
 
-      // 3) Email confirm ON: stash data and guide user
+      // 3) Email confirm ON path
       stashForFirstLogin();
       setMsg(
         "Check your email to confirm your account. After you log in, we’ll finish setting up your profile automatically."
@@ -428,48 +590,101 @@ export default function Signup() {
     }
   }
 
-  // ---------- render ----------
   return (
     <div className="mx-auto max-w-md p-6 space-y-5">
       <h1 className="text-2xl font-bold">Sign up</h1>
 
-      <form className="space-y-4" onSubmit={onSignup}>
-        {/* Email */}
-        <input
-          type="email"
-          className="w-full rounded border px-3 py-2"
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          autoComplete="email"
-          required
-        />
-
-        {/* Password */}
-        <input
-          type="password"
-          className="w-full rounded border px-3 py-2"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          autoComplete="new-password"
-          required
-        />
-
-        {/* Optional username with real-time availability */}
-        <UsernameField value={username} onChange={setUsername} />
-
-        {/* Explicit DOB label + your existing DobField */}
+      <form className="space-y-4" onSubmit={onSignup} noValidate>
+        {/* Email (required) */}
         <div>
-          <label htmlFor="dob" className="block text-sm font-medium">
-            Date of birth
+          <label htmlFor="email" className="block text-sm font-medium">
+            Email <span className="text-rose-600">*</span>
           </label>
-          {/* If your DobField renders its own input with id="dob", great.
-              If not, it still sits under the visible label for clarity. */}
+          <input
+            id="email"
+            ref={refEmail}
+            type="email"
+            className={cx(
+              "mt-1 w-full rounded border px-3 py-2",
+              errors.email && "border-rose-500"
+            )}
+            placeholder="you@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            autoComplete="email"
+            aria-invalid={!!errors.email}
+            aria-describedby={errors.email ? "email-error" : undefined}
+            required
+          />
+          {errors.email && (
+            <p id="email-error" className="mt-1 text-xs text-rose-600">
+              {errors.email}
+            </p>
+          )}
+        </div>
+
+        {/* Password (required) */}
+        <div>
+          <label htmlFor="password" className="block text-sm font-medium">
+            Password <span className="text-rose-600">*</span>
+          </label>
+          <input
+            id="password"
+            ref={refPassword}
+            type="password"
+            className={cx(
+              "mt-1 w-full rounded border px-3 py-2",
+              errors.password && "border-rose-500"
+            )}
+            placeholder="Minimum 8 characters"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="new-password"
+            aria-invalid={!!errors.password}
+            aria-describedby={errors.password ? "password-error" : undefined}
+            required
+          />
+          {errors.password && (
+            <p id="password-error" className="mt-1 text-xs text-rose-600">
+              {errors.password}
+            </p>
+          )}
+        </div>
+
+        {/* Optional username + rules + live availability */}
+        <div>
+          <div className="flex items-baseline justify-between">
+            <label className="block text-sm font-medium">Username (optional)</label>
+            <span
+              className={cx(
+                "text-xs",
+                uStatus === "available" && "text-emerald-600",
+                uStatus === "taken" && "text-rose-600",
+                uStatus === "checking" && "text-slate-500",
+                uStatus === "invalid" && "text-rose-600"
+              )}
+            >
+              {uMessage || "Optional. Use 3–20 chars: a–z, 0–9, _"}
+            </span>
+          </div>
+          <UsernameField value={username} onChange={setUsername} />
+          {errors.username && (
+            <p className="mt-1 text-xs text-rose-600">{errors.username}</p>
+          )}
+        </div>
+
+        {/* Date of birth (required) */}
+        <div ref={refDobContainer}>
+          <label htmlFor="dob" className="block text-sm font-medium">
+            Date of birth <span className="text-rose-600">*</span>
+          </label>
           <DobField value={dob} setValue={setDob} />
           <p className="mt-1 text-xs text-muted-foreground">
             You must be 13 or older. This is not shown publicly.
           </p>
+          {errors.dob && (
+            <p className="mt-1 text-xs text-rose-600">{errors.dob}</p>
+          )}
         </div>
 
         {/* Gender (optional) */}
@@ -516,22 +731,28 @@ export default function Signup() {
           </p>
         </fieldset>
 
-        {/* Location Picker V2 (Country → State → County → City) */}
-        <LocationPickerV2
-          country={country}
-          setCountry={setCountry}
-          stateCode={stateCode}
-          setStateCode={setStateCode}
-          countyCode={countyCode}
-          setCountyCode={setCountyCode}
-          cityId={cityId}
-          setCityId={setCityId}
-        />
+        {/* Location Picker V2 (with errors + loading states) */}
+        <div>
+          <LocationPickerV2
+            country={country}
+            setCountry={(v) => {
+              setCountry(v);
+              setErrors((prev) => ({ ...prev, country: "" }));
+            }}
+            stateCode={stateCode}
+            setStateCode={setStateCode}
+            countyCode={countyCode}
+            setCountyCode={setCountyCode}
+            cityId={cityId}
+            setCityId={setCityId}
+            errorCountry={errors.country}
+          />
+        </div>
 
         {/* Submit */}
         <button
           type="submit"
-          className="w-full rounded bg-slate-900 py-2 text-white"
+          className="w-full rounded bg-slate-900 py-2 text-white disabled:opacity-60"
           disabled={busy}
         >
           {busy ? "Creating…" : "Create account"}
