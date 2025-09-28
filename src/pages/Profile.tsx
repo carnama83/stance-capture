@@ -10,7 +10,7 @@ type ProfileRow = {
   display_handle_mode?: "random_id" | "username" | null;
   bio?: string | null;
   avatar_url?: string | null;
-  // Optional extras if you join them elsewhere:
+  // Optional extras if you materialize/join them elsewhere:
   dob?: string | null;
   country_code?: string | null;
   state_code?: string | null;
@@ -27,11 +27,12 @@ export default function Profile() {
   const [busy, setBusy] = React.useState(false);
   const [msg, setMsg] = React.useState<string | null>(null);
 
-  // Local UI state for handle mode switch
+  // Local UI state for handle-mode switch
   const [switchingHandle, setSwitchingHandle] = React.useState<
     false | "random_id" | "username"
   >(false);
 
+  // Supabase off-guard
   if (!sb) {
     return (
       <div className="mx-auto max-w-2xl p-6 space-y-4">
@@ -79,10 +80,12 @@ export default function Profile() {
 
         let profile = (got.data as ProfileRow) ?? null;
 
-        // 2) If missing, init then re-fetch
+        // 2) If missing, init then re-fetch once
         if (!profile) {
           const init = await sb.rpc("init_user_after_signup");
-          if (init.error) throw new Error(`Init profile failed: ${init.error.message}`);
+          if (init.error) {
+            throw new Error(`Init profile failed: ${init.error.message}`);
+          }
 
           const after = await sb
             .from("profiles")
@@ -99,7 +102,7 @@ export default function Profile() {
         console.error(e);
         if (!cancelled) {
           const hint = /gen_random_bytes|pgcrypto/i.test(e?.message || "")
-            ? " (DB: enable pgcrypto and/or set function search_path to include 'extensions')"
+            ? " (DB: enable pgcrypto and/or include 'extensions' in function search_path)"
             : "";
           setMsg((e?.message ?? "Failed to load profile") + hint);
         }
@@ -130,34 +133,28 @@ export default function Profile() {
     [sb]
   );
 
-  // Option #1: use enum-typed RPC to switch handle mode
+  // Use the non-overloaded, enum-typed RPC to switch handle mode
   async function setHandleMode(mode: "random_id" | "username") {
     try {
       setSwitchingHandle(mode);
       setMsg(null);
-      const { data: user } = await sb.auth.getUser();
-      const uid = user?.user?.id;
-      if (!uid) {
-        setMsg("Not logged in");
-        return;
-      }
 
-      // Server requires a username to exist before switching to 'username'
+      // Guard: username must exist before switching to 'username'
       if (mode === "username" && !row?.username) {
         setMsg("Set a username first before switching display to username.");
         return;
       }
 
-      const r = await sb.rpc("set_display_handle", {
-        p_user_id: uid,
-        p_mode: mode, // enum labels: 'random_id' | 'username'
-      });
+      // Call wrapper RPC: set_my_display_handle(p_mode display_handle_mode_enum)
+      const r = await sb.rpc("set_my_display_handle", { p_mode: mode });
       if (r.error) {
         setMsg(r.error.message);
         return;
       }
 
-      await refreshProfile(uid);
+      // Refresh
+      const uid = session?.user?.id;
+      if (uid) await refreshProfile(uid);
     } catch (e: any) {
       console.error(e);
       setMsg(e?.message ?? "Failed to switch handle mode.");
@@ -166,11 +163,13 @@ export default function Profile() {
     }
   }
 
+  // Derive handle (keeps original display logic)
   const handle =
     row?.display_handle_mode === "username"
       ? row?.username || row?.random_id || ""
       : row?.random_id || row?.username || "";
 
+  // Render
   return (
     <div className="mx-auto max-w-2xl p-6 space-y-4">
       <h1 className="text-2xl font-bold">My Profile</h1>
@@ -210,7 +209,7 @@ export default function Profile() {
             </div>
           </div>
 
-          {/* Handle mode controls (Option #1 applied) */}
+          {/* Handle mode controls */}
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm text-slate-600">
               Display handle:&nbsp;
