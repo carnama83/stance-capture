@@ -16,6 +16,30 @@ export default function Login() {
   const [needsMfa, setNeedsMfa] = React.useState(false);
   const [mfaCode, setMfaCode] = React.useState("");
 
+  // ---- Navigate only when we KNOW we're signed in ----
+  React.useEffect(() => {
+    if (!sb) return;
+    const sub = sb.auth.onAuthStateChange(async (evt, session) => {
+      if (evt === "SIGNED_IN" && session) {
+        // (Optional) small delay gives guards time to see session
+        await new Promise((r) => setTimeout(r, 50));
+        nav("/", { replace: true });
+      }
+    });
+    return () => sub.data?.subscription?.unsubscribe();
+  }, [sb, nav]);
+
+  // Helper: wait until getSession() returns non-null (short timeout)
+  async function waitForSession(ms = 1500) {
+    const start = Date.now();
+    while (Date.now() - start < ms) {
+      const { data } = await sb!.auth.getSession();
+      if (data.session) return true;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    return false;
+  }
+
   async function onLogin(e: React.FormEvent) {
     e.preventDefault();
     setMsg(null);
@@ -25,24 +49,30 @@ export default function Login() {
       setBusy(true);
 
       // 1) Primary auth
-      const { error } = await sb.auth.signInWithPassword({ email, password });
+      const { data, error } = await sb.auth.signInWithPassword({ email, password });
       if (error) throw error;
 
-      // 2) Check whether a second factor is required
+      // 2) MFA needed?
       const aal = await sb.auth.mfa.getAuthenticatorAssuranceLevel();
       if (aal.error) throw aal.error;
-
       if (aal.data.currentLevel === "aal1" && aal.data.nextLevel === "aal2") {
-        // A TOTP factor is enrolled and required; show prompt
         setNeedsMfa(true);
         setMsg("Enter the code from your authenticator app.");
-        return; // don't navigate yet
+        return; // Wait for user to verify MFA
       }
 
-      // 3) No MFA required → proceed
-      await touchLastSeen();
+      // 3) If email confirmation is OFF, we should already have a session
+      //    If ON, we won't—so just rely on the auth state listener.
+      const hasNow = !!data.session || (await waitForSession());
+      if (!hasNow) {
+        setMsg(
+          "Check your email to confirm your account. After confirming, sign in again."
+        );
+        return;
+      }
+
       setMsg("Logged in.");
-      nav("/", { replace: true }); // ⟵ land on index page
+      // No direct nav here; the onAuthStateChange listener will push to "/"
     } catch (err: any) {
       setMsg(err.message || "Login failed.");
     } finally {
@@ -57,20 +87,15 @@ export default function Login() {
     try {
       setBusy(true);
 
-      // Choose a TOTP factor (first one by default)
+      // Choose a TOTP factor
       const lf = await sb.auth.mfa.listFactors();
       if (lf.error) throw lf.error;
-
       const factor = lf.data.totp?.[0];
-      if (!factor) {
-        throw new Error("No authenticator factors found. Enroll one in Settings → Security.");
-      }
+      if (!factor) throw new Error("No authenticator factors found.");
 
-      // Create a challenge for this factor
+      // Challenge + verify
       const ch = await sb.auth.mfa.challenge({ factorId: factor.id });
       if (ch.error) throw ch.error;
-
-      // Verify the 6-digit code
       const vr = await sb.auth.mfa.verify({
         factorId: factor.id,
         challengeId: ch.data.id,
@@ -78,28 +103,19 @@ export default function Login() {
       });
       if (vr.error) throw vr.error;
 
-      // Success → proceed
-      await touchLastSeen();
+      // After successful MFA, wait until session becomes visible
+      const ok = await waitForSession();
+      if (!ok) {
+        setMsg("Signed in, but session not visible yet. Try reloading.");
+        return;
+      }
+
       setMsg("Logged in.");
-      nav("/", { replace: true }); // ⟵ land on index page after MFA too
+      // Navigation handled by the auth listener
     } catch (err: any) {
       setMsg(err.message || "Invalid code. Try again.");
     } finally {
       setBusy(false);
-    }
-  }
-
-  async function touchLastSeen() {
-    // Optional: keep your existing touch; ignore failures
-    try {
-      const uid = (await sb!.auth.getUser()).data.user?.id;
-      if (uid) {
-        await sb!.from("users")
-          .update({ last_seen_at: new Date().toISOString() })
-          .eq("id", uid);
-      }
-    } catch {
-      // ignore
     }
   }
 
@@ -135,7 +151,7 @@ export default function Login() {
         </button>
       </form>
 
-      {/* MFA prompt (only shown if a TOTP step is required) */}
+      {/* MFA prompt */}
       {needsMfa && (
         <div className="rounded border p-3 space-y-2">
           <div className="text-sm">Enter the 6-digit code from your authenticator app.</div>
