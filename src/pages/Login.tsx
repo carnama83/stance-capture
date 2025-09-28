@@ -16,21 +16,16 @@ export default function Login() {
   const [needsMfa, setNeedsMfa] = React.useState(false);
   const [mfaCode, setMfaCode] = React.useState("");
 
-  // ---- Navigate only when we KNOW we're signed in ----
-  React.useEffect(() => {
-    if (!sb) return;
-    const sub = sb.auth.onAuthStateChange(async (evt, session) => {
-      if (evt === "SIGNED_IN" && session) {
-        // (Optional) small delay gives guards time to see session
-        await new Promise((r) => setTimeout(r, 50));
-        nav("/", { replace: true });
-      }
-    });
-    return () => sub.data?.subscription?.unsubscribe();
-  }, [sb, nav]);
+  // --- ensure we only redirect once, even if events fire twice ---
+  const navigatedRef = React.useRef(false);
+  const navigateHomeOnce = React.useCallback(() => {
+    if (navigatedRef.current) return;
+    navigatedRef.current = true;
+    nav("/", { replace: true });
+  }, [nav]);
 
   // Helper: wait until getSession() returns non-null (short timeout)
-  async function waitForSession(ms = 1500) {
+  const waitForSession = React.useCallback(async (ms = 2000) => {
     const start = Date.now();
     while (Date.now() - start < ms) {
       const { data } = await sb!.auth.getSession();
@@ -38,7 +33,24 @@ export default function Login() {
       await new Promise((r) => setTimeout(r, 50));
     }
     return false;
-  }
+  }, [sb]);
+
+  // ---- Navigate only when we KNOW we're signed in ----
+  React.useEffect(() => {
+    if (!sb) return;
+
+    const sub = sb.auth.onAuthStateChange(async (evt, session) => {
+      // Handle both INITIAL_SESSION and SIGNED_IN to avoid guard races
+      if ((evt === "INITIAL_SESSION" || evt === "SIGNED_IN") && session) {
+        // Give any guards a tick to observe the session
+        await new Promise((r) => setTimeout(r, 50));
+        const ok = await waitForSession();
+        if (ok) navigateHomeOnce();
+      }
+    });
+
+    return () => sub.data?.subscription?.unsubscribe();
+  }, [sb, waitForSession, navigateHomeOnce]);
 
   async function onLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -58,21 +70,19 @@ export default function Login() {
       if (aal.data.currentLevel === "aal1" && aal.data.nextLevel === "aal2") {
         setNeedsMfa(true);
         setMsg("Enter the code from your authenticator app.");
-        return; // Wait for user to verify MFA
+        return;
       }
 
-      // 3) If email confirmation is OFF, we should already have a session
-      //    If ON, we won't—so just rely on the auth state listener.
+      // 3) If email confirmation is OFF, we should already have a session.
+      //    If ON, rely on onAuthStateChange. We still wait briefly to be safe.
       const hasNow = !!data.session || (await waitForSession());
       if (!hasNow) {
-        setMsg(
-          "Check your email to confirm your account. After confirming, sign in again."
-        );
+        setMsg("Check your email to confirm your account. After confirming, sign in again.");
         return;
       }
 
       setMsg("Logged in.");
-      // No direct nav here; the onAuthStateChange listener will push to "/"
+      // Navigation handled by the auth listener (navigateHomeOnce)
     } catch (err: any) {
       setMsg(err.message || "Login failed.");
     } finally {
@@ -111,7 +121,7 @@ export default function Login() {
       }
 
       setMsg("Logged in.");
-      // Navigation handled by the auth listener
+      // Navigation handled by the auth listener (navigateHomeOnce)
     } catch (err: any) {
       setMsg(err.message || "Invalid code. Try again.");
     } finally {
