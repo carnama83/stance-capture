@@ -36,21 +36,23 @@ export default function Login() {
   }, [sb]);
 
   // ---- Navigate only when we KNOW we're signed in ----
-  React.useEffect(() => {
-    if (!sb) return;
+ React.useEffect(() => {
+  if (!sb) return;
 
-    const sub = sb.auth.onAuthStateChange(async (evt, session) => {
-      // Handle both INITIAL_SESSION and SIGNED_IN to avoid guard races
-      if ((evt === "INITIAL_SESSION" || evt === "SIGNED_IN") && session) {
-        // Give any guards a tick to observe the session
-        await new Promise((r) => setTimeout(r, 50));
-        const ok = await waitForSession();
-        if (ok) navigateHomeOnce();
-      }
-    });
+  const { data: { subscription } } = sb.auth.onAuthStateChange(async (evt, session) => {
+    if ((evt === "INITIAL_SESSION" || evt === "SIGNED_IN") && session) {
+      // give guards a tick to see the session
+      await new Promise((r) => setTimeout(r, 50));
+      const ok = await waitForSession();   // you already have this helper
+      if (ok) navigateHomeOnce();
+    }
+  });
 
-    return () => sub.data?.subscription?.unsubscribe();
-  }, [sb, waitForSession, navigateHomeOnce]);
+  // prime the initial event
+  sb.auth.getSession().finally(() => { /* no-op */ });
+
+  return () => subscription?.unsubscribe();
+}, [sb, waitForSession, navigateHomeOnce]);
 
   async function onLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -206,3 +208,4 @@ export default function Login() {
     </div>
   );
 }
+
