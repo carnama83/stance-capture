@@ -10,7 +10,7 @@ type ProfileRow = {
   display_handle_mode?: "random_id" | "username" | null;
   bio?: string | null;
   avatar_url?: string | null;
-  // Optional extras if present in your view/joins:
+  // Optional extras if you join them elsewhere:
   dob?: string | null;
   country_code?: string | null;
   state_code?: string | null;
@@ -27,7 +27,11 @@ export default function Profile() {
   const [busy, setBusy] = React.useState(false);
   const [msg, setMsg] = React.useState<string | null>(null);
 
-  // Supabase off-guard
+  // Local UI state for handle mode switch
+  const [switchingHandle, setSwitchingHandle] = React.useState<
+    false | "random_id" | "username"
+  >(false);
+
   if (!sb) {
     return (
       <div className="mx-auto max-w-2xl p-6 space-y-4">
@@ -39,7 +43,7 @@ export default function Profile() {
     );
   }
 
-  // Track session (prevents blank while restoring)
+  // Track session
   React.useEffect(() => {
     let unsub: (() => void) | undefined;
     (async () => {
@@ -57,7 +61,7 @@ export default function Profile() {
     return () => unsub?.();
   }, [sb]);
 
-  // Load or initialize profile for the logged-in user
+  // Fetch or initialize profile
   React.useEffect(() => {
     let cancelled = false;
 
@@ -65,7 +69,7 @@ export default function Profile() {
       setBusy(true);
       setMsg(null);
       try {
-        // 1) Try to fetch the profile row
+        // 1) Try to fetch
         const got = await sb
           .from("profiles")
           .select("*")
@@ -75,7 +79,7 @@ export default function Profile() {
 
         let profile = (got.data as ProfileRow) ?? null;
 
-        // 2) If missing, initialize via RPC then re-fetch once
+        // 2) If missing, init then re-fetch
         if (!profile) {
           const init = await sb.rpc("init_user_after_signup");
           if (init.error) throw new Error(`Init profile failed: ${init.error.message}`);
@@ -94,7 +98,6 @@ export default function Profile() {
       } catch (e: any) {
         console.error(e);
         if (!cancelled) {
-          // Add a helpful hint for the common pgcrypto/search_path issue
           const hint = /gen_random_bytes|pgcrypto/i.test(e?.message || "")
             ? " (DB: enable pgcrypto and/or set function search_path to include 'extensions')"
             : "";
@@ -113,13 +116,61 @@ export default function Profile() {
     };
   }, [sb, session?.user?.id]);
 
-  // Derive handle (keeps your original display logic)
+  // Helper to refresh current profile row
+  const refreshProfile = React.useCallback(
+    async (uid: string) => {
+      const after = await sb
+        .from("profiles")
+        .select("*")
+        .eq("user_id", uid)
+        .maybeSingle();
+      if (!after.error) setRow(after.data as ProfileRow);
+      else setMsg(after.error.message);
+    },
+    [sb]
+  );
+
+  // Option #1: use enum-typed RPC to switch handle mode
+  async function setHandleMode(mode: "random_id" | "username") {
+    try {
+      setSwitchingHandle(mode);
+      setMsg(null);
+      const { data: user } = await sb.auth.getUser();
+      const uid = user?.user?.id;
+      if (!uid) {
+        setMsg("Not logged in");
+        return;
+      }
+
+      // Server requires a username to exist before switching to 'username'
+      if (mode === "username" && !row?.username) {
+        setMsg("Set a username first before switching display to username.");
+        return;
+      }
+
+      const r = await sb.rpc("set_display_handle", {
+        p_user_id: uid,
+        p_mode: mode, // enum labels: 'random_id' | 'username'
+      });
+      if (r.error) {
+        setMsg(r.error.message);
+        return;
+      }
+
+      await refreshProfile(uid);
+    } catch (e: any) {
+      console.error(e);
+      setMsg(e?.message ?? "Failed to switch handle mode.");
+    } finally {
+      setSwitchingHandle(false);
+    }
+  }
+
   const handle =
     row?.display_handle_mode === "username"
       ? row?.username || row?.random_id || ""
       : row?.random_id || row?.username || "";
 
-  // Render
   return (
     <div className="mx-auto max-w-2xl p-6 space-y-4">
       <h1 className="text-2xl font-bold">My Profile</h1>
@@ -143,7 +194,8 @@ export default function Profile() {
       )}
 
       {row && (
-        <div className="rounded-2xl border bg-white p-4 shadow-sm">
+        <div className="rounded-2xl border bg-white p-4 shadow-sm space-y-4">
+          {/* Header */}
           <div className="flex items-center gap-3">
             <img
               src={row.avatar_url || "https://placehold.co/64x64"}
@@ -158,12 +210,40 @@ export default function Profile() {
             </div>
           </div>
 
+          {/* Handle mode controls (Option #1 applied) */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm text-slate-600">
+              Display handle:&nbsp;
+              <strong>{row.display_handle_mode ?? "random_id"}</strong>
+            </span>
+
+            <button
+              type="button"
+              onClick={() => setHandleMode("random_id")}
+              className="rounded bg-slate-900 px-3 py-1 text-white text-sm disabled:opacity-60"
+              disabled={switchingHandle === "random_id"}
+            >
+              {switchingHandle === "random_id" ? "Switching…" : "Use Random ID"}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setHandleMode("username")}
+              className="rounded bg-slate-200 px-3 py-1 text-slate-900 text-sm disabled:opacity-60"
+              disabled={switchingHandle === "username" || !row.username}
+              title={!row.username ? "Set a username first" : ""}
+            >
+              {switchingHandle === "username" ? "Switching…" : "Use Username"}
+            </button>
+          </div>
+
+          {/* Optional details */}
           {(row.dob ||
             row.city_name ||
             row.county_name ||
             row.state_code ||
             row.country_code) && (
-            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
               <div>
                 <div className="text-slate-500">DOB</div>
                 <div>{row.dob ?? "—"}</div>
@@ -179,7 +259,7 @@ export default function Profile() {
             </div>
           )}
 
-          <div className="mt-4 text-sm">
+          <div className="text-sm">
             <Link to="/settings/profile" className="underline">
               Edit profile →
             </Link>
