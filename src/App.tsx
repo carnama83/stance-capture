@@ -14,6 +14,16 @@ import SettingsProfile from "./pages/SettingsProfile";
 import SettingsSecurity from "./pages/SettingsSecurity";
 import SettingsSessions from "./pages/SettingsSessions";
 import AdminIdentifiers from "./pages/AdminIdentifiers";
+import AuthReadyGate from "./components/AuthReadyGate";
+// ...
+<HashRouter>
+  <AuthReadyGate>
+    <Routes>
+      {/* your routes unchanged */}
+    </Routes>
+  </AuthReadyGate>
+</HashRouter>
+
 
 const queryClient = new QueryClient();
 
