@@ -466,7 +466,8 @@ export default function Signup() {
     const handle = setTimeout(async () => {
       try {
         // Try RPC if you created one
-        const rpc = await sb?.rpc("check_username_available", { p_username: u });
+        //const rpc = await sb?.rpc("check_username_available", { p_username: u });
+        const rpc = await sb?.rpc("username_available", { p_username: u });
         if (rpc && !rpc.error && typeof rpc.data === "boolean") {
           setUStatus(rpc.data ? "available" : "taken");
           setUMessage(rpc.data ? "Available ✓" : "Taken ✗");
@@ -566,7 +567,8 @@ export default function Signup() {
     }
 
     if (dob) {
-      const d = await sb.rpc("profile_set_dob_checked", { p_dob: dob });
+      //const d = await sb.rpc("profile_set_dob_checked", { p_dob: dob });
+      const d = await sb.rpc("profile_set_dob_checked", { p_dob_text: dob });
       if (d.error) throw d.error;
     }
 
