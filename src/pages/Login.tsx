@@ -25,34 +25,40 @@ export default function Login() {
   }, [nav]);
 
   // Helper: wait until getSession() returns non-null (short timeout)
-  const waitForSession = React.useCallback(async (ms = 2000) => {
-    const start = Date.now();
-    while (Date.now() - start < ms) {
-      const { data } = await sb!.auth.getSession();
-      if (data.session) return true;
-      await new Promise((r) => setTimeout(r, 50));
-    }
-    return false;
-  }, [sb]);
+  const waitForSession = React.useCallback(
+    async (ms = 2000) => {
+      if (!sb) return false;
+      const start = Date.now();
+      while (Date.now() - start < ms) {
+        const { data } = await sb.auth.getSession();
+        if (data.session) return true;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      return false;
+    },
+    [sb]
+  );
 
-  // ---- Navigate only when we KNOW we're signed in ----
- React.useEffect(() => {
-  if (!sb) return;
+  // ---- Redirect ONLY after a fresh SIGNED_IN event (not INITIAL_SESSION) ----
+  React.useEffect(() => {
+    if (!sb) return;
 
-  const { data: { subscription } } = sb.auth.onAuthStateChange(async (evt, session) => {
-    if ((evt === "INITIAL_SESSION" || evt === "SIGNED_IN") && session) {
-      // give guards a tick to see the session
-      await new Promise((r) => setTimeout(r, 50));
-      const ok = await waitForSession();   // you already have this helper
-      if (ok) navigateHomeOnce();
-    }
-  });
+    const { data: { subscription } } = sb.auth.onAuthStateChange(
+      async (evt, session) => {
+        if (evt === "SIGNED_IN" && session) {
+          // give guards a tick to see the session
+          await new Promise((r) => setTimeout(r, 50));
+          const ok = await waitForSession();
+          if (ok) navigateHomeOnce();
+        }
+      }
+    );
 
-  // prime the initial event
-  sb.auth.getSession().finally(() => { /* no-op */ });
+    // Prime auth internals; but do NOT redirect on INITIAL_SESSION
+    sb.auth.getSession().finally(() => { /* no-op */ });
 
-  return () => subscription?.unsubscribe();
-}, [sb, waitForSession, navigateHomeOnce]);
+    return () => subscription?.unsubscribe();
+  }, [sb, waitForSession, navigateHomeOnce]);
 
   async function onLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -75,16 +81,10 @@ export default function Login() {
         return;
       }
 
-      // 3) If email confirmation is OFF, we should already have a session.
-      //    If ON, rely on onAuthStateChange. We still wait briefly to be safe.
-      const hasNow = !!data.session || (await waitForSession());
-      if (!hasNow) {
-        setMsg("Check your email to confirm your account. After confirming, sign in again.");
-        return;
-      }
-
-      setMsg("Logged in.");
-      // Navigation handled by the auth listener (navigateHomeOnce)
+      // 3) If session is already available (no email confirm), listener will handle redirect.
+      //    We still set a friendly message.
+      if (data.session) setMsg("Logged in.");
+      else setMsg("If email confirmation is required, please confirm and sign in again.");
     } catch (err: any) {
       setMsg(err.message || "Login failed.");
     } finally {
@@ -115,7 +115,7 @@ export default function Login() {
       });
       if (vr.error) throw vr.error;
 
-      // After successful MFA, wait until session becomes visible
+      // After successful MFA the SIGNED_IN event fires; wait briefly just in case
       const ok = await waitForSession();
       if (!ok) {
         setMsg("Signed in, but session not visible yet. Try reloading.");
@@ -208,4 +208,3 @@ export default function Login() {
     </div>
   );
 }
-
