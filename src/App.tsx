@@ -24,7 +24,8 @@ const App = () => (
       <Sonner />
       <HashRouter>
         <Routes>
-          <Route path="/" element={<Navigate to="/signup" replace />} />
+         // <Route path="/" element={<Navigate to="/signup" replace />} />
+          <Route path="/" element={<Index />} />
           <Route path="/signup" element={<Signup />} />
           <Route path="/login" element={<Login />} />
           <Route path="/reset-password" element={<ResetPassword />} />
