@@ -42,7 +42,7 @@ export default function Login() {
       // 3) No MFA required → proceed
       await touchLastSeen();
       setMsg("Logged in.");
-      nav("/profile");
+      nav("/", { replace: true }); // ⟵ land on index page
     } catch (err: any) {
       setMsg(err.message || "Login failed.");
     } finally {
@@ -81,7 +81,7 @@ export default function Login() {
       // Success → proceed
       await touchLastSeen();
       setMsg("Logged in.");
-      nav("/profile");
+      nav("/", { replace: true }); // ⟵ land on index page after MFA too
     } catch (err: any) {
       setMsg(err.message || "Invalid code. Try again.");
     } finally {
