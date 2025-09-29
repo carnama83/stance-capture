@@ -9,6 +9,9 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 
 // --- Gate to avoid initial auth race ---
 import AuthReadyGate from "./components/AuthReadyGate";
+import { Protected, PublicOnly } from "./auth/route-guards";
+
+
 
 // --- Pages (adjust paths if yours differ) ---
 import Index from "./pages/Index";
@@ -48,7 +51,13 @@ const App: React.FC = () => {
               <Route path="/settings/profile" element={<SettingsProfile />} />
               <Route path="/settings/security" element={<SettingsSecurity />} />
               <Route path="/settings/sessions" element={<SettingsSessions />} />
+             
+              {/* Auth Ready Gate */}
+              <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
+              <Route path="/signup" element={<PublicOnly><Signup /></PublicOnly>} />
+              <Route path="/profile" element={<Protected><Profile /></Protected>} />
 
+              
               {/* Admin */}
               <Route path="/admin/identifiers" element={<AdminIdentifiers />} />
 
