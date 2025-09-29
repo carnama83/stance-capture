@@ -24,7 +24,7 @@ import SettingsSecurity from "./pages/SettingsSecurity";
 import SettingsSessions from "./pages/SettingsSessions";
 import AdminIdentifiers from "./pages/AdminIdentifiers";
 import NotFound from "./pages/NotFound";
-import { userMessageFromError } from "../lib/errors";
+import { userMessageFromError } from "./lib/errors";
 // ...
 try {
   // RPC / query
