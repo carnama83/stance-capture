@@ -24,6 +24,15 @@ import SettingsSecurity from "./pages/SettingsSecurity";
 import SettingsSessions from "./pages/SettingsSessions";
 import AdminIdentifiers from "./pages/AdminIdentifiers";
 import NotFound from "./pages/NotFound";
+import { userMessageFromError } from "../lib/errors";
+// ...
+try {
+  // RPC / query
+} catch (e) {
+  setMsg(userMessageFromError(e));
+}
+
+
 
 const queryClient = new QueryClient();
 
@@ -69,9 +78,8 @@ const App: React.FC = () => {
                     </Protected>
                   }
                 />
-
-
-
+  
+        
               
               {/* 404 */}
               <Route path="*" element={<NotFound />} />
