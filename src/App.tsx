@@ -11,7 +11,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import AuthReadyGate from "./components/AuthReadyGate";
 import { Protected, PublicOnly } from "./auth/route-guards";
 
-
+import AdminOnly from "./auth/AdminOnly";
 
 // --- Pages (adjust paths if yours differ) ---
 import Index from "./pages/Index";
