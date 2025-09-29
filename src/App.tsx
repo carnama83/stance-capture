@@ -59,8 +59,20 @@ const App: React.FC = () => {
 
               
               {/* Admin */}
-              <Route path="/admin/identifiers" element={<AdminIdentifiers />} />
+             // <Route path="/admin/identifiers" element={<AdminIdentifiers />} />
 
+               <Route
+                  path="/admin/identifiers"
+                  element={
+                    <Protected>
+                      <AdminOnly><AdminIdentifiers /></AdminOnly>
+                    </Protected>
+                  }
+                />
+
+
+
+              
               {/* 404 */}
               <Route path="*" element={<NotFound />} />
             </Routes>
