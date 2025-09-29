@@ -2,17 +2,6 @@
 import * as React from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { getSupabase } from "../lib/supabaseClient";
-import PageLayout from "../components/PageLayout";
-
-// inside the onAuthStateChange listener in Login.tsx
-import { applyPostSignupProfile } from "../auth/applyPostSignupProfile";
-// ...
-if (evt === "SIGNED_IN" && session) {
-  await applyPostSignupProfile();
-  // then do your waitForSession() + navigateOnce logic
-}
-
-
 
 export default function Login() {
   const sb = React.useMemo(getSupabase, []);
@@ -27,16 +16,16 @@ export default function Login() {
   const [needsMfa, setNeedsMfa] = React.useState(false);
   const [mfaCode, setMfaCode] = React.useState("");
 
-  // --- ensure we only redirect once, even if events fire twice ---
+  // --- navigate once (prevents double redirects) ---
   const navigatedRef = React.useRef(false);
   const navigateHomeOnce = React.useCallback(() => {
     if (navigatedRef.current) return;
     navigatedRef.current = true;
 
-    // prefer returning to the previously requested hash route if any
+    // If we stored a return hash (HashRouter), prefer it
     const back = sessionStorage.getItem("return_to");
     if (back && back.startsWith("#/")) {
-      window.location.hash = back;        // HashRouter-friendly return
+      window.location.hash = back;
       sessionStorage.removeItem("return_to");
       return;
     }
@@ -63,8 +52,9 @@ export default function Login() {
     if (!sb) return;
 
     const { data: { subscription } } = sb.auth.onAuthStateChange(
-      async (evt, session) => {
-        if (evt === "SIGNED_IN" && session) {
+      async (event, session) => {
+        if (event === "SIGNED_IN" && session) {
+          // small defer so guards see the session
           await new Promise((r) => setTimeout(r, 50));
           const ok = await waitForSession();
           if (ok) navigateHomeOnce();
@@ -72,7 +62,7 @@ export default function Login() {
       }
     );
 
-    // Prime auth internals; but do NOT redirect on INITIAL_SESSION
+    // Prime internals; do not redirect on INITIAL_SESSION
     sb.auth.getSession().finally(() => { /* no-op */ });
 
     return () => subscription?.unsubscribe();
@@ -148,7 +138,9 @@ export default function Login() {
   }
 
   return (
-    <PageLayout>
+    <div className="min-h-screen">
+      {/* If you’re using the PageLayout/AppTopBar wrapper, you can wrap this content with it.
+          Keeping bare content here to avoid double wrappers if you already do that. */}
       <div className="mx-auto max-w-md p-6 space-y-4">
         <h1 className="text-2xl font-bold">Log in</h1>
 
@@ -223,6 +215,6 @@ export default function Login() {
           </Link>
         </div>
       </div>
-    </PageLayout>
+    </div>
   );
 }
