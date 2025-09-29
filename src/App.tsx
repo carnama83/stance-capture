@@ -1,17 +1,16 @@
-// src/App.tsx
 import * as React from "react";
 import { HashRouter, Routes, Route } from "react-router-dom";
 
-// ----- UI providers (keep exactly as in your project) -----
+// --- UI providers (keep what your project already uses) ---
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { Toaster } from "@/components/ui/toaster";     // if you use shadcn Toaster
-import { Sonner } from "@/components/ui/sonner";       // if you use Sonner
+import { Toaster } from "@/components/ui/toaster";
+import { Toaster as Sonner } from "@/components/ui/sonner";
 
-// ----- Auth readiness gate (prevents first-paint redirect races) -----
+// --- Gate to avoid initial auth race ---
 import AuthReadyGate from "./components/AuthReadyGate";
 
-// ----- Pages -----
+// --- Pages (adjust paths if yours differ) ---
 import Index from "./pages/Index";
 import Signup from "./pages/Signup";
 import Login from "./pages/Login";
@@ -21,9 +20,8 @@ import SettingsProfile from "./pages/SettingsProfile";
 import SettingsSecurity from "./pages/SettingsSecurity";
 import SettingsSessions from "./pages/SettingsSessions";
 import AdminIdentifiers from "./pages/AdminIdentifiers";
-import NotFound from "./pages/NotFound"; // keep your existing 404
+import NotFound from "./pages/NotFound";
 
-// If you already create the client elsewhere, reuse it.
 const queryClient = new QueryClient();
 
 const App: React.FC = () => {
@@ -32,9 +30,8 @@ const App: React.FC = () => {
       <TooltipProvider>
         <Toaster />
         <Sonner />
-
         <HashRouter>
-          {/* Wait for Supabase INITIAL_SESSION before rendering routes */}
+          {/* Wait for Supabase to resolve initial auth state BEFORE rendering any routes */}
           <AuthReadyGate>
             <Routes>
               {/* Home / Index */}
@@ -55,7 +52,7 @@ const App: React.FC = () => {
               {/* Admin */}
               <Route path="/admin/identifiers" element={<AdminIdentifiers />} />
 
-              {/* Fallback */}
+              {/* 404 */}
               <Route path="*" element={<NotFound />} />
             </Routes>
           </AuthReadyGate>
