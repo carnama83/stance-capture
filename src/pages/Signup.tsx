@@ -635,8 +635,6 @@ export default function Signup() {
     }
   }
 
-  const [msg, setMsg] = React.useState<string | null>(null);
-
   return (
     <PageLayout>
       <div className="mx-auto max-w-md p-6 space-y-5">
