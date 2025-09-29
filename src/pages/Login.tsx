@@ -4,6 +4,16 @@ import { Link, useNavigate } from "react-router-dom";
 import { getSupabase } from "../lib/supabaseClient";
 import PageLayout from "../components/PageLayout";
 
+// inside the onAuthStateChange listener in Login.tsx
+import { applyPostSignupProfile } from "../auth/applyPostSignupProfile";
+// ...
+if (evt === "SIGNED_IN" && session) {
+  await applyPostSignupProfile();
+  // then do your waitForSession() + navigateOnce logic
+}
+
+
+
 export default function Login() {
   const sb = React.useMemo(getSupabase, []);
   const nav = useNavigate();
