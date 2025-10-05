@@ -7,6 +7,16 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 
+
+// imports for admin pages for Epic B
+import { Routes, Route } from "react-router-dom";
+import AdminLayout from "@/routes/admin/_layout";
+import AdminSourcesPage from "@/routes/admin/sources/Index";
+import AdminIngestionPage from "@/routes/admin/ingestion/Index";
+import AdminDraftsPage from "@/routes/admin/drafts/Index";
+
+
+
 // --- Gate to avoid initial auth race ---
 import AuthReadyGate from "./components/AuthReadyGate";
 import { Protected, PublicOnly } from "./auth/route-guards";
@@ -60,7 +70,17 @@ const App: React.FC = () => {
               <Route path="/settings/profile" element={<SettingsProfile />} />
               <Route path="/settings/security" element={<SettingsSecurity />} />
               <Route path="/settings/sessions" element={<SettingsSessions />} />
-             
+
+
+              // routes for Epic B for admin pages
+              <Route path="/admin" element={<AdminLayout />}>
+                <Route index element={<AdminSourcesPage />} />
+                <Route path="sources" element={<AdminSourcesPage />} />
+                <Route path="ingestion" element={<AdminIngestionPage />} />
+                <Route path="drafts" element={<AdminDraftsPage />} />
+              </Route>
+
+              
               {/* Auth Ready Gate */}
               <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
               <Route path="/signup" element={<PublicOnly><Signup /></PublicOnly>} />
