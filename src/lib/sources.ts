@@ -1,4 +1,4 @@
-// lib/sources.ts
+// src/lib/sources.ts
 import { supabase } from "@/lib/supabase";
 
 export type TopicSource = {
@@ -23,7 +23,8 @@ export async function listSources(params?: {
   if (params?.kind) q.eq("kind", params.kind);
   if (params?.enabled != null) q.eq("is_enabled", params.enabled);
   if (params?.q) q.or(`name.ilike.%${params.q}%,endpoint.ilike.%${params.q}%`);
-  return q.order("is_enabled", { ascending: false }).order("last_polled_at", { ascending: false, nullsFirst: false });
+  return q.order("is_enabled", { ascending: false })
+          .order("last_polled_at", { ascending: false, nullsFirst: false });
 }
 
 export async function createSource(values: Partial<TopicSource>) {
@@ -39,10 +40,11 @@ export async function toggleSource(id: string, enabled: boolean) {
 }
 
 export async function deleteSource(id: string) {
-  // or implement soft-delete; for now hard delete:
   return supabase.from("topic_sources").delete().eq("id", id);
 }
 
+// Server-side RPC that triggers the `ingest` Edge Function for a single source.
+// You created this as: public.admin_ingest_source(p_source_id uuid)
 export async function runSourceNow(id: string) {
   return supabase.rpc("admin_ingest_source", { p_source_id: id });
 }
