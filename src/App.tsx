@@ -62,7 +62,7 @@ export default function App() {
           />
 
           {/* ---------- Settings (protected) ---------- */}
-          {/* Helpful parent redirect: covers buttons that navigate to /settings */}
+          {/* Parent redirect covers buttons that navigate to /settings */}
           <Route
             path="/settings"
             element={
@@ -105,7 +105,7 @@ export default function App() {
               </AdminOnly>
             }
           >
-            {/* Optional: set a default subpage for /#/admin */}
+            {/* Default subpage for /#/admin */}
             <Route index element={<Navigate to="sources" replace />} />
             <Route path="sources" element={<AdminSources />} />
             <Route path="ingestion" element={<AdminIngestion />} />
