@@ -448,7 +448,6 @@ function WhyDifferent() {
     </div>
   );
 }
-
 function FooterCta({ onSignup }: { onSignup: () => void }) {
   return (
     <div className="py-6">
