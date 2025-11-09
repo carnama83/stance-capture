@@ -12,7 +12,7 @@ type Topic = {
   title: string;
   summary?: string | null;
   tags?: string[] | null;
-  updated_at?: string | null;
+  updated_at?: string | null;  // can be an alias of published_at
   tier?: "city" | "county" | "state" | "country" | "global" | null;
   location_label?: string | null;
   trending_score?: number | null;
@@ -39,53 +39,93 @@ const SOURCE_ALIAS: Record<string, string> = {
   // Keep UI label "topic_region_trends" but actually query the view
   topic_region_trends: "topic_region_trends_v",
 };
-
 function resolveSource(name: string) {
   return SOURCE_ALIAS[name] ?? name;
 }
+
+// --------------------- Per-source select & order maps ---------------------
+// Use the *UI label* as the key (before aliasing) so your config stays readable.
+const SELECT_BY_SOURCE: Record<string, string> = {
+  // trending view (computed fields exist)
+  topic_region_trends: "id,title,summary,tags,updated_at,tier,location_label,trending_score,activity_7d",
+  topic_region_trends_v: "id,title,summary,tags,updated_at,tier,location_label,trending_score,activity_7d",
+
+  // if you have these views, they can expose updated_at/activity_7d natively
+  topics_with_counts: "id,title,summary,tags,updated_at,tier,location_label,activity_7d",
+  vw_topics: "id,title,summary,tags,updated_at,tier,location_label",
+
+  // raw table fallback: alias published_at -> updated_at, omit activity_7d
+  topics: "id,title,summary,tags,updated_at:published_at,tier,location_label",
+};
+
+// For `order`, we must use *real* column names available on that source.
+// (Don’t rely on aliases for ordering.)
+const ORDER_BY_SOURCE: Record<string, string[]> = {
+  topic_region_trends: ["trending_score", "activity_7d", "updated_at"],
+  topic_region_trends_v: ["trending_score", "activity_7d", "updated_at"],
+  topics_with_counts: ["activity_7d", "updated_at"],
+  vw_topics: ["updated_at"],
+  topics: ["published_at"], // real column on topics
+};
 
 // --------------------- Data adapters ---------------------
 async function trySelectTopics(
   sb: any,
   options: {
     sourceCandidates: string[];
-    select: string;
+    defaultSelect: string;            // used if a source has no explicit select mapping
+    defaultOrderCandidates?: string[]; // used if a source has no explicit order mapping
     limit?: number;
-    orderCandidates?: string[];
     search?: string | null;
   }
 ) {
-  const { sourceCandidates, select, orderCandidates = [], limit = 12, search } = options;
+  const {
+    sourceCandidates,
+    defaultSelect,
+    defaultOrderCandidates = [],
+    limit = 12,
+    search,
+  } = options;
 
-  for (const source of sourceCandidates) {
+  for (const sourceLabel of sourceCandidates) {
+    const table = resolveSource(sourceLabel);
+    const select = SELECT_BY_SOURCE[sourceLabel] ?? SELECT_BY_SOURCE[table] ?? defaultSelect;
+    const orderCandidates = ORDER_BY_SOURCE[sourceLabel] ?? ORDER_BY_SOURCE[table] ?? defaultOrderCandidates;
+
     try {
-      const table = resolveSource(source);
       let q = sb.from(table).select(select).limit(limit);
 
+      // Optional client-side search fallback if ilike not available on this query builder
       if (search && search.trim()) {
-        q = q.ilike?.("title", `%${search.trim()}%`) ?? q;
+        // safest attempt — if ilike exists, use it, else we'll filter client-side after fetch
+        q = (q as any).ilike?.("title", `%${search.trim()}%`) ?? q;
       }
 
-      let dataResp: any = null;
+      // Try ordering by candidates in sequence until one works
+      let gotData: any[] | null = null;
       for (let i = 0; i <= orderCandidates.length; i++) {
         const orderBy = orderCandidates[i];
-        const queryToRun = orderBy ? q.order(orderBy as any, { ascending: false }) : q;
+        const queryToRun = orderBy ? (q as any).order(orderBy as any, { ascending: false }) : q;
         const { data, error } = await queryToRun;
+
         if (!error) {
           let rows: Topic[] = (data ?? []) as Topic[];
-          if (search && search.trim() && (!q.ilike)) {
+
+          // If ilike wasn’t applied server-side, do a client filter
+          if (search && search.trim() && !(q as any).ilike) {
             const needle = search.trim().toLowerCase();
             rows = rows.filter((r) => (r.title ?? "").toLowerCase().includes(needle));
           }
+
           if (rows.length > 0) return rows.slice(0, limit);
-          dataResp = rows;
+          gotData = rows;
           break;
         }
       }
 
-      if (Array.isArray(dataResp) && dataResp.length > 0) return dataResp.slice(0, limit);
+      if (Array.isArray(gotData) && gotData.length > 0) return gotData.slice(0, limit);
     } catch {
-      // continue
+      // Try next source candidate
     }
   }
 
@@ -103,15 +143,15 @@ const TRENDING_SOURCES = [
 async function fetchTrendingTopics(sb: any, opts: { personalized: boolean; userId?: string | null }) {
   const rows = await trySelectTopics(sb, {
     sourceCandidates: TRENDING_SOURCES,
-    select:
-      "id, title, summary, tags, updated_at, tier, location_label, trending_score, activity_7d",
+    defaultSelect:
+      "id,title,summary,tags,updated_at,tier,location_label,trending_score,activity_7d",
+    defaultOrderCandidates: ["trending_score", "activity_7d", "updated_at"],
     limit: 12,
-    orderCandidates: ["trending_score", "activity_7d", "updated_at"],
   });
 
   if (rows.length > 0) return rows;
 
-  // Mock fallback
+  // Mock fallback (unchanged)
   return [
     { id: "t1", title: "Elections", summary: "Key races and policy stances." },
     { id: "t2", title: "EVs", summary: "Charging rollout and incentives." },
@@ -127,9 +167,9 @@ async function fetchTopicsGrid(sb: any, opts: { search: string; page: number; pa
 
   const rows = await trySelectTopics(sb, {
     sourceCandidates: ["topics_with_counts", "vw_topics", "topics"],
-    select: "id, title, summary, tags, updated_at, tier, location_label, activity_7d",
+    defaultSelect: "id,title,summary,tags,updated_at,tier,location_label,activity_7d",
+    defaultOrderCandidates: ["activity_7d", "updated_at"],
     limit: pageSize,
-    orderCandidates: ["activity_7d", "updated_at"],
     search,
   });
 
@@ -141,7 +181,7 @@ async function fetchTopicsGrid(sb: any, opts: { search: string; page: number; pa
     };
   }
 
-  // Mock fallback
+  // Mock fallback (unchanged)
   const mocks: Topic[] = [
     { id: "m1", title: "Carbon Tax", summary: "Pricing emissions to reduce CO₂." },
     { id: "m2", title: "Rent Control", summary: "Capping rents to protect tenants." },
@@ -155,7 +195,7 @@ async function fetchTopicsGrid(sb: any, opts: { search: string; page: number; pa
   };
 }
 
-// --------------------- Page ---------------------
+// --------------------- Page (UI below unchanged) ---------------------
 export default function Index() {
   const navigate = useNavigate();
   const session = useSupabaseSession();
@@ -198,7 +238,6 @@ export default function Index() {
     keepPreviousData: true,
   });
 
-  // Example: page-specific action on the right side of the ribbon
   const actions = (
     <button className="rounded border px-3 py-1.5 text-sm hover:bg-slate-50" onClick={() => navigate("/topics")}>
       Explore topics
