@@ -50,11 +50,7 @@ const App: React.FC = () => {
         <HashRouter>
           <AuthReadyGate>
             <RouterRoutes>
-<<<<<<< HEAD
-              {/* Home / Index */}
-=======
               {/* ---------- Public routes ---------- */}
->>>>>>> c28bb1d302724469db11f708477132bdd523ef0d
               <Route path="/" element={<Index />} />
               <Route path="/index" element={<Index />} />
               <Route
