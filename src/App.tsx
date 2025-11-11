@@ -12,12 +12,12 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 
-// --- Auth gates (as in your project) ---
 import AuthReadyGate from "./components/AuthReadyGate";
 import { Protected, PublicOnly } from "./auth/route-guards";
 import AdminOnly from "./auth/AdminOnly";
+import { ROUTES } from "@/routes/paths";
 
-// --- Public pages (keep your existing ones) ---
+// Public pages
 import Index from "./pages/Index";
 import Signup from "./pages/Signup";
 import Login from "./pages/Login";
@@ -29,15 +29,17 @@ import SettingsSessions from "./pages/SettingsSessions";
 import AdminIdentifiers from "./pages/AdminIdentifiers";
 import NotFound from "./pages/NotFound";
 
-// --- Admin (Epic B) ---
-// NOTE: your file is named `layout.tsx` (not `_layout.tsx`)
+// Admin (Epic B)
 import AdminLayout from "@/routes/admin/_layout";
 import AdminSourcesPage from "@/routes/admin/sources/Index";
 import AdminIngestionPage from "@/routes/admin/ingestion/Index";
 import AdminDraftsPage from "@/routes/admin/drafts/Index";
 
-// --- Topics route to fix Explore link ---
-import TopicsIndex from "@/routes/topics/Index"; // this file is added below
+// Topics
+import TopicsIndex from "@/routes/topics/Index";
+
+// NEW: simple shell for /settings (renders an Outlet + common layout if you want later)
+import SettingsLayout from "./pages/SettingsLayout";
 
 const queryClient = new QueryClient();
 
@@ -51,10 +53,10 @@ const App: React.FC = () => {
           <AuthReadyGate>
             <Routes>
               {/* ---------- Public ---------- */}
-              <Route path="/" element={<Index />} />
-              <Route path="/index" element={<Index />} />
+              <Route path={ROUTES.HOME} element={<Index />} />
+              <Route path={ROUTES.INDEX} element={<Index />} />
               <Route
-                path="/login"
+                path={ROUTES.LOGIN}
                 element={
                   <PublicOnly>
                     <Login />
@@ -62,7 +64,7 @@ const App: React.FC = () => {
                 }
               />
               <Route
-                path="/signup"
+                path={ROUTES.SIGNUP}
                 element={
                   <PublicOnly>
                     <Signup />
@@ -70,7 +72,7 @@ const App: React.FC = () => {
                 }
               />
               <Route
-                path="/reset-password"
+                path={ROUTES.RESET_PASSWORD}
                 element={
                   <PublicOnly>
                     <ResetPassword />
@@ -79,46 +81,38 @@ const App: React.FC = () => {
               />
 
               {/* ---------- Topics (Explore) ---------- */}
-              <Route path="/topics" element={<TopicsIndex />} />
-              <Route path="/explore" element={<Navigate to="/topics" replace />} />
+              <Route path={ROUTES.TOPICS} element={<TopicsIndex />} />
+              <Route path={ROUTES.EXPLORE} element={<Navigate to={ROUTES.TOPICS} replace />} />
 
-              {/* ---------- Protected (user) ---------- */}
+              {/* ---------- Settings (NESTED) ---------- */}
               <Route
-                path="/profile"
+                path="/settings"
+                element={
+                  <Protected>
+                    <SettingsLayout />
+                  </Protected>
+                }
+              >
+                {/* index → /settings/profile by default */}
+                <Route index element={<Navigate to={ROUTES.SETTINGS_PROFILE} replace />} />
+                <Route path="profile" element={<SettingsProfile />} />
+                <Route path="security" element={<SettingsSecurity />} />
+                <Route path="sessions" element={<SettingsSessions />} />
+              </Route>
+
+              {/* ---------- Profile (non-settings page) ---------- */}
+              <Route
+                path={ROUTES.PROFILE}
                 element={
                   <Protected>
                     <Profile />
                   </Protected>
                 }
               />
-              <Route
-                path="/settings/profile"
-                element={
-                  <Protected>
-                    <SettingsProfile />
-                  </Protected>
-                }
-              />
-              <Route
-                path="/settings/security"
-                element={
-                  <Protected>
-                    <SettingsSecurity />
-                  </Protected>
-                }
-              />
-              <Route
-                path="/settings/sessions"
-                element={
-                  <Protected>
-                    <SettingsSessions />
-                  </Protected>
-                }
-              />
 
               {/* ---------- Admin (nested) ---------- */}
               <Route
-                path="/admin"
+                path={ROUTES.ADMIN_ROOT}
                 element={
                   <Protected>
                     <AdminOnly>
@@ -127,16 +121,15 @@ const App: React.FC = () => {
                   </Protected>
                 }
               >
-                {/* index → Sources by default */}
                 <Route index element={<AdminSourcesPage />} />
                 <Route path="sources" element={<AdminSourcesPage />} />
                 <Route path="ingestion" element={<AdminIngestionPage />} />
                 <Route path="drafts" element={<AdminDraftsPage />} />
               </Route>
 
-              {/* Optional admin identifiers page (non-nested if you want it separate) */}
+              {/* Optional standalone admin page */}
               <Route
-                path="/admin/identifiers"
+                path={ROUTES.ADMIN_IDENTIFIERS}
                 element={
                   <Protected>
                     <AdminOnly>
