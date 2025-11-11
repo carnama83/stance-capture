@@ -31,7 +31,7 @@ import NotFound from "./pages/NotFound";
 
 // --- Admin (Epic B) ---
 // NOTE: your file is named `layout.tsx` (not `_layout.tsx`)
-import AdminLayout from "@/routes/admin/layout";
+import AdminLayout from "@/routes/admin/_layout";
 import AdminSourcesPage from "@/routes/admin/sources/Index";
 import AdminIngestionPage from "@/routes/admin/ingestion/Index";
 import AdminDraftsPage from "@/routes/admin/drafts/Index";
