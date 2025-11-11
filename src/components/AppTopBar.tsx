@@ -2,6 +2,18 @@
 import * as React from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { getSupabase } from "../lib/supabaseClient";
+import { ROUTES } from "@/routes/paths";
+
+// shadcn/ui dropdown
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuLabel,
+} from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
 
 type Session = import("@supabase/supabase-js").Session;
 
@@ -11,35 +23,19 @@ export default function AppTopBar({ rightSlot }: { rightSlot?: React.ReactNode }
   const loc = useLocation();
   const [session, setSession] = React.useState<Session | null>(null);
 
-  // simple settings menu state
-  const [menuOpen, setMenuOpen] = React.useState(false);
-  const menuRef = React.useRef<HTMLDivElement | null>(null);
-
   React.useEffect(() => {
     if (!sb) return;
     sb.auth.getSession().then(({ data }) => setSession(data.session ?? null));
-    const { data: { subscription } } = sb.auth.onAuthStateChange((_e, s) => setSession(s ?? null));
+    const {
+      data: { subscription },
+    } = sb.auth.onAuthStateChange((_e, s) => setSession(s ?? null));
     return () => subscription?.unsubscribe();
   }, [sb]);
-
-  React.useEffect(() => {
-    // close menu on route change
-    setMenuOpen(false);
-  }, [loc.pathname]);
-
-  React.useEffect(() => {
-    function onDocClick(e: MouseEvent) {
-      if (!menuRef.current) return;
-      if (!menuRef.current.contains(e.target as Node)) setMenuOpen(false);
-    }
-    document.addEventListener("click", onDocClick);
-    return () => document.removeEventListener("click", onDocClick);
-  }, []);
 
   async function logout() {
     try {
       await sb?.auth.signOut();
-      nav("/", { replace: true });
+      nav(ROUTES.HOME, { replace: true });
     } catch {
       // ignore
     }
@@ -52,20 +48,30 @@ export default function AppTopBar({ rightSlot }: { rightSlot?: React.ReactNode }
     session?.user.email ||
     "";
 
+  const firstName = displayName ? displayName.split(" ")[0] : "";
+
   return (
     <header className="sticky top-0 z-40 h-14 border-b bg-white/80 backdrop-blur">
       <div className="mx-auto max-w-6xl h-full px-4 flex items-center justify-between">
         {/* Left: brand + global nav */}
         <div className="flex items-center gap-3">
-          <Link to="/" className="font-semibold hover:opacity-80">
+          <Link to={ROUTES.HOME} className="font-semibold hover:opacity-80">
             Website
           </Link>
           <nav className="hidden sm:flex items-center gap-3 text-sm text-slate-700">
             <Link
-              to="/"
-              className={`hover:underline ${loc.pathname === "/" || loc.pathname === "/index" ? "font-medium" : ""}`}
+              to={ROUTES.HOME}
+              className={`hover:underline ${
+                loc.pathname === ROUTES.HOME || loc.pathname === ROUTES.INDEX ? "font-medium" : ""
+              }`}
             >
               Home
+            </Link>
+            <Link
+              to={ROUTES.TOPICS}
+              className={`hover:underline ${loc.pathname.startsWith(ROUTES.TOPICS) ? "font-medium" : ""}`}
+            >
+              Explore
             </Link>
           </nav>
         </div>
@@ -76,10 +82,10 @@ export default function AppTopBar({ rightSlot }: { rightSlot?: React.ReactNode }
 
           {!isAuthed ? (
             <>
-              <Link to="/login" className="rounded border px-3 py-1.5 text-sm hover:bg-slate-50">
+              <Link to={ROUTES.LOGIN} className="rounded border px-3 py-1.5 text-sm hover:bg-slate-50">
                 Log in
               </Link>
-              <Link to="/signup" className="rounded bg-slate-900 text-white px-3 py-1.5 text-sm">
+              <Link to={ROUTES.SIGNUP} className="rounded bg-slate-900 text-white px-3 py-1.5 text-sm">
                 Sign up
               </Link>
             </>
@@ -87,61 +93,62 @@ export default function AppTopBar({ rightSlot }: { rightSlot?: React.ReactNode }
             <div className="flex items-center gap-2">
               {/* Profile quick link */}
               <Link
-                to="/profile"
+                to={ROUTES.PROFILE}
                 className="hidden sm:inline-block text-sm text-slate-700 hover:underline"
                 title={displayName}
               >
-                {displayName ? `Hi, ${displayName.split(" ")[0]}` : "Profile"}
+                {firstName ? `Hi, ${firstName}` : "Profile"}
               </Link>
 
-              {/* Settings dropdown */}
-              <div className="relative" ref={menuRef}>
-                <button
-                  className="rounded border px-3 py-1.5 text-sm hover:bg-slate-50"
-                  onClick={() => setMenuOpen((v) => !v)}
-                  aria-haspopup="menu"
-                  aria-expanded={menuOpen}
-                >
-                  Settings
-                </button>
-                {menuOpen && (
-                  <div
-                    role="menu"
-                    className="absolute right-0 mt-2 w-44 rounded-lg border bg-white shadow-lg overflow-hidden"
-                  >
+              {/* Settings dropdown — Option A: asChild Links inside shadcn Dropdown */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="px-3 py-1.5 h-auto text-sm">
+                    Settings
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuLabel className="truncate">Settings</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
                     <Link
                       role="menuitem"
-                      to="/settings/profile"
-                      className="block px-3 py-2 text-sm hover:bg-slate-50"
+                      to={ROUTES.SETTINGS_PROFILE}
+                      className="block w-full px-1.5 py-0.5"
                     >
                       Profile
                     </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
                     <Link
                       role="menuitem"
-                      to="/settings/security"
-                      className="block px-3 py-2 text-sm hover:bg-slate-50"
+                      to={ROUTES.SETTINGS_SECURITY}
+                      className="block w-full px-1.5 py-0.5"
                     >
                       Security
                     </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
                     <Link
                       role="menuitem"
-                      to="/settings/sessions"
-                      className="block px-3 py-2 text-sm hover:bg-slate-50"
+                      to={ROUTES.SETTINGS_SESSIONS}
+                      className="block w-full px-1.5 py-0.5"
                     >
                       Sessions
                     </Link>
-                  </div>
-                )}
-              </div>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
 
               {/* Logout */}
-              <button
+              <Button
                 onClick={logout}
-                className="rounded border px-3 py-1.5 text-sm hover:bg-slate-50"
+                variant="outline"
+                className="px-3 py-1.5 h-auto text-sm"
                 title="Sign out"
               >
                 Logout
-              </button>
+              </Button>
             </div>
           )}
         </div>
