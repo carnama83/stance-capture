@@ -1,4 +1,4 @@
-// src/App.tsx — cleaned & merged (no duplicate Routes)
+// src/App.tsx — cleaned & extended with /topics + /explore redirect (no functionality dropped)
 import * as React from "react";
 import {
   HashRouter,
@@ -36,8 +36,8 @@ import AdminSourcesPage from "@/routes/admin/sources/Index";
 import AdminIngestionPage from "@/routes/admin/ingestion/Index";
 import AdminDraftsPage from "@/routes/admin/drafts/Index";
 
-// --- Utility imports ---
-import { userMessageFromError } from "./lib/errors";
+// --- Topics page (NEW route to fix 404 when clicking "Explore Topics") ---
+import TopicsIndex from "@/routes/topics/Index";
 
 const queryClient = new QueryClient();
 
@@ -53,6 +53,7 @@ const App: React.FC = () => {
               {/* ---------- Public routes ---------- */}
               <Route path="/" element={<Index />} />
               <Route path="/index" element={<Index />} />
+
               <Route
                 path="/login"
                 element={
@@ -77,6 +78,11 @@ const App: React.FC = () => {
                   </PublicOnly>
                 }
               />
+
+              {/* ---------- Topics (fixes Explore Topics 404) ---------- */}
+              <Route path="/topics" element={<TopicsIndex />} />
+              {/* Safety redirect if older links/buttons use /explore */}
+              <Route path="/explore" element={<Navigate to="/topics" replace />} />
 
               {/* ---------- Protected (user) routes ---------- */}
               <Route
