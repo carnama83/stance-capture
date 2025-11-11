@@ -1,8 +1,8 @@
 // src/App.tsx — drop-in
 
 
-console.log("Supabase URL:", import.meta.env.VITE_SUPABASE_URL);
-console.log("Anon key loaded:", !!import.meta.env.VITE_SUPABASE_ANON_KEY);
+//console.log("Supabase URL:", import.meta.env.VITE_SUPABASE_URL);
+//console.log("Anon key loaded:", !!import.meta.env.VITE_SUPABASE_ANON_KEY);
 
 
 import * as React from "react";
