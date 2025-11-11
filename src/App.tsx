@@ -1,76 +1,37 @@
-<<<<<<< Updated upstream
-// src/App.tsx — drop-in
-
-
-//console.log("Supabase URL:", import.meta.env.VITE_SUPABASE_URL);
-//console.log("Anon key loaded:", !!import.meta.env.VITE_SUPABASE_ANON_KEY);
-
-
+// src/App.tsx — clean merged version (keeps all existing functionality)
 import * as React from "react";
 import { HashRouter, Routes, Route, Navigate } from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
-// --- Auth wrappers / gates ---
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { Toaster as UiToaster } from "@/components/ui/toaster";
+import { Toaster as Sonner } from "@/components/ui/sonner";
+
+// Auth wrappers / gates
 import AuthReadyGate from "./components/AuthReadyGate";
 import { Protected, PublicOnly } from "./auth/route-guards";
 import AdminOnly from "./auth/AdminOnly";
 
-// --- Public pages ---
-=======
-import { Toaster } from "@/components/ui/toaster";
-import { Toaster as Sonner } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { HashRouter, Routes, Route, Navigate } from "react-router-dom";
-
->>>>>>> Stashed changes
+// Public pages
 import Index from "./pages/Index";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
-import NotFound from "./pages/NotFound";
-import Signup from "./pages/Signup";
-import Login from "./pages/Login";
 import ResetPassword from "./pages/ResetPassword";
-import Profile from "./pages/Profile";
-import SettingsProfile from "./pages/SettingsProfile";
+import NotFound from "./pages/NotFound";
 
-// --- User pages (protected) ---
+// User pages (protected)
 import Profile from "./pages/Profile";
 import SettingsProfile from "./pages/SettingsProfile";
 import SettingsSecurity from "./pages/SettingsSecurity";
 import SettingsSessions from "./pages/SettingsSessions";
 
-<<<<<<< Updated upstream
-// --- Admin layout + pages ---
+// Admin layout + pages (admin-only)
 import AdminLayout from "./routes/admin/_layout";
 import AdminSources from "./routes/admin/sources/Index";
 import AdminIngestion from "./routes/admin/ingestion/Index";
 import AdminDrafts from "./routes/admin/drafts/Index";
-=======
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <HashRouter>
-        <Routes>
-          <Route path="/" element={<Navigate to="/signup" replace />} />
-          <Route path="/signup" element={<Signup />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/reset-password" element={<ResetPassword />} />
-          <Route path="/profile" element={<Profile />} />
-          <Route path="/settings/profile" element={<SettingsProfile />} />
 
-          {/* Keep Index if you want it separately */}
-          <Route path="/index" element={<Index />} />
-
-          {/* Catch-all */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </HashRouter>
-    </TooltipProvider>
-  </QueryClientProvider>
-);
->>>>>>> Stashed changes
+const queryClient = new QueryClient();
 
 // Tiny error boundary so a crashing page doesn't blank the app
 class RouteBoundary extends React.Component<{ children: React.ReactNode }, { err?: any }> {
@@ -93,94 +54,107 @@ class RouteBoundary extends React.Component<{ children: React.ReactNode }, { err
 
 export default function App() {
   return (
-    <HashRouter>
-      <AuthReadyGate>
-        <RouteBoundary>
-          <Routes>
-            {/* ---------- Public routes ---------- */}
-            <Route path="/" element={<Index />} />
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <HashRouter>
+          <AuthReadyGate>
+            <RouteBoundary>
+              <Routes>
+                {/* ---------- Public routes ---------- */}
+                <Route path="/" element={<Index />} />
+                <Route
+                  path="/login"
+                  element={
+                    <PublicOnly>
+                      <Login />
+                    </PublicOnly>
+                  }
+                />
+                <Route
+                  path="/signup"
+                  element={
+                    <PublicOnly>
+                      <Signup />
+                    </PublicOnly>
+                  }
+                />
+                <Route
+                  path="/reset-password"
+                  element={
+                    <PublicOnly>
+                      <ResetPassword />
+                    </PublicOnly>
+                  }
+                />
 
-            <Route
-              path="/login"
-              element={
-                <PublicOnly>
-                  <Login />
-                </PublicOnly>
-              }
-            />
-            <Route
-              path="/signup"
-              element={
-                <PublicOnly>
-                  <Signup />
-                </PublicOnly>
-              }
-            />
+                {/* ---------- Profile (protected) ---------- */}
+                <Route
+                  path="/profile"
+                  element={
+                    <Protected>
+                      <Profile />
+                    </Protected>
+                  }
+                />
 
-            {/* ---------- Profile (protected) ---------- */}
-            <Route
-              path="/profile"
-              element={
-                <Protected>
-                  <Profile />
-                </Protected>
-              }
-            />
+                {/* ---------- Settings (protected) ---------- */}
+                <Route
+                  path="/settings"
+                  element={
+                    <Protected>
+                      <Navigate to="/settings/profile" replace />
+                    </Protected>
+                  }
+                />
+                <Route
+                  path="/settings/profile"
+                  element={
+                    <Protected>
+                      <SettingsProfile />
+                    </Protected>
+                  }
+                />
+                <Route
+                  path="/settings/security"
+                  element={
+                    <Protected>
+                      <SettingsSecurity />
+                    </Protected>
+                  }
+                />
+                <Route
+                  path="/settings/sessions"
+                  element={
+                    <Protected>
+                      <SettingsSessions />
+                    </Protected>
+                  }
+                />
 
-            {/* ---------- Settings (protected) ---------- */}
-            <Route
-              path="/settings"
-              element={
-                <Protected>
-                  <Navigate to="/settings/profile" replace />
-                </Protected>
-              }
-            />
-            <Route
-              path="/settings/profile"
-              element={
-                <Protected>
-                  <SettingsProfile />
-                </Protected>
-              }
-            />
-            <Route
-              path="/settings/security"
-              element={
-                <Protected>
-                  <SettingsSecurity />
-                </Protected>
-              }
-            />
-            <Route
-              path="/settings/sessions"
-              element={
-                <Protected>
-                  <SettingsSessions />
-                </Protected>
-              }
-            />
+                {/* ---------- Admin (nested, admin-only) ---------- */}
+                <Route
+                  path="/admin"
+                  element={
+                    <AdminOnly>
+                      <AdminLayout />
+                    </AdminOnly>
+                  }
+                >
+                  <Route index element={<Navigate to="sources" replace />} />
+                  <Route path="sources" element={<AdminSources />} />
+                  <Route path="ingestion" element={<AdminIngestion />} />
+                  <Route path="drafts" element={<AdminDrafts />} />
+                </Route>
 
-            {/* ---------- Admin (nested, admin-only) ---------- */}
-            <Route
-              path="/admin"
-              element={
-                <AdminOnly>
-                  <AdminLayout />
-                </AdminOnly>
-              }
-            >
-              <Route index element={<Navigate to="sources" replace />} />
-              <Route path="sources" element={<AdminSources />} />
-              <Route path="ingestion" element={<AdminIngestion />} />
-              <Route path="drafts" element={<AdminDrafts />} />
-            </Route>
-
-            {/* ---------- 404 (keep LAST) ---------- */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </RouteBoundary>
-      </AuthReadyGate>
-    </HashRouter>
+                {/* ---------- 404 (keep LAST) ---------- */}
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </RouteBoundary>
+          </AuthReadyGate>
+        </HashRouter>
+        <UiToaster />
+        <Sonner />
+      </TooltipProvider>
+    </QueryClientProvider>
   );
 }
