@@ -1,6 +1,6 @@
 // stance-capture/src/routes/admin/sources/Index.tsx
 import React, { useEffect, useMemo, useState } from "react";
-import { createSupabase } from "@/lib/createSupabase";
+import { supabase } from "@/lib/supabase";
 
 type SourceKind = "rss" | "api" | "social";
 type SourceRow = {
@@ -14,11 +14,10 @@ type SourceRow = {
   last_error: string | null;
   success_count: number | null;
   failure_count: number | null;
+  // v_source_health may include additional fields (e.g., success_rate_pct), which we can ignore for now
 };
 
 export default function AdminSourcesIndex() {
-  const supabase = React.useMemo(createSupabase, []); // ← use same pattern as your layout
-
   const [rows, setRows] = useState<SourceRow[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [err, setErr] = useState<string | null>(null);
@@ -39,7 +38,7 @@ export default function AdminSourcesIndex() {
       .from("v_source_health")
       .select("*")
       .order("is_enabled", { ascending: false })
-      .order("last_polled_at", { ascending: false });
+      .order("last_polled_at", { ascending: false, nullsFirst: false });
 
     const { data, error } = await qSel;
     if (error) setErr(error.message);
@@ -49,7 +48,6 @@ export default function AdminSourcesIndex() {
 
   useEffect(() => {
     fetchRows();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const filtered = useMemo(() => {
@@ -69,7 +67,7 @@ export default function AdminSourcesIndex() {
   async function onToggle(row: SourceRow, nextEnabled: boolean) {
     setBusyId(row.id);
     const prev = rows;
-    setRows((rs) => rs.map((x) => (x.id === row.id ? { ...x, is_enabled: nextEnabled } : x)));
+    setRows((rs) => rs.map((r) => (r.id === row.id ? { ...r, is_enabled: nextEnabled } : r)));
     const { error } = await supabase
       .from("topic_sources")
       .update({ is_enabled: nextEnabled })
@@ -99,6 +97,7 @@ export default function AdminSourcesIndex() {
       return alert("Please provide name, kind, and endpoint.");
     }
     if (draft.id) {
+      // update
       const { error } = await supabase
         .from("topic_sources")
         .update({
@@ -112,6 +111,7 @@ export default function AdminSourcesIndex() {
         .single();
       if (error) return alert(`Update failed: ${error.message}`);
     } else {
+      // create
       const { error } = await supabase
         .from("topic_sources")
         .insert({
@@ -301,7 +301,10 @@ export default function AdminSourcesIndex() {
 
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 16 }}>
               <button onClick={() => setEditing(null)}>Cancel</button>
-              <button onClick={() => onSave(editing!)} style={{ fontWeight: 600 }}>
+              <button
+                onClick={() => onSave(editing!)}
+                style={{ fontWeight: 600 }}
+              >
                 {editing.id ? "Save changes" : "Create"}
               </button>
             </div>

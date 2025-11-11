@@ -1,29 +1,24 @@
+// src/App.tsx — cleaned & merged (no duplicate Routes)
 import * as React from "react";
-import { HashRouter, Routes, Route } from "react-router-dom";
+import {
+  HashRouter,
+  Routes as RouterRoutes,
+  Route,
+  Navigate,
+} from "react-router-dom";
 
-// --- UI providers (keep what your project already uses) ---
+// --- UI providers ---
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 
-
-// imports for admin pages for Epic B
-import { Routes, Route } from "react-router-dom";
-import AdminLayout from "@/routes/admin/_layout";
-import AdminSourcesPage from "@/routes/admin/sources/Index";
-import AdminIngestionPage from "@/routes/admin/ingestion/Index";
-import AdminDraftsPage from "@/routes/admin/drafts/Index";
-
-
-
-// --- Gate to avoid initial auth race ---
+// --- Auth & guards ---
 import AuthReadyGate from "./components/AuthReadyGate";
 import { Protected, PublicOnly } from "./auth/route-guards";
-
 import AdminOnly from "./auth/AdminOnly";
 
-// --- Pages (adjust paths if yours differ) ---
+// --- Pages ---
 import Index from "./pages/Index";
 import Signup from "./pages/Signup";
 import Login from "./pages/Login";
@@ -34,15 +29,15 @@ import SettingsSecurity from "./pages/SettingsSecurity";
 import SettingsSessions from "./pages/SettingsSessions";
 import AdminIdentifiers from "./pages/AdminIdentifiers";
 import NotFound from "./pages/NotFound";
+
+// --- Admin (Epic B) pages ---
+import AdminLayout from "@/routes/admin/_layout";
+import AdminSourcesPage from "@/routes/admin/sources/Index";
+import AdminIngestionPage from "@/routes/admin/ingestion/Index";
+import AdminDraftsPage from "@/routes/admin/drafts/Index";
+
+// --- Utility imports ---
 import { userMessageFromError } from "./lib/errors";
-// ...
-try {
-  // RPC / query
-} catch (e) {
-  setMsg(userMessageFromError(e));
-}
-
-
 
 const queryClient = new QueryClient();
 
@@ -53,55 +48,104 @@ const App: React.FC = () => {
         <Toaster />
         <Sonner />
         <HashRouter>
-          {/* Wait for Supabase to resolve initial auth state BEFORE rendering any routes */}
           <AuthReadyGate>
             <RouterRoutes>
+<<<<<<< HEAD
               {/* Home / Index */}
+=======
+              {/* ---------- Public routes ---------- */}
+>>>>>>> c28bb1d302724469db11f708477132bdd523ef0d
               <Route path="/" element={<Index />} />
               <Route path="/index" element={<Index />} />
+              <Route
+                path="/login"
+                element={
+                  <PublicOnly>
+                    <Login />
+                  </PublicOnly>
+                }
+              />
+              <Route
+                path="/signup"
+                element={
+                  <PublicOnly>
+                    <Signup />
+                  </PublicOnly>
+                }
+              />
+              <Route
+                path="/reset-password"
+                element={
+                  <PublicOnly>
+                    <ResetPassword />
+                  </PublicOnly>
+                }
+              />
 
-              {/* Auth */}
-              <Route path="/signup" element={<Signup />} />
-              <Route path="/login" element={<Login />} />
-              <Route path="/reset-password" element={<ResetPassword />} />
+              {/* ---------- Protected (user) routes ---------- */}
+              <Route
+                path="/profile"
+                element={
+                  <Protected>
+                    <Profile />
+                  </Protected>
+                }
+              />
+              <Route
+                path="/settings/profile"
+                element={
+                  <Protected>
+                    <SettingsProfile />
+                  </Protected>
+                }
+              />
+              <Route
+                path="/settings/security"
+                element={
+                  <Protected>
+                    <SettingsSecurity />
+                  </Protected>
+                }
+              />
+              <Route
+                path="/settings/sessions"
+                element={
+                  <Protected>
+                    <SettingsSessions />
+                  </Protected>
+                }
+              />
 
-              {/* Profile & Settings */}
-              <Route path="/profile" element={<Profile />} />
-              <Route path="/settings/profile" element={<SettingsProfile />} />
-              <Route path="/settings/security" element={<SettingsSecurity />} />
-              <Route path="/settings/sessions" element={<SettingsSessions />} />
-
-
-              // routes for Epic B for admin pages
-              <Route path="/admin" element={<AdminLayout />}>
+              {/* ---------- Admin (Epic B) routes ---------- */}
+              <Route
+                path="/admin"
+                element={
+                  <Protected>
+                    <AdminOnly>
+                      <AdminLayout />
+                    </AdminOnly>
+                  </Protected>
+                }
+              >
                 <Route index element={<AdminSourcesPage />} />
                 <Route path="sources" element={<AdminSourcesPage />} />
                 <Route path="ingestion" element={<AdminIngestionPage />} />
                 <Route path="drafts" element={<AdminDraftsPage />} />
               </Route>
 
-              
-              {/* Auth Ready Gate */}
-              <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
-              <Route path="/signup" element={<PublicOnly><Signup /></PublicOnly>} />
-              <Route path="/profile" element={<Protected><Profile /></Protected>} />
+              {/* Optional admin identifiers page */}
+              <Route
+                path="/admin/identifiers"
+                element={
+                  <Protected>
+                    <AdminOnly>
+                      <AdminIdentifiers />
+                    </AdminOnly>
+                  </Protected>
+                }
+              />
 
-              
-              {/* Admin */}
-             // <Route path="/admin/identifiers" element={<AdminIdentifiers />} />
-
-               <Route
-                  path="/admin/identifiers"
-                  element={
-                    <Protected>
-                      <AdminOnly><AdminIdentifiers /></AdminOnly>
-                    </Protected>
-                  }
-                />
-  
-        
-              
-              {/* 404 */}
+              {/* ---------- Fallback ---------- */}
               <Route path="*" element={<NotFound />} />
             </RouterRoutes>
           </AuthReadyGate>

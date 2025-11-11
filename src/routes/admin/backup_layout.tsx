@@ -4,14 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { Library, Database, FileText, ChevronRight, LogOut, User } from "lucide-react";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { createSupabase } from "@/lib/createSupabase";
 
@@ -27,13 +20,15 @@ export default function AdminLayout() {
       const { data } = await supabase.auth.getUser();
       setUserEmail(data.user?.email ?? null);
     })();
-  }, [supabase]); // include supabase in deps
+  }, []);
 
   const crumbs = React.useMemo(() => {
     // e.g. /admin/ingestion -> ["admin", "ingestion"]
     const segs = location.pathname.split("/").filter(Boolean);
+    // only render crumbs from /admin onward
     const start = segs.indexOf("admin");
-    return start >= 0 ? segs.slice(start) : [];
+    const parts = start >= 0 ? segs.slice(start) : [];
+    return parts;
   }, [location.pathname]);
 
   const handleSignOut = async () => {
@@ -46,16 +41,7 @@ export default function AdminLayout() {
       {/* Sidebar */}
       <aside className="col-span-12 md:col-span-3 lg:col-span-2">
         <Card className="p-4 space-y-2 sticky top-6">
-          <div className="flex items-center justify-between px-2 mb-2">
-            <div className="text-sm font-semibold tracking-wide">Admin</div>
-            <Link
-              to="/admin"
-              className="text-xs text-muted-foreground hover:underline"
-              title="Admin home"
-            >
-              Home
-            </Link>
-          </div>
+          <div className="text-sm font-semibold tracking-wide px-2 mb-2">Admin</div>
           <AdminLink to="/admin/sources" icon={<Library className="h-4 w-4" />} label="Sources" />
           <AdminLink to="/admin/ingestion" icon={<Database className="h-4 w-4" />} label="Ingestion" />
           <AdminLink to="/admin/drafts" icon={<FileText className="h-4 w-4" />} label="Drafts" />
@@ -88,17 +74,9 @@ function AdminLink({
   label: string;
 }) {
   return (
-    <NavLink
-      to={to}
-      className={({ isActive }) => "block w-full"}
-      end
-    >
+    <NavLink to={to} className={() => `block w-full`}>
       {({ isActive }) => (
-        <Button
-          variant={isActive ? "default" : "ghost"}
-          className="w-full justify-start gap-2"
-          aria-current={isActive ? "page" : undefined}
-        >
+        <Button variant={isActive ? "default" : "ghost"} className="w-full justify-start gap-2">
           {icon}
           <span>{label}</span>
         </Button>
@@ -109,7 +87,8 @@ function AdminLink({
 
 function Breadcrumb({ crumbs }: { crumbs: string[] }) {
   if (!crumbs.length) return null;
-
+  // Build progressive links: /admin, /admin/sources, etc.
+  const base = "/" + crumbs.join("/");
   const segments = crumbs.map((seg, i) => {
     const href = "/" + crumbs.slice(0, i + 1).join("/");
     const isLast = i === crumbs.length - 1;
@@ -128,11 +107,7 @@ function Breadcrumb({ crumbs }: { crumbs: string[] }) {
     );
   });
 
-  return (
-    <nav aria-label="breadcrumb" className="flex items-center">
-      {segments}
-    </nav>
-  );
+  return <nav aria-label="breadcrumb" className="flex items-center">{segments}</nav>;
 }
 
 function humanize(s: string) {
@@ -141,13 +116,7 @@ function humanize(s: string) {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function UserMenu({
-  email,
-  onSignOut,
-}: {
-  email: string | null;
-  onSignOut: () => Promise<void> | void;
-}) {
+function UserMenu({ email, onSignOut }: { email: string | null; onSignOut: () => Promise<void> | void }) {
   const initials = React.useMemo(() => {
     if (!email) return "AD";
     const name = email.split("@")[0];
