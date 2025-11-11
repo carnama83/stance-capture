@@ -1,24 +1,23 @@
-// src/App.tsx — cleaned & extended with /topics + /explore redirect (no functionality dropped)
+// src/App.tsx
 import * as React from "react";
 import {
-  HashRouter,
-  Routes as RouterRoutes,
+  HashRouter as Router,
+  Routes,
   Route,
   Navigate,
 } from "react-router-dom";
 
-// --- UI providers ---
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 
-// --- Auth & guards ---
+// --- Auth gates (as in your project) ---
 import AuthReadyGate from "./components/AuthReadyGate";
 import { Protected, PublicOnly } from "./auth/route-guards";
 import AdminOnly from "./auth/AdminOnly";
 
-// --- Pages ---
+// --- Public pages (keep your existing ones) ---
 import Index from "./pages/Index";
 import Signup from "./pages/Signup";
 import Login from "./pages/Login";
@@ -30,14 +29,15 @@ import SettingsSessions from "./pages/SettingsSessions";
 import AdminIdentifiers from "./pages/AdminIdentifiers";
 import NotFound from "./pages/NotFound";
 
-// --- Admin (Epic B) pages ---
-import AdminLayout from "@/routes/admin/_layout";
+// --- Admin (Epic B) ---
+// NOTE: your file is named `layout.tsx` (not `_layout.tsx`)
+import AdminLayout from "@/routes/admin/layout";
 import AdminSourcesPage from "@/routes/admin/sources/Index";
 import AdminIngestionPage from "@/routes/admin/ingestion/Index";
 import AdminDraftsPage from "@/routes/admin/drafts/Index";
 
-// --- Topics page (NEW route to fix 404 when clicking "Explore Topics") ---
-import TopicsIndex from "@/routes/topics/Index";
+// --- Topics route to fix Explore link ---
+import TopicsIndex from "@/routes/topics/Index"; // this file is added below
 
 const queryClient = new QueryClient();
 
@@ -47,13 +47,12 @@ const App: React.FC = () => {
       <TooltipProvider>
         <Toaster />
         <Sonner />
-        <HashRouter>
+        <Router>
           <AuthReadyGate>
-            <RouterRoutes>
-              {/* ---------- Public routes ---------- */}
+            <Routes>
+              {/* ---------- Public ---------- */}
               <Route path="/" element={<Index />} />
               <Route path="/index" element={<Index />} />
-
               <Route
                 path="/login"
                 element={
@@ -79,12 +78,11 @@ const App: React.FC = () => {
                 }
               />
 
-              {/* ---------- Topics (fixes Explore Topics 404) ---------- */}
+              {/* ---------- Topics (Explore) ---------- */}
               <Route path="/topics" element={<TopicsIndex />} />
-              {/* Safety redirect if older links/buttons use /explore */}
               <Route path="/explore" element={<Navigate to="/topics" replace />} />
 
-              {/* ---------- Protected (user) routes ---------- */}
+              {/* ---------- Protected (user) ---------- */}
               <Route
                 path="/profile"
                 element={
@@ -118,7 +116,7 @@ const App: React.FC = () => {
                 }
               />
 
-              {/* ---------- Admin (Epic B) routes ---------- */}
+              {/* ---------- Admin (nested) ---------- */}
               <Route
                 path="/admin"
                 element={
@@ -129,13 +127,14 @@ const App: React.FC = () => {
                   </Protected>
                 }
               >
+                {/* index → Sources by default */}
                 <Route index element={<AdminSourcesPage />} />
                 <Route path="sources" element={<AdminSourcesPage />} />
                 <Route path="ingestion" element={<AdminIngestionPage />} />
                 <Route path="drafts" element={<AdminDraftsPage />} />
               </Route>
 
-              {/* Optional admin identifiers page */}
+              {/* Optional admin identifiers page (non-nested if you want it separate) */}
               <Route
                 path="/admin/identifiers"
                 element={
@@ -147,11 +146,11 @@ const App: React.FC = () => {
                 }
               />
 
-              {/* ---------- Fallback ---------- */}
+              {/* ---------- 404 ---------- */}
               <Route path="*" element={<NotFound />} />
-            </RouterRoutes>
+            </Routes>
           </AuthReadyGate>
-        </HashRouter>
+        </Router>
       </TooltipProvider>
     </QueryClientProvider>
   );
