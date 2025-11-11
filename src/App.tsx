@@ -1,3 +1,4 @@
+<<<<<<< Updated upstream
 // src/App.tsx — drop-in
 
 
@@ -14,10 +15,23 @@ import { Protected, PublicOnly } from "./auth/route-guards";
 import AdminOnly from "./auth/AdminOnly";
 
 // --- Public pages ---
+=======
+import { Toaster } from "@/components/ui/toaster";
+import { Toaster as Sonner } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { HashRouter, Routes, Route, Navigate } from "react-router-dom";
+
+>>>>>>> Stashed changes
 import Index from "./pages/Index";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import NotFound from "./pages/NotFound";
+import Signup from "./pages/Signup";
+import Login from "./pages/Login";
+import ResetPassword from "./pages/ResetPassword";
+import Profile from "./pages/Profile";
+import SettingsProfile from "./pages/SettingsProfile";
 
 // --- User pages (protected) ---
 import Profile from "./pages/Profile";
@@ -25,11 +39,38 @@ import SettingsProfile from "./pages/SettingsProfile";
 import SettingsSecurity from "./pages/SettingsSecurity";
 import SettingsSessions from "./pages/SettingsSessions";
 
+<<<<<<< Updated upstream
 // --- Admin layout + pages ---
 import AdminLayout from "./routes/admin/_layout";
 import AdminSources from "./routes/admin/sources/Index";
 import AdminIngestion from "./routes/admin/ingestion/Index";
 import AdminDrafts from "./routes/admin/drafts/Index";
+=======
+const App = () => (
+  <QueryClientProvider client={queryClient}>
+    <TooltipProvider>
+      <Toaster />
+      <Sonner />
+      <HashRouter>
+        <Routes>
+          <Route path="/" element={<Navigate to="/signup" replace />} />
+          <Route path="/signup" element={<Signup />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/profile" element={<Profile />} />
+          <Route path="/settings/profile" element={<SettingsProfile />} />
+
+          {/* Keep Index if you want it separately */}
+          <Route path="/index" element={<Index />} />
+
+          {/* Catch-all */}
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </HashRouter>
+    </TooltipProvider>
+  </QueryClientProvider>
+);
+>>>>>>> Stashed changes
 
 // Tiny error boundary so a crashing page doesn't blank the app
 class RouteBoundary extends React.Component<{ children: React.ReactNode }, { err?: any }> {
