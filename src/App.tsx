@@ -55,7 +55,7 @@ const App: React.FC = () => {
         <HashRouter>
           {/* Wait for Supabase to resolve initial auth state BEFORE rendering any routes */}
           <AuthReadyGate>
-            <Routes>
+            <RouterRoutes>
               {/* Home / Index */}
               <Route path="/" element={<Index />} />
               <Route path="/index" element={<Index />} />
@@ -103,7 +103,7 @@ const App: React.FC = () => {
               
               {/* 404 */}
               <Route path="*" element={<NotFound />} />
-            </Routes>
+            </RouterRoutes>
           </AuthReadyGate>
         </HashRouter>
       </TooltipProvider>
