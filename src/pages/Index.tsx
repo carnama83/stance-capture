@@ -218,7 +218,11 @@ export default function Index() {
   });
 
   const actions = (
-    <button className="rounded border px-3 py-1.5 text-sm hover:bg-slate-50" onClick={() => navigate("/topics")}>
+    <button
+      className="rounded border px-3 py-1.5 text-sm hover:bg-slate-50"
+      onClick={() => navigate("/topics")}
+      aria-label="Explore topics"
+    >
       Explore topics
     </button>
   );
@@ -292,7 +296,7 @@ function HeroCta({ onLogin, onSignup }: { onLogin: () => void; onSignup: () => v
       <div className="px-4 py-10 grid md:grid-cols-2 gap-8">
         <div>
           <h1 className="text-3xl font-bold">See how your region thinks</h1>
-          <p className="mt-2 text-slate-600">Take a stance, compare with your city, county, state, country, and globally.</p>
+        <p className="mt-2 text-slate-600">Take a stance, compare with your city, county, state, country, and globally.</p>
           <div className="mt-6 flex gap-3">
             <button className="rounded bg-slate-900 text-white px-4 py-2" onClick={onSignup}>Sign up</button>
             <button className="rounded border px-4 py-2" onClick={onLogin}>Log in</button>
