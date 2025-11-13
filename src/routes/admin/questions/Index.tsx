@@ -1,6 +1,6 @@
 // src/routes/admin/questions/Index.tsx
 import * as React from "react";
-import { getSupabase } from "@/lib/supabaseClient";
+import { createSupabase } from "@/lib/createSupabase";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -8,16 +8,55 @@ import { Input } from "@/components/ui/input";
 
 type QuestionRow = {
   id: string;
-  topic_id?: string | null;
+  topic_id: string | null;
   question_text: string;
-  created_at?: string | null;
-  status?: string | null; // 'pending' | 'approved' | 'rejected' | 'published' | ...
+  created_at: string | null;
+  status: string | null;
 };
 
 const PAGE_SIZE = 25;
+const TABLE_NAME = "ai_question_drafts";
+
+/** Normalize a raw row into our UI shape without assuming exact column names. */
+function normalizeRow(raw: any): QuestionRow {
+  const question_text =
+    raw.question_text ??
+    raw.question ??
+    raw.prompt ??
+    raw.text ??
+    "";
+
+  const created_at =
+    raw.created_at ??
+    raw.inserted_at ??
+    raw.created_on ??
+    raw.created_ts ??
+    raw.created ??
+    null;
+
+  const status =
+    raw.status ??
+    raw.state ??
+    raw.review_status ??
+    null;
+
+  const topic_id =
+    raw.topic_id ??
+    raw.topic ??
+    raw.topic_slug ??
+    null;
+
+  return {
+    id: raw.id,
+    topic_id,
+    question_text,
+    created_at,
+    status,
+  };
+}
 
 export default function AdminQuestionsPage() {
-  const sb = React.useMemo(getSupabase, []);
+  const sb = React.useMemo(createSupabase, []);
   const [rows, setRows] = React.useState<QuestionRow[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -28,31 +67,40 @@ export default function AdminQuestionsPage() {
   const load = React.useCallback(async () => {
     setLoading(true);
     setError(null);
+
     try {
-      let query = sb
-        .from("ai_question_drafts")
-        .select("id, topic_id, question_text, created_at, status")
-        .order("created_at", { ascending: false })
-        .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
+      const from = page * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
 
-      if (q.trim()) {
-        // Try server-side ilike if supported; fall back to client filter
-        // @ts-ignore
-        query = query.ilike ? query.ilike("question_text", `%${q.trim()}%`) : query;
-      }
+      // ✅ No explicit column list, so no "column X does not exist" errors.
+      const { data, error } = await sb
+        .from(TABLE_NAME)
+        .select("*")
+        .range(from, to);
 
-      const { data, error } = await query;
       if (error) throw error;
 
-      let result = (data ?? []) as QuestionRow[];
-      if (q.trim() && !("ilike" in (sb.from("x") as any))) {
+      let items = (data ?? []).map(normalizeRow);
+
+      // Optional client-side search
+      if (q.trim()) {
         const needle = q.trim().toLowerCase();
-        result = result.filter((r) =>
-          (r.question_text ?? "").toLowerCase().includes(needle)
+        items = items.filter((r) =>
+          (r.question_text || "").toLowerCase().includes(needle)
         );
       }
-      setRows(result);
+
+      // Client-side sort by created_at desc
+      items.sort((a, b) => {
+        const ta = a.created_at ? Date.parse(a.created_at) : 0;
+        const tb = b.created_at ? Date.parse(b.created_at) : 0;
+        return tb - ta;
+      });
+
+      setRows(items);
     } catch (e: any) {
+      // eslint-disable-next-line no-console
+      console.error("AdminQuestions load error:", e);
       setError(e?.message ?? "Failed to load questions");
     } finally {
       setLoading(false);
@@ -69,14 +117,16 @@ export default function AdminQuestionsPage() {
     try {
       const r = await sb.rpc("admin_approve_draft", { p_draft_id: id });
       if (r.error) {
+        // Fallback: direct update if RPC not present or fails
         const u = await sb
-          .from("ai_question_drafts")
+          .from(TABLE_NAME)
           .update({ status: "approved" })
           .eq("id", id);
         if (u.error) throw u.error;
       }
       await load();
     } catch (e: any) {
+      // eslint-disable-next-line no-alert
       alert(e?.message ?? "Failed to approve draft");
     } finally {
       setBusyId(null);
@@ -90,13 +140,14 @@ export default function AdminQuestionsPage() {
       const r = await sb.rpc("admin_reject_draft", { p_draft_id: id });
       if (r.error) {
         const u = await sb
-          .from("ai_question_drafts")
+          .from(TABLE_NAME)
           .update({ status: "rejected" })
           .eq("id", id);
         if (u.error) throw u.error;
       }
       await load();
     } catch (e: any) {
+      // eslint-disable-next-line no-alert
       alert(e?.message ?? "Failed to reject draft");
     } finally {
       setBusyId(null);
@@ -108,9 +159,10 @@ export default function AdminQuestionsPage() {
     setBusyId(id);
     try {
       const r = await sb.rpc("admin_publish_draft", { p_draft_id: id });
-      if (r.error) throw r.error;
+      if (r.error) throw r.error; // publishing should go through RPC for invariants
       await load();
     } catch (e: any) {
+      // eslint-disable-next-line no-alert
       alert(e?.message ?? "Failed to publish draft");
     } finally {
       setBusyId(null);
@@ -154,8 +206,10 @@ export default function AdminQuestionsPage() {
           <Card key={row.id} className="p-4">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <div className="font-medium break-words">{row.question_text}</div>
-                <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+                <div className="font-medium break-words">
+                  {row.question_text}
+                </div>
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                   <Badge variant="secondary">{row.status ?? "pending"}</Badge>
                   {row.topic_id && <span>topic: {row.topic_id}</span>}
                   <span>
