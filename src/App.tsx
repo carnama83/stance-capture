@@ -38,8 +38,11 @@ import AdminDraftsPage from "@/routes/admin/drafts/Index";
 // Topics
 import TopicsIndex from "@/routes/topics/Index";
 
-// NEW: simple shell for /settings (renders an Outlet + common layout if you want later)
+// Settings shell
 import SettingsLayout from "./pages/SettingsLayout";
+
+// Optional debug (comment out if you like after verifying)
+import RouteDebug from "./components/RouteDebug";
 
 const queryClient = new QueryClient();
 
@@ -51,10 +54,12 @@ const App: React.FC = () => {
         <Sonner />
         <Router>
           <AuthReadyGate>
+            <RouteDebug />{/* remove after verifying */}
             <Routes>
               {/* ---------- Public ---------- */}
               <Route path={ROUTES.HOME} element={<Index />} />
               <Route path={ROUTES.INDEX} element={<Index />} />
+
               <Route
                 path={ROUTES.LOGIN}
                 element={
@@ -93,14 +98,14 @@ const App: React.FC = () => {
                   </Protected>
                 }
               >
-                {/* index → /settings/profile by default */}
+                {/* default to profile if /settings */}
                 <Route index element={<Navigate to={ROUTES.SETTINGS_PROFILE} replace />} />
                 <Route path="profile" element={<SettingsProfile />} />
                 <Route path="security" element={<SettingsSecurity />} />
                 <Route path="sessions" element={<SettingsSessions />} />
               </Route>
 
-              {/* ---------- Profile (non-settings page) ---------- */}
+              {/* ---------- Profile (standalone authed page) ---------- */}
               <Route
                 path={ROUTES.PROFILE}
                 element={
@@ -139,7 +144,7 @@ const App: React.FC = () => {
                 }
               />
 
-              {/* ---------- 404 ---------- */}
+              {/* ---------- 404 (NO redirect to Home) ---------- */}
               <Route path="*" element={<NotFound />} />
             </Routes>
           </AuthReadyGate>
