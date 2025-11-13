@@ -1,12 +1,22 @@
 // src/pages/SettingsLayout.tsx
 import * as React from "react";
-import { Outlet, NavLink } from "react-router-dom";
+import { Outlet, NavLink, Link } from "react-router-dom";
 import { ROUTES } from "@/routes/paths";
+import { Button } from "@/components/ui/button";
 
 export default function SettingsLayout() {
   return (
     <div className="max-w-6xl mx-auto p-4">
-      <h1 className="text-xl font-semibold mb-4">Settings</h1>
+      {/* Header with Home action */}
+      <div className="mb-4 flex items-center justify-between">
+        <h1 className="text-xl font-semibold">Settings</h1>
+        <Link to={ROUTES.HOME}>
+          <Button variant="outline" className="h-auto px-3 py-1.5 text-sm">
+            Home
+          </Button>
+        </Link>
+      </div>
+
       <div className="grid md:grid-cols-4 gap-6">
         <aside className="md:col-span-1">
           <nav className="space-y-1 text-sm">
