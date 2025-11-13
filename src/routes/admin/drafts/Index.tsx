@@ -33,9 +33,11 @@ export default function AdminDraftsPage() {
       .limit(200);
     if (!error && data) setRows(data);
     setLoading(false);
-  }, []);
+  }, [supabase]);
 
-  React.useEffect(() => { load(); }, [load]);
+  React.useEffect(() => {
+    load();
+  }, [load]);
 
   return (
     <Card className="max-w-6xl mx-auto">
@@ -43,8 +45,17 @@ export default function AdminDraftsPage() {
         <CardTitle>AI Question Drafts</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        {rows.map(r => <DraftRow key={r.id} row={r} onChanged={load} />)}
-        {!rows.length && <div className="p-6 text-sm text-muted-foreground">No drafts at the moment.</div>}
+        {rows.map((r) => (
+          <DraftRow key={r.id} row={r} onChanged={load} />
+        ))}
+        {!rows.length && !loading && (
+          <div className="p-6 text-sm text-muted-foreground">
+            No drafts at the moment.
+          </div>
+        )}
+        {loading && (
+          <div className="p-6 text-sm text-muted-foreground">Loading…</div>
+        )}
       </CardContent>
     </Card>
   );
@@ -55,11 +66,17 @@ function DraftRow({ row, onChanged }: { row: any; onChanged: () => void }) {
     <div className="border rounded p-4">
       <div className="flex items-start justify-between gap-4">
         <div className="space-y-1">
-          <div className="text-sm text-muted-foreground">{(row.lang ?? "en").toUpperCase()}</div>
+          <div className="text-sm text-muted-foreground">
+            {(row.lang ?? "en").toUpperCase()}
+          </div>
           <h3 className="text-lg font-semibold">{row.title}</h3>
           {row.tags?.length > 0 && (
             <div className="flex flex-wrap gap-2">
-              {row.tags.map((t: string) => <Badge key={t} variant="secondary">{t}</Badge>)}
+              {row.tags.map((t: string) => (
+                <Badge key={t} variant="secondary">
+                  {t}
+                </Badge>
+              ))}
             </div>
           )}
         </div>
@@ -68,8 +85,12 @@ function DraftRow({ row, onChanged }: { row: any; onChanged: () => void }) {
           <PublishDraftDialog draftId={row.id} onPublished={onChanged} />
         </div>
       </div>
-      {row.summary && <p className="mt-2 text-sm whitespace-pre-wrap">{row.summary}</p>}
-      <div className="mt-2"><JsonViewer value={row.sources} /></div>
+      {row.summary && (
+        <p className="mt-2 text-sm whitespace-pre-wrap">{row.summary}</p>
+      )}
+      <div className="mt-2">
+        <JsonViewer value={row.sources} />
+      </div>
     </div>
   );
 }
@@ -102,31 +123,50 @@ function EditDraftDialog({ row, onSaved }: { row: any; onSaved: () => void }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm"><Pencil className="h-4 w-4 mr-1" /> Edit</Button>
+        <Button variant="outline" size="sm">
+          <Pencil className="h-4 w-4 mr-1" /> Edit
+        </Button>
       </DialogTrigger>
       <DialogContent className="max-w-2xl">
-        <DialogHeader><DialogTitle>Edit Draft</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle>Edit Draft</DialogTitle>
+        </DialogHeader>
         <div className="grid gap-3">
           <div>
             <Label>Language</Label>
-            <Input value={form.lang} onChange={e => setForm({ ...form, lang: e.target.value })} />
+            <Input
+              value={form.lang}
+              onChange={(e) => setForm({ ...form, lang: e.target.value })}
+            />
           </div>
           <div>
             <Label>Title</Label>
-            <Input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} />
+            <Input
+              value={form.title}
+              onChange={(e) => setForm({ ...form, title: e.target.value })}
+            />
           </div>
           <div>
             <Label>Summary</Label>
-            <Textarea rows={4} value={form.summary} onChange={e => setForm({ ...form, summary: e.target.value })} />
+            <Textarea
+              rows={4}
+              value={form.summary}
+              onChange={(e) => setForm({ ...form, summary: e.target.value })}
+            />
           </div>
           <div>
             <Label>Tags (comma-separated)</Label>
             <Input
               value={form.tags.join(", ")}
-              onChange={e => setForm({
-                ...form,
-                tags: e.target.value.split(",").map(s => s.trim()).filter(Boolean)
-              })}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  tags: e.target.value
+                    .split(",")
+                    .map((s) => s.trim())
+                    .filter(Boolean),
+                })
+              }
             />
           </div>
           <div>
@@ -134,9 +174,13 @@ function EditDraftDialog({ row, onSaved }: { row: any; onSaved: () => void }) {
             <Textarea
               rows={6}
               value={JSON.stringify(form.sources, null, 2)}
-              onChange={e => {
-                try { const v = JSON.parse(e.target.value); setForm({ ...form, sources: v }); }
-                catch { /* ignore until valid JSON */ }
+              onChange={(e) => {
+                try {
+                  const v = JSON.parse(e.target.value);
+                  setForm({ ...form, sources: v });
+                } catch {
+                  // ignore until valid JSON
+                }
               }}
             />
           </div>
@@ -179,18 +223,25 @@ function PublishDraftDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm"><SendHorizontal className="h-4 w-4 mr-1" /> Publish</Button>
+        <Button size="sm">
+          <SendHorizontal className="h-4 w-4 mr-1" /> Publish
+        </Button>
       </DialogTrigger>
       <DialogContent>
-        <DialogHeader><DialogTitle>Publish Draft</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle>Publish Draft</DialogTitle>
+        </DialogHeader>
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">
-            Select regions (optional). Leave empty for global/no regional targeting.
+            Select regions (optional). Leave empty for global/no regional
+            targeting.
           </p>
           <RegionMultiSelect value={regions} onChange={setRegions} />
         </div>
         <DialogFooter>
-          <Button onClick={publish} disabled={busy}>Publish</Button>
+          <Button onClick={publish} disabled={busy}>
+            Publish
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
