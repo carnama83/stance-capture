@@ -4,6 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { Library, Database, FileText, ChevronRight, LogOut, User } from "lucide-react";
+
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -59,6 +60,7 @@ export default function AdminLayout() {
           <AdminLink to="/admin/sources" icon={<Library className="h-4 w-4" />} label="Sources" />
           <AdminLink to="/admin/ingestion" icon={<Database className="h-4 w-4" />} label="Ingestion" />
           <AdminLink to="/admin/drafts" icon={<FileText className="h-4 w-4" />} label="Drafts" />
+          <AdminLink to="/admin/questions" icon={<FileText className="h-4 w-4" />} label="Questions" />
           <Separator className="my-2" />
           <div className="px-2 text-xs text-muted-foreground">Epic B — Admin</div>
         </Card>
