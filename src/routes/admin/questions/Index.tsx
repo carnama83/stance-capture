@@ -1,56 +1,149 @@
+// src/routes/admin/questions/Index.tsx
 import * as React from "react";
 import { getSupabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 
 type QuestionRow = {
   id: string;
   topic_id?: string | null;
   question_text: string;
   created_at?: string | null;
-  status?: string | null;
+  status?: string | null; // expected: 'pending' | 'approved' | 'rejected' | 'published' | ...
 };
+
+const PAGE_SIZE = 25;
 
 export default function AdminQuestionsPage() {
   const sb = React.useMemo(getSupabase, []);
   const [rows, setRows] = React.useState<QuestionRow[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  const [page, setPage] = React.useState(0);
+  const [q, setQ] = React.useState("");
+  const [busyId, setBusyId] = React.useState<string | null>(null);
+
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      // Basic server-side search on question_text if ilike is available
+      let query = sb
+        .from("ai_question_drafts")
+        .select("id, topic_id, question_text, created_at, status")
+        .order("created_at", { ascending: false })
+        .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
+
+      if (q.trim()) {
+        // If ilike is unsupported via RLS/view, it's ok—client side filter below.
+        // @ts-ignore
+        query = query.ilike ? query.ilike("question_text", `%${q.trim()}%`) : query;
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      let result = (data ?? []) as QuestionRow[];
+      if (q.trim() && !("ilike" in (sb.from("x") as any))) {
+        const needle = q.trim().toLowerCase();
+        result = result.filter((r) =>
+          (r.question_text ?? "").toLowerCase().includes(needle)
+        );
+      }
+      setRows(result);
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to load questions");
+    } finally {
+      setLoading(false);
+    }
+  }, [sb, page, q]);
 
   React.useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      setLoading(true);
-      setError(null);
-      try {
-        const { data, error } = await sb
-          .from("ai_question_drafts")
-          .select("id, topic_id, question_text, created_at, status")
-          .order("created_at", { ascending: false })
-          .limit(25);
-        if (error) throw error;
-        if (!cancelled) setRows(data as QuestionRow[]);
-      } catch (e: any) {
-        if (!cancelled) setError(e.message ?? "Failed to load questions");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
     load();
-    return () => {
-      cancelled = true;
-    };
-  }, [sb]);
+  }, [load]);
+
+  async function handleApprove(id: string) {
+    if (!confirm("Approve this draft?")) return;
+    setBusyId(id);
+    try {
+      // Preferred RPC if present
+      const r = await sb.rpc("admin_approve_draft", { p_draft_id: id });
+      if (r.error) {
+        // Fallback: update status directly
+        const u = await sb
+          .from("ai_question_drafts")
+          .update({ status: "approved" })
+          .eq("id", id);
+        if (u.error) throw u.error;
+      }
+      await load();
+    } catch (e: any) {
+      alert(e?.message ?? "Failed to approve draft");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleReject(id: string) {
+    if (!confirm("Reject this draft?")) return;
+    setBusyId(id);
+    try {
+      const r = await sb.rpc("admin_reject_draft", { p_draft_id: id });
+      if (r.error) {
+        const u = await sb
+          .from("ai_question_drafts")
+          .update({ status: "rejected" })
+          .eq("id", id);
+        if (u.error) throw u.error;
+      }
+      await load();
+    } catch (e: any) {
+      alert(e?.message ?? "Failed to reject draft");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handlePublish(id: string) {
+    if (!confirm("Publish this draft? This will make it live.")) return;
+    setBusyId(id);
+    try {
+      const r = await sb.rpc("admin_publish_draft", { p_draft_id: id });
+      if (r.error) throw r.error;
+      await load();
+    } catch (e: any) {
+      alert(e?.message ?? "Failed to publish draft");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  const isBusy = (id: string) => busyId === id;
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <h1 className="text-xl font-semibold">AI Question Drafts</h1>
-        <Button size="sm" onClick={() => window.location.reload()}>
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <Input
+            value={q}
+            onChange={(e) => {
+              setPage(0);
+              setQ(e.target.value);
+            }}
+            placeholder="Search question text…"
+            className="w-64"
+          />
+          <Button variant="outline" onClick={() => load()} disabled={loading}>
+            Refresh
+          </Button>
+        </div>
       </div>
 
+      {/* Status */}
       {loading && <div className="text-sm text-muted-foreground">Loading…</div>}
       {error && (
         <div className="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded p-3">
@@ -58,20 +151,86 @@ export default function AdminQuestionsPage() {
         </div>
       )}
 
+      {/* List */}
       <div className="grid gap-3">
-        {rows.map((q) => (
-          <Card key={q.id} className="p-4">
-            <div className="font-medium">{q.question_text}</div>
-            <div className="text-xs text-muted-foreground mt-1">
-              {q.status ?? "pending"} ·{" "}
-              {q.created_at ? new Date(q.created_at).toLocaleString() : "—"}
+        {rows.map((row) => (
+          <Card key={row.id} className="p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="font-medium break-words">{row.question_text}</div>
+                <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+                  <Badge variant="secondary">{row.status ?? "pending"}</Badge>
+                  {row.topic_id && <span>topic: {row.topic_id}</span>}
+                  <span>
+                    {row.created_at
+                      ? new Date(row.created_at).toLocaleString()
+                      : "—"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="shrink-0 flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={isBusy(row.id)}
+                  onClick={() => handleApprove(row.id)}
+                  title="Mark as approved (keeps it in drafts; not yet public)"
+                >
+                  {isBusy(row.id) ? "Working…" : "Approve"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={isBusy(row.id)}
+                  onClick={() => handleReject(row.id)}
+                  className="text-destructive border-destructive"
+                  title="Reject (moves out of active queue)"
+                >
+                  {isBusy(row.id) ? "Working…" : "Reject"}
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={isBusy(row.id)}
+                  onClick={() => handlePublish(row.id)}
+                  title="Publish (creates a live question; irreversible in most flows)"
+                >
+                  {isBusy(row.id) ? "Working…" : "Publish"}
+                </Button>
+              </div>
             </div>
           </Card>
         ))}
 
         {!loading && rows.length === 0 && (
-          <div className="text-sm text-muted-foreground">No questions yet.</div>
+          <div className="text-sm text-muted-foreground">No questions found.</div>
         )}
+      </div>
+
+      {/* Pager */}
+      <div className="flex items-center justify-between">
+        <div className="text-xs text-muted-foreground">
+          Page {page + 1} · Showing up to {PAGE_SIZE} items
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setPage((p) => Math.max(0, p - 1))}
+            disabled={page === 0 || loading}
+          >
+            Prev
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setPage((p) => p + 1)}
+            disabled={loading || rows.length < PAGE_SIZE}
+          >
+            Next
+          </Button>
+        </div>
       </div>
     </div>
   );
