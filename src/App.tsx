@@ -28,6 +28,8 @@ import SettingsSecurity from "./pages/SettingsSecurity";
 import SettingsSessions from "./pages/SettingsSessions";
 import AdminIdentifiers from "./pages/AdminIdentifiers";
 import NotFound from "./pages/NotFound";
+import AdminQuestionsPage from "@/routes/admin/questions/Index";
+
 
 // Admin (Epic B)
 import AdminLayout from "@/routes/admin/_layout";
@@ -104,7 +106,26 @@ const App: React.FC = () => {
                 <Route path="security" element={<SettingsSecurity />} />
                 <Route path="sessions" element={<SettingsSessions />} />
               </Route>
+        {/* ---------- Questions Page ---------- */}
+<Route
+  path={ROUTES.ADMIN_ROOT}
+  element={
+    <Protected>
+      <AdminOnly>
+        <AdminLayout />
+      </AdminOnly>
+    </Protected>
+  }
+>
+  <Route index element={<AdminSourcesPage />} />
+  <Route path="sources" element={<AdminSourcesPage />} />
+  <Route path="ingestion" element={<AdminIngestionPage />} />
+  <Route path="drafts" element={<AdminDraftsPage />} />
+  {/* 👉 New Questions page */}
+  <Route path="questions" element={<AdminQuestionsPage />} />
+</Route>
 
+              
               {/* ---------- Profile (standalone authed page) ---------- */}
               <Route
                 path={ROUTES.PROFILE}
