@@ -2,64 +2,82 @@
 import * as React from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { getSupabase } from "../lib/supabaseClient";
-import { useAuthReady } from "./AuthContext";
 import { ROUTES } from "@/routes/paths";
 
-type Session = import("@supabase/supabase-js").Session;
-
-export function useSession() {
-  const sb = React.useMemo(getSupabase, []);
-  const [session, setSession] = React.useState<Session | null>(null);
-
-  React.useEffect(() => {
-    if (!sb) return;
-    let mounted = true;
-
-    // Prime current session
-    sb.auth.getSession().then(({ data }) => {
-      if (mounted) setSession(data.session ?? null);
-    });
-
-    // React to changes
-    const { data: { subscription } } = sb.auth.onAuthStateChange((_evt, s) => {
-      if (mounted) setSession(s ?? null);
-    });
-
-    return () => {
-      mounted = false;
-      subscription?.unsubscribe();
-    };
-  }, [sb]);
-
-  return session;
-}
-
+/** Tiny loading UI to avoid layout jumpiness while auth resolves. */
 const Spinner = () => (
   <div className="p-6 text-sm text-muted-foreground" role="status" aria-live="polite">
     Loading…
   </div>
 );
 
-/** Private routes: render only when authed; otherwise redirect to /login. */
+/**
+ * useAuthStatus
+ * Robustly determines the user's auth state without racing:
+ * - Subscribes to auth changes BEFORE calling getSession()
+ * - Resolves to one of: "loading" | "authed" | "anon"
+ */
+function useAuthStatus(): "loading" | "authed" | "anon" {
+  const sb = React.useMemo(getSupabase, []);
+  const [status, setStatus] = React.useState<"loading" | "authed" | "anon">("loading");
+
+  React.useEffect(() => {
+    if (!sb) {
+      setStatus("anon");
+      return;
+    }
+    let mounted = true;
+    let resolved = false;
+
+    const resolve = (s: "authed" | "anon") => {
+      if (!mounted || resolved) return;
+      resolved = true;
+      setStatus(s);
+    };
+
+    // 1) Subscribe first to catch INITIAL_SESSION immediately
+    const { data: sub } = sb.auth.onAuthStateChange((_evt, session) => {
+      resolve(session ? "authed" : "anon");
+    });
+
+    // 2) Also query current session; whichever finishes first wins
+    sb.auth.getSession()
+      .then(({ data }) => resolve(data.session ? "authed" : "anon"))
+      .catch(() => resolve("anon"));
+
+    // 3) Safety net: never hang indefinitely
+    const timeout = setTimeout(() => resolve("anon"), 3000);
+
+    return () => {
+      mounted = false;
+      clearTimeout(timeout);
+      sub?.subscription?.unsubscribe?.();
+    };
+  }, [sb]);
+
+  return status;
+}
+
+/** Private routes: render only when authed; show spinner while loading; redirect to login if anon. */
 export function Protected({ children }: { children: React.ReactNode }) {
-  const ready = useAuthReady();
-  const session = useSession();
+  const status = useAuthStatus();
   const loc = useLocation();
 
-  // While auth is initializing, don't redirect (prevents bounce)
-  if (!ready) return <Spinner />;
-
-  // After ready → if still no session, go to login and preserve intent
-  if (!session) return <Navigate to={ROUTES.LOGIN} replace state={{ from: loc }} />;
-
+  if (status === "loading") return <Spinner />;
+  if (status === "anon") {
+    // preserve intended location to return after login
+    return <Navigate to={ROUTES.LOGIN} replace state={{ from: loc }} />;
+  }
+  // authed
   return <>{children}</>;
 }
 
-/** Public-only routes (login/signup): render only when NOT authed; otherwise go home. */
+/** Public-only routes: render only when NOT authed; show spinner while loading; redirect home if authed. */
 export function PublicOnly({ children }: { children: React.ReactNode }) {
-  const ready = useAuthReady();
-  const session = useSession();
+  const status = useAuthStatus();
 
-  if (!ready) return <Spinner />;
-  return session ? <Navigate to={ROUTES.HOME} replace /> : <>{children}</>;
+  if (status === "loading") return <Spinner />;
+  if (status === "authed") return <Navigate to={ROUTES.HOME} replace />;
+  // anon
+  return <>{children}</>;
 }
