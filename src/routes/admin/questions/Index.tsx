@@ -11,7 +11,7 @@ type QuestionRow = {
   topic_id?: string | null;
   question_text: string;
   created_at?: string | null;
-  status?: string | null; // expected: 'pending' | 'approved' | 'rejected' | 'published' | ...
+  status?: string | null; // 'pending' | 'approved' | 'rejected' | 'published' | ...
 };
 
 const PAGE_SIZE = 25;
@@ -29,7 +29,6 @@ export default function AdminQuestionsPage() {
     setLoading(true);
     setError(null);
     try {
-      // Basic server-side search on question_text if ilike is available
       let query = sb
         .from("ai_question_drafts")
         .select("id, topic_id, question_text, created_at, status")
@@ -37,7 +36,7 @@ export default function AdminQuestionsPage() {
         .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1);
 
       if (q.trim()) {
-        // If ilike is unsupported via RLS/view, it's ok—client side filter below.
+        // Try server-side ilike if supported; fall back to client filter
         // @ts-ignore
         query = query.ilike ? query.ilike("question_text", `%${q.trim()}%`) : query;
       }
@@ -68,10 +67,8 @@ export default function AdminQuestionsPage() {
     if (!confirm("Approve this draft?")) return;
     setBusyId(id);
     try {
-      // Preferred RPC if present
       const r = await sb.rpc("admin_approve_draft", { p_draft_id: id });
       if (r.error) {
-        // Fallback: update status directly
         const u = await sb
           .from("ai_question_drafts")
           .update({ status: "approved" })
