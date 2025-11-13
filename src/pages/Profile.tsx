@@ -2,6 +2,8 @@
 import * as React from "react";
 import { Link } from "react-router-dom";
 import { getSupabase } from "../lib/supabaseClient";
+import { ROUTES } from "@/routes/paths";
+import { Button } from "@/components/ui/button";
 
 type ProfileRow = {
   user_id?: string;
@@ -36,7 +38,15 @@ export default function Profile() {
   if (!sb) {
     return (
       <div className="mx-auto max-w-2xl p-6 space-y-4">
-        <h1 className="text-2xl font-bold">My Profile</h1>
+        {/* Header with Home */}
+        <div className="mb-2 flex items-center justify-between">
+          <h1 className="text-2xl font-bold">My Profile</h1>
+          <Link to={ROUTES.HOME}>
+            <Button variant="outline" className="h-auto px-3 py-1.5 text-sm">
+              Home
+            </Button>
+          </Link>
+        </div>
         <p className="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded p-3">
           Supabase is OFF (check env).
         </p>
@@ -54,6 +64,7 @@ export default function Profile() {
         const sub = sb.auth.onAuthStateChange((_evt, s) => setSession(s));
         unsub = sub?.data?.subscription?.unsubscribe;
       } catch (e: any) {
+        // eslint-disable-next-line no-console
         console.error(e);
         setMsg(e?.message ?? "Failed to get session");
         setSession(null);
@@ -99,6 +110,7 @@ export default function Profile() {
 
         if (!cancelled) setRow(profile);
       } catch (e: any) {
+        // eslint-disable-next-line no-console
         console.error(e);
         if (!cancelled) {
           const hint = /gen_random_bytes|pgcrypto/i.test(e?.message || "")
@@ -156,6 +168,7 @@ export default function Profile() {
       const uid = session?.user?.id;
       if (uid) await refreshProfile(uid);
     } catch (e: any) {
+      // eslint-disable-next-line no-console
       console.error(e);
       setMsg(e?.message ?? "Failed to switch handle mode.");
     } finally {
@@ -172,7 +185,15 @@ export default function Profile() {
   // Render
   return (
     <div className="mx-auto max-w-2xl p-6 space-y-4">
-      <h1 className="text-2xl font-bold">My Profile</h1>
+      {/* Header with Home */}
+      <div className="mb-2 flex items-center justify-between">
+        <h1 className="text-2xl font-bold">My Profile</h1>
+        <Link to={ROUTES.HOME}>
+          <Button variant="outline" className="h-auto px-3 py-1.5 text-sm">
+            Home
+          </Button>
+        </Link>
+      </div>
 
       {session === undefined && (
         <div className="text-sm text-slate-600">Restoring session…</div>
@@ -259,7 +280,7 @@ export default function Profile() {
           )}
 
           <div className="text-sm">
-            <Link to="/settings/profile" className="underline">
+            <Link to={ROUTES.SETTINGS_PROFILE} className="underline">
               Edit profile →
             </Link>
           </div>
