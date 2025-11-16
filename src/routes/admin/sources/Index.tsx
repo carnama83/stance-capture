@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { createSupabase } from "@/lib/createSupabase";
 
 type SourceKind = "rss" | "api" | "social";
+
 type SourceRow = {
   id: string;
   name: string;
@@ -17,34 +18,60 @@ type SourceRow = {
 };
 
 export default function AdminSourcesIndex() {
-  const supabase = React.useMemo(createSupabase, []); // ← use same pattern as your layout
+  const supabase = React.useMemo(createSupabase, []);
 
   const [rows, setRows] = useState<SourceRow[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [err, setErr] = useState<string | null>(null);
 
-  // simple filters (client-side for now; can push to server later)
+  // simple filters (client-side)
   const [kind, setKind] = useState<"all" | SourceKind>("all");
   const [enabled, setEnabled] = useState<"all" | "on" | "off">("all");
   const [q, setQ] = useState<string>("");
 
   // edit/create modal state
   const [editing, setEditing] = useState<Partial<SourceRow> | null>(null);
-  const [busyId, setBusyId] = useState<string | null>(null); // for per-row actions
+  const [busyId, setBusyId] = useState<string | null>(null); // per-row action gate
 
   async function fetchRows() {
     setLoading(true);
     setErr(null);
-    const qSel = supabase
-      .from("v_source_health")
-      .select("*")
-      .order("is_enabled", { ascending: false })
-      .order("last_polled_at", { ascending: false });
 
-    const { data, error } = await qSel;
-    if (error) setErr(error.message);
-    setRows((data ?? []) as SourceRow[]);
-    setLoading(false);
+    // Try preferred health view first, then fallback to base table
+    try {
+      // Attempt 1: v_source_health
+      {
+        const qSel = supabase
+          .from("v_source_health")
+          .select("*")
+          .order("is_enabled", { ascending: false })
+          .order("last_polled_at", { ascending: false });
+
+        const { data, error } = await qSel;
+        if (!error && data) {
+          setRows((data as any[]).map(mapHealthToRow));
+          setLoading(false);
+          return;
+        }
+      }
+
+      // Attempt 2: topic_sources (map to the UI shape)
+      {
+        const { data, error } = await supabase
+          .from("topic_sources")
+          .select("*")
+          .order("name", { ascending: true });
+
+        if (error) throw error;
+
+        const mapped = (data ?? []).map(mapTopicSourcesToRow);
+        setRows(mapped);
+      }
+    } catch (e: any) {
+      setErr(e?.message ?? "Failed to load sources");
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -66,6 +93,36 @@ export default function AdminSourcesIndex() {
     });
   }, [rows, kind, enabled, q]);
 
+  function mapHealthToRow(r: any): SourceRow {
+    return {
+      id: r.id,
+      name: r.name,
+      kind: r.kind as SourceKind,
+      endpoint: r.endpoint,
+      is_enabled: !!r.is_enabled,
+      last_polled_at: r.last_polled_at ?? r.last_run_at ?? null,
+      last_status: r.last_status ?? null,
+      last_error: r.last_error ?? null,
+      success_count: r.success_count ?? null,
+      failure_count: r.failure_count ?? null,
+    };
+  }
+
+  function mapTopicSourcesToRow(r: any): SourceRow {
+    return {
+      id: r.id,
+      name: r.name,
+      kind: (r.kind as SourceKind) ?? "rss",
+      endpoint: r.endpoint ?? r.url ?? "",
+      is_enabled: !!(r.is_enabled ?? r.enabled ?? true),
+      last_polled_at: r.last_polled_at ?? r.last_run_at ?? null,
+      last_status: r.last_status ?? null,
+      last_error: r.last_error ?? null,
+      success_count: r.success_count ?? null,
+      failure_count: r.failure_count ?? null,
+    };
+  }
+
   async function onToggle(row: SourceRow, nextEnabled: boolean) {
     setBusyId(row.id);
     const prev = rows;
@@ -85,13 +142,27 @@ export default function AdminSourcesIndex() {
     }
   }
 
+  // 🔁 Run ingestion via Edge Function (uses user JWT; function checks is_admin_me)
   async function onRun(row: SourceRow) {
     setBusyId(row.id);
-    const { data, error } = await supabase.rpc("admin_ingest_source", { p_source_id: row.id });
-    setBusyId(null);
-    if (error) return alert(`Run failed: ${error.message}`);
-    const status = (data as any)?.status ?? "unknown";
-    alert(`Triggered ingest for "${row.name}" (HTTP ${status}). Check /admin/ingestion for activity.`);
+    try {
+      const { data, error } = await supabase.functions.invoke("ingest", {
+        body: { source_id: row.id },
+      });
+      if (error) throw error;
+
+      // Provide a simple user-facing signal
+      const statusLine = typeof data?.status !== "undefined" ? `Status: ${data.status}` : "";
+      const traceLine = data?.traceId ? `Trace: ${data.traceId}` : "";
+      alert(`Triggered ingest for "${row.name}".\n${[statusLine, traceLine].filter(Boolean).join("\n")}`);
+
+      // Optionally refresh to pull updated telemetry
+      fetchRows();
+    } catch (e: any) {
+      alert(`Run failed: ${e?.message || e}`);
+    } finally {
+      setBusyId(null);
+    }
   }
 
   async function onSave(draft: Partial<SourceRow>) {
@@ -241,7 +312,7 @@ export default function AdminSourcesIndex() {
         </div>
       )}
 
-      {/* Modal for create/edit (very small inline dialog) */}
+      {/* Modal for create/edit */}
       {editing && (
         <div
           role="dialog"
