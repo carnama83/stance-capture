@@ -2,6 +2,15 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createSupabase } from "@/lib/createSupabase";
 
+import AdminRunWorkerButton from "@/components/AdminRunWorkerButton";
+// ...
+<div className="flex items-center justify-between">
+  <h1 className="text-xl font-semibold">Sources</h1>
+  <AdminRunWorkerButton />
+</div>
+
+
+
 type SourceKind = "rss" | "api" | "social";
 
 type SourceRow = {
