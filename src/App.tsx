@@ -29,6 +29,7 @@ import SettingsSessions from "./pages/SettingsSessions";
 import AdminIdentifiers from "./pages/AdminIdentifiers";
 import NotFound from "./pages/NotFound";
 import AdminQuestionsPage from "@/routes/admin/questions/Index";
+import AdminNewsIndex from "@/routes/admin/news/Index";
 
 
 // Admin (Epic B)
@@ -100,6 +101,9 @@ const App: React.FC = () => {
                   </Protected>
                 }
               >
+
+                <Route path="/admin/news" element={<AdminGuard><AdminNewsIndex /></AdminGuard>} />
+
                 {/* default to profile if /settings */}
                 <Route index element={<Navigate to={ROUTES.SETTINGS_PROFILE} replace />} />
                 <Route path="profile" element={<SettingsProfile />} />
