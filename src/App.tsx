@@ -17,6 +17,12 @@ import { Protected, PublicOnly } from "./auth/route-guards";
 import AdminOnly from "./auth/AdminOnly";
 import { ROUTES } from "@/routes/paths";
 
+// at the top of src/App.tsx
+import { AdminGuard } from "@/components/route-guards"; // or: "../components/route-guards"
+import AdminNewsIndex from "@/routes/admin/news/Index";
+
+
+
 // Public pages
 import Index from "./pages/Index";
 import Signup from "./pages/Signup";
