@@ -1,11 +1,6 @@
 // src/App.tsx
 import * as React from "react";
-import {
-  HashRouter as Router,
-  Routes,
-  Route,
-  Navigate,
-} from "react-router-dom";
+import { HashRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -16,12 +11,6 @@ import AuthReadyGate from "./components/AuthReadyGate";
 import { Protected, PublicOnly } from "./auth/route-guards";
 import AdminOnly from "./auth/AdminOnly";
 import { ROUTES } from "@/routes/paths";
-
-// at the top of src/App.tsx
-import { AdminGuard } from "@/components/route-guards"; // or: "../components/route-guards"
-import AdminNewsIndex from "@/routes/admin/news/Index";
-
-
 
 // Public pages
 import Index from "./pages/Index";
@@ -34,23 +23,22 @@ import SettingsSecurity from "./pages/SettingsSecurity";
 import SettingsSessions from "./pages/SettingsSessions";
 import AdminIdentifiers from "./pages/AdminIdentifiers";
 import NotFound from "./pages/NotFound";
-import AdminQuestionsPage from "@/routes/admin/questions/Index";
-import AdminNewsIndex from "@/routes/admin/news/Index";
 
+// Topics
+import TopicsIndex from "@/routes/topics/Index";
 
 // Admin (Epic B)
 import AdminLayout from "@/routes/admin/_layout";
 import AdminSourcesPage from "@/routes/admin/sources/Index";
 import AdminIngestionPage from "@/routes/admin/ingestion/Index";
 import AdminDraftsPage from "@/routes/admin/drafts/Index";
-
-// Topics
-import TopicsIndex from "@/routes/topics/Index";
+import AdminQuestionsPage from "@/routes/admin/questions/Index";
+import AdminNewsIndex from "@/routes/admin/news/Index";
 
 // Settings shell
 import SettingsLayout from "./pages/SettingsLayout";
 
-// Optional debug (comment out if you like after verifying)
+// Optional debug
 import RouteDebug from "./components/RouteDebug";
 
 const queryClient = new QueryClient();
@@ -63,7 +51,7 @@ const App: React.FC = () => {
         <Sonner />
         <Router>
           <AuthReadyGate>
-            <RouteDebug />{/* remove after verifying */}
+            <RouteDebug /> {/* remove after verifying */}
             <Routes>
               {/* ---------- Public ---------- */}
               <Route path={ROUTES.HOME} element={<Index />} />
@@ -98,7 +86,7 @@ const App: React.FC = () => {
               <Route path={ROUTES.TOPICS} element={<TopicsIndex />} />
               <Route path={ROUTES.EXPLORE} element={<Navigate to={ROUTES.TOPICS} replace />} />
 
-              {/* ---------- Settings (NESTED) ---------- */}
+              {/* ---------- Settings (nested) ---------- */}
               <Route
                 path="/settings"
                 element={
@@ -107,35 +95,13 @@ const App: React.FC = () => {
                   </Protected>
                 }
               >
-
-                <Route path="/admin/news" element={<AdminGuard><AdminNewsIndex /></AdminGuard>} />
-
                 {/* default to profile if /settings */}
                 <Route index element={<Navigate to={ROUTES.SETTINGS_PROFILE} replace />} />
                 <Route path="profile" element={<SettingsProfile />} />
                 <Route path="security" element={<SettingsSecurity />} />
                 <Route path="sessions" element={<SettingsSessions />} />
               </Route>
-        {/* ---------- Questions Page ---------- */}
-<Route
-  path={ROUTES.ADMIN_ROOT}
-  element={
-    <Protected>
-      <AdminOnly>
-        <AdminLayout />
-      </AdminOnly>
-    </Protected>
-  }
->
-  <Route index element={<AdminSourcesPage />} />
-  <Route path="sources" element={<AdminSourcesPage />} />
-  <Route path="ingestion" element={<AdminIngestionPage />} />
-  <Route path="drafts" element={<AdminDraftsPage />} />
-  {/* 👉 New Questions page */}
-  <Route path="questions" element={<AdminQuestionsPage />} />
-</Route>
 
-              
               {/* ---------- Profile (standalone authed page) ---------- */}
               <Route
                 path={ROUTES.PROFILE}
@@ -161,6 +127,8 @@ const App: React.FC = () => {
                 <Route path="sources" element={<AdminSourcesPage />} />
                 <Route path="ingestion" element={<AdminIngestionPage />} />
                 <Route path="drafts" element={<AdminDraftsPage />} />
+                <Route path="questions" element={<AdminQuestionsPage />} />
+                <Route path="news" element={<AdminNewsIndex />} />
               </Route>
 
               {/* Optional standalone admin page */}
@@ -175,7 +143,7 @@ const App: React.FC = () => {
                 }
               />
 
-              {/* ---------- 404 (NO redirect to Home) ---------- */}
+              {/* ---------- 404 ---------- */}
               <Route path="*" element={<NotFound />} />
             </Routes>
           </AuthReadyGate>
