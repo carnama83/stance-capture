@@ -1,15 +1,8 @@
 // stance-capture/src/routes/admin/sources/Index.tsx
 import React, { useEffect, useMemo, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { createSupabase } from "@/lib/createSupabase";
-
-import AdminRunWorkerButton from "@/components/AdminRunWorkerButton";
-// ...
-<div className="flex items-center justify-between">
-  <h1 className="text-xl font-semibold">Sources</h1>
-  <AdminRunWorkerButton />
-</div>
-
-
+import { ROUTES } from "@/routes/paths";
 
 type SourceKind = "rss" | "api" | "social";
 
@@ -26,8 +19,17 @@ type SourceRow = {
   failure_count: number | null;
 };
 
+const adminNavItems = [
+  { label: "Sources", to: ROUTES.ADMIN_SOURCES },
+  { label: "Ingestion", to: ROUTES.ADMIN_INGESTION },
+  { label: "Drafts", to: ROUTES.ADMIN_DRAFTS },
+  { label: "Questions", to: ROUTES.ADMIN_QUESTIONS },
+  { label: "News", to: ROUTES.ADMIN_NEWS }, // ✅ new tab
+];
+
 export default function AdminSourcesIndex() {
   const supabase = React.useMemo(createSupabase, []);
+  const location = useLocation();
 
   const [rows, setRows] = useState<SourceRow[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -135,7 +137,9 @@ export default function AdminSourcesIndex() {
   async function onToggle(row: SourceRow, nextEnabled: boolean) {
     setBusyId(row.id);
     const prev = rows;
-    setRows((rs) => rs.map((x) => (x.id === row.id ? { ...x, is_enabled: nextEnabled } : x)));
+    setRows((rs) =>
+      rs.map((x) => (x.id === row.id ? { ...x, is_enabled: nextEnabled } : x))
+    );
     const { error } = await supabase
       .from("topic_sources")
       .update({ is_enabled: nextEnabled })
@@ -161,9 +165,14 @@ export default function AdminSourcesIndex() {
       if (error) throw error;
 
       // Provide a simple user-facing signal
-      const statusLine = typeof data?.status !== "undefined" ? `Status: ${data.status}` : "";
+      const statusLine =
+        typeof data?.status !== "undefined" ? `Status: ${data.status}` : "";
       const traceLine = data?.traceId ? `Trace: ${data.traceId}` : "";
-      alert(`Triggered ingest for "${row.name}".\n${[statusLine, traceLine].filter(Boolean).join("\n")}`);
+      alert(
+        `Triggered ingest for "${row.name}".\n${[statusLine, traceLine]
+          .filter(Boolean)
+          .join("\n")}`
+      );
 
       // Optionally refresh to pull updated telemetry
       fetchRows();
@@ -211,7 +220,10 @@ export default function AdminSourcesIndex() {
   async function onDelete(row: SourceRow) {
     if (!confirm(`Delete source "${row.name}"?`)) return;
     setBusyId(row.id);
-    const { error } = await supabase.from("topic_sources").delete().eq("id", row.id);
+    const { error } = await supabase
+      .from("topic_sources")
+      .delete()
+      .eq("id", row.id);
     setBusyId(null);
     if (error) return alert(`Delete failed: ${error.message}`);
     fetchRows();
@@ -219,17 +231,64 @@ export default function AdminSourcesIndex() {
 
   return (
     <div style={{ padding: 16 }}>
+      {/* Admin nav tabs */}
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 8,
+          marginBottom: 12,
+          borderBottom: "1px solid #e2e8f0",
+          paddingBottom: 8,
+        }}
+      >
+        {adminNavItems.map((item) => {
+          const active = location.pathname === item.to;
+          return (
+            <Link
+              key={item.to}
+              to={item.to}
+              style={{
+                padding: "6px 10px",
+                borderRadius: 999,
+                fontSize: 13,
+                textDecoration: "none",
+                border: active ? "1px solid #1d4ed8" : "1px solid transparent",
+                backgroundColor: active ? "#e0edff" : "transparent",
+                color: active ? "#1d4ed8" : "#334155",
+              }}
+            >
+              {item.label}
+            </Link>
+          );
+        })}
+      </div>
+
       {/* Header / filters */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "space-between", flexWrap: "wrap" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          justifyContent: "space-between",
+          flexWrap: "wrap",
+        }}
+      >
         <h1 style={{ margin: 0 }}>Sources</h1>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <select value={kind} onChange={(e) => setKind(e.target.value as any)}>
+          <select
+            value={kind}
+            onChange={(e) => setKind(e.target.value as any)}
+          >
             <option value="all">All kinds</option>
             <option value="rss">rss</option>
             <option value="api">api</option>
             <option value="social">social</option>
           </select>
-          <select value={enabled} onChange={(e) => setEnabled(e.target.value as any)}>
+          <select
+            value={enabled}
+            onChange={(e) => setEnabled(e.target.value as any)}
+          >
             <option value="all">All</option>
             <option value="on">Enabled</option>
             <option value="off">Disabled</option>
@@ -240,7 +299,13 @@ export default function AdminSourcesIndex() {
             onChange={(e) => setQ(e.target.value)}
             style={{ minWidth: 240 }}
           />
-          <button onClick={() => setEditing({ kind: "rss", is_enabled: true } as Partial<SourceRow>)}>+ New</button>
+          <button
+            onClick={() =>
+              setEditing({ kind: "rss", is_enabled: true } as Partial<SourceRow>)
+            }
+          >
+            + New
+          </button>
         </div>
       </div>
 
@@ -250,7 +315,11 @@ export default function AdminSourcesIndex() {
         <p style={{ marginTop: 12 }}>Loading…</p>
       ) : (
         <div style={{ marginTop: 12, overflowX: "auto" }}>
-          <table width="100%" cellPadding={8} style={{ borderCollapse: "collapse" }}>
+          <table
+            width="100%"
+            cellPadding={8}
+            style={{ borderCollapse: "collapse" }}
+          >
             <thead>
               <tr style={{ textAlign: "left", borderBottom: "1px solid #ddd" }}>
                 <th>Name</th>
@@ -267,13 +336,36 @@ export default function AdminSourcesIndex() {
             <tbody>
               {filtered.map((r) => (
                 <tr key={r.id} style={{ borderBottom: "1px solid #eee" }}>
-                  <td style={{ maxWidth: 260, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.name}</td>
+                  <td
+                    style={{
+                      maxWidth: 260,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {r.name}
+                  </td>
                   <td>{r.kind}</td>
-                  <td style={{ maxWidth: 420, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={r.endpoint}>
+                  <td
+                    style={{
+                      maxWidth: 420,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                    title={r.endpoint}
+                  >
                     {r.endpoint}
                   </td>
                   <td>
-                    <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    <label
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                      }}
+                    >
                       <input
                         type="checkbox"
                         checked={!!r.is_enabled}
@@ -286,23 +378,48 @@ export default function AdminSourcesIndex() {
                   <td>{r.success_count ?? 0}</td>
                   <td>{r.failure_count ?? 0}</td>
                   <td>
-                    {!r.last_status ? "—" : r.last_status === "ok" ? "✅ ok" : "⚠️ " + r.last_status}
+                    {!r.last_status
+                      ? "—"
+                      : r.last_status === "ok"
+                      ? "✅ ok"
+                      : "⚠️ " + r.last_status}
                     {r.last_error ? (
-                      <span title={r.last_error} style={{ marginLeft: 6, color: "#b00", cursor: "help" }}>
+                      <span
+                        title={r.last_error}
+                        style={{
+                          marginLeft: 6,
+                          color: "#b00",
+                          cursor: "help",
+                        }}
+                      >
                         ⓘ
                       </span>
                     ) : null}
                   </td>
-                  <td>{r.last_polled_at ? new Date(r.last_polled_at).toLocaleString() : "—"}</td>
+                  <td>
+                    {r.last_polled_at
+                      ? new Date(r.last_polled_at).toLocaleString()
+                      : "—"}
+                  </td>
                   <td style={{ textAlign: "right" }}>
                     <div style={{ display: "inline-flex", gap: 8 }}>
-                      <button disabled={busyId === r.id} onClick={() => setEditing(r)}>
+                      <button
+                        disabled={busyId === r.id}
+                        onClick={() => setEditing(r)}
+                      >
                         Edit
                       </button>
-                      <button disabled={busyId === r.id} onClick={() => onRun(r)}>
+                      <button
+                        disabled={busyId === r.id}
+                        onClick={() => onRun(r)}
+                      >
                         Run
                       </button>
-                      <button disabled={busyId === r.id} onClick={() => onDelete(r)} style={{ color: "#b00" }}>
+                      <button
+                        disabled={busyId === r.id}
+                        onClick={() => onDelete(r)}
+                        style={{ color: "#b00" }}
+                      >
                         Delete
                       </button>
                     </div>
@@ -311,7 +428,14 @@ export default function AdminSourcesIndex() {
               ))}
               {!filtered.length && (
                 <tr>
-                  <td colSpan={9} style={{ padding: 24, textAlign: "center", color: "#666" }}>
+                  <td
+                    colSpan={9}
+                    style={{
+                      padding: 24,
+                      textAlign: "center",
+                      color: "#666",
+                    }}
+                  >
                     No sources found.
                   </td>
                 </tr>
@@ -326,21 +450,38 @@ export default function AdminSourcesIndex() {
         <div
           role="dialog"
           aria-modal="true"
-          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.35)", display: "grid", placeItems: "center", padding: 16 }}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,.35)",
+            display: "grid",
+            placeItems: "center",
+            padding: 16,
+          }}
           onClick={() => setEditing(null)}
         >
           <div
-            style={{ background: "white", minWidth: 420, maxWidth: 640, padding: 16, borderRadius: 12 }}
+            style={{
+              background: "white",
+              minWidth: 420,
+              maxWidth: 640,
+              padding: 16,
+              borderRadius: 12,
+            }}
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 style={{ marginTop: 0 }}>{editing.id ? "Edit source" : "New source"}</h3>
+            <h3 style={{ marginTop: 0 }}>
+              {editing.id ? "Edit source" : "New source"}
+            </h3>
 
             <div style={{ display: "grid", gap: 12 }}>
               <label>
                 <div>Name</div>
                 <input
                   value={editing.name ?? ""}
-                  onChange={(e) => setEditing({ ...editing, name: e.target.value })}
+                  onChange={(e) =>
+                    setEditing({ ...editing, name: e.target.value })
+                  }
                   placeholder="e.g., BBC World RSS"
                   style={{ width: "100%" }}
                 />
@@ -350,7 +491,12 @@ export default function AdminSourcesIndex() {
                 <div>Kind</div>
                 <select
                   value={(editing.kind as SourceKind) ?? "rss"}
-                  onChange={(e) => setEditing({ ...editing, kind: e.target.value as SourceKind })}
+                  onChange={(e) =>
+                    setEditing({
+                      ...editing,
+                      kind: e.target.value as SourceKind,
+                    })
+                  }
                   style={{ width: "100%" }}
                 >
                   <option value="rss">rss</option>
@@ -363,25 +509,48 @@ export default function AdminSourcesIndex() {
                 <div>Endpoint (URL)</div>
                 <input
                   value={editing.endpoint ?? ""}
-                  onChange={(e) => setEditing({ ...editing, endpoint: e.target.value })}
+                  onChange={(e) =>
+                    setEditing({ ...editing, endpoint: e.target.value })
+                  }
                   placeholder="https://example.com/feed.xml"
                   style={{ width: "100%" }}
                 />
               </label>
 
-              <label style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+              <label
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                }}
+              >
                 <input
                   type="checkbox"
                   checked={editing.is_enabled ?? true}
-                  onChange={(e) => setEditing({ ...editing, is_enabled: e.target.checked })}
+                  onChange={(e) =>
+                    setEditing({
+                      ...editing,
+                      is_enabled: e.target.checked,
+                    })
+                  }
                 />
                 Enabled
               </label>
             </div>
 
-            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 16 }}>
+            <div
+              style={{
+                display: "flex",
+                gap: 8,
+                justifyContent: "flex-end",
+                marginTop: 16,
+              }}
+            >
               <button onClick={() => setEditing(null)}>Cancel</button>
-              <button onClick={() => onSave(editing!)} style={{ fontWeight: 600 }}>
+              <button
+                onClick={() => onSave(editing!)}
+                style={{ fontWeight: 600 }}
+              >
                 {editing.id ? "Save changes" : "Create"}
               </button>
             </div>
