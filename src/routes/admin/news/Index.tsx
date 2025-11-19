@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
-import AdminRunWorkerButton from "@/components/AdminRunWorkerButton";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL!;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY!;
@@ -29,6 +28,8 @@ export default function AdminNewsIndex() {
   const [from, setFrom] = useState<string>("");
   const [to, setTo] = useState<string>("");
 
+  const [processing, setProcessing] = useState(false);
+
   // load sources (id + name) for dropdown
   useEffect(() => {
     (async () => {
@@ -36,7 +37,11 @@ export default function AdminNewsIndex() {
         .from("topic_sources")
         .select("id,name")
         .order("name", { ascending: true });
+
       if (!error && data) setSources(data as any);
+      if (error) {
+        console.error("Failed to load sources:", error);
+      }
     })();
   }, []);
 
@@ -52,7 +57,10 @@ export default function AdminNewsIndex() {
   async function load() {
     setLoading(true);
     try {
-      let query = sb.from("news_items").select("*").order("created_at", { ascending: false });
+      let query = sb
+        .from("news_items")
+        .select("*")
+        .order("created_at", { ascending: false });
 
       if (q) query = query.ilike("title", `%${q}%`);
       if (sourceId) query = query.eq("source_id", sourceId);
@@ -69,19 +77,67 @@ export default function AdminNewsIndex() {
       if (error) throw error;
       setRows((data ?? []) as any);
     } catch (e) {
-      console.error(e);
+      console.error("Failed to load news_items:", e);
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [q, sourceId, from, to, page]);
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, sourceId, from, to, page]);
+
+  // "Process now" handler calling admin-run-worker
+  async function handleProcessNow() {
+    setProcessing(true);
+    try {
+      const { data, error } = await sb.functions.invoke("admin-run-worker", {
+        body: {},
+      });
+
+      if (error) {
+        console.error("admin-run-worker error:", error);
+        window.alert("Failed to trigger worker.");
+        return;
+      }
+
+      const wb = (data as any)?.workerBody;
+
+      if (!wb) {
+        window.alert("Worker did not return a valid response.");
+        return;
+      }
+
+      if (wb.processed === 0) {
+        window.alert("No pending ingestion jobs to process.");
+      } else {
+        window.alert(
+          `Worker processed ${wb.done ?? 0} jobs (${wb.failed ?? 0} failed).`
+        );
+        // Refresh the table so new news_items show up
+        await load();
+      }
+    } catch (err) {
+      console.error("Unexpected error calling admin-run-worker:", err);
+      window.alert("Unexpected error while calling worker.");
+    } finally {
+      setProcessing(false);
+    }
+  }
 
   return (
     <div className="p-4 space-y-4">
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-xl font-semibold">News Items</h1>
-        <AdminRunWorkerButton />
+        <button
+          type="button"
+          onClick={handleProcessNow}
+          className="inline-flex items-center rounded-lg border px-3 py-2 text-sm font-medium shadow-sm disabled:opacity-60"
+          disabled={processing}
+        >
+          {processing ? "Processing…" : "Process now"}
+        </button>
       </div>
 
       {/* Filters */}
@@ -90,7 +146,10 @@ export default function AdminNewsIndex() {
           <label className="block text-xs text-slate-500">Search title</label>
           <input
             value={q}
-            onChange={(e) => { setPage(0); setQ(e.target.value); }}
+            onChange={(e) => {
+              setPage(0);
+              setQ(e.target.value);
+            }}
             placeholder="e.g., earnings, election, launch"
             className="w-full border rounded-lg px-3 py-2"
           />
@@ -100,30 +159,45 @@ export default function AdminNewsIndex() {
           <select
             className="w-full border rounded-lg px-3 py-2"
             value={sourceId}
-            onChange={(e) => { setPage(0); setSourceId(e.target.value); }}
+            onChange={(e) => {
+              setPage(0);
+              setSourceId(e.target.value);
+            }}
           >
             <option value="">All</option>
-            {sources.map(s => (
-              <option key={s.id} value={s.id}>{s.name ?? s.id.slice(0, 8)}</option>
+            {sources.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name ?? s.id.slice(0, 8)}
+              </option>
             ))}
           </select>
         </div>
         <div>
-          <label className="block text-xs text-slate-500">From (published)</label>
+          <label className="block text-xs text-slate-500">
+            From (published)
+          </label>
           <input
             type="date"
             className="w-full border rounded-lg px-3 py-2"
             value={from}
-            onChange={(e) => { setPage(0); setFrom(e.target.value); }}
+            onChange={(e) => {
+              setPage(0);
+              setFrom(e.target.value);
+            }}
           />
         </div>
         <div>
-          <label className="block text-xs text-slate-500">To (published)</label>
+          <label className="block text-xs text-slate-500">
+            To (published)
+          </label>
           <input
             type="date"
             className="w-full border rounded-lg px-3 py-2"
             value={to}
-            onChange={(e) => { setPage(0); setTo(e.target.value); }}
+            onChange={(e) => {
+              setPage(0);
+              setTo(e.target.value);
+            }}
           />
         </div>
       </div>
@@ -143,22 +217,52 @@ export default function AdminNewsIndex() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={4} className="px-3 py-6 text-center">Loading…</td></tr>
-            ) : rows.length === 0 ? (
-              <tr><td colSpan={4} className="px-3 py-6 text-center text-slate-500">No results</td></tr>
-            ) : rows.map(r => (
-              <tr key={r.id} className="border-t [&>td]:px-3 [&>td]:py-2">
-                <td className="whitespace-nowrap">{r.published_at ? new Date(r.published_at).toLocaleString() : "—"}</td>
-                <td className="max-w-[48ch]">
-                  <div className="font-medium">{r.title}</div>
-                  {r.summary && <div className="text-slate-500 line-clamp-2">{r.summary}</div>}
-                </td>
-                <td className="font-mono text-xs">{r.source_id.slice(0, 8)}</td>
-                <td>
-                  <a className="text-blue-600 underline" href={r.url} target="_blank" rel="noreferrer">Open</a>
+              <tr>
+                <td colSpan={4} className="px-3 py-6 text-center">
+                  Loading…
                 </td>
               </tr>
-            ))}
+            ) : rows.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={4}
+                  className="px-3 py-6 text-center text-slate-500"
+                >
+                  No results
+                </td>
+              </tr>
+            ) : (
+              rows.map((r) => (
+                <tr key={r.id} className="border-t [&>td]:px-3 [&>td]:py-2">
+                  <td className="whitespace-nowrap">
+                    {r.published_at
+                      ? new Date(r.published_at).toLocaleString()
+                      : "—"}
+                  </td>
+                  <td className="max-w-[48ch]">
+                    <div className="font-medium">{r.title}</div>
+                    {r.summary && (
+                      <div className="text-slate-500 line-clamp-2">
+                        {r.summary}
+                      </div>
+                    )}
+                  </td>
+                  <td className="font-mono text-xs">
+                    {r.source_id.slice(0, 8)}
+                  </td>
+                  <td>
+                    <a
+                      className="text-blue-600 underline"
+                      href={r.url}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Open
+                    </a>
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
@@ -167,15 +271,19 @@ export default function AdminNewsIndex() {
       <div className="flex items-center justify-end gap-2">
         <button
           className="px-3 py-2 border rounded-lg"
-          onClick={() => setPage(p => Math.max(p - 1, 0))}
+          onClick={() => setPage((p) => Math.max(p - 1, 0))}
           disabled={page === 0 || loading}
-        >Prev</button>
+        >
+          Prev
+        </button>
         <div className="px-2 text-sm">Page {page + 1}</div>
         <button
           className="px-3 py-2 border rounded-lg"
-          onClick={() => setPage(p => p + 1)}
+          onClick={() => setPage((p) => p + 1)}
           disabled={loading || rows.length < pageSize}
-        >Next</button>
+        >
+          Next
+        </button>
       </div>
     </div>
   );
