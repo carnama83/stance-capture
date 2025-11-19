@@ -61,6 +61,8 @@ export default function AdminLayout() {
           <AdminLink to="/admin/ingestion" icon={<Database className="h-4 w-4" />} label="Ingestion" />
           <AdminLink to="/admin/drafts" icon={<FileText className="h-4 w-4" />} label="Drafts" />
           <AdminLink to="/admin/questions" icon={<FileText className="h-4 w-4" />} label="Questions" />
+          {/* ✅ New News link in the left sidebar */}
+          <AdminLink to="/admin/news" icon={<FileText className="h-4 w-4" />} label="News" />
           <Separator className="my-2" />
           <div className="px-2 text-xs text-muted-foreground">Epic B — Admin</div>
         </Card>
