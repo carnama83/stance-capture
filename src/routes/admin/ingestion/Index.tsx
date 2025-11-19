@@ -10,8 +10,10 @@ import { RefreshCw } from "lucide-react";
 const STATUS_OPTIONS = [
   { value: "all", label: "Any" },
   { value: "new", label: "new" },
-  { value: "clustered", label: "clustered" },
-  { value: "rejected", label: "rejected" },
+  { value: "pending", label: "pending" },
+  { value: "running", label: "running" },
+  { value: "done", label: "done" },
+  { value: "error", label: "error" },
 ];
 
 export default function AdminIngestionPage() {
@@ -41,19 +43,24 @@ export default function AdminIngestionPage() {
     let q = supabase
       .from("ingestion_queue")
       .select("*, topic_sources:source_id(name)", { count: "exact" })
-      .order("published_at", { ascending: false })
+      // 👇 order by job creation time, not article published_at
+      .order("created_at", { ascending: false })
       .range((page - 1) * pageSize, page * pageSize - 1);
 
     if (status && status !== "all") q = q.eq("status", status);
     if (sourceId && sourceId !== "all") q = q.eq("source_id", sourceId);
     if (lang) q = q.ilike("lang", lang);
-    if (dateFrom) q = q.gte("published_at", dateFrom);
-    if (dateTo) q = q.lte("published_at", dateTo);
+
+    // 👇 filter by created_at (when the job entered the queue)
+    if (dateFrom) q = q.gte("created_at", dateFrom);
+    if (dateTo) q = q.lte("created_at", dateTo);
 
     const { data, error, count: c } = await q;
     if (!error) {
       setRows(data ?? []);
       setCount(c ?? undefined);
+    } else {
+      console.error("Failed to load ingestion_queue:", error);
     }
   }, [supabase, status, lang, sourceId, dateFrom, dateTo, page]);
 
@@ -148,28 +155,32 @@ export default function AdminIngestionPage() {
             </Select>
           </div>
 
-          {/* From date */}
+          {/* From date (created_at) */}
           <div>
-            <label className="text-xs text-muted-foreground">From (published_at)</label>
+            <label className="text-xs text-muted-foreground">From (created_at)</label>
             <Input
               type="datetime-local"
               value={dateFrom}
               onChange={(e) => {
                 setPage(1);
-                setDateFrom(e.target.value ? new Date(e.target.value).toISOString() : "");
+                setDateFrom(
+                  e.target.value ? new Date(e.target.value).toISOString() : ""
+                );
               }}
             />
           </div>
 
-          {/* To date */}
+          {/* To date (created_at) */}
           <div>
-            <label className="text-xs text-muted-foreground">To (published_at)</label>
+            <label className="text-xs text-muted-foreground">To (created_at)</label>
             <Input
               type="datetime-local"
               value={dateTo}
               onChange={(e) => {
                 setPage(1);
-                setDateTo(e.target.value ? new Date(e.target.value).toISOString() : "");
+                setDateTo(
+                  e.target.value ? new Date(e.target.value).toISOString() : ""
+                );
               }}
             />
           </div>
@@ -181,7 +192,8 @@ export default function AdminIngestionPage() {
           <div className="col-span-2">Source</div>
           <div>Lang</div>
           <div>Status</div>
-          <div className="col-span-2">Published</div>
+          {/* 👇 show job creation time */}
+          <div className="col-span-2">Created at</div>
           <div className="col-span-4">Expand</div>
         </div>
 
@@ -234,8 +246,9 @@ function IngestionRow({ row }: { row: any }) {
       <div className="col-span-2">{row.topic_sources?.name ?? "—"}</div>
       <div>{row.lang ?? "—"}</div>
       <div>{row.status}</div>
+      {/* 👇 created_at reflects when this job entered the queue */}
       <div className="col-span-2">
-        {row.published_at ? new Date(row.published_at).toLocaleString() : "—"}
+        {row.created_at ? new Date(row.created_at).toLocaleString() : "—"}
       </div>
       <div className="col-span-4 space-y-2">
         <Button size="sm" variant="outline" onClick={() => setOpenRaw((o) => !o)}>
