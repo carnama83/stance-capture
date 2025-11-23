@@ -23,11 +23,11 @@ const adminNavItems = [
   { label: "Ingestion", to: ROUTES.ADMIN_INGESTION },
   { label: "Drafts", to: ROUTES.ADMIN_DRAFTS },
   { label: "Questions", to: ROUTES.ADMIN_QUESTIONS },
-  { label: "News", to: ROUTES.ADMIN_NEWS }, // ✅ new tab
+  { label: "News", to: ROUTES.ADMIN_NEWS },
 ];
 
 export default function AdminSourcesIndex() {
-  const supabase = React.useMemo(createSupabase, []);
+  const supabase = useMemo(createSupabase, []);
   const location = useLocation();
 
   const [rows, setRows] = useState<SourceRow[]>([]);
@@ -47,7 +47,6 @@ export default function AdminSourcesIndex() {
     setLoading(true);
     setErr(null);
 
-    // Try preferred health view first, then fallback to base table
     try {
       // Attempt 1: v_source_health
       {
@@ -136,6 +135,7 @@ export default function AdminSourcesIndex() {
   async function onToggle(row: SourceRow, nextEnabled: boolean) {
     setBusyId(row.id);
     const prev = rows;
+    // ✅ correct spread here
     setRows((rs) =>
       rs.map((x) => (x.id === row.id ? { ...x, is_enabled: nextEnabled } : x))
     );
@@ -154,7 +154,7 @@ export default function AdminSourcesIndex() {
     }
   }
 
-  // 🔁 Run ingestion via Edge Function (uses user JWT; function checks is_admin_me)
+  // Run ingestion via Edge Function (uses user JWT; function checks is_admin_me)
   async function onRun(row: SourceRow) {
     setBusyId(row.id);
     try {
@@ -163,7 +163,6 @@ export default function AdminSourcesIndex() {
       });
       if (error) throw error;
 
-      // Provide a simple user-facing signal
       const statusLine =
         typeof data?.status !== "undefined" ? `Status: ${data.status}` : "";
       const traceLine = data?.traceId ? `Trace: ${data.traceId}` : "";
@@ -173,7 +172,6 @@ export default function AdminSourcesIndex() {
           .join("\n")}`
       );
 
-      // Optionally refresh to pull updated telemetry
       fetchRows();
     } catch (e: any) {
       alert(`Run failed: ${e?.message || e}`);
@@ -230,7 +228,7 @@ export default function AdminSourcesIndex() {
 
   return (
     <div style={{ padding: 16 }}>
-      {/* Admin nav tabs */}
+      {/* Top admin nav (Sources, Ingestion, Drafts, Questions, News) */}
       <div
         style={{
           display: "flex",
@@ -245,7 +243,7 @@ export default function AdminSourcesIndex() {
           const active = location.pathname === item.to;
           return (
             <Link
-              key={item.to}
+              key={item.to} // ✅ key here
               to={item.to}
               style={{
                 padding: "6px 10px",
