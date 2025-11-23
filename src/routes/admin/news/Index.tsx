@@ -128,37 +128,65 @@ export default function AdminNewsIndex() {
   }
 
   // NEW: create topic draft for a news item
-  async function handleCreateTopicDraft(newsItemId: string) {
-    setCreatingDraftId(newsItemId);
-    try {
-      const { data, error } = await sb.functions.invoke(
-        "admin-create-topic-draft",
-        {
-          body: { news_item_id: newsItemId },
-        }
-      );
+  // async function handleCreateTopicDraft(newsItemId: string) {
+  //   setCreatingDraftId(newsItemId);
+  //   try {
+  //     const { data, error } = await sb.functions.invoke(
+  //       "admin-create-topic-draft",
+  //       {
+  //         body: { news_item_id: newsItemId },
+  //       }
+  //     );
 
-      if (error) {
-        console.error("admin-create-topic-draft error:", error);
-        window.alert("Failed to create topic draft.");
-        return;
-      }
+  //     if (error) {
+  //       console.error("admin-create-topic-draft error:", error);
+  //       window.alert("Failed to create topic draft.");
+  //       return;
+  //     }
 
-      const draft = (data as any)?.draft;
-      if (!draft) {
-        window.alert("No draft returned from server.");
-        return;
-      }
+  //     const draft = (data as any)?.draft;
+  //     if (!draft) {
+  //       window.alert("No draft returned from server.");
+  //       return;
+  //     }
 
-      window.alert(`Created topic draft:\n${draft.title}`);
-      // You could also navigate to /admin/drafts or just leave it as is
-    } catch (err) {
-      console.error("Unexpected error calling admin-create-topic-draft:", err);
-      window.alert("Unexpected error while creating topic draft.");
-    } finally {
-      setCreatingDraftId(null);
+  //     window.alert(`Created topic draft:\n${draft.title}`);
+  //     // You could also navigate to /admin/drafts or just leave it as is
+  //   } catch (err) {
+  //     console.error("Unexpected error calling admin-create-topic-draft:", err);
+  //     window.alert("Unexpected error while creating topic draft.");
+  //   } finally {
+  //     setCreatingDraftId(null);
+  //   }
+  // }
+async function handleCreateTopicDraft(newsItemId: string) {
+  setCreatingDraftId(newsItemId);
+  try {
+    const { data, error } = await sb.functions.invoke(
+      "admin-create-topic-draft",
+      { body: { news_item_id: newsItemId } }
+    );
+
+    if (error) {
+      console.error("admin-create-topic-draft error:", error);
+      alert(`Function error: ${error.message}`);
+      return;
     }
+
+    const draft = (data as any)?.draft;
+    if (!draft) {
+      alert("No draft returned from server.");
+      return;
+    }
+
+    alert(`Created topic draft:\n${draft.title}`);
+  } catch (err) {
+    console.error("Unexpected error calling admin-create-topic-draft:", err);
+    alert("Unexpected error while creating topic draft.");
+  } finally {
+    setCreatingDraftId(null);
   }
+}
 
   return (
     <div className="p-4 space-y-4">
