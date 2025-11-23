@@ -28,7 +28,7 @@ export default function AdminLayout() {
       const { data } = await supabase.auth.getUser();
       setUserEmail(data.user?.email ?? null);
     })();
-  }, [supabase]); // include supabase in deps
+  }, [supabase]);
 
   const crumbs = React.useMemo(() => {
     // e.g. /admin/ingestion -> ["admin", "ingestion"]
@@ -57,11 +57,11 @@ export default function AdminLayout() {
               Home
             </Link>
           </div>
+          {/* Left nav links */}
           <AdminLink to="/admin/sources" icon={<Library className="h-4 w-4" />} label="Sources" />
           <AdminLink to="/admin/ingestion" icon={<Database className="h-4 w-4" />} label="Ingestion" />
           <AdminLink to="/admin/drafts" icon={<FileText className="h-4 w-4" />} label="Drafts" />
           <AdminLink to="/admin/questions" icon={<FileText className="h-4 w-4" />} label="Questions" />
-          {/* ✅ New News link in the left sidebar */}
           <AdminLink to="/admin/news" icon={<FileText className="h-4 w-4" />} label="News" />
           <Separator className="my-2" />
           <div className="px-2 text-xs text-muted-foreground">Epic B — Admin</div>
@@ -94,7 +94,7 @@ function AdminLink({
   return (
     <NavLink
       to={to}
-      className={({ isActive }) => "block w-full"}
+      className={() => "block w-full"}
       end
     >
       {({ isActive }) => (
@@ -114,27 +114,30 @@ function AdminLink({
 function Breadcrumb({ crumbs }: { crumbs: string[] }) {
   if (!crumbs.length) return null;
 
-  const segments = crumbs.map((seg, i) => {
-    const href = "/" + crumbs.slice(0, i + 1).join("/");
-    const isLast = i === crumbs.length - 1;
-    const label = seg === "admin" ? "Admin" : humanize(seg);
-    return (
-      <span key={href} className="inline-flex items-center">
-        {i > 0 && <ChevronRight className="mx-2 h-4 w-4 text-muted-foreground" />}
-        {isLast ? (
-          <span className="text-sm font-medium">{label}</span>
-        ) : (
-          <Link to={href} className="text-sm text-muted-foreground hover:underline">
-            {label}
-          </Link>
-        )}
-      </span>
-    );
-  });
-
   return (
     <nav aria-label="breadcrumb" className="flex items-center">
-      {segments}
+      {crumbs.map((seg, i) => {
+        const href = "/" + crumbs.slice(0, i + 1).join("/");
+        const isLast = i === crumbs.length - 1;
+        const label = seg === "admin" ? "Admin" : humanize(seg);
+        return (
+          <span key={href} className="inline-flex items-center">
+            {i > 0 && (
+              <ChevronRight className="mx-2 h-4 w-4 text-muted-foreground" />
+            )}
+            {isLast ? (
+              <span className="text-sm font-medium">{label}</span>
+            ) : (
+              <Link
+                to={href}
+                className="text-sm text-muted-foreground hover:underline"
+              >
+                {label}
+              </Link>
+            )}
+          </span>
+        );
+      })}
     </nav>
   );
 }
@@ -168,11 +171,15 @@ function UserMenu({
           <Avatar className="h-8 w-8">
             <AvatarFallback>{initials}</AvatarFallback>
           </Avatar>
-          <span className="hidden sm:inline text-sm">{email ?? "Admin"}</span>
+          <span className="hidden sm:inline text-sm">
+            {email ?? "Admin"}
+          </span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuLabel className="truncate">{email ?? "Admin"}</DropdownMenuLabel>
+        <DropdownMenuLabel className="truncate">
+          {email ?? "Admin"}
+        </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem disabled>
           <User className="mr-2 h-4 w-4" />
