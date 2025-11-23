@@ -45,6 +45,23 @@ import RouteDebug from "./components/RouteDebug";
 const queryClient = new QueryClient();
 
 const App: React.FC = () => {
+
+const App: React.FC = () => {
+
+  // 🌟 DEV-ONLY: expose Supabase client for console debugging
+  if (import.meta.env.DEV) {
+    import("@/lib/createSupabase").then(({ createSupabase }) => {
+      (window as any).sb = createSupabase();
+      console.log("%cSupabase client available as window.sb", "color: green; font-weight: bold");
+    });
+  }
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      ...
+
+
+  
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
