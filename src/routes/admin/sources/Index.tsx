@@ -1,4 +1,3 @@
-// stance-capture/src/routes/admin/sources/Index.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { createSupabase } from "@/lib/createSupabase";
