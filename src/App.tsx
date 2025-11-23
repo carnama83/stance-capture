@@ -38,11 +38,6 @@ import AdminNewsIndex from "@/routes/admin/news/Index";
 // Settings shell
 import SettingsLayout from "./pages/SettingsLayout";
 
-// TEMP: expose supabase client for DevTools
-// Remove after debugging
-;(window as any).sb = supabase
-
-
 
 // Optional debug
 import RouteDebug from "./components/RouteDebug";
