@@ -56,10 +56,6 @@ const App: React.FC = () => {
     });
   }
 
-  return (
-    <QueryClientProvider client={queryClient}>
-      ...
-
 
   
   return (
