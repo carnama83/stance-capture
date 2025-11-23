@@ -135,7 +135,6 @@ export default function AdminSourcesIndex() {
   async function onToggle(row: SourceRow, nextEnabled: boolean) {
     setBusyId(row.id);
     const prev = rows;
-    // ✅ correct spread here
     setRows((rs) =>
       rs.map((x) => (x.id === row.id ? { ...x, is_enabled: nextEnabled } : x))
     );
@@ -239,11 +238,11 @@ export default function AdminSourcesIndex() {
           paddingBottom: 8,
         }}
       >
-        {adminNavItems.map((item) => {
+        {adminNavItems.map((item, idx) => {
           const active = location.pathname === item.to;
           return (
             <Link
-              key={item.to} // ✅ key here
+              key={`${item.to}-${idx}`} // 🔑 force uniqueness even if paths duplicate
               to={item.to}
               style={{
                 padding: "6px 10px",
