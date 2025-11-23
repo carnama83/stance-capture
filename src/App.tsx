@@ -46,8 +46,6 @@ const queryClient = new QueryClient();
 
 const App: React.FC = () => {
 
-const App: React.FC = () => {
-
   // 🌟 DEV-ONLY: expose Supabase client for console debugging
   if (import.meta.env.DEV) {
     import("@/lib/createSupabase").then(({ createSupabase }) => {
