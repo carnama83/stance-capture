@@ -31,10 +31,9 @@ export default function AdminLayout() {
   }, [supabase]);
 
   const crumbs = React.useMemo(() => {
-    // e.g. /admin/ingestion -> ["admin", "ingestion"]
     const segs = location.pathname.split("/").filter(Boolean);
-    const start = segs.indexOf("admin");
-    return start >= 0 ? segs.slice(start) : [];
+    const idx = segs.indexOf("admin");
+    return idx >= 0 ? segs.slice(idx) : [];
   }, [location.pathname]);
 
   const handleSignOut = async () => {
@@ -48,34 +47,58 @@ export default function AdminLayout() {
       <aside className="col-span-12 md:col-span-3 lg:col-span-2">
         <Card className="p-4 space-y-2 sticky top-6">
           <div className="flex items-center justify-between px-2 mb-2">
-            <div className="text-sm font-semibold tracking-wide">Admin</div>
+            <div className="text-sm font-semibold">Admin</div>
             <Link
               to="/admin"
               className="text-xs text-muted-foreground hover:underline"
-              title="Admin home"
             >
               Home
             </Link>
           </div>
-          {/* Left nav links */}
-          <AdminLink to="/admin/sources" icon={<Library className="h-4 w-4" />} label="Sources" />
-          <AdminLink to="/admin/ingestion" icon={<Database className="h-4 w-4" />} label="Ingestion" />
-          <AdminLink to="/admin/drafts" icon={<FileText className="h-4 w-4" />} label="Drafts" />
-          <AdminLink to="/admin/questions" icon={<FileText className="h-4 w-4" />} label="Questions" />
-          <AdminLink to="/admin/news" icon={<FileText className="h-4 w-4" />} label="News" />
+
+          {/* Left Navigation */}
+          <AdminLink
+            to="/admin/sources"
+            icon={<Library className="h-4 w-4" />}
+            label="Sources"
+          />
+          <AdminLink
+            to="/admin/ingestion"
+            icon={<Database className="h-4 w-4" />}
+            label="Ingestion"
+          />
+          <AdminLink
+            to="/admin/drafts"
+            icon={<FileText className="h-4 w-4" />}
+            label="Drafts"
+          />
+          <AdminLink
+            to="/admin/questions"
+            icon={<FileText className="h-4 w-4" />}
+            label="Questions"
+          />
+          <AdminLink
+            to="/admin/live-questions"
+            icon={<FileText className="h-4 w-4" />}
+            label="Live Questions"
+          />
+          <AdminLink
+            to="/admin/news"
+            icon={<FileText className="h-4 w-4" />}
+            label="News"
+          />
+
           <Separator className="my-2" />
           <div className="px-2 text-xs text-muted-foreground">Epic B — Admin</div>
         </Card>
       </aside>
 
-      {/* Content */}
+      {/* Main Content */}
       <main className="col-span-12 md:col-span-9 lg:col-span-10 space-y-4">
-        {/* Top bar: breadcrumb + user menu */}
         <div className="flex items-center justify-between">
           <Breadcrumb crumbs={crumbs} />
           <UserMenu email={userEmail} onSignOut={handleSignOut} />
         </div>
-
         <Outlet />
       </main>
     </div>
@@ -92,16 +115,11 @@ function AdminLink({
   label: string;
 }) {
   return (
-    <NavLink
-      to={to}
-      className={() => "block w-full"}
-      end
-    >
+    <NavLink to={to} className="block w-full" end>
       {({ isActive }) => (
         <Button
           variant={isActive ? "default" : "ghost"}
           className="w-full justify-start gap-2"
-          aria-current={isActive ? "page" : undefined}
         >
           {icon}
           <span>{label}</span>
@@ -143,9 +161,7 @@ function Breadcrumb({ crumbs }: { crumbs: string[] }) {
 }
 
 function humanize(s: string) {
-  return s
-    .replace(/-/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+  return s.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function UserMenu({
@@ -153,15 +169,12 @@ function UserMenu({
   onSignOut,
 }: {
   email: string | null;
-  onSignOut: () => Promise<void> | void;
+  onSignOut: () => void;
 }) {
   const initials = React.useMemo(() => {
     if (!email) return "AD";
-    const name = email.split("@")[0];
-    const [a, b] = name.split(/[._-]/);
-    const first = a?.[0] ?? "A";
-    const second = b?.[0] ?? "";
-    return (first + second).toUpperCase().slice(0, 2);
+    const id = email.split("@")[0];
+    return id.slice(0, 2).toUpperCase();
   }, [email]);
 
   return (
@@ -176,19 +189,18 @@ function UserMenu({
           </span>
         </Button>
       </DropdownMenuTrigger>
+
       <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuLabel className="truncate">
-          {email ?? "Admin"}
-        </DropdownMenuLabel>
+        <DropdownMenuLabel>{email ?? "Admin"}</DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem disabled>
           <User className="mr-2 h-4 w-4" />
-          <span>Profile</span>
+          Profile
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={onSignOut} className="text-destructive">
           <LogOut className="mr-2 h-4 w-4" />
-          <span>Sign out</span>
+          Sign out
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
