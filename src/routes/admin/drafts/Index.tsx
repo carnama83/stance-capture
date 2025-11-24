@@ -35,6 +35,7 @@ type TopicDraftRow = {
     title: string;
     url: string | null;
     published_at: string | null;
+    // We no longer select topic_sources in the query, but keep the type relaxed.
     topic_sources?: {
       id: string;
       name: string | null;
@@ -54,7 +55,7 @@ export default function TopicDraftsPage() {
   const [rows, setRows] = React.useState<TopicDraftRow[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [statusFilter, setStatusFilter] = React.useState<"all" | DraftStatus>(
-    "all"
+    "all",
   );
   const [search, setSearch] = React.useState("");
   const [dateFrom, setDateFrom] = React.useState("");
@@ -62,6 +63,7 @@ export default function TopicDraftsPage() {
 
   const load = React.useCallback(async () => {
     setLoading(true);
+
     let q = supabase
       .from("topic_drafts")
       .select(
@@ -81,13 +83,9 @@ export default function TopicDraftsPage() {
           id,
           title,
           url,
-          published_at,
-          topic_sources (
-            id,
-            name
-          )
+          published_at
         )
-      `
+      `,
       )
       .order("created_at", { ascending: false })
       .limit(200);
@@ -114,7 +112,7 @@ export default function TopicDraftsPage() {
     if (search.trim()) {
       const needle = search.trim().toLowerCase();
       items = items.filter((r) =>
-        (r.title ?? "").toLowerCase().includes(needle)
+        (r.title ?? "").toLowerCase().includes(needle),
       );
     }
 
@@ -142,7 +140,7 @@ export default function TopicDraftsPage() {
             value={dateFrom}
             onChange={(e) =>
               setDateFrom(
-                e.target.value ? new Date(e.target.value).toISOString() : ""
+                e.target.value ? new Date(e.target.value).toISOString() : "",
               )
             }
             className="w-48"
@@ -152,7 +150,7 @@ export default function TopicDraftsPage() {
             value={dateTo}
             onChange={(e) =>
               setDateTo(
-                e.target.value ? new Date(e.target.value).toISOString() : ""
+                e.target.value ? new Date(e.target.value).toISOString() : "",
               )
             }
             className="w-48"
@@ -199,7 +197,11 @@ function TopicDraftRowView({
   row: TopicDraftRow;
   onChanged: () => void;
 }) {
-  const sourceName = row.news_items?.topic_sources?.name ?? "—";
+  // We no longer reliably have topic_sources; fall back to location_label if needed.
+  const sourceName =
+    row.news_items?.topic_sources?.name ??
+    row.location_label ??
+    "—";
   const newsUrl = row.news_items?.url ?? null;
   const newsTitle = row.news_items?.title ?? null;
 
