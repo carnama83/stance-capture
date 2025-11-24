@@ -23,10 +23,8 @@ import SettingsSessions from "./pages/SettingsSessions";
 import AdminIdentifiers from "./pages/AdminIdentifiers";
 import NotFound from "./pages/NotFound";
 
-// App.tsx (imports section)
-import QuestionDetailPage from "./pages/QuestionDetailPage"; // adjust path if needed
-
-
+// Question detail page (new)
+import QuestionDetailPage from "./pages/QuestionDetailPage";
 
 // Topics
 import TopicsIndex from "@/routes/topics/Index";
@@ -87,15 +85,12 @@ const App: React.FC = () => {
                 }
               />
 
+              {/* Question detail (user-facing) */}
+              <Route
+                path="/questions/:id"
+                element={<QuestionDetailPage />}
+              />
 
-<Routes>
-  {/* existing routes … */}
-  <Route path="/questions/:id" element={<QuestionDetailPage />} />
-  {/* existing routes … */}
-</Routes>
-
-
-              
               <Route
                 path={ROUTES.RESET_PASSWORD}
                 element={
@@ -156,8 +151,14 @@ const App: React.FC = () => {
                 <Route path="ingestion" element={<AdminIngestionPage />} />
                 <Route path="drafts" element={<AdminDraftsPage />} />
                 <Route path="questions" element={<AdminQuestionsPage />} />
-                <Route path="live-questions" element={<AdminLiveQuestionsPage />} />
-                 <Route path="live-questions/:id" element={<AdminLiveQuestionShowPage />} />
+                <Route
+                  path="live-questions"
+                  element={<AdminLiveQuestionsPage />}
+                />
+                <Route
+                  path="live-questions/:id"
+                  element={<AdminLiveQuestionShowPage />}
+                />
                 <Route path="news" element={<AdminNewsIndex />} />
               </Route>
 
