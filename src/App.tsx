@@ -1,4 +1,3 @@
-// src/App.tsx
 import * as React from "react";
 import { HashRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 
@@ -27,35 +26,30 @@ import NotFound from "./pages/NotFound";
 // Topics
 import TopicsIndex from "@/routes/topics/Index";
 
-// Admin (Epic B)
+// Admin Pages
 import AdminLayout from "@/routes/admin/_layout";
 import AdminSourcesPage from "@/routes/admin/sources/Index";
 import AdminIngestionPage from "@/routes/admin/ingestion/Index";
 import AdminDraftsPage from "@/routes/admin/drafts/Index";
 import AdminQuestionsPage from "@/routes/admin/questions/Index";
 import AdminNewsIndex from "@/routes/admin/news/Index";
+import AdminLiveQuestionsPage from "@/routes/admin/live-questions/Index";
 
-// Settings shell
 import SettingsLayout from "./pages/SettingsLayout";
 
-
-// Optional debug
 import RouteDebug from "./components/RouteDebug";
 
 const queryClient = new QueryClient();
 
 const App: React.FC = () => {
-
-  // 🌟 DEV-ONLY: expose Supabase client for console debugging
+  // Dev expose Supabase
   if (import.meta.env.DEV) {
     import("@/lib/createSupabase").then(({ createSupabase }) => {
       (window as any).sb = createSupabase();
-      console.log("%cSupabase client available as window.sb", "color: green; font-weight: bold");
+      console.log("%cSupabase client (window.sb)", "color: green;");
     });
   }
 
-
-  
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
@@ -63,9 +57,9 @@ const App: React.FC = () => {
         <Sonner />
         <Router>
           <AuthReadyGate>
-            <RouteDebug /> {/* remove after verifying */}
+            <RouteDebug />
             <Routes>
-              {/* ---------- Public ---------- */}
+              {/* Public */}
               <Route path={ROUTES.HOME} element={<Index />} />
               <Route path={ROUTES.INDEX} element={<Index />} />
 
@@ -77,6 +71,7 @@ const App: React.FC = () => {
                   </PublicOnly>
                 }
               />
+
               <Route
                 path={ROUTES.SIGNUP}
                 element={
@@ -85,6 +80,7 @@ const App: React.FC = () => {
                   </PublicOnly>
                 }
               />
+
               <Route
                 path={ROUTES.RESET_PASSWORD}
                 element={
@@ -94,11 +90,14 @@ const App: React.FC = () => {
                 }
               />
 
-              {/* ---------- Topics (Explore) ---------- */}
+              {/* Topics */}
               <Route path={ROUTES.TOPICS} element={<TopicsIndex />} />
-              <Route path={ROUTES.EXPLORE} element={<Navigate to={ROUTES.TOPICS} replace />} />
+              <Route
+                path={ROUTES.EXPLORE}
+                element={<Navigate to={ROUTES.TOPICS} replace />}
+              />
 
-              {/* ---------- Settings (nested) ---------- */}
+              {/* Settings */}
               <Route
                 path="/settings"
                 element={
@@ -107,14 +106,16 @@ const App: React.FC = () => {
                   </Protected>
                 }
               >
-                {/* default to profile if /settings */}
-                <Route index element={<Navigate to={ROUTES.SETTINGS_PROFILE} replace />} />
+                <Route
+                  index
+                  element={<Navigate to={ROUTES.SETTINGS_PROFILE} replace />}
+                />
                 <Route path="profile" element={<SettingsProfile />} />
                 <Route path="security" element={<SettingsSecurity />} />
                 <Route path="sessions" element={<SettingsSessions />} />
               </Route>
 
-              {/* ---------- Profile (standalone authed page) ---------- */}
+              {/* Profile */}
               <Route
                 path={ROUTES.PROFILE}
                 element={
@@ -124,7 +125,7 @@ const App: React.FC = () => {
                 }
               />
 
-              {/* ---------- Admin (nested) ---------- */}
+              {/* Admin */}
               <Route
                 path={ROUTES.ADMIN_ROOT}
                 element={
@@ -140,10 +141,11 @@ const App: React.FC = () => {
                 <Route path="ingestion" element={<AdminIngestionPage />} />
                 <Route path="drafts" element={<AdminDraftsPage />} />
                 <Route path="questions" element={<AdminQuestionsPage />} />
+                <Route path="live-questions" element={<AdminLiveQuestionsPage />} />
                 <Route path="news" element={<AdminNewsIndex />} />
               </Route>
 
-              {/* Optional standalone admin page */}
+              {/* Admin special page */}
               <Route
                 path={ROUTES.ADMIN_IDENTIFIERS}
                 element={
@@ -155,7 +157,7 @@ const App: React.FC = () => {
                 }
               />
 
-              {/* ---------- 404 ---------- */}
+              {/* 404 */}
               <Route path="*" element={<NotFound />} />
             </Routes>
           </AuthReadyGate>
