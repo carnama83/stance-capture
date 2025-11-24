@@ -253,7 +253,10 @@ function QuestionDraftRowView({
         </div>
         <div className="flex flex-col gap-2 items-end">
           <EditQuestionDialog row={row} onSaved={onChanged} />
-          <StatusButtons row={row} onChanged={onChanged} />
+          <div className="flex gap-2">
+            <PublishButton row={row} onPublished={onChanged} />
+            <StatusButtons row={row} onChanged={onChanged} />
+          </div>
         </div>
       </div>
 
@@ -448,5 +451,59 @@ function StatusButtons({
         Reject
       </Button>
     </div>
+  );
+}
+
+function PublishButton({
+  row,
+  onPublished,
+}: {
+  row: QuestionDraftRow;
+  onPublished: () => void;
+}) {
+  const supabase = React.useMemo(createSupabase, []);
+  const [loading, setLoading] = React.useState(false);
+
+  const handleClick = async () => {
+    if (loading) return;
+    if (row.status !== "approved") {
+      alert("Only approved drafts can be published.");
+      return;
+    }
+    if (!confirm("Publish this draft as a live question?")) return;
+
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.rpc(
+        "admin_publish_question_draft",
+        { p_draft_id: row.id },
+      );
+
+      if (error) {
+        console.error("admin_publish_question_draft error:", error);
+        alert(error.message ?? "Failed to publish question.");
+        return;
+      }
+
+      // optional: console.log("Published question:", data);
+      alert("Question published.");
+      onPublished();
+    } catch (err: any) {
+      console.error("admin_publish_question_draft exception:", err);
+      alert(err?.message ?? String(err));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      onClick={handleClick}
+      disabled={loading}
+    >
+      {loading ? "Publishing…" : "Publish"}
+    </Button>
   );
 }
