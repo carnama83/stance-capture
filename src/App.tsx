@@ -34,6 +34,7 @@ import AdminDraftsPage from "@/routes/admin/drafts/Index";
 import AdminQuestionsPage from "@/routes/admin/questions/Index";
 import AdminNewsIndex from "@/routes/admin/news/Index";
 import AdminLiveQuestionsPage from "@/routes/admin/live-questions/Index";
+import AdminLiveQuestionShowPage from "@/routes/admin/live-questions/Show";
 
 import SettingsLayout from "./pages/SettingsLayout";
 
@@ -142,6 +143,7 @@ const App: React.FC = () => {
                 <Route path="drafts" element={<AdminDraftsPage />} />
                 <Route path="questions" element={<AdminQuestionsPage />} />
                 <Route path="live-questions" element={<AdminLiveQuestionsPage />} />
+                 <Route path="live-questions/:id" element={<AdminLiveQuestionShowPage />} />
                 <Route path="news" element={<AdminNewsIndex />} />
               </Route>
 
