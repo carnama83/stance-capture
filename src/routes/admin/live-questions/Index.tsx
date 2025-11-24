@@ -1,6 +1,5 @@
-// src/routes/admin/live-questions/Index.tsx
-
 import * as React from "react";
+import { Link } from "react-router-dom";
 import { createSupabase } from "@/lib/createSupabase";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -16,7 +15,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { ExternalLink, Edit2, RefreshCw } from "lucide-react";
+import { RefreshCw, Edit2 } from "lucide-react";
 
 type QuestionStatus = "active" | "archived";
 
@@ -160,6 +159,7 @@ export default function LiveQuestionsPage() {
           </Button>
         </div>
       </CardHeader>
+
       <CardContent className="space-y-3">
         {loading && (
           <div className="p-4 text-sm text-muted-foreground">Loading…</div>
@@ -205,19 +205,14 @@ function QuestionRowView({
               </span>
             )}
           </div>
-          import { Link } from "react-router-dom"; // make sure this is at the top
-
-// ...
-
-<h3 className="text-base font-semibold break-words">
-  <Link
-    to={`/admin/live-questions/${row.id}`}
-    className="hover:underline"
-  >
-    {row.question}
-  </Link>
-</h3>
-
+          <h3 className="text-base font-semibold break-words">
+            <Link
+              to={`/admin/live-questions/${row.id}`}
+              className="hover:underline"
+            >
+              {row.question}
+            </Link>
+          </h3>
           {row.tags && row.tags.length > 0 && (
             <div className="flex flex-wrap gap-2 mt-1">
               {row.tags.map((t) => (
@@ -238,16 +233,10 @@ function QuestionRowView({
         <p className="text-sm whitespace-pre-wrap">{row.summary}</p>
       )}
 
-      {/* Optional: you can later link into admin/drafts or news via IDs */}
-      <div className="text-xs text-muted-foreground space-x-2">
+      <div className="text-xs text-muted-foreground space-x-2 break-all">
+        <span>id: {row.id}</span>
         {row.question_draft_id && (
-          <span>Draft: {row.question_draft_id.slice(0, 8)}…</span>
-        )}
-        {row.topic_draft_id && (
-          <span>Topic: {row.topic_draft_id.slice(0, 8)}…</span>
-        )}
-        {row.news_item_id && (
-          <span>News: {row.news_item_id.slice(0, 8)}…</span>
+          <span>draft: {row.question_draft_id.slice(0, 8)}…</span>
         )}
       </div>
     </div>
