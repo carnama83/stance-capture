@@ -23,6 +23,11 @@ import SettingsSessions from "./pages/SettingsSessions";
 import AdminIdentifiers from "./pages/AdminIdentifiers";
 import NotFound from "./pages/NotFound";
 
+// App.tsx (imports section)
+import QuestionDetailPage from "./pages/QuestionDetailPage"; // adjust path if needed
+
+
+
 // Topics
 import TopicsIndex from "@/routes/topics/Index";
 
@@ -82,6 +87,15 @@ const App: React.FC = () => {
                 }
               />
 
+
+<Routes>
+  {/* existing routes … */}
+  <Route path="/questions/:id" element={<QuestionDetailPage />} />
+  {/* existing routes … */}
+</Routes>
+
+
+              
               <Route
                 path={ROUTES.RESET_PASSWORD}
                 element={
