@@ -205,9 +205,19 @@ function QuestionRowView({
               </span>
             )}
           </div>
-          <h3 className="text-base font-semibold break-words">
-            {row.question}
-          </h3>
+          import { Link } from "react-router-dom"; // make sure this is at the top
+
+// ...
+
+<h3 className="text-base font-semibold break-words">
+  <Link
+    to={`/admin/live-questions/${row.id}`}
+    className="hover:underline"
+  >
+    {row.question}
+  </Link>
+</h3>
+
           {row.tags && row.tags.length > 0 && (
             <div className="flex flex-wrap gap-2 mt-1">
               {row.tags.map((t) => (
