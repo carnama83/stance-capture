@@ -1,4 +1,4 @@
-// src/pages/QuestionDetailPage.tsx — Question detail with stance capture + stats + related questions
+// src/pages/QuestionDetailPage.tsx — Question detail with stance capture + stats + related questions + regional breakdown
 import * as React from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
@@ -28,6 +28,16 @@ type QuestionStance = {
 };
 
 type QuestionStats = {
+  total_responses: number;
+  pct_agree: number | null;
+  pct_disagree: number | null;
+  pct_neutral: number | null;
+  avg_score: number | null;
+};
+
+type RegionalStat = {
+  region_scope: "city" | "county" | "state" | "country" | "global" | string;
+  region_label: string;
   total_responses: number;
   pct_agree: number | null;
   pct_disagree: number | null;
@@ -163,7 +173,25 @@ async function fetchQuestionStats(
   };
 }
 
-// NEW: fetch related questions by shared tags, biased to same location
+async function fetchQuestionRegionStats(
+  questionId: string
+): Promise<RegionalStat[]> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("Supabase client not available");
+
+  const { data, error } = await sb.rpc("get_question_stats_for_user", {
+    p_question_id: questionId,
+  });
+
+  if (error) {
+    console.error("Failed to load regional question stats", error);
+    return [];
+  }
+
+  return (data ?? []) as RegionalStat[];
+}
+
+// fetch related questions by shared tags, biased to same location
 async function fetchRelatedQuestions(
   questionId: string,
   tags: string[],
@@ -242,7 +270,17 @@ export default function QuestionDetailPage() {
     staleTime: 60_000,
   });
 
-  // NEW: related questions query (depends on question + tags + location_label)
+  const {
+    data: regionStats,
+    isLoading: regionStatsLoading,
+  } = useQuery({
+    enabled: !!questionId && isAuthed,
+    queryKey: ["question-region-stats", questionId],
+    queryFn: () => fetchQuestionRegionStats(questionId),
+    staleTime: 60_000,
+  });
+
+  // related questions query (depends on question + tags + location_label)
   const {
     data: relatedQuestions,
     isLoading: relatedLoading,
@@ -274,6 +312,9 @@ export default function QuestionDetailPage() {
       queryClient.setQueryData(["my-stance", questionId], newScore);
       queryClient.invalidateQueries({
         queryKey: ["question-stats", questionId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["question-region-stats", questionId],
       });
     },
   });
@@ -347,6 +388,9 @@ export default function QuestionDetailPage() {
 
     const hasRelated =
       relatedQuestions && relatedQuestions.length > 0;
+
+    const hasRegionStats =
+      regionStats && regionStats.length > 0;
 
     content = (
       <article className="rounded-lg border p-4 space-y-4">
@@ -444,6 +488,58 @@ export default function QuestionDetailPage() {
                   Average stance: {stats.avg_score.toFixed(2)} (scale -2 to +2)
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Regional breakdown for logged-in user */}
+          {isAuthed && (
+            <div className="mt-3 border-t pt-3">
+              <h3 className="text-xs font-medium text-slate-900 mb-1">
+                In your region
+              </h3>
+              {regionStatsLoading && (
+                <p className="text-[11px] text-slate-500">
+                  Loading region breakdown…
+                </p>
+              )}
+              {!regionStatsLoading &&
+                (!hasRegionStats || !regionStats) && (
+                  <p className="text-[11px] text-slate-500">
+                    We don&apos;t have enough responses in your region yet.
+                  </p>
+                )}
+              {!regionStatsLoading &&
+                hasRegionStats &&
+                regionStats && (
+                  <div className="space-y-1">
+                    {["city", "county", "state", "country", "global"].map(
+                      (scope) => {
+                        const row = regionStats.find(
+                          (r) => r.region_scope === scope
+                        );
+                        if (!row) return null;
+
+                        const label =
+                          scope === "global" ? "Global" : row.region_label;
+
+                        return (
+                          <div
+                            key={scope}
+                            className="flex items-center justify-between text-[11px]"
+                          >
+                            <span className="text-slate-600">{label}</span>
+                            <span className="text-slate-700">
+                              {row.total_responses} ·{" "}
+                              {row.pct_agree != null
+                                ? `${Math.round(row.pct_agree)}% agree`
+                                : "no data"}
+                            </span>
+                          </div>
+                        );
+                      }
+                    )}
+                  </div>
+                )}
             </div>
           )}
         </section>
