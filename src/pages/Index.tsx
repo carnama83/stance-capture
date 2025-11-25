@@ -296,39 +296,93 @@ export default function Index() {
 
   // ---------- Live questions feed (Epic C C1) ----------
   const liveQuestionsQuery = useQuery<LiveQuestion[], Error>({
-    queryKey: [
-      "live-questions",
-      isAuthed ? session?.user?.id : "anon",
-      latestLimit,
-    ],
-    queryFn: async () => {
-      if (!sb) return [];
-      try {
-        if (isAuthed && session?.user?.id) {
-          const { data, error } = await sb.rpc("get_tailored_feed", {
-            p_user_id: session.user.id,
-            p_limit: latestLimit,
-          });
-          if (error) throw error;
-          return (data ?? []) as LiveQuestion[];
-        } else {
-          const { data, error } = await sb
-            .from("v_live_questions")
-            .select(
-              "id, question, summary, tags, location_label, published_at, status"
-            )
-            .order("published_at", { ascending: false })
-            .limit(latestLimit);
-          if (error) throw error;
-          return (data ?? []) as LiveQuestion[];
-        }
-      } catch (err) {
-        console.error("live questions feed error", err);
-        throw err instanceof Error ? err : new Error("Failed to load feed");
+  queryKey: [
+    "live-questions",
+    isAuthed ? session?.user?.id : "anon",
+    latestLimit,
+  ],
+  queryFn: async () => {
+    if (!sb) return [];
+    try {
+      let base: LiveQuestion[] = [];
+
+      // 1. Base questions list (same as before)
+      if (isAuthed && session?.user?.id) {
+        const { data, error } = await sb.rpc("get_tailored_feed", {
+          p_user_id: session.user.id,
+          p_limit: latestLimit,
+        });
+        if (error) throw error;
+        base = (data ?? []) as LiveQuestion[];
+      } else {
+        const { data, error } = await sb
+          .from("v_live_questions")
+          .select(
+            "id, question, summary, tags, location_label, published_at, status"
+          )
+          .order("published_at", { ascending: false })
+          .limit(latestLimit);
+        if (error) throw error;
+        base = (data ?? []) as LiveQuestion[];
       }
-    },
-    staleTime: 60_000,
-  });
+
+      if (!base.length) return [];
+
+      const questionIds = base.map((q) => q.id);
+      const byId = new Map<string, LiveQuestion>();
+      base.forEach((q) => byId.set(q.id, { ...q }));
+
+      // 2. Your stance per question (only when logged in)
+      if (isAuthed && session?.user?.id) {
+        const { data: stanceRows, error: stanceError } = await sb
+          .from("question_stances")
+          .select("question_id, score")
+          .in("question_id", questionIds);
+
+        if (!stanceError && stanceRows) {
+          for (const row of stanceRows as { question_id: string; score: number }[]) {
+            const existing = byId.get(row.question_id);
+            if (existing) {
+              existing.my_stance = row.score;
+            }
+          }
+        }
+      }
+
+      // 3. Aggregate stats (if question_stance_stats is populated)
+      const { data: statsRows, error: statsError } = await sb
+        .from("question_stance_stats")
+        .select(
+          "question_id, total_responses, pct_agree, pct_disagree, pct_neutral"
+        )
+        .in("question_id", questionIds);
+
+      if (!statsError && statsRows) {
+        for (const row of statsRows as {
+          question_id: string;
+          total_responses: number | null;
+          pct_agree: number | null;
+          pct_disagree: number | null;
+          pct_neutral: number | null;
+        }[]) {
+          const existing = byId.get(row.question_id);
+          if (existing) {
+            existing.stats_total_responses = row.total_responses ?? 0;
+            existing.stats_pct_agree = row.pct_agree ?? null;
+            existing.stats_pct_disagree = row.pct_disagree ?? null;
+            existing.stats_pct_neutral = row.pct_neutral ?? null;
+          }
+        }
+      }
+
+      return Array.from(byId.values());
+    } catch (err) {
+      console.error("live questions feed error", err);
+      throw err instanceof Error ? err : new Error("Failed to load feed");
+    }
+  },
+  staleTime: 60_000,
+});
 
   const actions = (
     <button
