@@ -23,7 +23,7 @@ import SettingsSessions from "./pages/SettingsSessions";
 import AdminIdentifiers from "./pages/AdminIdentifiers";
 import NotFound from "./pages/NotFound";
 
-// Question detail page (new)
+// Question detail page (user-facing)
 import QuestionDetailPage from "./pages/QuestionDetailPage";
 
 // Topics
@@ -38,6 +38,8 @@ import AdminQuestionsPage from "@/routes/admin/questions/Index";
 import AdminNewsIndex from "@/routes/admin/news/Index";
 import AdminLiveQuestionsPage from "@/routes/admin/live-questions/Index";
 import AdminLiveQuestionShowPage from "@/routes/admin/live-questions/Show";
+
+// My stances
 import MyStancesPage from "./pages/MyStancesPage";
 
 import SettingsLayout from "./pages/SettingsLayout";
@@ -77,9 +79,6 @@ const App: React.FC = () => {
                 }
               />
 
-<Route path="/me/stances" element={<MyStancesPage />} />
-
-              
               <Route
                 path={ROUTES.SIGNUP}
                 element={
@@ -89,15 +88,6 @@ const App: React.FC = () => {
                 }
               />
 
-              /* {/* Question detail (user-facing) */}
-              <Route
-                path="/questions/:id"
-                element={<QuestionDetailPage />}
-              /> */
-
-<Route path="/q/:id" element={<QuestionDetailPage />} />
-
-              
               <Route
                 path={ROUTES.RESET_PASSWORD}
                 element={
@@ -107,6 +97,9 @@ const App: React.FC = () => {
                 }
               />
 
+              {/* Question detail (user-facing) */}
+              <Route path="/q/:id" element={<QuestionDetailPage />} />
+
               {/* Topics */}
               <Route path={ROUTES.TOPICS} element={<TopicsIndex />} />
               <Route
@@ -114,7 +107,7 @@ const App: React.FC = () => {
                 element={<Navigate to={ROUTES.TOPICS} replace />}
               />
 
-              {/* Settings */}
+              {/* Settings (protected) */}
               <Route
                 path="/settings"
                 element={
@@ -132,7 +125,17 @@ const App: React.FC = () => {
                 <Route path="sessions" element={<SettingsSessions />} />
               </Route>
 
-              {/* Profile */}
+              {/* My stances (protected) */}
+              <Route
+                path="/me/stances"
+                element={
+                  <Protected>
+                    <MyStancesPage />
+                  </Protected>
+                }
+              />
+
+              {/* Profile (protected) */}
               <Route
                 path={ROUTES.PROFILE}
                 element={
@@ -142,7 +145,7 @@ const App: React.FC = () => {
                 }
               />
 
-              {/* Admin */}
+              {/* Admin (protected + admin-only) */}
               <Route
                 path={ROUTES.ADMIN_ROOT}
                 element={
