@@ -1,4 +1,4 @@
-// src/pages/QuestionDetailPage.tsx — Question detail with stance capture + stats + related questions + regional breakdown
+// src/pages/QuestionDetailPage.tsx — Question detail with stance capture + stats + related questions + regional breakdown + location nudge
 import * as React from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
@@ -43,6 +43,14 @@ type RegionalStat = {
   pct_disagree: number | null;
   pct_neutral: number | null;
   avg_score: number | null;
+};
+
+type RegionRow = {
+  user_id: string;
+  city_label: string | null;
+  county_label: string | null;
+  state_label: string | null;
+  country_label: string | null;
 };
 
 const STANCE_SCALE = [
@@ -191,6 +199,24 @@ async function fetchQuestionRegionStats(
   return (data ?? []) as RegionalStat[];
 }
 
+async function fetchMyRegion(userId: string): Promise<RegionRow | null> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("Supabase client not available");
+
+  const { data, error } = await sb
+    .from("user_region_dimensions")
+    .select("user_id, city_label, county_label, state_label, country_label")
+    .eq("user_id", userId)
+    .maybeSingle<RegionRow>();
+
+  if (error) {
+    console.error("Failed to load user region dimensions", error);
+    return null;
+  }
+
+  return data ?? null;
+}
+
 // fetch related questions by shared tags, biased to same location
 async function fetchRelatedQuestions(
   questionId: string,
@@ -236,6 +262,7 @@ export default function QuestionDetailPage() {
   const session = useSupabaseSession();
   const queryClient = useQueryClient();
   const isAuthed = !!session;
+  const userId = session?.user?.id ?? null;
   const questionId = id as string;
 
   const {
@@ -277,6 +304,16 @@ export default function QuestionDetailPage() {
     enabled: !!questionId && isAuthed,
     queryKey: ["question-region-stats", questionId],
     queryFn: () => fetchQuestionRegionStats(questionId),
+    staleTime: 60_000,
+  });
+
+  const {
+    data: myRegion,
+    isLoading: myRegionLoading,
+  } = useQuery({
+    enabled: !!userId,
+    queryKey: ["my-region", userId],
+    queryFn: () => fetchMyRegion(userId!),
     staleTime: 60_000,
   });
 
@@ -342,6 +379,15 @@ export default function QuestionDetailPage() {
     const next = current === value ? null : value; // click again to clear
     stanceMutation.mutate(next);
   };
+
+  const showLocationNudge =
+    isAuthed &&
+    !myRegionLoading &&
+    myRegion &&
+    !myRegion.city_label &&
+    !myRegion.state_label &&
+    !myRegion.country_label &&
+    !myRegion.county_label;
 
   // ---------- Render ----------
   let content: React.ReactNode;
@@ -422,6 +468,22 @@ export default function QuestionDetailPage() {
             )}
           </div>
         </header>
+
+        {/* Optional: location nudge */}
+        {showLocationNudge && (
+          <section className="rounded-md border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-xs flex flex-wrap items-center justify-between gap-2">
+            <span className="text-slate-700">
+              Set your location to see how people in your region think about
+              this question.
+            </span>
+            <Link
+              to="/settings/location"
+              className="inline-flex items-center rounded bg-slate-900 text-white px-2 py-1 text-[11px]"
+            >
+              Set location
+            </Link>
+          </section>
+        )}
 
         {/* Summary */}
         {question.summary && (
