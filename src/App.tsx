@@ -85,12 +85,15 @@ const App: React.FC = () => {
                 }
               />
 
-              {/* Question detail (user-facing) */}
+              /* {/* Question detail (user-facing) */}
               <Route
                 path="/questions/:id"
                 element={<QuestionDetailPage />}
-              />
+              /> */
 
+<Route path="/q/:id" element={<QuestionDetailPage />} />
+
+              
               <Route
                 path={ROUTES.RESET_PASSWORD}
                 element={
