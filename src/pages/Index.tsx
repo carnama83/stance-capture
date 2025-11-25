@@ -1,4 +1,4 @@
-// src/pages/Index.tsx — with Latest Questions section + stance badges
+// src/pages/Index.tsx — with Latest Questions section added (Epic C C1)
 import * as React from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -28,24 +28,24 @@ type LiveQuestion = {
   location_label?: string | null;
   published_at?: string | null;
   status?: string | null;
-
-  // NEW: current user stance (if logged in)
-  my_stance?: number | null;
-
-  // NEW: simple aggregate stats (if available)
-  stats_total_responses?: number | null;
-  stats_pct_agree?: number | null;
-  stats_pct_disagree?: number | null;
-  stats_pct_neutral?: number | null;
 };
 
-// ---------- Stance label map (module-level) ----------
-const STANCE_LABEL: Record<number, string> = {
-  [-2]: "Strongly disagree",
-  [-1]: "Disagree",
-  [0]: "Neutral",
-  [1]: "Agree",
-  [2]: "Strongly agree",
+type RegionalStat = {
+  region_scope: "city" | "county" | "state" | "country" | "global" | string;
+  region_label: string;
+  total_responses: number;
+  pct_agree: number | null;
+  pct_disagree: number | null;
+  pct_neutral: number | null;
+  avg_score: number | null;
+};
+
+type RegionRow = {
+  user_id: string;
+  city_label: string | null;
+  county_label: string | null;
+  state_label: string | null;
+  country_label: string | null;
 };
 
 // ---------- Session hook ----------
@@ -65,39 +65,24 @@ function useSupabaseSession() {
   return session;
 }
 
-// ---------- Source aliasing ----------
+// ---------- Source aliasing (Option 2 from earlier) ----------
 const SOURCE_ALIAS: Record<string, string> = {
   // Keep label "topic_region_trends" in code, but actually query the view
   topic_region_trends: "topic_region_trends_v",
 };
-const resolveSource = (name: string) => SOURCE_ALIAS[name] ?? name;
 
-// ---------- Per-source selects & order-by ----------
-const SELECT_BY_SOURCE: Record<string, string> = {
-  topic_region_trends:
-    "id,title,summary,tags,updated_at,tier,location_label,trending_score,activity_7d",
-  topic_region_trends_v:
-    "id,title,summary,tags,updated_at,tier,location_label,trending_score,activity_7d",
-  topics_with_counts:
-    "id,title,summary,tags,updated_at,tier,location_label,activity_7d",
-  vw_topics: "id,title,summary,tags,updated_at,tier,location_label",
-  // raw table fallback; alias published_at -> updated_at
-  topics: "id,title,summary,tags,updated_at:published_at,tier,location_label",
-};
+// ---------- Generic utilities ----------
 
-const ORDER_BY_SOURCE: Record<string, string[]> = {
-  topic_region_trends: ["trending_score", "activity_7d", "updated_at"],
-  topic_region_trends_v: ["trending_score", "activity_7d", "updated_at"],
-  topics_with_counts: ["activity_7d", "updated_at"],
-  vw_topics: ["updated_at"],
-  topics: ["published_at"], // real column on topics
-};
-
-// ---------- Data helpers ----------
-async function trySelectTopics(
-  sb: any,
+// A tiny helper to select from one of many possible sources/views, with
+// fallback to a default table if needed.
+async function fetchFromSource<T>(
+  sb: ReturnType<typeof getSupabase> | null,
   options: {
+    // prioritized list of sources; alias will be applied
     sourceCandidates: string[];
+    // default table/view name if everything else fails
+    defaultSource: string;
+    // default select clause
     defaultSelect: string;
     defaultOrderCandidates?: string[];
     limit?: number;
@@ -106,141 +91,180 @@ async function trySelectTopics(
 ) {
   const {
     sourceCandidates,
+    defaultSource,
     defaultSelect,
     defaultOrderCandidates = [],
     limit = 12,
     search,
   } = options;
 
-  for (const sourceLabel of sourceCandidates) {
-    const table = resolveSource(sourceLabel);
-    const select =
-      SELECT_BY_SOURCE[sourceLabel] ??
-      SELECT_BY_SOURCE[table] ??
-      defaultSelect;
-    const orderCandidates =
-      ORDER_BY_SOURCE[sourceLabel] ??
-      ORDER_BY_SOURCE[table] ??
-      defaultOrderCandidates;
+  const orderCandidates = defaultOrderCandidates;
 
-    try {
-      let q = sb.from(table).select(select).limit(limit);
+  // local helper: try a particular source
+  async function trySource(sourceLabel: string) {
+    const source = SOURCE_ALIAS[sourceLabel] ?? sourceLabel;
+    const table = sb?.from(source);
+    if (!table) return null;
 
-      // If ilike exists on this query builder, use it; otherwise we’ll filter client-side
-      if (search && search.trim()) {
-        q = (q as any).ilike?.("title", `%${search.trim()}%`) ?? q;
-      }
+    // Start a query
+    let q = table.select(defaultSelect).limit(limit);
 
-      // Attempt orders in sequence
-      let ok: Topic[] | null = null;
-      for (let i = 0; i <= orderCandidates.length; i++) {
-        const orderBy = orderCandidates[i];
-        const run = orderBy
-          ? (q as any).order(orderBy as any, { ascending: false })
-          : q;
-        const { data, error } = await run;
-        if (!error) {
-          let rows = (data ?? []) as Topic[];
-          if (search && search.trim() && !(q as any).ilike) {
-            const needle = search.trim().toLowerCase();
-            rows = rows.filter((r) =>
-              (r.title ?? "").toLowerCase().includes(needle)
-            );
-          }
-          if (rows.length > 0) return rows.slice(0, limit);
-          ok = rows;
-          break;
+    // If ilike exists on this query builder, use it; otherwise we’ll filter client-side
+    if (search && search.trim()) {
+      q = (q as any).ilike?.("title", `%${search.trim()}%`) ?? q;
+    }
+
+    // Attempt orders in sequence
+    let ok: T[] | null = null;
+    for (let i = 0; i <= orderCandidates.length; i++) {
+      const orderBy = orderCandidates[i];
+      const run = orderBy
+        ? (q as any).order(orderBy as any, { ascending: false })
+        : q;
+      const { data, error } = await run;
+      if (!error) {
+        let rows = (data ?? []) as T[];
+        if (search && search.trim() && !(q as any).ilike) {
+          const needle = search.trim().toLowerCase();
+          rows = rows.filter((r: any) =>
+            (r.title ?? "").toLowerCase().includes(needle)
+          );
         }
+        if (rows.length > 0) return rows.slice(0, limit);
+        ok = rows;
+        break;
       }
-      if (Array.isArray(ok) && ok.length > 0) return ok.slice(0, limit);
-    } catch {
-      // try next source candidate
+    }
+
+    return ok;
+  }
+
+  // Try candidates first
+  for (const src of sourceCandidates) {
+    const rows = await trySource(src);
+    if (rows) return rows;
+  }
+
+  // Fallback: try defaultSource without alias
+  if (sb) {
+    const table = sb.from(defaultSource);
+    let q = table.select(defaultSelect).limit(limit);
+    if (search && search.trim()) {
+      q = (q as any).ilike?.("title", `%${search.trim()}%`) ?? q;
+    }
+
+    for (let i = 0; i <= orderCandidates.length; i++) {
+      const orderBy = orderCandidates[i];
+      const run = orderBy
+        ? (q as any).order(orderBy as any, { ascending: false })
+        : q;
+      const { data, error } = await run;
+      if (!error) {
+        let rows = (data ?? []) as T[];
+        if (search && search.trim() && !(q as any).ilike) {
+          const needle = search.trim().toLowerCase();
+          rows = rows.filter((r: any) =>
+            (r.title ?? "").toLowerCase().includes(needle)
+          );
+        }
+        return rows.slice(0, limit);
+      }
     }
   }
 
-  return [] as Topic[];
+  return [];
 }
 
-const TRENDING_SOURCES = [
-  "topics_trending",
-  "vw_topics_trending",
-  "topic_region_trends", // alias → topic_region_trends_v
-  "topics_with_counts",
-  "topics",
-];
-
+// ---------- Trending topics ----------
 async function fetchTrendingTopics(
-  sb: any,
-  _opts: { personalized: boolean; userId?: string | null }
-) {
-  const rows = await trySelectTopics(sb, {
-    sourceCandidates: TRENDING_SOURCES,
-    defaultSelect:
-      "id,title,summary,tags,updated_at,tier,location_label,trending_score,activity_7d",
-    defaultOrderCandidates: ["trending_score", "activity_7d", "updated_at"],
-    limit: 12,
-  });
-  if (rows.length > 0) return rows;
+  sb: ReturnType<typeof getSupabase> | null,
+  options: { personalized: boolean; userId?: string | null }
+): Promise<Topic[]> {
+  const { personalized, userId } = options;
 
-  // Mock fallback (small, lightweight)
-  return [
-    { id: "t1", title: "Elections", summary: "Key races and policy stances." },
-    { id: "t2", title: "EVs", summary: "Charging rollout and incentives." },
-    { id: "t3", title: "Housing", summary: "Supply, zoning, and prices." },
-    { id: "t4", title: "AI Safety", summary: "Guardrails and governance." },
-    { id: "t5", title: "Taxes", summary: "Reforms and fiscal impact." },
-  ] as Topic[];
-}
-
-async function fetchTopicsGrid(
-  sb: any,
-  opts: { search: string; page: number; pageSize: number }
-) {
-  const { search, page, pageSize } = opts;
-  const from = page * pageSize;
-
-  const rows = await trySelectTopics(sb, {
-    sourceCandidates: ["topics_with_counts", "vw_topics", "topics"],
-    defaultSelect:
-      "id,title,summary,tags,updated_at,tier,location_label,activity_7d",
-    defaultOrderCandidates: ["activity_7d", "updated_at"],
-    limit: pageSize,
-    search,
-  });
-
-  if (rows.length > 0) {
-    return {
-      items: rows.slice(0, pageSize),
-      total:
-        rows.length >= pageSize ? from + rows.length + 1 : from + rows.length,
-      hasMore: rows.length === pageSize,
-    };
+  if (!sb) {
+    // Fallback: anonymized trending
+    return fetchFromSource<Topic>(null, {
+      sourceCandidates: [],
+      defaultSource: "topic_region_trends_v",
+      defaultSelect:
+        "id, title, summary, tags, location_label, tier, updated_at, trending_score, activity_7d",
+      defaultOrderCandidates: ["trending_score", "activity_7d", "updated_at"],
+      limit: 8,
+    });
   }
 
-  // Mock fallback
-  const mocks: Topic[] = [
-    {
-      id: "m1",
-      title: "Carbon Tax",
-      summary: "Pricing emissions to reduce CO₂.",
-    },
-    {
-      id: "m2",
-      title: "Rent Control",
-      summary: "Capping rents to protect tenants.",
-    },
-    {
-      id: "m3",
-      title: "Crypto Regulation",
-      summary: "Rules for digital assets.",
-    },
-    {
-      id: "m4",
-      title: "School Vouchers",
-      summary: "Funding portability for families.",
-    },
-  ];
-  return { items: mocks, total: mocks.length, hasMore: false };
+  if (personalized && userId) {
+    try {
+      const { data, error } = await sb.rpc("get_personal_trending_topics", {
+        p_user_id: userId,
+        p_limit: 8,
+      });
+      if (error) throw error;
+      return (data ?? []) as Topic[];
+    } catch (err) {
+      console.error("personalized trending error", err);
+      // Fallback to default flow
+    }
+  }
+
+  // Default non-personalized trending
+  return fetchFromSource<Topic>(sb, {
+    sourceCandidates: ["topic_region_trends", "topic_region_trends_v"],
+    defaultSource: "topic_region_trends_v",
+    defaultSelect:
+      "id, title, summary, tags, location_label, tier, updated_at, trending_score, activity_7d",
+    defaultOrderCandidates: ["trending_score", "activity_7d", "updated_at"],
+    limit: 8,
+  });
+}
+
+// ---------- Topics grid ----------
+async function fetchTopicsGrid(
+  sb: ReturnType<typeof getSupabase> | null,
+  options: { search: string; page: number; pageSize: number }
+) {
+  const { search, page, pageSize } = options;
+  const baseLimit = pageSize;
+  const offset = page * pageSize;
+
+  if (!sb) {
+    // Fallback to view
+    return fetchFromSource<Topic>(null, {
+      sourceCandidates: [],
+      defaultSource: "topic_region_trends_v",
+      defaultSelect:
+        "id, title, summary, tags, location_label, tier, updated_at, trending_score, activity_7d",
+      defaultOrderCandidates: ["trending_score", "activity_7d", "updated_at"],
+      limit: baseLimit,
+      search,
+    });
+  }
+
+  // Real query with pagination
+  const table = sb.from("topic_region_trends_v");
+  let q = table
+    .select(
+      "id, title, summary, tags, location_label, tier, updated_at, trending_score, activity_7d",
+      { count: "exact" }
+    )
+    .order("trending_score", { ascending: false })
+    .range(offset, offset + baseLimit - 1);
+
+  if (search && search.trim()) {
+    q = q.ilike("title", `%${search.trim()}%`);
+  }
+
+  const { data, error, count } = await q;
+  if (error) {
+    console.error("topics grid error", error);
+    throw error;
+  }
+
+  return {
+    items: (data ?? []) as Topic[],
+    total: count ?? 0,
+  };
 }
 
 // ---------- Page ----------
@@ -302,16 +326,13 @@ export default function Index() {
     queryFn: async () => {
       if (!sb) return [];
       try {
-        let base: LiveQuestion[] = [];
-
-        // 1. Base questions list (same as before)
         if (isAuthed && session?.user?.id) {
           const { data, error } = await sb.rpc("get_tailored_feed", {
             p_user_id: session.user.id,
             p_limit: latestLimit,
           });
           if (error) throw error;
-          base = (data ?? []) as LiveQuestion[];
+          return (data ?? []) as LiveQuestion[];
         } else {
           const { data, error } = await sb
             .from("v_live_questions")
@@ -321,66 +342,128 @@ export default function Index() {
             .order("published_at", { ascending: false })
             .limit(latestLimit);
           if (error) throw error;
-          base = (data ?? []) as LiveQuestion[];
+          return (data ?? []) as LiveQuestion[];
         }
-
-        if (!base.length) return [];
-
-        const questionIds = base.map((q) => q.id);
-        const byId = new Map<string, LiveQuestion>();
-        base.forEach((q) => byId.set(q.id, { ...q }));
-
-        // 2. Your stance per question (only when logged in)
-        if (isAuthed && session?.user?.id) {
-          const { data: stanceRows, error: stanceError } = await sb
-            .from("question_stances")
-            .select("question_id, score")
-            .in("question_id", questionIds);
-
-          if (!stanceError && stanceRows) {
-            for (const row of stanceRows as {
-              question_id: string;
-              score: number;
-            }[]) {
-              const existing = byId.get(row.question_id);
-              if (existing) {
-                existing.my_stance = row.score;
-              }
-            }
-          }
-        }
-
-        // 3. Aggregate stats (if question_stance_stats is populated)
-        const { data: statsRows, error: statsError } = await sb
-          .from("question_stance_stats")
-          .select(
-            "question_id, total_responses, pct_agree, pct_disagree, pct_neutral"
-          )
-          .in("question_id", questionIds);
-
-        if (!statsError && statsRows) {
-          for (const row of statsRows as {
-            question_id: string;
-            total_responses: number | null;
-            pct_agree: number | null;
-            pct_disagree: number | null;
-            pct_neutral: number | null;
-          }[]) {
-            const existing = byId.get(row.question_id);
-            if (existing) {
-              existing.stats_total_responses = row.total_responses ?? 0;
-              existing.stats_pct_agree = row.pct_agree ?? null;
-              existing.stats_pct_disagree = row.pct_disagree ?? null;
-              existing.stats_pct_neutral = row.pct_neutral ?? null;
-            }
-          }
-        }
-
-        return Array.from(byId.values());
       } catch (err) {
         console.error("live questions feed error", err);
         throw err instanceof Error ? err : new Error("Failed to load feed");
       }
+    },
+    staleTime: 60_000,
+  });
+
+  const liveQuestionIds = React.useMemo(
+    () => (liveQuestionsQuery.data ?? []).map((q) => q.id),
+    [liveQuestionsQuery.data]
+  );
+
+  const userId = session?.user?.id ?? null;
+
+  const {
+    data: myRegion,
+    isLoading: myRegionLoading,
+  } = useQuery({
+    enabled: !!userId,
+    queryKey: ["my-region", userId],
+    queryFn: async () => {
+      if (!sb || !userId) return null;
+      const { data, error } = await sb
+        .from("user_region_dimensions")
+        .select(
+          "user_id, city_label, county_label, state_label, country_label"
+        )
+        .eq("user_id", userId)
+        .maybeSingle<RegionRow>();
+      if (error) {
+        console.error("Failed to load user region dimensions", error);
+        return null;
+      }
+      return data ?? null;
+    },
+    staleTime: 60_000,
+  });
+
+  const showLocationNudge =
+    isAuthed &&
+    !myRegionLoading &&
+    myRegion &&
+    !myRegion.city_label &&
+    !myRegion.state_label &&
+    !myRegion.country_label &&
+    !myRegion.county_label;
+
+  const { data: myStancesMap } = useQuery({
+    enabled: isAuthed && !!sb && liveQuestionIds.length > 0,
+    queryKey: ["home-my-stances", liveQuestionIds],
+    queryFn: async () => {
+      if (!sb || !userId) return {};
+      const { data, error } = await sb
+        .from("question_stances")
+        .select("question_id, score")
+        .eq("user_id", userId)
+        .in("question_id", liveQuestionIds);
+      if (error) {
+        console.error("Failed to load user stances for homepage", error);
+        return {};
+      }
+      const map: Record<string, number | null> = {};
+      for (const row of data ?? []) {
+        map[(row as any).question_id as string] = (row as any).score ?? null;
+      }
+      return map;
+    },
+    staleTime: 60_000,
+  });
+
+  const { data: regionStatsMap } = useQuery({
+    enabled: isAuthed && !!sb && liveQuestionIds.length > 0,
+    queryKey: ["home-region-stats", liveQuestionIds],
+    queryFn: async () => {
+      if (!sb) return {};
+      const result: Record<string, RegionalStat | null> = {};
+      for (const qid of liveQuestionIds) {
+        try {
+          const { data, error } = await sb.rpc(
+            "get_question_stats_for_user",
+            { p_question_id: qid }
+          );
+          if (error) {
+            console.error(
+              "Failed to load regional stats for question",
+              qid,
+              error
+            );
+            result[qid] = null;
+            continue;
+          }
+          const rows = (data ?? []) as RegionalStat[];
+          if (!rows.length) {
+            result[qid] = null;
+            continue;
+          }
+          const priority: Record<string, number> = {
+            city: 0,
+            county: 1,
+            state: 2,
+            country: 3,
+            global: 4,
+          };
+          rows.sort(
+            (a, b) =>
+              (priority[a.region_scope] ?? 99) -
+              (priority[b.region_scope] ?? 99)
+          );
+          result[qid] = rows[0];
+        } catch (err) {
+          console.error(
+            "Error loading regional stats for question",
+            qid,
+            err
+          );
+          result[qid] = null;
+        }
+      }
+      return result;
     },
     staleTime: 60_000,
   });
@@ -409,11 +492,27 @@ export default function Index() {
 
       {/* Latest Questions (from questions table via Epic B pipeline) */}
       <section className="py-4">
+        {showLocationNudge && (
+          <div className="mb-3 rounded-md border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-xs flex flex-wrap items-center justify-between gap-2">
+            <span className="text-slate-700">
+              Set your location to compare your stance with people in your
+              region.
+            </span>
+            <Link
+              to="/settings/location"
+              className="inline-flex items-center rounded bg-slate-900 text-white px-2 py-1 text-[11px]"
+            >
+              Set location
+            </Link>
+          </div>
+        )}
         <LatestQuestions
           loading={liveQuestionsQuery.isLoading}
           error={liveQuestionsQuery.error}
           items={liveQuestionsQuery.data ?? []}
           isAuthed={isAuthed}
+          myStances={myStancesMap ?? {}}
+          regionStats={regionStatsMap ?? {}}
         />
       </section>
 
@@ -426,58 +525,39 @@ export default function Index() {
         />
       </section>
 
-      {/* Topics grid */}
-      <section className="py-6">
-        <TopicGrid
-          interactive={isAuthed}
-          onRequireLogin={requireLogin}
+      {/* Explore topics grid */}
+      <section className="py-4">
+        <ExploreTopicsGrid
           search={search}
-          setSearch={(v) => {
-            setPage(0);
-            setSearch(v);
-          }}
+          setSearch={setSearch}
           page={page}
           setPage={setPage}
           pageSize={pageSize}
           loading={topicsQuery.isLoading}
-          result={topicsQuery.data}
+          items={topicsQuery.data?.items ?? []}
+          total={topicsQuery.data?.total ?? 0}
+          requireLogin={requireLogin}
+          isAuthed={isAuthed}
         />
       </section>
-
-      {/* Region thinks */}
-      <section className="py-6">
-        <RegionThinks showUserBadge={isAuthed} />
-      </section>
-
-      {/* Logged-out extras */}
-      {!isAuthed && (
-        <>
-          <section className="border-t">
-            <HowItWorks />
-          </section>
-          <section className="border-t bg-slate-50/60">
-            <WhyDifferent />
-          </section>
-          <section className="border-t">
-            <FooterCta onSignup={() => navigate("/signup")} />
-          </section>
-        </>
-      )}
     </PageLayout>
   );
 }
 
-// ---------- Small UI blocks ----------
-function displayName(session: Session | null) {
-  if (!session) return "";
-  const name =
-    (session.user.user_metadata?.full_name as string | undefined) ||
-    (session.user.user_metadata?.name as string | undefined) ||
-    session.user.email ||
-    "there";
-  return name;
+// Utility to pick a display name
+function displayName(session: Session | null): string {
+  if (!session) return "there";
+  const user = session.user;
+  const fullName =
+    (user.user_metadata?.full_name as string | undefined) ??
+    (user.user_metadata?.name as string | undefined);
+  if (fullName) return fullName.split(" ")[0];
+  const email = user.email ?? "";
+  if (!email) return "there";
+  return email.split("@")[0];
 }
 
+// ---------- Hero components ----------
 function HeroCta({
   onLogin,
   onSignup,
@@ -486,30 +566,56 @@ function HeroCta({
   onSignup: () => void;
 }) {
   return (
-    <section className="bg-slate-50 rounded-lg border">
-      <div className="px-4 py-10 grid md:grid-cols-2 gap-8">
-        <div>
-          <h1 className="text-3xl font-bold">See how your region thinks</h1>
-          <p className="mt-2 text-slate-600">
-            Take a stance, compare with your city, county, state, country, and
-            globally.
+    <section className="bg-white rounded-lg border">
+      <div className="px-4 py-4 sm:px-6 sm:py-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-2 max-w-xl">
+          <h1 className="text-lg sm:text-xl font-semibold text-slate-900">
+            Capture your stance on the issues that matter.
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-700">
+            See what&apos;s trending in your city, state, country, and around
+            the world. Share where you stand, and track how opinions shift over
+            time.
           </p>
-          <div className="mt-6 flex gap-3">
+        </div>
+        <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+          <button
+            type="button"
+            className="inline-flex items-center justify-center rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-900"
+            onClick={onSignup}
+          >
+            Get started
+          </button>
+          <div className="text-[11px] text-slate-600 text-center sm:text-left">
+            Already have an account?{" "}
             <button
-              className="rounded bg-slate-900 text-white px-4 py-2"
-              onClick={onSignup}
-            >
-              Sign up
-            </button>
-            <button
-              className="rounded border px-4 py-2"
+              type="button"
+              className="underline"
               onClick={onLogin}
             >
               Log in
             </button>
           </div>
         </div>
-        <div className="rounded-lg border bg-white p-6">[hero card]</div>
+      </div>
+      <div className="border-t px-4 py-3 sm:px-6 bg-slate-50/80">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-[11px] text-slate-600">
+          <div>
+            <span className="font-medium text-slate-800">
+              Built for nuance.
+            </span>{" "}
+            Not just &quot;yes/no&quot; — capture how strongly you agree or
+            disagree.
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <span className="inline-flex items-center rounded-full border px-2 py-0.5">
+              City · State · Country · Global
+            </span>
+            <span className="inline-flex items-center rounded-full border px-2 py-0.5">
+              Track your stance over time
+            </span>
+          </div>
+        </div>
       </div>
     </section>
   );
@@ -518,28 +624,92 @@ function HeroCta({
 function HeroWelcome({ name }: { name: string }) {
   return (
     <section className="bg-white rounded-lg border">
-      <div className="px-4 py-8">
-        <h2 className="text-2xl font-semibold">Welcome back, {name} 👋</h2>
-        <p className="text-slate-600 mt-1">
-          Pick up where you left off or explore new topics below.
-        </p>
+      <div className="px-4 py-4 sm:px-6 sm:py-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-2 max-w-xl">
+          <h1 className="text-lg sm:text-xl font-semibold text-slate-900">
+            Welcome back, {name}.
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-700">
+            New questions are live. Capture your stance and see how it compares
+            with your city, state, country, and the world.
+          </p>
+        </div>
+        <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+          <button
+            type="button"
+            className="inline-flex items-center justify-center rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-900 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-900"
+            onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+          >
+            View latest questions
+          </button>
+          <Link
+            to="/me/stances"
+            className="inline-flex items-center justify-center rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-900"
+          >
+            View my stances
+          </Link>
+        </div>
+      </div>
+      <div className="border-t px-4 py-3 sm:px-6 bg-slate-50/80">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-[11px] text-slate-600">
+          <div>
+            Continue where you left off, or explore what&apos;s trending in
+            your region.
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <span className="inline-flex items-center rounded-full border px-2 py-0.5">
+              Track how your stance evolves
+            </span>
+            <span className="inline-flex items-center rounded-full border px-2 py-0.5">
+              Compare with your community
+            </span>
+          </div>
+        </div>
+        <div className="mt-2 text-[11px] text-slate-500">
+          Tip: You can update your location and profile in Settings.
+        </div>
       </div>
     </section>
   );
 }
 
 // ---------- Latest Questions section ----------
+
+function stanceShortLabel(score: number | null | undefined): string {
+  switch (score) {
+    case -2:
+      return "Strongly disagree";
+    case -1:
+      return "Disagree";
+    case 0:
+      return "Neutral";
+    case 1:
+      return "Agree";
+    case 2:
+      return "Strongly agree";
+    default:
+      return "";
+  }
+}
+
 function LatestQuestions({
   loading,
   error,
   items,
   isAuthed,
+  myStances,
+  regionStats,
 }: {
   loading: boolean;
   error: Error | null;
   items: LiveQuestion[];
   isAuthed: boolean;
+  myStances?: Record<string, number | null>;
+  regionStats?: Record<string, RegionalStat | null>;
 }) {
+  const stancesMap = myStances ?? {};
+  const regionMap = regionStats ?? {};
+
   return (
     <div className="rounded-lg border p-3">
       <div className="flex items-center justify-between mb-2">
@@ -559,17 +729,37 @@ function LatestQuestions({
 
       {!loading && !error && items.length === 0 && (
         <div className="text-xs text-slate-500">
-          No questions are live yet. Once questions are published from the admin
-          area, they will appear here.
+          No questions are live yet. Once questions are published from the
+          admin area, they will appear here.
         </div>
       )}
 
       {items.length > 0 && (
         <div className="space-y-3">
           {items.map((q) => {
-            const hasStats =
-              (q.stats_total_responses ?? 0) > 0 &&
-              (q.stats_pct_agree != null || q.stats_pct_disagree != null);
+            const myScore = stancesMap[q.id] ?? null;
+            const myLabel = stanceShortLabel(myScore);
+            const region = regionMap[q.id] ?? null;
+
+            const mePart =
+              myScore !== null && myScore !== undefined && myLabel
+                ? `You: ${myLabel}`
+                : "";
+
+            let regionPart = "";
+            if (region && region.pct_agree != null) {
+              const scopeLabel =
+                region.region_scope === "global"
+                  ? "Global"
+                  : region.region_label;
+              regionPart = `${scopeLabel}: ${Math.round(
+                region.pct_agree
+              )}% agree`;
+            }
+
+            const pillText = [mePart, regionPart]
+              .filter(Boolean)
+              .join(" · ");
 
             return (
               <div
@@ -588,22 +778,13 @@ function LatestQuestions({
                         {q.summary}
                       </p>
                     )}
-
-                    {/* tiny stats line */}
-                    {hasStats && (
-                      <div className="mt-1 text-[11px] text-slate-500">
-                        {q.stats_total_responses} responses
-                        {q.stats_pct_agree != null && (
-                          <> · {Math.round(q.stats_pct_agree)}% agree</>
-                        )}
-                        {q.stats_pct_disagree != null && (
-                          <> · {Math.round(q.stats_pct_disagree)}% disagree</>
-                        )}
-                      </div>
-                    )}
                   </div>
-
                   <div className="flex flex-col items-end gap-1">
+                    {pillText && (
+                      <span className="inline-flex items-center rounded-full bg-slate-900 text-white px-2 py-0.5 text-[10px]">
+                        {pillText}
+                      </span>
+                    )}
                     {q.location_label && (
                       <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-600">
                         {q.location_label}
@@ -617,25 +798,14 @@ function LatestQuestions({
                         })}
                       </span>
                     )}
-
-                    {/* "Your stance" badge */}
-                    {isAuthed &&
-                      q.my_stance != null &&
-                      q.my_stance !== undefined && (
-                        <span className="mt-1 inline-flex items-center rounded-full bg-slate-900 text-white px-2 py-0.5 text-[10px]">
-                          Your stance:&nbsp;
-                          {STANCE_LABEL[q.my_stance] ?? q.my_stance}
-                        </span>
-                      )}
                   </div>
                 </div>
-
                 {q.tags && q.tags.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-1">
+                  <div className="mt-2 flex flex-wrap gap-1.5">
                     {q.tags.map((tag) => (
                       <span
                         key={tag}
-                        className="inline-flex items-center rounded-full bg-slate-50 border px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-700"
+                        className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-600"
                       >
                         {tag}
                       </span>
@@ -664,214 +834,237 @@ function Trending({
     <div className="rounded-lg border p-3">
       <div className="flex items-center justify-between mb-2">
         <div className="text-sm font-medium">
-          {personalized ? "Trending for you" : "Trending topics"}
+          {personalized ? "Trending for you" : "Trending now"}
         </div>
         {loading && (
           <div className="text-xs text-slate-500">Loading…</div>
         )}
       </div>
-      <div className="flex flex-wrap gap-2">
-        {items.map((t) => (
-          <span
-            key={t.id}
-            className="text-xs rounded-full border px-2 py-1"
-            title={t.summary ?? ""}
-          >
-            {t.title}
-          </span>
-        ))}
-        {!loading && items.length === 0 && (
-          <span className="text-xs text-slate-500">No topics yet.</span>
-        )}
-      </div>
-    </div>
-  );
-}
 
-function TopicGrid(props: {
-  interactive: boolean;
-  onRequireLogin: () => void;
-  search: string;
-  setSearch: (v: string) => void;
-  page: number;
-  setPage: (p: number) => void;
-  pageSize: number;
-  loading: boolean;
-  result?: { items: Topic[]; total: number; hasMore: boolean };
-}) {
-  const {
-    interactive,
-    onRequireLogin,
-    search,
-    setSearch,
-    page,
-    setPage,
-    pageSize,
-    loading,
-    result,
-  } = props;
-  const items = result?.items ?? [];
+      {!loading && items.length === 0 && (
+        <div className="text-xs text-slate-500">
+          No trending topics yet. As news comes in, we&apos;ll surface what&apos;s
+          most active.
+        </div>
+      )}
 
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="font-semibold">Topics</h3>
-        <input
-          placeholder="Search topics…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="border rounded px-3 py-1.5 text-sm"
-        />
-      </div>
-
-      {loading && items.length === 0 ? (
-        <div className="text-sm text-slate-500">Loading…</div>
-      ) : (
-        <>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {items.map((t) => (
-              <div key={t.id} className="rounded-lg border p-4">
-                <div className="font-medium">{t.title}</div>
-                {t.location_label && (
-                  <div className="text-[11px] text-slate-500 mt-0.5">
-                    {t.location_label}
-                  </div>
-                )}
-                <p className="text-sm text-slate-600 mt-1 line-clamp-3">
-                  {t.summary ?? ""}
-                </p>
-                <div className="mt-3">
-                  {interactive ? (
-                    <button className="rounded bg-slate-900 text-white px-3 py-1.5 text-sm">
-                      Take stance
-                    </button>
-                  ) : (
-                    <button
-                      className="rounded border px-3 py-1.5 text-sm"
-                      onClick={onRequireLogin}
-                      title="Log in to take your stance"
+      {items.length > 0 && (
+        <div className="space-y-3">
+          {items.map((topic) => (
+            <div
+              key={topic.id}
+              className="rounded-lg border px-3 py-2 hover:border-slate-900/70 transition"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold">
+                    <Link
+                      to={`/topics?topic=${encodeURIComponent(topic.id)}`}
+                      className="hover:underline"
                     >
-                      Take stance (log in)
-                    </button>
+                      {topic.title}
+                    </Link>
+                  </div>
+                  {topic.summary && (
+                    <p className="text-xs text-slate-600 mt-1 line-clamp-2">
+                      {topic.summary}
+                    </p>
+                  )}
+                </div>
+                <div className="flex flex-col items-end gap-1">
+                  {topic.location_label && (
+                    <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-600">
+                      {topic.location_label}
+                    </span>
+                  )}
+                  {topic.tier && (
+                    <span className="text-[10px] text-slate-500">
+                      {topic.tier === "city"
+                        ? "City"
+                        : topic.tier === "county"
+                        ? "County"
+                        : topic.tier === "state"
+                        ? "State"
+                        : topic.tier === "country"
+                        ? "Country"
+                        : topic.tier === "global"
+                        ? "Global"
+                        : topic.tier}
+                    </span>
                   )}
                 </div>
               </div>
-            ))}
-          </div>
-
-          <div className="flex items-center justify-between mt-4">
-            <div className="text-xs text-slate-500">
-              Page {page + 1} · {items.length} /{" "}
-              {result?.total ?? items.length}
+              {topic.tags && topic.tags.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {topic.tags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-600"
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
-            <div className="flex gap-2">
-              <button
-                className="rounded border px-3 py-1.5 text-sm"
-                onClick={() => setPage(Math.max(0, page - 1))}
-                disabled={page === 0}
-              >
-                Prev
-              </button>
-              <button
-                className="rounded border px-3 py-1.5 text-sm"
-                onClick={() => setPage(page + 1)}
-                disabled={!result?.hasMore}
-              >
-                Next
-              </button>
-            </div>
-          </div>
-        </>
+          ))}
+        </div>
       )}
     </div>
   );
 }
 
-function RegionThinks({ showUserBadge }: { showUserBadge: boolean }) {
-  return (
-    <div className="rounded-lg border p-4">
-      <div className="font-medium mb-2">See how your region thinks</div>
-      {["City", "County", "State", "Country", "Global"].map((lvl) => (
-        <div key={lvl} className="flex items-center gap-2 mb-2">
-          <span className="w-24 text-sm text-slate-600">{lvl}</span>
-          <div className="flex-1 h-2 bg-slate-200 rounded">
-            <div
-              className="h-2 rounded"
-              style={{
-                width: `${50 + (Math.random() * 40 - 20)}%`,
-              }}
-            />
-          </div>
-          {showUserBadge && (
-            <span className="text-xs rounded-full border px-2 py-0.5 ml-2">
-              Your stance: +1
-            </span>
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}
+// ---------- Explore topics grid ----------
+function ExploreTopicsGrid({
+  search,
+  setSearch,
+  page,
+  setPage,
+  pageSize,
+  loading,
+  items,
+  total,
+  requireLogin,
+  isAuthed,
+}: {
+  search: string;
+  setSearch: (value: string) => void;
+  page: number;
+  setPage: (value: number) => void;
+  pageSize: number;
+  loading: boolean;
+  items: Topic[];
+  total: number;
+  requireLogin: () => void;
+  isAuthed: boolean;
+}) {
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
 
-function HowItWorks() {
   return (
-    <div className="py-6">
-      <h3 className="text-lg font-semibold mb-4">How it works</h3>
-      <div className="grid sm:grid-cols-3 gap-4">
-        {["Pick topics", "Take stance", "Compare & discuss"].map((s, i) => (
-          <div key={s} className="rounded-lg border p-4">
-            <div className="text-sm font-medium">
-              {i + 1}. {s}
+    <div className="rounded-lg border p-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+        <div className="text-sm font-medium">Explore topics</div>
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(0);
+            }}
+            placeholder="Search topics…"
+            className="w-full sm:w-56 rounded border px-2 py-1.5 text-xs"
+          />
+        </div>
+      </div>
+
+      {!loading && items.length === 0 && (
+        <div className="text-xs text-slate-500">
+          No topics found yet. As questions get published, we&apos;ll surface
+          more ways to explore by topic.
+        </div>
+      )}
+
+      {items.length > 0 && (
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mb-3">
+            {items.map((topic) => (
+              <div
+                key={topic.id}
+                className="rounded-lg border px-3 py-2 hover:border-slate-900/70 transition"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="text-xs font-semibold">
+                      <Link
+                        to={`/topics?topic=${encodeURIComponent(topic.id)}`}
+                        className="hover:underline"
+                      >
+                        {topic.title}
+                      </Link>
+                    </div>
+                    {topic.summary && (
+                      <p className="text-[11px] text-slate-600 mt-1 line-clamp-2">
+                        {topic.summary}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex flex-col items-end gap-1">
+                    {topic.location_label && (
+                      <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-[9px] uppercase tracking-wide text-slate-600">
+                        {topic.location_label}
+                      </span>
+                    )}
+                    {topic.tier && (
+                      <span className="text-[9px] text-slate-500">
+                        {topic.tier === "city"
+                          ? "City"
+                          : topic.tier === "county"
+                          ? "County"
+                          : topic.tier === "state"
+                          ? "State"
+                          : topic.tier === "country"
+                          ? "Country"
+                          : topic.tier === "global"
+                          ? "Global"
+                          : topic.tier}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                {topic.tags && topic.tags.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {topic.tags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="inline-flex items-center rounded-full border px-2 py-0.5 text-[9px] uppercase tracking-wide text-slate-600"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          {pageCount > 1 && (
+            <div className="flex items-center justify-between text-[11px] text-slate-600">
+              <div>
+                Page {page + 1} of {pageCount}
+              </div>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  className="px-2 py-1 rounded border text-[11px] disabled:opacity-50"
+                  disabled={page === 0}
+                  onClick={() => setPage(Math.max(0, page - 1))}
+                >
+                  Prev
+                </button>
+                <button
+                  type="button"
+                  className="px-2 py-1 rounded border text-[11px] disabled:opacity-50"
+                  disabled={page >= pageCount - 1}
+                  onClick={() =>
+                    setPage(Math.min(pageCount - 1, page + 1))
+                  }
+                >
+                  Next
+                </button>
+              </div>
             </div>
-            <p className="text-sm text-slate-600 mt-1">
-              Quick explainer about {s.toLowerCase()}…
-            </p>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
+          )}
+        </>
+      )}
 
-function WhyDifferent() {
-  return (
-    <div className="py-6">
-      <h3 className="text-lg font-semibold mb-4">Why we’re different</h3>
-      <ul className="grid sm:grid-cols-2 gap-4 text-sm text-slate-700">
-        <li className="rounded-lg border p-4">
-          Neutral, region-aware insights
-        </li>
-        <li className="rounded-lg border p-4">
-          Privacy-first, pseudonymous identity
-        </li>
-        <li className="rounded-lg border p-4">
-          Simple stance scale (-2..+2)
-        </li>
-        <li className="rounded-lg border p-4">
-          Admin-reviewed questions & sources
-        </li>
-      </ul>
-    </div>
-  );
-}
-
-function FooterCta({ onSignup }: { onSignup: () => void }) {
-  return (
-    <div className="py-6">
-      <div className="rounded-lg border p-6 flex items-center justify-between">
-        <div>
-          <div className="font-semibold">Ready to add your voice?</div>
-          <div className="text-sm text-slate-600">
-            Create your profile and start taking stances.
-          </div>
+      {!isAuthed && (
+        <div className="mt-3 text-[11px] text-slate-500">
+          Want a personalized feed by your stances and region?{" "}
+          <button className="underline" onClick={requireLogin}>
+            Log in to unlock more.
+          </button>
         </div>
-        <button
-          className="rounded bg-slate-900 text-white px-4 py-2"
-          onClick={onSignup}
-        >
-          Create your profile
-        </button>
-      </div>
+      )}
     </div>
   );
 }
