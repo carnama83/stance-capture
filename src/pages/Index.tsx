@@ -408,6 +408,18 @@ export default function Index() {
 
       {/* Latest Questions (from questions table via Epic B pipeline) */}
       <section className="py-4">
+       
+        
+        const STANCE_LABEL: Record<number, string> = {
+  [-2]: "Strongly disagree",
+  [-1]: "Disagree",
+  [0]: "Neutral",
+  [1]: "Agree",
+  [2]: "Strongly agree",
+};
+
+        
+        
         <LatestQuestions
           loading={liveQuestionsQuery.isLoading}
           error={liveQuestionsQuery.error}
