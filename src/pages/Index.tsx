@@ -577,57 +577,87 @@ function LatestQuestions({
 
       {items.length > 0 && (
         <div className="space-y-3">
-          {items.map((q) => (
-            <div
-              key={q.id}
-              className="rounded-lg border px-3 py-2 hover:border-slate-900/70 transition"
+          {items.map((q) => {
+  const hasStats =
+    (q.stats_total_responses ?? 0) > 0 &&
+    (q.stats_pct_agree != null || q.stats_pct_disagree != null);
+
+  return (
+    <div
+      key={q.id}
+      className="rounded-lg border px-3 py-2 hover:border-slate-900/70 transition"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-sm font-semibold">
+            <Link
+              to={`/q/${q.id}`}
+              className="hover:underline"
             >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="text-sm font-semibold">
-                    <Link
-                      to={`/q/${q.id}`}
-                      className="hover:underline"
-                    >
-                      {q.question}
-                    </Link>
-                  </div>
-                  {q.summary && (
-                    <p className="text-xs text-slate-600 mt-1 line-clamp-2">
-                      {q.summary}
-                    </p>
-                  )}
-                </div>
-                <div className="flex flex-col items-end gap-1">
-                  {q.location_label && (
-                    <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-600">
-                      {q.location_label}
-                    </span>
-                  )}
-                  {q.published_at && (
-                    <span className="text-[10px] text-slate-500">
-                      {new Date(q.published_at).toLocaleString(undefined, {
-                        dateStyle: "medium",
-                        timeStyle: "short",
-                      })}
-                    </span>
-                  )}
-                </div>
-              </div>
-              {q.tags && q.tags.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-1">
-                  {q.tags.map((tag) => (
-                    <span
-                      key={tag}
-                      className="inline-flex items-center rounded-full bg-slate-50 border px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-700"
-                    >
-                      {tag}
-                    </span>
-                  ))}
-                </div>
+              {q.question}
+            </Link>
+          </div>
+          {q.summary && (
+            <p className="text-xs text-slate-600 mt-1 line-clamp-2">
+              {q.summary}
+            </p>
+          )}
+
+          {/* NEW: tiny stats line */}
+          {hasStats && (
+            <div className="mt-1 text-[11px] text-slate-500">
+              {q.stats_total_responses} responses
+              {q.stats_pct_agree != null && (
+                <> · {Math.round(q.stats_pct_agree)}% agree</>
+              )}
+              {q.stats_pct_disagree != null && (
+                <> · {Math.round(q.stats_pct_disagree)}% disagree</>
               )}
             </div>
+          )}
+        </div>
+
+        <div className="flex flex-col items-end gap-1">
+          {q.location_label && (
+            <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-600">
+              {q.location_label}
+            </span>
+          )}
+          {q.published_at && (
+            <span className="text-[10px] text-slate-500">
+              {new Date(q.published_at).toLocaleString(undefined, {
+                dateStyle: "medium",
+                timeStyle: "short",
+              })}
+            </span>
+          )}
+
+          {/* NEW: "Your stance" badge */}
+          {isAuthed && q.my_stance != null && q.my_stance !== undefined && (
+            <span className="mt-1 inline-flex items-center rounded-full bg-slate-900 text-white px-2 py-0.5 text-[10px]">
+              Your stance:&nbsp;
+              {STANCE_LABEL[q.my_stance] ?? q.my_stance}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {q.tags && q.tags.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1">
+          {q.tags.map((tag) => (
+            <span
+              key={tag}
+              className="inline-flex items-center rounded-full bg-slate-50 border px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-700"
+            >
+              {tag}
+            </span>
           ))}
+        </div>
+      )}
+    </div>
+  );
+})}
+
         </div>
       )}
     </div>
