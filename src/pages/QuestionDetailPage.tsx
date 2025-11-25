@@ -1,4 +1,4 @@
-// src/pages/QuestionDetailPage.tsx — Question detail with stance capture + stats
+// src/pages/QuestionDetailPage.tsx — Question detail with stance capture + stats + related questions
 import * as React from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
@@ -163,6 +163,40 @@ async function fetchQuestionStats(
   };
 }
 
+// NEW: fetch related questions by shared tags
+async function fetchRelatedQuestions(
+  questionId: string,
+  tags: string[],
+  limit = 4
+): Promise<LiveQuestion[]> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("Supabase client not available");
+
+  if (!tags.length) return [];
+
+  // Simple strategy:
+  // - same tags overlap
+  // - active questions only
+  // - different id
+  const { data, error } = await sb
+    .from("v_live_questions")
+    .select(
+      "id, question, summary, tags, location_label, published_at, status"
+    )
+    .neq("id", questionId)
+    .eq("status", "active")
+    .overlaps("tags", tags)
+    .order("published_at", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    console.error("Failed to load related questions", error);
+    return [];
+  }
+
+  return (data ?? []) as LiveQuestion[];
+}
+
 // ---------- Page ----------
 export default function QuestionDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -204,12 +238,27 @@ export default function QuestionDetailPage() {
     staleTime: 60_000,
   });
 
+  // NEW: related questions query (depends on question + tags)
+  const {
+    data: relatedQuestions,
+    isLoading: relatedLoading,
+  } = useQuery({
+    enabled:
+      !!questionId &&
+      !!question &&
+      !!question.tags &&
+      question.tags.length > 0,
+    queryKey: ["related-questions", questionId, question?.tags ?? []],
+    queryFn: () =>
+      fetchRelatedQuestions(questionId, (question?.tags as string[]) ?? []),
+    staleTime: 60_000,
+  });
+
   const stanceMutation = useMutation({
     mutationKey: ["set-stance", questionId],
     mutationFn: (score: number | null) => setMyStance(questionId, score),
     onSuccess: (newScore) => {
       queryClient.setQueryData(["my-stance", questionId], newScore);
-      // stats will auto-refresh on next navigation; you can also refetch here if you want
       queryClient.invalidateQueries({
         queryKey: ["question-stats", questionId],
       });
@@ -282,6 +331,10 @@ export default function QuestionDetailPage() {
       stats &&
       stats.total_responses > 0 &&
       (stats.pct_agree != null || stats.pct_disagree != null);
+
+    const hasRelated =
+      relatedQuestions &&
+      relatedQuestions.length > 0;
 
     content = (
       <article className="rounded-lg border p-4 space-y-4">
@@ -460,6 +513,62 @@ export default function QuestionDetailPage() {
                 )}
               </div>
             </>
+          )}
+        </section>
+
+        {/* Related questions */}
+        <section className="border-t pt-4 mt-2">
+          <h2 className="text-sm font-medium text-slate-900 mb-2">
+            Related questions
+          </h2>
+          {relatedLoading && (
+            <p className="text-xs text-slate-500">
+              Loading related questions…
+            </p>
+          )}
+          {!relatedLoading && !hasRelated && (
+            <p className="text-xs text-slate-500">
+              No related questions yet.
+            </p>
+          )}
+          {hasRelated && relatedQuestions && (
+            <div className="space-y-2">
+              {relatedQuestions.map((rq) => (
+                <div
+                  key={rq.id}
+                  className="flex items-start justify-between gap-3 text-xs"
+                >
+                  <div>
+                    <Link
+                      to={`/q/${rq.id}`}
+                      className="font-medium text-slate-900 hover:underline"
+                    >
+                      {rq.question}
+                    </Link>
+                    {rq.summary && (
+                      <p className="text-slate-600 line-clamp-2">
+                        {rq.summary}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex flex-col items-end gap-1">
+                    {rq.location_label && (
+                      <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-600">
+                        {rq.location_label}
+                      </span>
+                    )}
+                    {rq.published_at && (
+                      <span className="text-[10px] text-slate-500">
+                        {new Date(rq.published_at).toLocaleDateString(
+                          undefined,
+                          { dateStyle: "medium" }
+                        )}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </section>
 
