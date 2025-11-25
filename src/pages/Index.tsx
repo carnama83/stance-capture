@@ -1,4 +1,4 @@
-// src/pages/Index.tsx — with Latest Questions section added (Epic C C1)
+// src/pages/Index.tsx — with Latest Questions section + stance badges
 import * as React from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -13,22 +13,12 @@ type Topic = {
   title: string;
   summary?: string | null;
   tags?: string[] | null;
-  updated_at?: string | null;   // may be alias of published_at
+  updated_at?: string | null; // may be alias of published_at
   tier?: "city" | "county" | "state" | "country" | "global" | null;
   location_label?: string | null;
   trending_score?: number | null;
   activity_7d?: number | null;
 };
-
-// type LiveQuestion = {
-//   id: string;
-//   question: string;
-//   summary?: string | null;
-//   tags?: string[] | null;
-//   location_label?: string | null;
-//   published_at?: string | null;
-//   status?: string | null;
-// };
 
 type LiveQuestion = {
   id: string;
@@ -49,6 +39,14 @@ type LiveQuestion = {
   stats_pct_neutral?: number | null;
 };
 
+// ---------- Stance label map (module-level) ----------
+const STANCE_LABEL: Record<number, string> = {
+  [-2]: "Strongly disagree",
+  [-1]: "Disagree",
+  [0]: "Neutral",
+  [1]: "Agree",
+  [2]: "Strongly agree",
+};
 
 // ---------- Session hook ----------
 function useSupabaseSession() {
@@ -67,14 +65,14 @@ function useSupabaseSession() {
   return session;
 }
 
-// ---------- Source aliasing (Option 2 from earlier) ----------
+// ---------- Source aliasing ----------
 const SOURCE_ALIAS: Record<string, string> = {
   // Keep label "topic_region_trends" in code, but actually query the view
   topic_region_trends: "topic_region_trends_v",
 };
 const resolveSource = (name: string) => SOURCE_ALIAS[name] ?? name;
 
-// ---------- Per-source selects & order-by (use real columns for order) ----------
+// ---------- Per-source selects & order-by ----------
 const SELECT_BY_SOURCE: Record<string, string> = {
   topic_region_trends:
     "id,title,summary,tags,updated_at,tier,location_label,trending_score,activity_7d",
@@ -296,93 +294,96 @@ export default function Index() {
 
   // ---------- Live questions feed (Epic C C1) ----------
   const liveQuestionsQuery = useQuery<LiveQuestion[], Error>({
-  queryKey: [
-    "live-questions",
-    isAuthed ? session?.user?.id : "anon",
-    latestLimit,
-  ],
-  queryFn: async () => {
-    if (!sb) return [];
-    try {
-      let base: LiveQuestion[] = [];
+    queryKey: [
+      "live-questions",
+      isAuthed ? session?.user?.id : "anon",
+      latestLimit,
+    ],
+    queryFn: async () => {
+      if (!sb) return [];
+      try {
+        let base: LiveQuestion[] = [];
 
-      // 1. Base questions list (same as before)
-      if (isAuthed && session?.user?.id) {
-        const { data, error } = await sb.rpc("get_tailored_feed", {
-          p_user_id: session.user.id,
-          p_limit: latestLimit,
-        });
-        if (error) throw error;
-        base = (data ?? []) as LiveQuestion[];
-      } else {
-        const { data, error } = await sb
-          .from("v_live_questions")
-          .select(
-            "id, question, summary, tags, location_label, published_at, status"
-          )
-          .order("published_at", { ascending: false })
-          .limit(latestLimit);
-        if (error) throw error;
-        base = (data ?? []) as LiveQuestion[];
-      }
+        // 1. Base questions list (same as before)
+        if (isAuthed && session?.user?.id) {
+          const { data, error } = await sb.rpc("get_tailored_feed", {
+            p_user_id: session.user.id,
+            p_limit: latestLimit,
+          });
+          if (error) throw error;
+          base = (data ?? []) as LiveQuestion[];
+        } else {
+          const { data, error } = await sb
+            .from("v_live_questions")
+            .select(
+              "id, question, summary, tags, location_label, published_at, status"
+            )
+            .order("published_at", { ascending: false })
+            .limit(latestLimit);
+          if (error) throw error;
+          base = (data ?? []) as LiveQuestion[];
+        }
 
-      if (!base.length) return [];
+        if (!base.length) return [];
 
-      const questionIds = base.map((q) => q.id);
-      const byId = new Map<string, LiveQuestion>();
-      base.forEach((q) => byId.set(q.id, { ...q }));
+        const questionIds = base.map((q) => q.id);
+        const byId = new Map<string, LiveQuestion>();
+        base.forEach((q) => byId.set(q.id, { ...q }));
 
-      // 2. Your stance per question (only when logged in)
-      if (isAuthed && session?.user?.id) {
-        const { data: stanceRows, error: stanceError } = await sb
-          .from("question_stances")
-          .select("question_id, score")
-          .in("question_id", questionIds);
+        // 2. Your stance per question (only when logged in)
+        if (isAuthed && session?.user?.id) {
+          const { data: stanceRows, error: stanceError } = await sb
+            .from("question_stances")
+            .select("question_id, score")
+            .in("question_id", questionIds);
 
-        if (!stanceError && stanceRows) {
-          for (const row of stanceRows as { question_id: string; score: number }[]) {
-            const existing = byId.get(row.question_id);
-            if (existing) {
-              existing.my_stance = row.score;
+          if (!stanceError && stanceRows) {
+            for (const row of stanceRows as {
+              question_id: string;
+              score: number;
+            }[]) {
+              const existing = byId.get(row.question_id);
+              if (existing) {
+                existing.my_stance = row.score;
+              }
             }
           }
         }
-      }
 
-      // 3. Aggregate stats (if question_stance_stats is populated)
-      const { data: statsRows, error: statsError } = await sb
-        .from("question_stance_stats")
-        .select(
-          "question_id, total_responses, pct_agree, pct_disagree, pct_neutral"
-        )
-        .in("question_id", questionIds);
+        // 3. Aggregate stats (if question_stance_stats is populated)
+        const { data: statsRows, error: statsError } = await sb
+          .from("question_stance_stats")
+          .select(
+            "question_id, total_responses, pct_agree, pct_disagree, pct_neutral"
+          )
+          .in("question_id", questionIds);
 
-      if (!statsError && statsRows) {
-        for (const row of statsRows as {
-          question_id: string;
-          total_responses: number | null;
-          pct_agree: number | null;
-          pct_disagree: number | null;
-          pct_neutral: number | null;
-        }[]) {
-          const existing = byId.get(row.question_id);
-          if (existing) {
-            existing.stats_total_responses = row.total_responses ?? 0;
-            existing.stats_pct_agree = row.pct_agree ?? null;
-            existing.stats_pct_disagree = row.pct_disagree ?? null;
-            existing.stats_pct_neutral = row.pct_neutral ?? null;
+        if (!statsError && statsRows) {
+          for (const row of statsRows as {
+            question_id: string;
+            total_responses: number | null;
+            pct_agree: number | null;
+            pct_disagree: number | null;
+            pct_neutral: number | null;
+          }[]) {
+            const existing = byId.get(row.question_id);
+            if (existing) {
+              existing.stats_total_responses = row.total_responses ?? 0;
+              existing.stats_pct_agree = row.pct_agree ?? null;
+              existing.stats_pct_disagree = row.pct_disagree ?? null;
+              existing.stats_pct_neutral = row.pct_neutral ?? null;
+            }
           }
         }
-      }
 
-      return Array.from(byId.values());
-    } catch (err) {
-      console.error("live questions feed error", err);
-      throw err instanceof Error ? err : new Error("Failed to load feed");
-    }
-  },
-  staleTime: 60_000,
-});
+        return Array.from(byId.values());
+      } catch (err) {
+        console.error("live questions feed error", err);
+        throw err instanceof Error ? err : new Error("Failed to load feed");
+      }
+    },
+    staleTime: 60_000,
+  });
 
   const actions = (
     <button
@@ -408,18 +409,6 @@ export default function Index() {
 
       {/* Latest Questions (from questions table via Epic B pipeline) */}
       <section className="py-4">
-       
-        
-        const STANCE_LABEL: Record<number, string> = {
-  [-2]: "Strongly disagree",
-  [-1]: "Disagree",
-  [0]: "Neutral",
-  [1]: "Agree",
-  [2]: "Strongly agree",
-};
-
-        
-        
         <LatestQuestions
           loading={liveQuestionsQuery.isLoading}
           error={liveQuestionsQuery.error}
@@ -570,94 +559,92 @@ function LatestQuestions({
 
       {!loading && !error && items.length === 0 && (
         <div className="text-xs text-slate-500">
-          No questions are live yet. Once questions are published from the
-          admin area, they will appear here.
+          No questions are live yet. Once questions are published from the admin
+          area, they will appear here.
         </div>
       )}
 
       {items.length > 0 && (
         <div className="space-y-3">
           {items.map((q) => {
-  const hasStats =
-    (q.stats_total_responses ?? 0) > 0 &&
-    (q.stats_pct_agree != null || q.stats_pct_disagree != null);
+            const hasStats =
+              (q.stats_total_responses ?? 0) > 0 &&
+              (q.stats_pct_agree != null || q.stats_pct_disagree != null);
 
-  return (
-    <div
-      key={q.id}
-      className="rounded-lg border px-3 py-2 hover:border-slate-900/70 transition"
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="text-sm font-semibold">
-            <Link
-              to={`/q/${q.id}`}
-              className="hover:underline"
-            >
-              {q.question}
-            </Link>
-          </div>
-          {q.summary && (
-            <p className="text-xs text-slate-600 mt-1 line-clamp-2">
-              {q.summary}
-            </p>
-          )}
+            return (
+              <div
+                key={q.id}
+                className="rounded-lg border px-3 py-2 hover:border-slate-900/70 transition"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold">
+                      <Link to={`/q/${q.id}`} className="hover:underline">
+                        {q.question}
+                      </Link>
+                    </div>
+                    {q.summary && (
+                      <p className="text-xs text-slate-600 mt-1 line-clamp-2">
+                        {q.summary}
+                      </p>
+                    )}
 
-          {/* NEW: tiny stats line */}
-          {hasStats && (
-            <div className="mt-1 text-[11px] text-slate-500">
-              {q.stats_total_responses} responses
-              {q.stats_pct_agree != null && (
-                <> · {Math.round(q.stats_pct_agree)}% agree</>
-              )}
-              {q.stats_pct_disagree != null && (
-                <> · {Math.round(q.stats_pct_disagree)}% disagree</>
-              )}
-            </div>
-          )}
-        </div>
+                    {/* tiny stats line */}
+                    {hasStats && (
+                      <div className="mt-1 text-[11px] text-slate-500">
+                        {q.stats_total_responses} responses
+                        {q.stats_pct_agree != null && (
+                          <> · {Math.round(q.stats_pct_agree)}% agree</>
+                        )}
+                        {q.stats_pct_disagree != null && (
+                          <> · {Math.round(q.stats_pct_disagree)}% disagree</>
+                        )}
+                      </div>
+                    )}
+                  </div>
 
-        <div className="flex flex-col items-end gap-1">
-          {q.location_label && (
-            <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-600">
-              {q.location_label}
-            </span>
-          )}
-          {q.published_at && (
-            <span className="text-[10px] text-slate-500">
-              {new Date(q.published_at).toLocaleString(undefined, {
-                dateStyle: "medium",
-                timeStyle: "short",
-              })}
-            </span>
-          )}
+                  <div className="flex flex-col items-end gap-1">
+                    {q.location_label && (
+                      <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-600">
+                        {q.location_label}
+                      </span>
+                    )}
+                    {q.published_at && (
+                      <span className="text-[10px] text-slate-500">
+                        {new Date(q.published_at).toLocaleString(undefined, {
+                          dateStyle: "medium",
+                          timeStyle: "short",
+                        })}
+                      </span>
+                    )}
 
-          {/* NEW: "Your stance" badge */}
-          {isAuthed && q.my_stance != null && q.my_stance !== undefined && (
-            <span className="mt-1 inline-flex items-center rounded-full bg-slate-900 text-white px-2 py-0.5 text-[10px]">
-              Your stance:&nbsp;
-              {STANCE_LABEL[q.my_stance] ?? q.my_stance}
-            </span>
-          )}
-        </div>
-      </div>
+                    {/* "Your stance" badge */}
+                    {isAuthed &&
+                      q.my_stance != null &&
+                      q.my_stance !== undefined && (
+                        <span className="mt-1 inline-flex items-center rounded-full bg-slate-900 text-white px-2 py-0.5 text-[10px]">
+                          Your stance:&nbsp;
+                          {STANCE_LABEL[q.my_stance] ?? q.my_stance}
+                        </span>
+                      )}
+                  </div>
+                </div>
 
-      {q.tags && q.tags.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-1">
-          {q.tags.map((tag) => (
-            <span
-              key={tag}
-              className="inline-flex items-center rounded-full bg-slate-50 border px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-700"
-            >
-              {tag}
-            </span>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-})}
-
+                {q.tags && q.tags.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {q.tags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="inline-flex items-center rounded-full bg-slate-50 border px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-700"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -694,9 +681,7 @@ function Trending({
           </span>
         ))}
         {!loading && items.length === 0 && (
-          <span className="text-xs text-slate-500">
-            No topics yet.
-          </span>
+          <span className="text-xs text-slate-500">No topics yet.</span>
         )}
       </div>
     </div>
