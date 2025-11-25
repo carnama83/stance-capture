@@ -1,234 +1,233 @@
-// src/pages/QuestionDetailPage.tsx
+// src/pages/QuestionDetailPage.tsx — User-facing question detail (/q/:id)
 import * as React from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getSupabase } from "../lib/supabaseClient";
 import PageLayout from "../components/PageLayout";
 
-type Question = {
+type LiveQuestion = {
   id: string;
   question: string;
-  summary: string | null;
-  tags: string[] | null;
-  location_label: string | null;
-  published_at: string | null;
-  status: string | null;
-  news_item_id?: string | null; // adjust name if your FK column is different
+  summary?: string | null;
+  tags?: string[] | null;
+  location_label?: string | null;
+  published_at?: string | null;
+  status?: string | null;
 };
 
-type NewsItem = {
-  id: string;
-  title: string;
-  url: string | null;
-  source_name: string | null;
-  published_at: string | null;
-};
-
-async function fetchQuestionWithNews(id: string) {
+async function fetchQuestionById(id: string): Promise<LiveQuestion | null> {
   const sb = getSupabase();
-  if (!sb) throw new Error("Supabase client not initialized");
 
-  // 1) Load the question (public read via questions_public_read)
-  const { data: q, error: qErr } = await sb
-    .from("questions")
+  // Read from the same view backing your homepage feed
+  const { data, error } = await sb
+    .from("v_live_questions")
     .select(
-      "id, question, summary, tags, location_label, published_at, status, news_item_id"
+      "id, question, summary, tags, location_label, published_at, status"
     )
     .eq("id", id)
-    .single();
+    .limit(1);
 
-  if (qErr) throw qErr;
-  const question = q as Question;
-
-  // 2) Try to load linked news item, if we have a FK
-  let news: NewsItem | null = null;
-  if (question.news_item_id) {
-    const { data: n, error: nErr } = await sb
-      .from("news_items")
-      .select("id, title, url, source_name, published_at")
-      .eq("id", question.news_item_id)
-      .single();
-
-    if (!nErr && n) {
-      news = n as NewsItem;
-    }
-    // If there *is* an error (e.g., RLS), we just skip showing the article.
+  if (error) {
+    console.error("Failed to load question detail", error);
+    throw error;
   }
 
-  return { question, news };
+  const row = (data ?? [])[0] as LiveQuestion | undefined;
+  if (!row) return null;
+
+  // Optional: ignore non-active questions
+  if (row.status && row.status !== "active") {
+    return null;
+  }
+
+  return row;
 }
 
 export default function QuestionDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
-  const { data, isLoading, isError, error } = useQuery({
-    queryKey: ["question-detail", id],
+  const {
+    data: question,
+    isLoading,
+    isError,
+    error,
+  } = useQuery({
     enabled: !!id,
-    queryFn: () => fetchQuestionWithNews(id as string),
+    queryKey: ["question-detail", id],
+    queryFn: () => fetchQuestionById(id as string),
+    staleTime: 60_000,
   });
 
-  const actions = (
-    <button
-      type="button"
-      onClick={() => navigate(-1)}
-      className="rounded border px-3 py-1.5 text-sm hover:bg-slate-50"
-    >
-      ← Back
-    </button>
-  );
+  const handleBack = () => {
+    // Try browser back first; if it lands somewhere odd,
+    // users still have the link below back to the homepage.
+    if (window.history.length > 1) {
+      navigate(-1);
+    } else {
+      navigate("/");
+    }
+  };
+
+  let content: React.ReactNode;
+
+  if (isLoading) {
+    content = (
+      <div className="rounded-lg border p-4 animate-pulse space-y-3">
+        <div className="h-5 w-3/4 bg-slate-200 rounded" />
+        <div className="h-4 w-full bg-slate-200 rounded" />
+        <div className="h-4 w-2/3 bg-slate-200 rounded" />
+        <div className="flex gap-2 mt-2">
+          <div className="h-5 w-16 bg-slate-200 rounded-full" />
+          <div className="h-5 w-20 bg-slate-200 rounded-full" />
+        </div>
+      </div>
+    );
+  } else if (isError) {
+    content = (
+      <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+        <div className="font-medium mb-1">Something went wrong</div>
+        <div>
+          {(error as Error)?.message ??
+            "We couldn’t load this question. Please try again."}
+        </div>
+      </div>
+    );
+  } else if (!question) {
+    content = (
+      <div className="rounded-lg border p-4 text-sm text-slate-700">
+        <div className="font-medium mb-1">Question not found</div>
+        <p className="mb-2">
+          This question may have been removed or is no longer live.
+        </p>
+        <Link to="/" className="text-slate-900 underline text-sm">
+          ← Back to homepage
+        </Link>
+      </div>
+    );
+  } else {
+    content = (
+      <article className="rounded-lg border p-4 space-y-4">
+        {/* Header: question + meta */}
+        <header className="space-y-2">
+          <h1 className="text-lg sm:text-xl font-semibold text-slate-900">
+            {question.question}
+          </h1>
+
+          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+            {question.location_label && (
+              <span className="inline-flex items-center rounded-full border px-2 py-0.5 bg-slate-50">
+                {question.location_label}
+              </span>
+            )}
+            {question.published_at && (
+              <span>
+                Published{" "}
+                {new Date(question.published_at).toLocaleString(undefined, {
+                  dateStyle: "medium",
+                  timeStyle: "short",
+                })}
+              </span>
+            )}
+            {question.status && (
+              <span className="inline-flex items-center rounded-full border px-2 py-0.5 bg-emerald-50 text-emerald-700">
+                {question.status === "active" ? "Live" : question.status}
+              </span>
+            )}
+          </div>
+        </header>
+
+        {/* Summary */}
+        {question.summary && (
+          <section>
+            <h2 className="text-sm font-medium text-slate-900 mb-1">
+              Why this matters
+            </h2>
+            <p className="text-sm text-slate-700 leading-relaxed">
+              {question.summary}
+            </p>
+          </section>
+        )}
+
+        {/* Tags */}
+        {question.tags && question.tags.length > 0 && (
+          <section className="space-y-1">
+            <h2 className="text-xs font-medium uppercase tracking-wide text-slate-500">
+              Tags
+            </h2>
+            <div className="flex flex-wrap gap-1.5">
+              {question.tags.map((tag) => (
+                <span
+                  key={tag}
+                  className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-700"
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Placeholder for future stance capture */}
+        <section className="border-t pt-4 mt-2">
+          <h2 className="text-sm font-medium text-slate-900 mb-2">
+            Your stance
+          </h2>
+          <p className="text-xs text-slate-600 mb-3">
+            Soon you&apos;ll be able to record your stance here and see how
+            people in your city, state, and country feel about this question.
+          </p>
+          <div className="inline-flex gap-2">
+            <button
+              type="button"
+              className="rounded border px-3 py-1.5 text-xs text-slate-500 bg-slate-50 cursor-not-allowed"
+              disabled
+            >
+              Agree (coming soon)
+            </button>
+            <button
+              type="button"
+              className="rounded border px-3 py-1.5 text-xs text-slate-500 bg-slate-50 cursor-not-allowed"
+              disabled
+            >
+              Neutral (coming soon)
+            </button>
+            <button
+              type="button"
+              className="rounded border px-3 py-1.5 text-xs text-slate-500 bg-slate-50 cursor-not-allowed"
+              disabled
+            >
+              Disagree (coming soon)
+            </button>
+          </div>
+        </section>
+
+        {/* Back link */}
+        <footer className="pt-2">
+          <button
+            type="button"
+            onClick={handleBack}
+            className="text-sm text-slate-900 underline"
+          >
+            ← Back
+          </button>
+        </footer>
+      </article>
+    );
+  }
 
   return (
-    <PageLayout rightSlot={actions}>
-      <div className="max-w-3xl mx-auto py-6">
-        {isLoading && (
-          <div className="text-sm text-slate-600">Loading question…</div>
-        )}
-
-        {isError && (
-          <div className="text-sm text-red-600">
-            Could not load this question: {(error as Error)?.message}
-          </div>
-        )}
-
-        {!isLoading && !isError && !data && (
-          <div className="text-sm text-slate-600">
-            Question not found or not available.
-          </div>
-        )}
-
-        {data && (
-          <>
-            {/* Question header */}
-            <header className="mb-6">
-              <p className="text-xs uppercase tracking-wide text-slate-500 mb-1">
-                Question
-              </p>
-              <h1 className="text-2xl font-semibold">{data.question.question}</h1>
-
-              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-600">
-                {data.question.location_label && (
-                  <span className="inline-flex items-center rounded-full border px-2 py-0.5">
-                    {data.question.location_label}
-                  </span>
-                )}
-                {data.question.published_at && (
-                  <span>
-                    Published{" "}
-                    {new Date(data.question.published_at).toLocaleString(
-                      undefined,
-                      { dateStyle: "medium", timeStyle: "short" }
-                    )}
-                  </span>
-                )}
-                {data.question.status && (
-                  <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5">
-                    {data.question.status}
-                  </span>
-                )}
-              </div>
-            </header>
-
-            {/* Summary */}
-            {data.question.summary && (
-              <section className="mb-6">
-                <h2 className="text-sm font-medium mb-1">Summary</h2>
-                <p className="text-sm text-slate-700 leading-relaxed">
-                  {data.question.summary}
-                </p>
-              </section>
-            )}
-
-            {/* Tags */}
-            {data.question.tags && data.question.tags.length > 0 && (
-              <section className="mb-6">
-                <h2 className="text-sm font-medium mb-1">Tags</h2>
-                <div className="flex flex-wrap gap-2">
-                  {data.question.tags.map((tag) => (
-                    <span
-                      key={tag}
-                      className="inline-flex items-center rounded-full bg-slate-50 border px-2 py-0.5 text-[11px] uppercase tracking-wide text-slate-700"
-                    >
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {/* Linked news item */}
-            <section className="mb-6">
-              <h2 className="text-sm font-medium mb-2">Related news</h2>
-              {data.news ? (
-                <div className="rounded-lg border bg-white px-4 py-3">
-                  <div className="flex flex-col gap-1">
-                    <div className="text-sm font-semibold">
-                      {data.news.url ? (
-                        <a
-                          href={data.news.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="hover:underline"
-                        >
-                          {data.news.title}
-                        </a>
-                      ) : (
-                        data.news.title
-                      )}
-                    </div>
-                    <div className="text-xs text-slate-600">
-                      {data.news.source_name && (
-                        <span>{data.news.source_name}</span>
-                      )}
-                      {data.news.published_at && (
-                        <span className="ml-2">
-                          {new Date(
-                            data.news.published_at
-                          ).toLocaleDateString()}
-                        </span>
-                      )}
-                    </div>
-                    {data.news.url && (
-                      <div className="mt-1 text-xs">
-                        <a
-                          href={data.news.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-slate-700 underline"
-                        >
-                          View full article
-                        </a>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                <p className="text-xs text-slate-500">
-                  Linked source article is not available.
-                </p>
-              )}
-            </section>
-
-            {/* Placeholder for future stance UI */}
-            <section className="mt-8 border-t pt-4">
-              <h2 className="text-sm font-medium mb-2">Your stance</h2>
-              <p className="text-xs text-slate-500">
-                In a future epic, this is where you’ll record your stance and
-                compare with your region.
-              </p>
-              <div className="mt-3 inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs text-slate-600">
-                <span>Coming soon</span>
-              </div>
-            </section>
-
-            {/* Link back to home */}
-            <div className="mt-8 text-xs">
-              <Link to="/" className="text-slate-700 underline">
-                ← Back to home
-              </Link>
-            </div>
-          </>
-        )}
+    <PageLayout>
+      <div className="max-w-3xl mx-auto py-4 space-y-4">
+        <div className="flex items-center justify-between gap-2">
+          <h1 className="text-base font-semibold text-slate-900">
+            Question detail
+          </h1>
+          <Link to="/" className="text-xs text-slate-600 hover:underline">
+            ← Back to homepage
+          </Link>
+        </div>
+        {content}
       </div>
     </PageLayout>
   );
