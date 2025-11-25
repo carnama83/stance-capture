@@ -500,7 +500,7 @@ function LatestQuestions({
                 <div>
                   <div className="text-sm font-semibold">
                     <Link
-                      to={`/questions/${q.id}`}
+                      to={`/q/${q.id}`}
                       className="hover:underline"
                     >
                       {q.question}
