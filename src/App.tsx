@@ -44,6 +44,9 @@ import MyStancesPage from "./pages/MyStancesPage";
 
 import SettingsLayout from "./pages/SettingsLayout";
 
+// NEW: Settings → Location page
+import SettingsLocation from "./pages/SettingsLocation";
+
 import RouteDebug from "./components/RouteDebug";
 
 const queryClient = new QueryClient();
@@ -123,6 +126,8 @@ const App: React.FC = () => {
                 <Route path="profile" element={<SettingsProfile />} />
                 <Route path="security" element={<SettingsSecurity />} />
                 <Route path="sessions" element={<SettingsSessions />} />
+                {/* NEW: Location settings */}
+                <Route path="location" element={<SettingsLocation />} />
               </Route>
 
               {/* My stances (protected) */}
