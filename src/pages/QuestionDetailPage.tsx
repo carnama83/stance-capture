@@ -167,6 +167,7 @@ async function fetchQuestionStats(
 async function fetchRelatedQuestions(
   questionId: string,
   tags: string[],
+  locationLabel: string | null,
   limit = 4
 ): Promise<LiveQuestion[]> {
   const sb = getSupabase();
@@ -174,18 +175,21 @@ async function fetchRelatedQuestions(
 
   if (!tags.length) return [];
 
-  // Simple strategy:
-  // - same tags overlap
-  // - active questions only
-  // - different id
-  const { data, error } = await sb
+  let q = sb
     .from("v_live_questions")
     .select(
       "id, question, summary, tags, location_label, published_at, status"
     )
     .neq("id", questionId)
     .eq("status", "active")
-    .overlaps("tags", tags)
+    .overlaps("tags", tags);
+
+  // Prefer questions in the same location when we have a label
+  if (locationLabel && locationLabel.trim()) {
+    q = q.eq("location_label", locationLabel.trim());
+  }
+
+  const { data, error } = await q
     .order("published_at", { ascending: false })
     .limit(limit);
 
@@ -193,6 +197,9 @@ async function fetchRelatedQuestions(
     console.error("Failed to load related questions", error);
     return [];
   }
+
+  return (data ?? []) as LiveQuestion[];
+}
 
   return (data ?? []) as LiveQuestion[];
 }
@@ -239,20 +246,30 @@ export default function QuestionDetailPage() {
   });
 
   // NEW: related questions query (depends on question + tags)
-  const {
-    data: relatedQuestions,
-    isLoading: relatedLoading,
-  } = useQuery({
-    enabled:
-      !!questionId &&
-      !!question &&
-      !!question.tags &&
-      question.tags.length > 0,
-    queryKey: ["related-questions", questionId, question?.tags ?? []],
-    queryFn: () =>
-      fetchRelatedQuestions(questionId, (question?.tags as string[]) ?? []),
-    staleTime: 60_000,
-  });
+const {
+  data: relatedQuestions,
+  isLoading: relatedLoading,
+} = useQuery({
+  enabled:
+    !!questionId &&
+    !!question &&
+    !!question.tags &&
+    question.tags.length > 0,
+  queryKey: [
+    "related-questions",
+    questionId,
+    question?.tags ?? [],
+    question?.location_label ?? null,
+  ],
+  queryFn: () =>
+    fetchRelatedQuestions(
+      questionId,
+      (question?.tags as string[]) ?? [],
+      (question?.location_label as string | null) ?? null
+    ),
+  staleTime: 60_000,
+});
+
 
   const stanceMutation = useMutation({
     mutationKey: ["set-stance", questionId],
@@ -518,9 +535,11 @@ export default function QuestionDetailPage() {
 
         {/* Related questions */}
         <section className="border-t pt-4 mt-2">
-          <h2 className="text-sm font-medium text-slate-900 mb-2">
-            Related questions
-          </h2>
+  <h2 className="text-sm font-medium text-slate-900 mb-2">
+    {question.location_label
+      ? `Related questions in ${question.location_label}`
+      : "Related questions"}
+  </h2>
           {relatedLoading && (
             <p className="text-xs text-slate-500">
               Loading related questions…
