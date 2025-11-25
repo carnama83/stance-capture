@@ -20,6 +20,16 @@ type Topic = {
   activity_7d?: number | null;
 };
 
+// type LiveQuestion = {
+//   id: string;
+//   question: string;
+//   summary?: string | null;
+//   tags?: string[] | null;
+//   location_label?: string | null;
+//   published_at?: string | null;
+//   status?: string | null;
+// };
+
 type LiveQuestion = {
   id: string;
   question: string;
@@ -28,7 +38,17 @@ type LiveQuestion = {
   location_label?: string | null;
   published_at?: string | null;
   status?: string | null;
+
+  // NEW: current user stance (if logged in)
+  my_stance?: number | null;
+
+  // NEW: simple aggregate stats (if available)
+  stats_total_responses?: number | null;
+  stats_pct_agree?: number | null;
+  stats_pct_disagree?: number | null;
+  stats_pct_neutral?: number | null;
 };
+
 
 // ---------- Session hook ----------
 function useSupabaseSession() {
