@@ -1,9 +1,15 @@
-// src/pages/QuestionDetailPage.tsx — User-facing question detail (/q/:id)
+// src/pages/QuestionDetailPage.tsx — User-facing question detail with stance capture
 import * as React from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { getSupabase } from "../lib/supabaseClient";
 import PageLayout from "../components/PageLayout";
+
+type Session = import("@supabase/supabase-js").Session;
 
 type LiveQuestion = {
   id: string;
@@ -15,10 +21,42 @@ type LiveQuestion = {
   status?: string | null;
 };
 
+type QuestionStance = {
+  id: string;
+  question_id: string;
+  score: number;
+};
+
+const STANCE_SCALE = [
+  { value: -2, labelShort: "Strongly disagree", label: "Strongly disagree" },
+  { value: -1, labelShort: "Disagree", label: "Disagree" },
+  { value: 0, labelShort: "Neutral", label: "Neutral" },
+  { value: 1, labelShort: "Agree", label: "Agree" },
+  { value: 2, labelShort: "Strongly agree", label: "Strongly agree" },
+];
+
+// ---------- Session hook (same pattern as Index.tsx) ----------
+function useSupabaseSession() {
+  const sb = React.useMemo(getSupabase, []);
+  const [session, setSession] = React.useState<Session | null>(null);
+
+  React.useEffect(() => {
+    if (!sb) return;
+    sb.auth.getSession().then(({ data }) => setSession(data.session ?? null));
+    const {
+      data: { subscription },
+    } = sb.auth.onAuthStateChange((_e, s) => setSession(s ?? null));
+    return () => subscription?.unsubscribe();
+  }, [sb]);
+
+  return session;
+}
+
+// ---------- Data fetchers ----------
 async function fetchQuestionById(id: string): Promise<LiveQuestion | null> {
   const sb = getSupabase();
+  if (!sb) throw new Error("Supabase client not available");
 
-  // Read from the same view backing your homepage feed
   const { data, error } = await sb
     .from("v_live_questions")
     .select(
@@ -35,7 +73,6 @@ async function fetchQuestionById(id: string): Promise<LiveQuestion | null> {
   const row = (data ?? [])[0] as LiveQuestion | undefined;
   if (!row) return null;
 
-  // Optional: ignore non-active questions
   if (row.status && row.status !== "active") {
     return null;
   }
@@ -43,9 +80,57 @@ async function fetchQuestionById(id: string): Promise<LiveQuestion | null> {
   return row;
 }
 
+async function fetchMyStance(questionId: string): Promise<number | null> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("Supabase client not available");
+
+  const { data, error } = await sb
+    .from("question_stances")
+    .select("id, question_id, score")
+    .eq("question_id", questionId)
+    .maybeSingle<QuestionStance>();
+
+  if (error) {
+    // PGRST116 = no rows found in combination with single/maybeSingle
+    if ((error as any).code === "PGRST116") {
+      return null;
+    }
+    console.error("Failed to load stance", error);
+    throw error;
+  }
+
+  return data ? data.score : null;
+}
+
+async function setMyStance(
+  questionId: string,
+  score: number | null
+): Promise<number | null> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("Supabase client not available");
+
+  const { data, error } = await sb.rpc("set_question_stance", {
+    p_question_id: questionId,
+    p_score: score,
+  });
+
+  if (error) {
+    console.error("Failed to set stance", error);
+    throw error;
+  }
+
+  const row = data as QuestionStance | null;
+  return row ? row.score : null;
+}
+
+// ---------- Page ----------
 export default function QuestionDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const session = useSupabaseSession();
+  const queryClient = useQueryClient();
+  const isAuthed = !!session;
+  const questionId = id as string;
 
   const {
     data: question,
@@ -53,15 +138,31 @@ export default function QuestionDetailPage() {
     isError,
     error,
   } = useQuery({
-    enabled: !!id,
-    queryKey: ["question-detail", id],
-    queryFn: () => fetchQuestionById(id as string),
+    enabled: !!questionId,
+    queryKey: ["question-detail", questionId],
+    queryFn: () => fetchQuestionById(questionId),
     staleTime: 60_000,
   });
 
+  const {
+    data: myStance,
+    isLoading: stanceLoading,
+  } = useQuery({
+    enabled: !!questionId && isAuthed,
+    queryKey: ["my-stance", questionId],
+    queryFn: () => fetchMyStance(questionId),
+    staleTime: 60_000,
+  });
+
+  const stanceMutation = useMutation({
+    mutationKey: ["set-stance", questionId],
+    mutationFn: (score: number | null) => setMyStance(questionId, score),
+    onSuccess: (newScore) => {
+      queryClient.setQueryData(["my-stance", questionId], newScore);
+    },
+  });
+
   const handleBack = () => {
-    // Try browser back first; if it lands somewhere odd,
-    // users still have the link below back to the homepage.
     if (window.history.length > 1) {
       navigate(-1);
     } else {
@@ -69,6 +170,23 @@ export default function QuestionDetailPage() {
     }
   };
 
+  const handleRequireLogin = () => {
+    const returnTo = window.location.hash || `#/q/${questionId}`;
+    sessionStorage.setItem("return_to", returnTo);
+    navigate("/login");
+  };
+
+  const handleSetStance = (value: number) => {
+    if (!isAuthed) {
+      handleRequireLogin();
+      return;
+    }
+    const current = myStance ?? null;
+    const next = current === value ? null : value; // click again to clear
+    stanceMutation.mutate(next);
+  };
+
+  // ---------- Render ----------
   let content: React.ReactNode;
 
   if (isLoading) {
@@ -168,38 +286,84 @@ export default function QuestionDetailPage() {
           </section>
         )}
 
-        {/* Placeholder for future stance capture */}
+        {/* Stance capture */}
         <section className="border-t pt-4 mt-2">
           <h2 className="text-sm font-medium text-slate-900 mb-2">
             Your stance
           </h2>
-          <p className="text-xs text-slate-600 mb-3">
-            Soon you&apos;ll be able to record your stance here and see how
-            people in your city, state, and country feel about this question.
-          </p>
-          <div className="inline-flex gap-2">
-            <button
-              type="button"
-              className="rounded border px-3 py-1.5 text-xs text-slate-500 bg-slate-50 cursor-not-allowed"
-              disabled
-            >
-              Agree (coming soon)
-            </button>
-            <button
-              type="button"
-              className="rounded border px-3 py-1.5 text-xs text-slate-500 bg-slate-50 cursor-not-allowed"
-              disabled
-            >
-              Neutral (coming soon)
-            </button>
-            <button
-              type="button"
-              className="rounded border px-3 py-1.5 text-xs text-slate-500 bg-slate-50 cursor-not-allowed"
-              disabled
-            >
-              Disagree (coming soon)
-            </button>
-          </div>
+
+          {!isAuthed && (
+            <div className="space-y-2">
+              <p className="text-xs text-slate-600">
+                Log in to record your stance and compare with your city, state,
+                country, and globally.
+              </p>
+              <button
+                type="button"
+                onClick={handleRequireLogin}
+                className="rounded bg-slate-900 text-white px-3 py-1.5 text-xs"
+              >
+                Log in to take stance
+              </button>
+            </div>
+          )}
+
+          {isAuthed && (
+            <>
+              <div className="flex flex-wrap gap-2 mb-2">
+                {STANCE_SCALE.map((s) => {
+                  const selected = myStance === s.value;
+                  const busy = stanceMutation.isPending;
+                  const base =
+                    "rounded-full border px-3 py-1.5 text-xs transition";
+                  const selectedClasses =
+                    "bg-slate-900 border-slate-900 text-white";
+                  const unselectedClasses =
+                    "bg-white border-slate-300 text-slate-700 hover:bg-slate-50";
+                  return (
+                    <button
+                      key={s.value}
+                      type="button"
+                      disabled={busy}
+                      onClick={() => handleSetStance(s.value)}
+                      className={`${base} ${
+                        selected ? selectedClasses : unselectedClasses
+                      }`}
+                    >
+                      {s.labelShort}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="text-[11px] text-slate-500 flex items-center gap-2">
+                {stanceLoading ? (
+                  <span>Loading your stance…</span>
+                ) : stanceMutation.isPending ? (
+                  <span>Saving…</span>
+                ) : myStance === null || myStance === undefined ? (
+                  <span>No stance recorded yet.</span>
+                ) : (
+                  <span>
+                    Saved as{" "}
+                    {
+                      STANCE_SCALE.find((s) => s.value === myStance)
+                        ?.label
+                    }
+                    .
+                  </span>
+                )}
+                {isAuthed && myStance != null && !stanceMutation.isPending && (
+                  <button
+                    type="button"
+                    className="underline"
+                    onClick={() => handleSetStance(myStance)}
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            </>
+          )}
         </section>
 
         {/* Back link */}
