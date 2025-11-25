@@ -57,15 +57,11 @@ async function fetchMyRegion(userId: string): Promise<RegionRow | null> {
   return data ?? null;
 }
 
-async function searchLocations(
-  query: string
-): Promise<LocationOption[]> {
+async function searchStates(query: string): Promise<LocationOption[]> {
   const sb = getSupabase();
   if (!sb) throw new Error("Supabase client not available");
-
   if (!query.trim()) return [];
 
-  // Simple first version: search states (type = 'state')
   const { data, error } = await sb
     .from("locations")
     .select("iso_code, name, type")
@@ -75,20 +71,44 @@ async function searchLocations(
     .limit(25);
 
   if (error) {
-    console.error("Failed to search locations", error);
+    console.error("Failed to search states", error);
     return [];
   }
 
   return (data ?? []) as LocationOption[];
 }
 
-async function setUserLocationByIso(isoCode: string): Promise<void> {
+async function searchCities(query: string): Promise<LocationOption[]> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("Supabase client not available");
+  if (!query.trim()) return [];
+
+  const { data, error } = await sb
+    .from("locations")
+    .select("iso_code, name, type")
+    .eq("type", "city")
+    .ilike("name", `%${query.trim()}%`)
+    .order("name")
+    .limit(25);
+
+  if (error) {
+    console.error("Failed to search cities", error);
+    return [];
+  }
+
+  return (data ?? []) as LocationOption[];
+}
+
+async function setUserLocationByIso(
+  isoCode: string,
+  precision: "city" | "state"
+): Promise<void> {
   const sb = getSupabase();
   if (!sb) throw new Error("Supabase client not available");
 
   const { error } = await sb.rpc("set_user_location_by_iso", {
     p_iso_code: isoCode,
-    p_precision: "state", // for now we choose state-level precision
+    p_precision: precision,
   });
 
   if (error) {
@@ -102,9 +122,15 @@ export default function SettingsLocation() {
   const queryClient = useQueryClient();
   const userId = session?.user?.id ?? null;
 
-  const [search, setSearch] = React.useState("");
-  const [searchInput, setSearchInput] = React.useState("");
-  const [searchTouched, setSearchTouched] = React.useState(false);
+  // State search
+  const [stateSearchInput, setStateSearchInput] = React.useState("");
+  const [stateSearch, setStateSearch] = React.useState("");
+  const [stateTouched, setStateTouched] = React.useState(false);
+
+  // City search
+  const [citySearchInput, setCitySearchInput] = React.useState("");
+  const [citySearch, setCitySearch] = React.useState("");
+  const [cityTouched, setCityTouched] = React.useState(false);
 
   const {
     data: region,
@@ -117,19 +143,35 @@ export default function SettingsLocation() {
   });
 
   const {
-    data: results,
-    isLoading: searchLoading,
+    data: stateResults,
+    isLoading: stateLoading,
   } = useQuery({
-    enabled: search.trim().length >= 2,
-    queryKey: ["location-search", search],
-    queryFn: () => searchLocations(search),
+    enabled: stateSearch.trim().length >= 2,
+    queryKey: ["location-search-state", stateSearch],
+    queryFn: () => searchStates(stateSearch),
+    staleTime: 0,
+  });
+
+  const {
+    data: cityResults,
+    isLoading: cityLoading,
+  } = useQuery({
+    enabled: citySearch.trim().length >= 2,
+    queryKey: ["location-search-city", citySearch],
+    queryFn: () => searchCities(citySearch),
     staleTime: 0,
   });
 
   const setLocationMutation = useMutation({
-    mutationFn: (isoCode: string) => setUserLocationByIso(isoCode),
+    mutationFn: ({
+      isoCode,
+      precision,
+    }: {
+      isoCode: string;
+      precision: "city" | "state";
+    }) => setUserLocationByIso(isoCode, precision),
     onSuccess: () => {
-      // Refresh region info + any region-based stats
+      // Refresh region info + any region-based stats in question pages
       queryClient.invalidateQueries({ queryKey: ["my-region"] });
       queryClient.invalidateQueries({
         queryKey: ["question-region-stats"],
@@ -137,10 +179,16 @@ export default function SettingsLocation() {
     },
   });
 
-  const handleSearchSubmit = (e: React.FormEvent) => {
+  const handleStateSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setSearchTouched(true);
-    setSearch(searchInput);
+    setStateTouched(true);
+    setStateSearch(stateSearchInput);
+  };
+
+  const handleCitySearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setCityTouched(true);
+    setCitySearch(citySearchInput);
   };
 
   return (
@@ -155,6 +203,7 @@ export default function SettingsLocation() {
         </p>
       </header>
 
+      {/* Current region */}
       <section className="rounded-lg border p-3 space-y-2">
         <h3 className="text-xs font-medium text-slate-900">
           Your current region
@@ -193,7 +242,8 @@ export default function SettingsLocation() {
               !region.state_label &&
               !region.country_label && (
                 <div className="text-xs text-slate-500">
-                  No location set yet. Choose a state below to get started.
+                  No location set yet. Choose a state or city below to get
+                  started.
                 </div>
               )}
           </div>
@@ -205,18 +255,19 @@ export default function SettingsLocation() {
         )}
       </section>
 
+      {/* State selection */}
       <section className="rounded-lg border p-3 space-y-2">
         <h3 className="text-xs font-medium text-slate-900">
           Choose your state
         </h3>
         <form
-          onSubmit={handleSearchSubmit}
+          onSubmit={handleStateSearchSubmit}
           className="flex items-center gap-2"
         >
           <input
             type="text"
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
+            value={stateSearchInput}
+            onChange={(e) => setStateSearchInput(e.target.value)}
             placeholder="Search for a state (e.g., Massachusetts)"
             className="flex-1 rounded border px-2 py-1.5 text-xs"
           />
@@ -227,25 +278,28 @@ export default function SettingsLocation() {
             Search
           </button>
         </form>
-        {searchTouched && search.trim().length < 2 && (
+        {stateTouched && stateSearch.trim().length < 2 && (
           <p className="text-[11px] text-slate-500">
             Type at least 2 characters to search.
           </p>
         )}
-        {searchLoading && search.trim().length >= 2 && (
+        {stateLoading && stateSearch.trim().length >= 2 && (
           <p className="text-xs text-slate-500 mt-1">Searching…</p>
         )}
-        {!searchLoading &&
-          results &&
-          results.length > 0 && (
+        {!stateLoading &&
+          stateResults &&
+          stateResults.length > 0 && (
             <div className="mt-2 max-h-64 overflow-y-auto border rounded">
-              {results.map((loc) => (
+              {stateResults.map((loc) => (
                 <button
                   key={loc.iso_code}
                   type="button"
                   disabled={setLocationMutation.isPending}
                   onClick={() =>
-                    setLocationMutation.mutate(loc.iso_code)
+                    setLocationMutation.mutate({
+                      isoCode: loc.iso_code,
+                      precision: "state",
+                    })
                   }
                   className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 border-b last:border-b-0 flex items-center justify-between"
                 >
@@ -257,13 +311,82 @@ export default function SettingsLocation() {
               ))}
             </div>
           )}
-        {!searchLoading &&
-          search.trim().length >= 2 &&
-          (!results || results.length === 0) && (
+        {!stateLoading &&
+          stateSearch.trim().length >= 2 &&
+          (!stateResults || stateResults.length === 0) && (
             <p className="text-xs text-slate-500 mt-1">
               No matching states found.
             </p>
           )}
+      </section>
+
+      {/* City selection */}
+      <section className="rounded-lg border p-3 space-y-2">
+        <h3 className="text-xs font-medium text-slate-900">
+          Choose your city <span className="font-normal">(optional)</span>
+        </h3>
+        <p className="text-[11px] text-slate-500">
+          Setting a city gives you more precise stats, when available.
+        </p>
+        <form
+          onSubmit={handleCitySearchSubmit}
+          className="flex items-center gap-2"
+        >
+          <input
+            type="text"
+            value={citySearchInput}
+            onChange={(e) => setCitySearchInput(e.target.value)}
+            placeholder="Search for a city (e.g., Boston)"
+            className="flex-1 rounded border px-2 py-1.5 text-xs"
+          />
+          <button
+            type="submit"
+            className="rounded bg-slate-900 text-white px-3 py-1.5 text-xs"
+          >
+            Search
+          </button>
+        </form>
+        {cityTouched && citySearch.trim().length < 2 && (
+          <p className="text-[11px] text-slate-500">
+            Type at least 2 characters to search.
+          </p>
+        )}
+        {cityLoading && citySearch.trim().length >= 2 && (
+          <p className="text-xs text-slate-500 mt-1">Searching…</p>
+        )}
+        {!cityLoading &&
+          cityResults &&
+          cityResults.length > 0 && (
+            <div className="mt-2 max-h-64 overflow-y-auto border rounded">
+              {cityResults.map((loc) => (
+                <button
+                  key={loc.iso_code}
+                  type="button"
+                  disabled={setLocationMutation.isPending}
+                  onClick={() =>
+                    setLocationMutation.mutate({
+                      isoCode: loc.iso_code,
+                      precision: "city",
+                    })
+                  }
+                  className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 border-b last:border-b-0 flex items-center justify-between"
+                >
+                  <span>{loc.name}</span>
+                  <span className="text-[10px] text-slate-500">
+                    {loc.iso_code}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        {!cityLoading &&
+          citySearch.trim().length >= 2 &&
+          (!cityResults || cityResults.length === 0) && (
+            <p className="text-xs text-slate-500 mt-1">
+              No matching cities found.
+            </p>
+          )}
+
         {setLocationMutation.isPending && (
           <p className="text-[11px] text-slate-500 mt-1">
             Saving your location…
