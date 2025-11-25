@@ -38,6 +38,7 @@ import AdminQuestionsPage from "@/routes/admin/questions/Index";
 import AdminNewsIndex from "@/routes/admin/news/Index";
 import AdminLiveQuestionsPage from "@/routes/admin/live-questions/Index";
 import AdminLiveQuestionShowPage from "@/routes/admin/live-questions/Show";
+import MyStancesPage from "./pages/MyStancesPage";
 
 import SettingsLayout from "./pages/SettingsLayout";
 
@@ -76,6 +77,9 @@ const App: React.FC = () => {
                 }
               />
 
+<Route path="/me/stances" element={<MyStancesPage />} />
+
+              
               <Route
                 path={ROUTES.SIGNUP}
                 element={
