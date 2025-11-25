@@ -1,4 +1,4 @@
-// src/pages/QuestionDetailPage.tsx — User-facing question detail with stance capture
+// src/pages/QuestionDetailPage.tsx — Question detail with stance capture + stats
 import * as React from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
@@ -27,6 +27,14 @@ type QuestionStance = {
   score: number;
 };
 
+type QuestionStats = {
+  total_responses: number;
+  pct_agree: number | null;
+  pct_disagree: number | null;
+  pct_neutral: number | null;
+  avg_score: number | null;
+};
+
 const STANCE_SCALE = [
   { value: -2, labelShort: "Strongly disagree", label: "Strongly disagree" },
   { value: -1, labelShort: "Disagree", label: "Disagree" },
@@ -35,7 +43,7 @@ const STANCE_SCALE = [
   { value: 2, labelShort: "Strongly agree", label: "Strongly agree" },
 ];
 
-// ---------- Session hook (same pattern as Index.tsx) ----------
+// ---------- Session hook ----------
 function useSupabaseSession() {
   const sb = React.useMemo(getSupabase, []);
   const [session, setSession] = React.useState<Session | null>(null);
@@ -91,8 +99,8 @@ async function fetchMyStance(questionId: string): Promise<number | null> {
     .maybeSingle<QuestionStance>();
 
   if (error) {
-    // PGRST116 = no rows found in combination with single/maybeSingle
     if ((error as any).code === "PGRST116") {
+      // no row
       return null;
     }
     console.error("Failed to load stance", error);
@@ -121,6 +129,38 @@ async function setMyStance(
 
   const row = data as QuestionStance | null;
   return row ? row.score : null;
+}
+
+async function fetchQuestionStats(
+  questionId: string
+): Promise<QuestionStats | null> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("Supabase client not available");
+
+  const { data, error } = await sb
+    .from("question_stance_stats")
+    .select(
+      "total_responses, pct_agree, pct_disagree, pct_neutral, avg_score"
+    )
+    .eq("question_id", questionId)
+    .maybeSingle<QuestionStats>();
+
+  if (error) {
+    if ((error as any).code === "PGRST116") {
+      return null;
+    }
+    console.error("Failed to load question stats", error);
+    throw error;
+  }
+
+  if (!data) return null;
+  return {
+    total_responses: data.total_responses ?? 0,
+    pct_agree: data.pct_agree,
+    pct_disagree: data.pct_disagree,
+    pct_neutral: data.pct_neutral,
+    avg_score: data.avg_score,
+  };
 }
 
 // ---------- Page ----------
@@ -154,11 +194,25 @@ export default function QuestionDetailPage() {
     staleTime: 60_000,
   });
 
+  const {
+    data: stats,
+    isLoading: statsLoading,
+  } = useQuery({
+    enabled: !!questionId,
+    queryKey: ["question-stats", questionId],
+    queryFn: () => fetchQuestionStats(questionId),
+    staleTime: 60_000,
+  });
+
   const stanceMutation = useMutation({
     mutationKey: ["set-stance", questionId],
     mutationFn: (score: number | null) => setMyStance(questionId, score),
     onSuccess: (newScore) => {
       queryClient.setQueryData(["my-stance", questionId], newScore);
+      // stats will auto-refresh on next navigation; you can also refetch here if you want
+      queryClient.invalidateQueries({
+        queryKey: ["question-stats", questionId],
+      });
     },
   });
 
@@ -224,6 +278,11 @@ export default function QuestionDetailPage() {
       </div>
     );
   } else {
+    const hasStats =
+      stats &&
+      stats.total_responses > 0 &&
+      (stats.pct_agree != null || stats.pct_disagree != null);
+
     content = (
       <article className="rounded-lg border p-4 space-y-4">
         {/* Header: question + meta */}
@@ -286,7 +345,45 @@ export default function QuestionDetailPage() {
           </section>
         )}
 
-        {/* Stance capture */}
+        {/* Community stance */}
+        <section className="border-t pt-4 mt-2">
+          <h2 className="text-sm font-medium text-slate-900 mb-2">
+            Community stance
+          </h2>
+          {statsLoading && (
+            <p className="text-xs text-slate-500">Loading community stats…</p>
+          )}
+          {!statsLoading && !hasStats && (
+            <p className="text-xs text-slate-500">
+              No responses yet. Be the first to take a stance.
+            </p>
+          )}
+          {hasStats && stats && (
+            <div className="space-y-2 text-xs text-slate-700">
+              <div>
+                <span className="font-medium">
+                  {stats.total_responses} responses
+                </span>
+                {stats.pct_agree != null && (
+                  <> · {Math.round(stats.pct_agree)}% agree</>
+                )}
+                {stats.pct_disagree != null && (
+                  <> · {Math.round(stats.pct_disagree)}% disagree</>
+                )}
+                {stats.pct_neutral != null && (
+                  <> · {Math.round(stats.pct_neutral)}% neutral</>
+                )}
+              </div>
+              {stats.avg_score != null && (
+                <div className="text-[11px] text-slate-500">
+                  Average stance: {stats.avg_score.toFixed(2)} (scale -2 to +2)
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+
+        {/* Your stance */}
         <section className="border-t pt-4 mt-2">
           <h2 className="text-sm font-medium text-slate-900 mb-2">
             Your stance
