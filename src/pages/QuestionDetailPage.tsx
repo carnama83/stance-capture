@@ -163,7 +163,7 @@ async function fetchQuestionStats(
   };
 }
 
-// NEW: fetch related questions by shared tags
+// NEW: fetch related questions by shared tags, biased to same location
 async function fetchRelatedQuestions(
   questionId: string,
   tags: string[],
@@ -197,9 +197,6 @@ async function fetchRelatedQuestions(
     console.error("Failed to load related questions", error);
     return [];
   }
-
-  return (data ?? []) as LiveQuestion[];
-}
 
   return (data ?? []) as LiveQuestion[];
 }
@@ -245,31 +242,30 @@ export default function QuestionDetailPage() {
     staleTime: 60_000,
   });
 
-  // NEW: related questions query (depends on question + tags)
-const {
-  data: relatedQuestions,
-  isLoading: relatedLoading,
-} = useQuery({
-  enabled:
-    !!questionId &&
-    !!question &&
-    !!question.tags &&
-    question.tags.length > 0,
-  queryKey: [
-    "related-questions",
-    questionId,
-    question?.tags ?? [],
-    question?.location_label ?? null,
-  ],
-  queryFn: () =>
-    fetchRelatedQuestions(
+  // NEW: related questions query (depends on question + tags + location_label)
+  const {
+    data: relatedQuestions,
+    isLoading: relatedLoading,
+  } = useQuery({
+    enabled:
+      !!questionId &&
+      !!question &&
+      !!question.tags &&
+      question.tags.length > 0,
+    queryKey: [
+      "related-questions",
       questionId,
-      (question?.tags as string[]) ?? [],
-      (question?.location_label as string | null) ?? null
-    ),
-  staleTime: 60_000,
-});
-
+      question?.tags ?? [],
+      question?.location_label ?? null,
+    ],
+    queryFn: () =>
+      fetchRelatedQuestions(
+        questionId,
+        (question?.tags as string[]) ?? [],
+        (question?.location_label as string | null) ?? null
+      ),
+    staleTime: 60_000,
+  });
 
   const stanceMutation = useMutation({
     mutationKey: ["set-stance", questionId],
@@ -350,8 +346,7 @@ const {
       (stats.pct_agree != null || stats.pct_disagree != null);
 
     const hasRelated =
-      relatedQuestions &&
-      relatedQuestions.length > 0;
+      relatedQuestions && relatedQuestions.length > 0;
 
     content = (
       <article className="rounded-lg border p-4 space-y-4">
@@ -535,11 +530,11 @@ const {
 
         {/* Related questions */}
         <section className="border-t pt-4 mt-2">
-  <h2 className="text-sm font-medium text-slate-900 mb-2">
-    {question.location_label
-      ? `Related questions in ${question.location_label}`
-      : "Related questions"}
-  </h2>
+          <h2 className="text-sm font-medium text-slate-900 mb-2">
+            {question.location_label
+              ? `Related questions in ${question.location_label}`
+              : "Related questions"}
+          </h2>
           {relatedLoading && (
             <p className="text-xs text-slate-500">
               Loading related questions…
