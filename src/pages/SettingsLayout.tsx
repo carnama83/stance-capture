@@ -23,8 +23,12 @@ export default function SettingsLayout() {
             <SettingsLink to={ROUTES.SETTINGS_PROFILE} label="Profile" />
             <SettingsLink to={ROUTES.SETTINGS_SECURITY} label="Security" />
             <SettingsLink to={ROUTES.SETTINGS_SESSIONS} label="Sessions" />
+
+            {/* 👉 NEW: My Stances link */}
+            <SettingsLink to="/me/stances" label="My Stances" />
           </nav>
         </aside>
+
         <main className="md:col-span-3">
           <Outlet />
         </main>
