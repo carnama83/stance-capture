@@ -1,4 +1,4 @@
-// src/pages/QuestionDetailPage.tsx — Question detail with stance capture + stats + related questions + regional breakdown + location nudge
+// src/pages/QuestionDetailPage.tsx — Question detail with stance capture + regional comparison + related questions
 import * as React from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
@@ -128,7 +128,6 @@ async function fetchMyStance(questionId: string): Promise<number | null> {
 
   if (error) {
     if ((error as any).code === "PGRST116") {
-      // no row for this user/question
       return null;
     }
     console.error("Failed to load stance", error);
@@ -170,7 +169,6 @@ async function fetchQuestionStats(
   });
 
   if (error) {
-    // If RPC throws when no stats exist, you can special-case PGRST116 here
     console.error("Failed to load question stats (RPC)", error);
     return null;
   }
@@ -178,7 +176,6 @@ async function fetchQuestionStats(
   if (!data) return null;
 
   const raw = data as any;
-
   const regions = (raw.regions ?? {}) as QuestionStats["regions"];
 
   return {
@@ -228,7 +225,6 @@ async function fetchRelatedQuestions(
     .eq("status", "active")
     .overlaps("tags", tags);
 
-  // Prefer questions in the same location when we have a label
   if (locationLabel && locationLabel.trim()) {
     q = q.eq("location_label", locationLabel.trim());
   }
@@ -243,6 +239,118 @@ async function fetchRelatedQuestions(
   }
 
   return (data ?? []) as LiveQuestion[];
+}
+
+// ---------- Region comparison widget ----------
+function RegionComparison({ stats }: { stats: QuestionStats | null }) {
+  if (!stats || !stats.regions) return null;
+
+  const tiers: Array<"city" | "county" | "state" | "country" | "global"> = [
+    "city",
+    "county",
+    "state",
+    "country",
+    "global",
+  ];
+
+  const hasAny = tiers.some(
+    (scope) => (stats.regions && stats.regions[scope]) != null
+  );
+  if (!hasAny) {
+    return (
+      <div className="mt-3 border-t pt-3">
+        <h3 className="text-xs font-medium text-slate-900 mb-1">
+          In your region
+        </h3>
+        <p className="text-[11px] text-slate-500">
+          We don&apos;t have enough responses in your region yet.
+        </p>
+      </div>
+    );
+  }
+
+  const loc = stats.location;
+
+  return (
+    <div className="mt-3 border-t pt-3">
+      <div className="flex items-center justify-between mb-1">
+        <h3 className="text-xs font-medium text-slate-900">
+          In your region
+        </h3>
+        <span className="text-[10px] text-slate-500">
+          Bar shows % disagree · neutral · agree
+        </span>
+      </div>
+      <div className="space-y-1.5">
+        {tiers.map((scope) => {
+          const row = stats.regions?.[scope] ?? null;
+          if (!row || row.total_responses === 0) return null;
+
+          const label =
+            scope === "global" ? "Global" : row.region_label;
+
+          const isMine =
+            (scope === "city" && loc?.city === row.region_label) ||
+            (scope === "county" && loc?.county === row.region_label) ||
+            (scope === "state" && loc?.state === row.region_label) ||
+            (scope === "country" &&
+              loc?.country === row.region_label) ||
+            scope === "global";
+
+          const agree = Math.max(0, row.pct_agree ?? 0);
+          const disagree = Math.max(0, row.pct_disagree ?? 0);
+          const neutral = Math.max(0, row.pct_neutral ?? 0);
+
+          const totalPct = agree + disagree + neutral || 1;
+          const agreePct = (agree / totalPct) * 100;
+          const disagreePct = (disagree / totalPct) * 100;
+          const neutralPct = (neutral / totalPct) * 100;
+
+          return (
+            <div
+              key={scope}
+              className={`flex items-center justify-between gap-2 text-[11px] ${
+                isMine ? "font-medium text-slate-900" : "text-slate-700"
+              }`}
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="truncate max-w-[120px]">
+                  {label}
+                  {isMine && scope !== "global" && (
+                    <span className="ml-1 text-[10px] text-emerald-600">
+                      (you)
+                    </span>
+                  )}
+                </span>
+                <div className="flex h-1.5 w-32 overflow-hidden rounded-full bg-slate-100">
+                  <div
+                    className="bg-rose-400"
+                    style={{ width: `${disagreePct}%` }}
+                  />
+                  <div
+                    className="bg-slate-400"
+                    style={{ width: `${neutralPct}%` }}
+                  />
+                  <div
+                    className="bg-emerald-500"
+                    style={{ width: `${agreePct}%` }}
+                  />
+                </div>
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <span className="text-slate-500">
+                  {row.total_responses} resp
+                </span>
+                <span className="text-slate-700">
+                  {Math.round(row.pct_agree ?? 0)}% agree
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 // ---------- Page ----------
@@ -297,7 +405,6 @@ export default function QuestionDetailPage() {
     staleTime: 60_000,
   });
 
-  // related questions query (depends on question + tags + location_label)
   const {
     data: relatedQuestions,
     isLoading: relatedLoading,
@@ -353,7 +460,7 @@ export default function QuestionDetailPage() {
       return;
     }
     const current = myStance ?? null;
-    const next = current === value ? null : value; // click again to clear
+    const next = current === value ? null : value;
     stanceMutation.mutate(next);
   };
 
@@ -366,7 +473,6 @@ export default function QuestionDetailPage() {
     !myRegion.country_label &&
     !myRegion.county_label;
 
-  // Convenience: global + regional stats extracted from RPC object
   const globalStats: RegionalStat | null =
     stats?.regions?.global ?? null;
 
@@ -417,13 +523,9 @@ export default function QuestionDetailPage() {
     const hasRelated =
       relatedQuestions && relatedQuestions.length > 0;
 
-    const hasAnyRegionStats =
-      stats?.regions &&
-      Object.values(stats.regions).some((r) => r != null);
-
     content = (
       <article className="rounded-lg border p-4 space-y-4">
-        {/* Header: question + meta */}
+        {/* Header */}
         <header className="space-y-2">
           <h1 className="text-lg sm:text-xl font-semibold text-slate-900">
             {question.question}
@@ -457,7 +559,7 @@ export default function QuestionDetailPage() {
           </div>
         </header>
 
-        {/* Optional: location nudge */}
+        {/* Location nudge */}
         {showLocationNudge && (
           <section className="rounded-md border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-xs flex flex-wrap items-center justify-between gap-2">
             <span className="text-slate-700">
@@ -545,68 +647,8 @@ export default function QuestionDetailPage() {
             </div>
           )}
 
-          {/* Regional breakdown for logged-in user */}
-          {isAuthed && (
-            <div className="mt-3 border-t pt-3">
-              <h3 className="text-xs font-medium text-slate-900 mb-1">
-                In your region
-              </h3>
-              {statsLoading && (
-                <p className="text-[11px] text-slate-500">
-                  Loading region breakdown…
-                </p>
-              )}
-              {!statsLoading &&
-                (!stats ||
-                  !stats.regions ||
-                  !hasAnyRegionStats) && (
-                  <p className="text-[11px] text-slate-500">
-                    We don&apos;t have enough responses in your region
-                    yet.
-                  </p>
-                )}
-              {!statsLoading &&
-                stats &&
-                stats.regions &&
-                hasAnyRegionStats && (
-                  <div className="space-y-1">
-                    {["city", "county", "state", "country", "global"].map(
-                      (scope) => {
-                        const row =
-                          (stats.regions &&
-                            stats.regions[scope]) ??
-                          null;
-                        if (!row) return null;
-
-                        const label =
-                          scope === "global"
-                            ? "Global"
-                            : row.region_label;
-
-                        return (
-                          <div
-                            key={scope}
-                            className="flex items-center justify-between text-[11px]"
-                          >
-                            <span className="text-slate-600">
-                              {label}
-                            </span>
-                            <span className="text-slate-700">
-                              {row.total_responses} ·{" "}
-                              {row.pct_agree != null
-                                ? `${Math.round(
-                                    row.pct_agree
-                                  )}% agree`
-                                : "no data"}
-                            </span>
-                          </div>
-                        );
-                      }
-                    )}
-                  </div>
-                )}
-            </div>
-          )}
+          {/* Regional comparison (mini-heatmap) for logged-in user */}
+          {isAuthed && <RegionComparison stats={stats ?? null} />}
         </section>
 
         {/* Your stance */}
