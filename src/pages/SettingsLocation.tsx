@@ -104,22 +104,22 @@ export default function SettingsLocation() {
   const queryClient = useQueryClient();
   const userId = session?.user?.id ?? null;
 
-  // Country search state
+  // Country search
   const [countrySearchInput, setCountrySearchInput] = React.useState("");
   const [countrySearch, setCountrySearch] = React.useState("");
   const [countryTouched, setCountryTouched] = React.useState(false);
 
-  // State search state
+  // State search
   const [stateSearchInput, setStateSearchInput] = React.useState("");
   const [stateSearch, setStateSearch] = React.useState("");
   const [stateTouched, setStateTouched] = React.useState(false);
 
-  // County search state
+  // County search
   const [countySearchInput, setCountySearchInput] = React.useState("");
   const [countySearch, setCountySearch] = React.useState("");
   const [countyTouched, setCountyTouched] = React.useState(false);
 
-  // City search state
+  // City search
   const [citySearchInput, setCitySearchInput] = React.useState("");
   const [citySearch, setCitySearch] = React.useState("");
   const [cityTouched, setCityTouched] = React.useState(false);
@@ -183,7 +183,6 @@ export default function SettingsLocation() {
       precision: "country" | "state" | "county" | "city";
     }) => setUserLocationByIso(isoCode, precision),
     onSuccess: () => {
-      // Refresh region info + any region-based stats in question pages
       queryClient.invalidateQueries({ queryKey: ["my-region"] });
       queryClient.invalidateQueries({
         queryKey: ["question-region-stats"],
@@ -315,12 +314,15 @@ export default function SettingsLocation() {
                 key={loc.iso_code}
                 type="button"
                 disabled={setLocationMutation.isPending}
-                onClick={() =>
+                onClick={() => {
                   setLocationMutation.mutate({
                     isoCode: loc.iso_code,
                     precision: "country",
-                  })
-                }
+                  });
+                  setCountrySearchInput("");
+                  setCountrySearch("");
+                  setCountryTouched(false);
+                }}
                 className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 border-b last:border-b-0 flex items-center justify-between"
               >
                 <span>{loc.name}</span>
@@ -378,12 +380,15 @@ export default function SettingsLocation() {
                 key={loc.iso_code}
                 type="button"
                 disabled={setLocationMutation.isPending}
-                onClick={() =>
+                onClick={() => {
                   setLocationMutation.mutate({
                     isoCode: loc.iso_code,
                     precision: "state",
-                  })
-                }
+                  });
+                  setStateSearchInput("");
+                  setStateSearch("");
+                  setStateTouched(false);
+                }}
                 className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 border-b last:border-b-0 flex items-center justify-between"
               >
                 <span>{loc.name}</span>
@@ -441,12 +446,15 @@ export default function SettingsLocation() {
                 key={loc.iso_code}
                 type="button"
                 disabled={setLocationMutation.isPending}
-                onClick={() =>
+                onClick={() => {
                   setLocationMutation.mutate({
                     isoCode: loc.iso_code,
                     precision: "county",
-                  })
-                }
+                  });
+                  setCountySearchInput("");
+                  setCountySearch("");
+                  setCountyTouched(false);
+                }}
                 className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 border-b last:border-b-0 flex items-center justify-between"
               >
                 <span>{loc.name}</span>
@@ -507,12 +515,15 @@ export default function SettingsLocation() {
                 key={loc.iso_code}
                 type="button"
                 disabled={setLocationMutation.isPending}
-                onClick={() =>
+                onClick={() => {
                   setLocationMutation.mutate({
                     isoCode: loc.iso_code,
                     precision: "city",
-                  })
-                }
+                  });
+                  setCitySearchInput("");
+                  setCitySearch("");
+                  setCityTouched(false);
+                }}
                 className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 border-b last:border-b-0 flex items-center justify-between"
               >
                 <span>{loc.name}</span>
