@@ -183,10 +183,9 @@ async function fetchFromSource<T>(
 // ---------- Trending topics ----------
 async function fetchTrendingTopics(
   sb: ReturnType<typeof getSupabase> | null,
-  options: { personalized: boolean; userId?: string | null }
+  _options: { personalized: boolean; userId?: string | null }
 ): Promise<Topic[]> {
-  const { personalized, userId } = options;
-
+  // For now, always use the shared trending view (no missing RPC).
   if (!sb) {
     return fetchFromSource<Topic>(null, {
       sourceCandidates: [],
@@ -197,19 +196,6 @@ async function fetchTrendingTopics(
       limit: 8,
       search: null,
     });
-  }
-
-  if (personalized && userId) {
-    try {
-      const { data, error } = await sb.rpc("get_personal_trending_topics", {
-        p_user_id: userId,
-        p_limit: 8,
-      });
-      if (error) throw error;
-      return (data ?? []) as Topic[];
-    } catch (err) {
-      console.error("personalized trending error", err);
-    }
   }
 
   return fetchFromSource<Topic>(sb, {
@@ -291,14 +277,15 @@ export default function Index() {
     queryKey: ["trending", isAuthed ? session?.user?.id : "anon"],
     queryFn: async () => {
       if (!sb)
-        return fetchTrendingTopics(null, { personalized: false });
+        return fetchTrendingTopics(null, { personalized: false, userId: null });
       try {
+        // Options are ignored for now; we always use shared trending.
         return await fetchTrendingTopics(sb, {
           personalized: isAuthed,
           userId: session?.user?.id ?? null,
         });
       } catch {
-        return fetchTrendingTopics(null, { personalized: false });
+        return fetchTrendingTopics(null, { personalized: false, userId: null });
       }
     },
     staleTime: 60_000,
@@ -328,8 +315,8 @@ export default function Index() {
       if (!sb) return [];
       try {
         if (isAuthed && session?.user?.id) {
+          // NOTE: no p_user_id here; function uses auth.uid() internally
           const { data, error } = await sb.rpc("get_tailored_feed", {
-            p_user_id: session.user.id,
             p_limit: latestLimit,
           });
           if (error) throw error;
