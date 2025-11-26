@@ -11,6 +11,8 @@ import { Protected, PublicOnly } from "./auth/route-guards";
 import AdminOnly from "./auth/AdminOnly";
 import { ROUTES } from "@/routes/paths";
 
+import TopicDetailPage from "./pages/TopicDetailPage";
+
 // Public pages
 import Index from "./pages/Index";
 import Signup from "./pages/Signup";
@@ -130,6 +132,10 @@ const App: React.FC = () => {
                 <Route path="location" element={<SettingsLocation />} />
               </Route>
 
+<Route path="/topics/:id" element={<Protected><TopicDetailPage /></Protected>} />
+
+
+              
               {/* My stances (protected) */}
               <Route
                 path="/me/stances"
