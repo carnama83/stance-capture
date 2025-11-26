@@ -1,23 +1,13 @@
 // src/pages/MyStancesPage.tsx
 import * as React from "react";
 import { Link, useNavigate } from "react-router-dom";
-import {
-  useQuery,
-  useMutation,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { getSupabase } from "../lib/supabaseClient";
 import PageLayout from "../components/PageLayout";
 
 type Session = import("@supabase/supabase-js").Session;
 
-type StanceRow = {
-  question_id: string;
-  score: number;
-  updated_at: string;
-};
-
-type QuestionMeta = {
+type LiveQuestion = {
   id: string;
   question: string;
   summary?: string | null;
@@ -27,42 +17,45 @@ type QuestionMeta = {
   status?: string | null;
 };
 
-type MyStanceItem = {
+type QuestionStanceRow = {
+  id: string;
   question_id: string;
   score: number;
-  updated_at: string;
-  question: string;
-  summary?: string | null;
-  tags?: string[] | null;
-  location_label?: string | null;
-  published_at?: string | null;
-  status?: string | null;
+  created_at: string | null;
+  updated_at: string | null;
 };
 
-const STANCE_LABEL: Record<number, string> = {
-  [-2]: "Strongly disagree",
-  [-1]: "Disagree",
-  [0]: "Neutral",
-  [1]: "Agree",
-  [2]: "Strongly agree",
+type MyStanceRow = {
+  stance_id: string;
+  question_id: string;
+  score: number;
+  created_at: string | null;
+  updated_at: string | null;
+  question: LiveQuestion | null;
 };
 
-function stancePillClasses(score: number) {
-  switch (score) {
-    case -2:
-    case -1:
-      return "bg-red-50 text-red-800 border-red-200";
-    case 0:
-      return "bg-slate-50 text-slate-800 border-slate-200";
-    case 1:
-    case 2:
-      return "bg-emerald-50 text-emerald-800 border-emerald-200";
-    default:
-      return "bg-slate-50 text-slate-800 border-slate-200";
-  }
-}
+type SortBy = "recent" | "oldest" | "strongest";
+type FilterBy =
+  | "all"
+  | "sa"
+  | "a"
+  | "n"
+  | "d"
+  | "sd"
+  | "strong"; // strong = ±2
 
-// Optional: if you still want the name
+const STANCE_LABELS: Record<
+  number,
+  { label: string; short: string; tone: "pos" | "neg" | "neu" }
+> = {
+  [-2]: { label: "Strongly disagree", short: "Strongly disagree", tone: "neg" },
+  [-1]: { label: "Disagree", short: "Disagree", tone: "neg" },
+  [0]: { label: "Neutral", short: "Neutral", tone: "neu" },
+  [1]: { label: "Agree", short: "Agree", tone: "pos" },
+  [2]: { label: "Strongly agree", short: "Strongly agree", tone: "pos" },
+};
+
+// ---------- Session hook ----------
 function useSupabaseSession() {
   const sb = React.useMemo(getSupabase, []);
   const [session, setSession] = React.useState<Session | null>(null);
@@ -79,251 +72,375 @@ function useSupabaseSession() {
   return session;
 }
 
-async function fetchMyStances(): Promise<MyStanceItem[]> {
+// ---------- Data fetcher ----------
+async function fetchMyStances(userId: string): Promise<MyStanceRow[]> {
   const sb = getSupabase();
   if (!sb) throw new Error("Supabase client not available");
 
-  const { data: stanceRows, error: stanceError } = await sb
+  // 1) Fetch stances for this user
+  const { data: stances, error: stanceError } = await sb
     .from("question_stances")
-    .select("question_id, score, updated_at")
+    .select("id, question_id, score, created_at, updated_at")
+    .eq("user_id", userId)
     .order("updated_at", { ascending: false });
 
   if (stanceError) {
-    console.error("Failed to load my stances", stanceError);
+    console.error("Failed to load question_stances", stanceError);
     throw stanceError;
   }
 
-  const stances = (stanceRows ?? []) as StanceRow[];
-  if (!stances.length) return [];
+  if (!stances || stances.length === 0) return [];
 
+  const rows = stances as QuestionStanceRow[];
+
+  // 2) Fetch questions for those stances from v_live_questions
   const questionIds = Array.from(
-    new Set(stances.map((s) => s.question_id))
+    new Set(rows.map((r) => r.question_id).filter(Boolean))
   );
 
-  const { data: qRows, error: qError } = await sb
+  if (questionIds.length === 0) {
+    return rows.map((r) => ({
+      stance_id: r.id,
+      question_id: r.question_id,
+      score: r.score,
+      created_at: r.created_at,
+      updated_at: r.updated_at,
+      question: null,
+    }));
+  }
+
+  const { data: questions, error: questionError } = await sb
     .from("v_live_questions")
     .select(
       "id, question, summary, tags, location_label, published_at, status"
     )
     .in("id", questionIds);
 
-  if (qError) {
-    console.error("Failed to load question metadata for stances", qError);
-    throw qError;
+  if (questionError) {
+    console.error("Failed to load questions for stances", questionError);
+    // Still return stances, just without question details
+    return rows.map((r) => ({
+      stance_id: r.id,
+      question_id: r.question_id,
+      score: r.score,
+      created_at: r.created_at,
+      updated_at: r.updated_at,
+      question: null,
+    }));
   }
 
-  const questions = (qRows ?? []) as QuestionMeta[];
-  const byId = new Map<string, QuestionMeta>();
-  questions.forEach((q) => byId.set(q.id, q));
-
-  const joined: MyStanceItem[] = stances
-    .map((s) => {
-      const meta = byId.get(s.question_id);
-      if (!meta) return null;
-      return {
-        question_id: s.question_id,
-        score: s.score,
-        updated_at: s.updated_at,
-        question: meta.question,
-        summary: meta.summary,
-        tags: meta.tags,
-        location_label: meta.location_label,
-        published_at: meta.published_at,
-        status: meta.status,
-      };
-    })
-    .filter((x): x is MyStanceItem => x !== null);
-
-  return joined;
-}
-
-async function clearStance(questionId: string): Promise<void> {
-  const sb = getSupabase();
-  if (!sb) throw new Error("Supabase client not available");
-
-  const { error } = await sb.rpc("set_question_stance", {
-    p_question_id: questionId,
-    p_score: null,
+  const questionMap = new Map<string, LiveQuestion>();
+  (questions ?? []).forEach((q) => {
+    questionMap.set((q as LiveQuestion).id, q as LiveQuestion);
   });
 
-  if (error) {
-    console.error("Failed to clear stance", error);
-    throw error;
-  }
+  return rows.map((r) => ({
+    stance_id: r.id,
+    question_id: r.question_id,
+    score: r.score,
+    created_at: r.created_at,
+    updated_at: r.updated_at,
+    question: questionMap.get(r.question_id) ?? null,
+  }));
 }
 
+// ---------- Page ----------
 export default function MyStancesPage() {
+  const session = useSupabaseSession();
   const navigate = useNavigate();
-  const session = useSupabaseSession(); // not strictly required for logic anymore
-  const queryClient = useQueryClient();
+  const isAuthed = !!session;
+  const userId = session?.user?.id ?? null;
+
+  const [sortBy, setSortBy] = React.useState<SortBy>("recent");
+  const [filterBy, setFilterBy] = React.useState<FilterBy>("all");
 
   const {
-    data: items,
+    data: rawRows,
     isLoading,
     isError,
     error,
-  } = useQuery({
-    queryKey: ["my-stances"],
-    queryFn: fetchMyStances,
+  } = useQuery<MyStanceRow[], Error>({
+    enabled: !!userId,
+    queryKey: ["my-stances", userId],
+    queryFn: () => fetchMyStances(userId!),
     staleTime: 60_000,
   });
 
-  const clearMutation = useMutation({
-    mutationKey: ["clear-stance"],
-    mutationFn: (questionId: string) => clearStance(questionId),
-    onSuccess: (_data, questionId) => {
-      queryClient.setQueryData<MyStanceItem[] | undefined>(
-        ["my-stances"],
-        (old) =>
-          (old ?? []).filter((item) => item.question_id !== questionId)
-      );
-    },
-  });
+  const rows = rawRows ?? [];
 
-  const actions = (
-    <button
-      className="rounded border px-3 py-1.5 text-sm hover:bg-slate-50"
-      onClick={() => navigate("/")}
-    >
-      Back to home
-    </button>
-  );
+  const filteredAndSorted = React.useMemo(() => {
+    let working = [...rows];
+
+    // Filter
+    working = working.filter((row) => {
+      const s = row.score;
+      switch (filterBy) {
+        case "all":
+          return true;
+        case "sa":
+          return s === 2;
+        case "a":
+          return s === 1;
+        case "n":
+          return s === 0;
+        case "d":
+          return s === -1;
+        case "sd":
+          return s === -2;
+        case "strong":
+          return Math.abs(s) === 2;
+        default:
+          return true;
+      }
+    });
+
+    // Sort
+    working.sort((a, b) => {
+      const dateA = new Date(a.updated_at ?? a.created_at ?? 0).getTime();
+      const dateB = new Date(b.updated_at ?? b.created_at ?? 0).getTime();
+      if (sortBy === "recent") {
+        return dateB - dateA;
+      } else if (sortBy === "oldest") {
+        return dateA - dateB;
+      } else if (sortBy === "strongest") {
+        const magA = Math.abs(a.score);
+        const magB = Math.abs(b.score);
+        if (magB !== magA) {
+          return magB - magA;
+        }
+        // tie-breaker: most recent
+        return dateB - dateA;
+      }
+      return 0;
+    });
+
+    return working;
+  }, [rows, sortBy, filterBy]);
+
+  const totalCount = rows.length;
+  const visibleCount = filteredAndSorted.length;
+
+  if (!isAuthed || !userId) {
+    // /me/stances should already be behind <Protected>, but just in case
+    return (
+      <PageLayout>
+        <div className="max-w-3xl mx-auto py-4">
+          <div className="rounded-lg border p-4 text-sm text-slate-700">
+            <div className="font-medium mb-1">Sign in required</div>
+            <p className="mb-2">
+              You need to be logged in to see and manage your stances.
+            </p>
+            <button
+              type="button"
+              className="rounded bg-slate-900 text-white px-3 py-1.5 text-xs"
+              onClick={() => navigate("/login")}
+            >
+              Log in
+            </button>
+          </div>
+        </div>
+      </PageLayout>
+    );
+  }
+
+  const displayName = (() => {
+    const user = session.user;
+    const fullName =
+      (user.user_metadata?.full_name as string | undefined) ??
+      (user.user_metadata?.name as string | undefined);
+    if (fullName) return fullName.split(" ")[0];
+    const email = user.email ?? "";
+    if (!email) return "you";
+    return email.split("@")[0];
+  })();
 
   return (
-    <PageLayout rightSlot={actions}>
-      <div className="max-w-3xl mx-auto py-4 space-y-4">
-        <header className="flex items-center justify-between gap-2">
+    <PageLayout>
+      <div className="max-w-4xl mx-auto py-4 space-y-4">
+        {/* Header */}
+        <div className="flex items-center justify-between gap-2">
           <div>
             <h1 className="text-base font-semibold text-slate-900">
               My stances
             </h1>
             <p className="text-xs text-slate-600">
-              All questions where you&apos;ve recorded a stance.
+              See where {displayName} stands, and revisit questions you&apos;ve
+              already answered.
             </p>
           </div>
-        </header>
+          <Link
+            to="/"
+            className="text-xs text-slate-600 hover:underline"
+          >
+            ← Back to homepage
+          </Link>
+        </div>
 
-        <section className="rounded-lg border p-3">
+        {/* Controls */}
+        <section className="rounded-lg border p-3 space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="text-xs text-slate-700">
+              Showing{" "}
+              <span className="font-medium">
+                {visibleCount} of {totalCount}
+              </span>{" "}
+              stances
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Sort */}
+              <label className="flex items-center gap-1 text-[11px] text-slate-600">
+                <span>Sort by</span>
+                <select
+                  value={sortBy}
+                  onChange={(e) =>
+                    setSortBy(e.target.value as SortBy)
+                  }
+                  className="rounded border px-2 py-1 text-[11px]"
+                >
+                  <option value="recent">Most recent</option>
+                  <option value="oldest">Oldest first</option>
+                  <option value="strongest">Strongest opinions</option>
+                </select>
+              </label>
+
+              {/* Filter */}
+              <label className="flex items-center gap-1 text-[11px] text-slate-600">
+                <span>Filter</span>
+                <select
+                  value={filterBy}
+                  onChange={(e) =>
+                    setFilterBy(e.target.value as FilterBy)
+                  }
+                  className="rounded border px-2 py-1 text-[11px]"
+                >
+                  <option value="all">All stances</option>
+                  <option value="sa">Strongly agree</option>
+                  <option value="a">Agree</option>
+                  <option value="n">Neutral</option>
+                  <option value="d">Disagree</option>
+                  <option value="sd">Strongly disagree</option>
+                  <option value="strong">Strong only (±2)</option>
+                </select>
+              </label>
+            </div>
+          </div>
+
           {isLoading && (
-            <div className="text-xs text-slate-500">Loading…</div>
+            <p className="text-xs text-slate-500">
+              Loading your stances…
+            </p>
           )}
-
-          {isError && (
-            <div className="text-xs text-red-600">
-              Could not load your stances: {(error as Error)?.message}
-            </div>
+          {isError && !isLoading && (
+            <p className="text-xs text-red-600">
+              Failed to load your stances:{" "}
+              {(error as Error)?.message ?? "Unknown error"}
+            </p>
           )}
-
-          {!isLoading && !isError && (items?.length ?? 0) === 0 && (
-            <div className="text-xs text-slate-500">
-              You haven&apos;t taken a stance on any questions yet. Visit the
+          {!isLoading && !isError && totalCount === 0 && (
+            <p className="text-xs text-slate-500">
+              You haven&apos;t taken a stance on any question yet. Visit the
               homepage to get started.
-            </div>
-          )}
-
-          {items && items.length > 0 && (
-            <div className="space-y-3">
-              {items.map((item) => {
-                const label = STANCE_LABEL[item.score] ?? item.score;
-                const pillClasses = stancePillClasses(item.score);
-
-                return (
-                  <div
-                    key={item.question_id}
-                    className="rounded-lg border px-3 py-2 flex flex-col gap-2"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="text-sm font-semibold">
-                          <Link
-                            to={`/q/${item.question_id}`}
-                            className="hover:underline"
-                          >
-                            {item.question}
-                          </Link>
-                        </div>
-                        {item.summary && (
-                          <p className="text-xs text-slate-600 mt-1 line-clamp-2">
-                            {item.summary}
-                          </p>
-                        )}
-                        <div className="mt-1 text-[11px] text-slate-500">
-                          Last updated{" "}
-                          {new Date(item.updated_at).toLocaleString(
-                            undefined,
-                            {
-                              dateStyle: "medium",
-                              timeStyle: "short",
-                            }
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex flex-col items-end gap-1">
-                        {item.location_label && (
-                          <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-600">
-                            {item.location_label}
-                          </span>
-                        )}
-                        {item.published_at && (
-                          <span className="text-[10px] text-slate-500">
-                            Published{" "}
-                            {new Date(
-                              item.published_at
-                            ).toLocaleDateString(undefined, {
-                              dateStyle: "medium",
-                            })}
-                          </span>
-                        )}
-                        <span
-                          className={
-                            "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] mt-1 " +
-                            pillClasses
-                          }
-                        >
-                          Your stance: {label}
-                        </span>
-                      </div>
-                    </div>
-
-                    {item.tags && item.tags.length > 0 && (
-                      <div className="flex flex-wrap gap-1">
-                        {item.tags.map((tag) => (
-                          <span
-                            key={tag}
-                            className="inline-flex items-center rounded-full bg-slate-50 border px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-700"
-                          >
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-
-                    <div className="flex items-center justify-between mt-1">
-                      <Link
-                        to={`/q/${item.question_id}`}
-                        className="text-xs text-slate-900 underline"
-                      >
-                        View question
-                      </Link>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          clearMutation.mutate(item.question_id)
-                        }
-                        disabled={clearMutation.isPending}
-                        className="text-[11px] text-slate-500 underline"
-                      >
-                        {clearMutation.isPending ? "Clearing…" : "Clear stance"}
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            </p>
           )}
         </section>
+
+        {/* List */}
+        {!isLoading && !isError && visibleCount > 0 && (
+          <section className="space-y-3">
+            {filteredAndSorted.map((row) => (
+              <MyStanceCard key={row.stance_id} row={row} />
+            ))}
+          </section>
+        )}
       </div>
     </PageLayout>
+  );
+}
+
+// ---------- Card component ----------
+function MyStanceCard({ row }: { row: MyStanceRow }) {
+  const q = row.question;
+  const updatedAt = row.updated_at ?? row.created_at;
+  const dateLabel = updatedAt
+    ? new Date(updatedAt).toLocaleString(undefined, {
+        dateStyle: "medium",
+        timeStyle: "short",
+      })
+    : "Unknown";
+
+  const stanceDef = STANCE_LABELS[row.score] ?? {
+    label: "Unknown",
+    short: String(row.score),
+    tone: "neu" as const,
+  };
+
+  const stanceToneClass =
+    stanceDef.tone === "pos"
+      ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+      : stanceDef.tone === "neg"
+      ? "bg-rose-50 border-rose-200 text-rose-800"
+      : "bg-slate-50 border-slate-200 text-slate-800";
+
+  return (
+    <article className="rounded-lg border px-3 py-2">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1 min-w-0 space-y-1">
+          <div className="flex items-center gap-2">
+            {q ? (
+              <Link
+                to={`/q/${q.id}`}
+                className="text-sm font-semibold text-slate-900 hover:underline"
+              >
+                {q.question}
+              </Link>
+            ) : (
+              <div className="text-sm font-semibold text-slate-900">
+                [Question unavailable]
+              </div>
+            )}
+          </div>
+          {q?.summary && (
+            <p className="text-xs text-slate-600 line-clamp-2">
+              {q.summary}
+            </p>
+          )}
+          {q?.tags && q.tags.length > 0 && (
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              {q.tags.map((tag) => (
+                <span
+                  key={tag}
+                  className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-700"
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="flex flex-col items-end gap-1 shrink-0">
+          <span
+            className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] ${stanceToneClass}`}
+          >
+            {stanceDef.label}
+          </span>
+          {q?.location_label && (
+            <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-600 bg-slate-50">
+              {q.location_label}
+            </span>
+          )}
+          {q?.published_at && (
+            <span className="text-[10px] text-slate-500">
+              Question:{" "}
+              {new Date(q.published_at).toLocaleDateString(undefined, {
+                dateStyle: "medium",
+              })}
+            </span>
+          )}
+          <span className="text-[10px] text-slate-500">
+            Updated: {dateLabel}
+          </span>
+        </div>
+      </div>
+    </article>
   );
 }
