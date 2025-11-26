@@ -27,14 +27,6 @@ type QuestionStance = {
   score: number;
 };
 
-type QuestionStats = {
-  total_responses: number;
-  pct_agree: number | null;
-  pct_disagree: number | null;
-  pct_neutral: number | null;
-  avg_score: number | null;
-};
-
 type RegionalStat = {
   region_scope: "city" | "county" | "state" | "country" | "global" | string;
   region_label: string;
@@ -43,6 +35,24 @@ type RegionalStat = {
   pct_disagree: number | null;
   pct_neutral: number | null;
   avg_score: number | null;
+};
+
+type QuestionStats = {
+  my_stance: number | null;
+  location: {
+    city: string | null;
+    county: string | null;
+    state: string | null;
+    country: string | null;
+  } | null;
+  regions: {
+    global?: RegionalStat | null;
+    city?: RegionalStat | null;
+    county?: RegionalStat | null;
+    state?: RegionalStat | null;
+    country?: RegionalStat | null;
+    [key: string]: RegionalStat | null | undefined;
+  } | null;
 };
 
 type RegionRow = {
@@ -118,7 +128,7 @@ async function fetchMyStance(questionId: string): Promise<number | null> {
 
   if (error) {
     if ((error as any).code === "PGRST116") {
-      // no row
+      // no row for this user/question
       return null;
     }
     console.error("Failed to load stance", error);
@@ -155,48 +165,28 @@ async function fetchQuestionStats(
   const sb = getSupabase();
   if (!sb) throw new Error("Supabase client not available");
 
-  const { data, error } = await sb
-    .from("question_stance_stats")
-    .select(
-      "total_responses, pct_agree, pct_disagree, pct_neutral, avg_score"
-    )
-    .eq("question_id", questionId)
-    .maybeSingle<QuestionStats>();
-
-  if (error) {
-    if ((error as any).code === "PGRST116") {
-      return null;
-    }
-    console.error("Failed to load question stats", error);
-    throw error;
-  }
-
-  if (!data) return null;
-  return {
-    total_responses: data.total_responses ?? 0,
-    pct_agree: data.pct_agree,
-    pct_disagree: data.pct_disagree,
-    pct_neutral: data.pct_neutral,
-    avg_score: data.avg_score,
-  };
-}
-
-async function fetchQuestionRegionStats(
-  questionId: string
-): Promise<RegionalStat[]> {
-  const sb = getSupabase();
-  if (!sb) throw new Error("Supabase client not available");
-
   const { data, error } = await sb.rpc("get_question_stats_for_user", {
     p_question_id: questionId,
   });
 
   if (error) {
-    console.error("Failed to load regional question stats", error);
-    return [];
+    // If RPC throws when no stats exist, you can special-case PGRST116 here
+    console.error("Failed to load question stats (RPC)", error);
+    return null;
   }
 
-  return (data ?? []) as RegionalStat[];
+  if (!data) return null;
+
+  const raw = data as any;
+
+  const regions = (raw.regions ?? {}) as QuestionStats["regions"];
+
+  return {
+    my_stance:
+      typeof raw.my_stance === "number" ? raw.my_stance : null,
+    location: raw.location ?? null,
+    regions,
+  };
 }
 
 async function fetchMyRegion(userId: string): Promise<RegionRow | null> {
@@ -298,16 +288,6 @@ export default function QuestionDetailPage() {
   });
 
   const {
-    data: regionStats,
-    isLoading: regionStatsLoading,
-  } = useQuery({
-    enabled: !!questionId && isAuthed,
-    queryKey: ["question-region-stats", questionId],
-    queryFn: () => fetchQuestionRegionStats(questionId),
-    staleTime: 60_000,
-  });
-
-  const {
     data: myRegion,
     isLoading: myRegionLoading,
   } = useQuery({
@@ -350,9 +330,6 @@ export default function QuestionDetailPage() {
       queryClient.invalidateQueries({
         queryKey: ["question-stats", questionId],
       });
-      queryClient.invalidateQueries({
-        queryKey: ["question-region-stats", questionId],
-      });
     },
   });
 
@@ -388,6 +365,10 @@ export default function QuestionDetailPage() {
     !myRegion.state_label &&
     !myRegion.country_label &&
     !myRegion.county_label;
+
+  // Convenience: global + regional stats extracted from RPC object
+  const globalStats: RegionalStat | null =
+    stats?.regions?.global ?? null;
 
   // ---------- Render ----------
   let content: React.ReactNode;
@@ -428,15 +409,17 @@ export default function QuestionDetailPage() {
     );
   } else {
     const hasStats =
-      stats &&
-      stats.total_responses > 0 &&
-      (stats.pct_agree != null || stats.pct_disagree != null);
+      !!globalStats &&
+      globalStats.total_responses > 0 &&
+      (globalStats.pct_agree != null ||
+        globalStats.pct_disagree != null);
 
     const hasRelated =
       relatedQuestions && relatedQuestions.length > 0;
 
-    const hasRegionStats =
-      regionStats && regionStats.length > 0;
+    const hasAnyRegionStats =
+      stats?.regions &&
+      Object.values(stats.regions).some((r) => r != null);
 
     content = (
       <article className="rounded-lg border p-4 space-y-4">
@@ -455,15 +438,20 @@ export default function QuestionDetailPage() {
             {question.published_at && (
               <span>
                 Published{" "}
-                {new Date(question.published_at).toLocaleString(undefined, {
-                  dateStyle: "medium",
-                  timeStyle: "short",
-                })}
+                {new Date(question.published_at).toLocaleString(
+                  undefined,
+                  {
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                  }
+                )}
               </span>
             )}
             {question.status && (
               <span className="inline-flex items-center rounded-full border px-2 py-0.5 bg-emerald-50 text-emerald-700">
-                {question.status === "active" ? "Live" : question.status}
+                {question.status === "active"
+                  ? "Live"
+                  : question.status}
               </span>
             )}
           </div>
@@ -473,8 +461,8 @@ export default function QuestionDetailPage() {
         {showLocationNudge && (
           <section className="rounded-md border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-xs flex flex-wrap items-center justify-between gap-2">
             <span className="text-slate-700">
-              Set your location to see how people in your region think about
-              this question.
+              Set your location to see how people in your region think
+              about this question.
             </span>
             <Link
               to="/settings/location"
@@ -522,32 +510,36 @@ export default function QuestionDetailPage() {
             Community stance
           </h2>
           {statsLoading && (
-            <p className="text-xs text-slate-500">Loading community stats…</p>
+            <p className="text-xs text-slate-500">
+              Loading community stats…
+            </p>
           )}
           {!statsLoading && !hasStats && (
             <p className="text-xs text-slate-500">
               No responses yet. Be the first to take a stance.
             </p>
           )}
-          {hasStats && stats && (
+          {hasStats && globalStats && (
             <div className="space-y-2 text-xs text-slate-700">
               <div>
                 <span className="font-medium">
-                  {stats.total_responses} responses
+                  {globalStats.total_responses} responses
                 </span>
-                {stats.pct_agree != null && (
-                  <> · {Math.round(stats.pct_agree)}% agree</>
+                {globalStats.pct_agree != null && (
+                  <> · {Math.round(globalStats.pct_agree)}% agree</>
                 )}
-                {stats.pct_disagree != null && (
-                  <> · {Math.round(stats.pct_disagree)}% disagree</>
+                {globalStats.pct_disagree != null && (
+                  <> · {Math.round(globalStats.pct_disagree)}% disagree</>
                 )}
-                {stats.pct_neutral != null && (
-                  <> · {Math.round(stats.pct_neutral)}% neutral</>
+                {globalStats.pct_neutral != null && (
+                  <> · {Math.round(globalStats.pct_neutral)}% neutral</>
                 )}
               </div>
-              {stats.avg_score != null && (
+              {globalStats.avg_score != null && (
                 <div className="text-[11px] text-slate-500">
-                  Average stance: {stats.avg_score.toFixed(2)} (scale -2 to +2)
+                  Average stance:{" "}
+                  {globalStats.avg_score.toFixed(2)} (scale -2 to
+                  +2)
                 </div>
               )}
             </div>
@@ -559,41 +551,52 @@ export default function QuestionDetailPage() {
               <h3 className="text-xs font-medium text-slate-900 mb-1">
                 In your region
               </h3>
-              {regionStatsLoading && (
+              {statsLoading && (
                 <p className="text-[11px] text-slate-500">
                   Loading region breakdown…
                 </p>
               )}
-              {!regionStatsLoading &&
-                (!hasRegionStats || !regionStats) && (
+              {!statsLoading &&
+                (!stats ||
+                  !stats.regions ||
+                  !hasAnyRegionStats) && (
                   <p className="text-[11px] text-slate-500">
-                    We don&apos;t have enough responses in your region yet.
+                    We don&apos;t have enough responses in your region
+                    yet.
                   </p>
                 )}
-              {!regionStatsLoading &&
-                hasRegionStats &&
-                regionStats && (
+              {!statsLoading &&
+                stats &&
+                stats.regions &&
+                hasAnyRegionStats && (
                   <div className="space-y-1">
                     {["city", "county", "state", "country", "global"].map(
                       (scope) => {
-                        const row = regionStats.find(
-                          (r) => r.region_scope === scope
-                        );
+                        const row =
+                          (stats.regions &&
+                            stats.regions[scope]) ??
+                          null;
                         if (!row) return null;
 
                         const label =
-                          scope === "global" ? "Global" : row.region_label;
+                          scope === "global"
+                            ? "Global"
+                            : row.region_label;
 
                         return (
                           <div
                             key={scope}
                             className="flex items-center justify-between text-[11px]"
                           >
-                            <span className="text-slate-600">{label}</span>
+                            <span className="text-slate-600">
+                              {label}
+                            </span>
                             <span className="text-slate-700">
                               {row.total_responses} ·{" "}
                               {row.pct_agree != null
-                                ? `${Math.round(row.pct_agree)}% agree`
+                                ? `${Math.round(
+                                    row.pct_agree
+                                  )}% agree`
                                 : "no data"}
                             </span>
                           </div>
@@ -615,8 +618,8 @@ export default function QuestionDetailPage() {
           {!isAuthed && (
             <div className="space-y-2">
               <p className="text-xs text-slate-600">
-                Log in to record your stance and compare with your city, state,
-                country, and globally.
+                Log in to record your stance and compare with your city,
+                state, country, and globally.
               </p>
               <button
                 type="button"
@@ -666,21 +669,24 @@ export default function QuestionDetailPage() {
                   <span>
                     Saved as{" "}
                     {
-                      STANCE_SCALE.find((s) => s.value === myStance)
-                        ?.label
+                      STANCE_SCALE.find(
+                        (s) => s.value === myStance
+                      )?.label
                     }
                     .
                   </span>
                 )}
-                {isAuthed && myStance != null && !stanceMutation.isPending && (
-                  <button
-                    type="button"
-                    className="underline"
-                    onClick={() => handleSetStance(myStance)}
-                  >
-                    Clear
-                  </button>
-                )}
+                {isAuthed &&
+                  myStance != null &&
+                  !stanceMutation.isPending && (
+                    <button
+                      type="button"
+                      className="underline"
+                      onClick={() => handleSetStance(myStance)}
+                    >
+                      Clear
+                    </button>
+                  )}
               </div>
             </>
           )}
@@ -731,10 +737,11 @@ export default function QuestionDetailPage() {
                     )}
                     {rq.published_at && (
                       <span className="text-[10px] text-slate-500">
-                        {new Date(rq.published_at).toLocaleDateString(
-                          undefined,
-                          { dateStyle: "medium" }
-                        )}
+                        {new Date(
+                          rq.published_at
+                        ).toLocaleDateString(undefined, {
+                          dateStyle: "medium",
+                        })}
                       </span>
                     )}
                   </div>
