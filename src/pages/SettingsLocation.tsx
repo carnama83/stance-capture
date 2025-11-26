@@ -104,22 +104,22 @@ export default function SettingsLocation() {
   const queryClient = useQueryClient();
   const userId = session?.user?.id ?? null;
 
-  // Country search
+  // Country search state
   const [countrySearchInput, setCountrySearchInput] = React.useState("");
   const [countrySearch, setCountrySearch] = React.useState("");
   const [countryTouched, setCountryTouched] = React.useState(false);
 
-  // State search
+  // State search state
   const [stateSearchInput, setStateSearchInput] = React.useState("");
-  the [stateSearch, setStateSearch] = React.useState("");
+  const [stateSearch, setStateSearch] = React.useState("");
   const [stateTouched, setStateTouched] = React.useState(false);
 
-  // County search
+  // County search state
   const [countySearchInput, setCountySearchInput] = React.useState("");
   const [countySearch, setCountySearch] = React.useState("");
   const [countyTouched, setCountyTouched] = React.useState(false);
 
-  // City search
+  // City search state
   const [citySearchInput, setCitySearchInput] = React.useState("");
   const [citySearch, setCitySearch] = React.useState("");
   const [cityTouched, setCityTouched] = React.useState(false);
@@ -472,8 +472,7 @@ export default function SettingsLocation() {
           Choose your city <span className="font-normal">(optional)</span>
         </h3>
         <p className="text-[11px] text-slate-500">
-          Setting a city or county gives you more precise stats, when
-          available.
+          Setting a city or county gives you more precise stats, when available.
         </p>
         <form
           onSubmit={handleCitySearchSubmit}
