@@ -85,7 +85,10 @@ function useSupabaseSession() {
 
 // ---------- Source aliasing ----------
 const SOURCE_ALIAS: Record<string, string> = {
+  // Legacy alias: table -> view
   topic_region_trends: "topic_region_trends_v",
+  // Extra safety: if some code asks for topics_trending, route to vw_topics_trending
+  topics_trending: "vw_topics_trending",
 };
 
 // ---------- Generic utilities ----------
@@ -152,7 +155,8 @@ async function fetchFromSource<T>(
   }
 
   if (sb) {
-    const table = sb.from(defaultSource);
+    const source = SOURCE_ALIAS[defaultSource] ?? defaultSource;
+    const table = sb.from(source);
     let q = table.select(defaultSelect).limit(limit);
     if (search && search.trim()) {
       q = (q as any).ilike?.("title", `%${search.trim()}%`) ?? q;
@@ -185,13 +189,16 @@ async function fetchTrendingTopics(
   sb: ReturnType<typeof getSupabase> | null,
   _options: { personalized: boolean; userId?: string | null }
 ): Promise<Topic[]> {
-  // For now, always use the shared trending view (no missing RPC).
+  const defaultSelect =
+    "id, title, summary, tags, location_label, tier, updated_at, trending_score, activity_7d";
+
+  // For now, always use the global trending view (vw_topics_trending),
+  // backed by refresh_topic_region_trends + topics_trending.
   if (!sb) {
     return fetchFromSource<Topic>(null, {
       sourceCandidates: [],
-      defaultSource: "topic_region_trends_v",
-      defaultSelect:
-        "id, title, summary, tags, location_label, tier, updated_at, trending_score, activity_7d",
+      defaultSource: "vw_topics_trending",
+      defaultSelect,
       defaultOrderCandidates: ["trending_score", "activity_7d", "updated_at"],
       limit: 8,
       search: null,
@@ -199,10 +206,10 @@ async function fetchTrendingTopics(
   }
 
   return fetchFromSource<Topic>(sb, {
-    sourceCandidates: ["topic_region_trends", "topic_region_trends_v"],
-    defaultSource: "topic_region_trends_v",
-    defaultSelect:
-      "id, title, summary, tags, location_label, tier, updated_at, trending_score, activity_7d",
+    // Try the explicit global views first, fall back to the older view if needed
+    sourceCandidates: ["vw_topics_trending", "topics_trending", "topic_region_trends_v"],
+    defaultSource: "vw_topics_trending",
+    defaultSelect,
     defaultOrderCandidates: ["trending_score", "activity_7d", "updated_at"],
     limit: 8,
     search: null,
@@ -218,24 +225,25 @@ async function fetchTopicsGrid(
   const baseLimit = pageSize;
   const offset = page * pageSize;
 
+  const defaultSelect =
+    "id, title, summary, tags, location_label, tier, updated_at, trending_score, activity_7d";
+
+  // Anonymous / SSR-ish fallback: use the same global trending view via helper
   if (!sb) {
     return fetchFromSource<Topic>(null, {
       sourceCandidates: [],
-      defaultSource: "topic_region_trends_v",
-      defaultSelect:
-        "id, title, summary, tags, location_label, tier, updated_at, trending_score, activity_7d",
+      defaultSource: "vw_topics_trending",
+      defaultSelect,
       defaultOrderCandidates: ["trending_score", "activity_7d", "updated_at"],
       limit: baseLimit,
       search,
     });
   }
 
-  const table = sb.from("topic_region_trends_v");
+  // Authenticated / normal client: paginate directly from vw_topics_trending
+  const table = sb.from("vw_topics_trending");
   let q = table
-    .select(
-      "id, title, summary, tags, location_label, tier, updated_at, trending_score, activity_7d",
-      { count: "exact" }
-    )
+    .select(defaultSelect, { count: "exact" })
     .order("trending_score", { ascending: false })
     .range(offset, offset + baseLimit - 1);
 
@@ -279,7 +287,7 @@ export default function Index() {
       if (!sb)
         return fetchTrendingTopics(null, { personalized: false, userId: null });
       try {
-        // Options are ignored for now; we always use shared trending.
+        // Options are ignored for now; we always use shared/global trending.
         return await fetchTrendingTopics(sb, {
           personalized: isAuthed,
           userId: session?.user?.id ?? null,
@@ -294,8 +302,7 @@ export default function Index() {
   const topicsQuery = useQuery({
     queryKey: ["topics-grid", search, page, pageSize],
     queryFn: async () => {
-      if (!sb)
-        return fetchTopicsGrid(null, { search, page, pageSize });
+      if (!sb) return fetchTopicsGrid(null, { search, page, pageSize });
       try {
         return await fetchTopicsGrid(sb, { search, page, pageSize });
       } catch {
