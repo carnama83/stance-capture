@@ -866,7 +866,7 @@ function Trending({
                 <div>
                   <div className="text-sm font-semibold">
                     <Link
-                      to={`/topics?topic=${encodeURIComponent(topic.id)}`}
+                      to={`/topics/${encodeURIComponent(topic.id)}`}
                       className="hover:underline"
                     >
                       {topic.title}
@@ -984,7 +984,7 @@ function ExploreTopicsGrid({
                   <div>
                     <div className="text-xs font-semibold">
                       <Link
-                        to={`/topics?topic=${encodeURIComponent(topic.id)}`}
+                        to={`/topics/${encodeURIComponent(topic.id)}`}
                         className="hover:underline"
                       >
                         {topic.title}
