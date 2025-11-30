@@ -32,7 +32,6 @@ export function AdminTrendingDebugPanel() {
       setLoading(true);
       setErrorMsg(null);
 
-      // Latest topics
       const { data: tData, error: tErr } = await supabase
         .from("topics")
         .select("id,title,tier,location_label,published_at")
@@ -41,7 +40,6 @@ export function AdminTrendingDebugPanel() {
 
       if (tErr) throw tErr;
 
-      // Top trending topics
       const { data: vData, error: vErr } = await supabase
         .from("vw_topics_trending")
         .select(
