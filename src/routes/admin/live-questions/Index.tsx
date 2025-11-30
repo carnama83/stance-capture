@@ -160,6 +160,9 @@ export default function LiveQuestionsPage() {
         </div>
       </CardHeader>
 
+      import { AdminTrendingDebugPanel } from "@/components/admin/AdminTrendingDebugPanel";
+// ...
+
       <CardContent className="space-y-3">
         {loading && (
           <div className="p-4 text-sm text-muted-foreground">Loading…</div>
@@ -172,10 +175,14 @@ export default function LiveQuestionsPage() {
         {rows.map((row) => (
           <QuestionRowView key={row.id} row={row} onChanged={load} />
         ))}
+
+        {/* Admin-only trending debug */}
+        <AdminTrendingDebugPanel />
       </CardContent>
     </Card>
   );
 }
+
 
 function QuestionRowView({
   row,
