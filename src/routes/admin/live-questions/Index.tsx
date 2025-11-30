@@ -160,7 +160,7 @@ export default function LiveQuestionsPage() {
         </div>
       </CardHeader>
 
-      import { AdminTrendingDebugPanel } from "@/components/admin/AdminTrendingDebugPanel";
+      import { AdminTrendingDebugPanel } from "@/src/components/admin/AdminTrendingDebugPanel";
 // ...
 
       <CardContent className="space-y-3">
