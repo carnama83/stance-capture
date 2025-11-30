@@ -40,6 +40,8 @@ import AdminQuestionsPage from "@/routes/admin/questions/Index";
 import AdminNewsIndex from "@/routes/admin/news/Index";
 import AdminLiveQuestionsPage from "@/routes/admin/live-questions/Index";
 import AdminLiveQuestionShowPage from "@/routes/admin/live-questions/Show";
+// NEW: AI Drafts admin page
+import AdminAiDraftsPage from "@/routes/admin/ai-drafts/Index";
 
 // My stances
 import MyStancesPage from "./pages/MyStancesPage";
@@ -132,10 +134,15 @@ const App: React.FC = () => {
                 <Route path="location" element={<SettingsLocation />} />
               </Route>
 
-<Route path="/topics/:id" element={<Protected><TopicDetailPage /></Protected>} />
+              <Route
+                path="/topics/:id"
+                element={
+                  <Protected>
+                    <TopicDetailPage />
+                  </Protected>
+                }
+              />
 
-
-              
               {/* My stances (protected) */}
               <Route
                 path="/me/stances"
@@ -171,6 +178,8 @@ const App: React.FC = () => {
                 <Route path="sources" element={<AdminSourcesPage />} />
                 <Route path="ingestion" element={<AdminIngestionPage />} />
                 <Route path="drafts" element={<AdminDraftsPage />} />
+                {/* NEW: AI drafts route */}
+                <Route path="ai-drafts" element={<AdminAiDraftsPage />} />
                 <Route path="questions" element={<AdminQuestionsPage />} />
                 <Route
                   path="live-questions"
