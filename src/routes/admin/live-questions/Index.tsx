@@ -16,6 +16,8 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { RefreshCw, Edit2 } from "lucide-react";
+// ✅ NEW: proper import for the debug panel
+import { AdminTrendingDebugPanel } from "@/components/admin/AdminTrendingDebugPanel";
 
 type QuestionStatus = "active" | "archived";
 
@@ -160,9 +162,6 @@ export default function LiveQuestionsPage() {
         </div>
       </CardHeader>
 
-      import { AdminTrendingDebugPanel } from "@/src/components/admin/AdminTrendingDebugPanel";
-// ...
-
       <CardContent className="space-y-3">
         {loading && (
           <div className="p-4 text-sm text-muted-foreground">Loading…</div>
@@ -182,7 +181,6 @@ export default function LiveQuestionsPage() {
     </Card>
   );
 }
-
 
 function QuestionRowView({
   row,
@@ -341,10 +339,7 @@ function EditQuestionDialog({
           </div>
           <div>
             <Label>Tags (comma-separated)</Label>
-            <Input
-              value={tags}
-              onChange={(e) => setTags(e.target.value)}
-            />
+            <Input value={tags} onChange={(e) => setTags(e.target.value)} />
           </div>
           <div>
             <Label>Location label</Label>
