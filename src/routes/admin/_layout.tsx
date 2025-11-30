@@ -72,6 +72,12 @@ export default function AdminLayout() {
             icon={<FileText className="h-4 w-4" />}
             label="Drafts"
           />
+          {/* NEW: AI Drafts (topics from AI pipeline) */}
+          <AdminLink
+            to="/admin/ai-drafts"
+            icon={<FileText className="h-4 w-4" />}
+            label="AI Drafts"
+          />
           <AdminLink
             to="/admin/questions"
             icon={<FileText className="h-4 w-4" />}
