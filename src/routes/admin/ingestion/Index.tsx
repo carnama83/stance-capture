@@ -3,9 +3,15 @@ import { createSupabase } from "@/lib/createSupabase";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { JsonViewer } from "@/components/admin/JsonViewer";
-import { RefreshCw } from "lucide-react";
+import { Loader2, RefreshCw } from "lucide-react";
 
 const STATUS_OPTIONS = [
   { value: "all", label: "Any" },
@@ -30,6 +36,15 @@ export default function AdminIngestionPage() {
   const [sources, setSources] = React.useState<any[]>([]);
   const [dateFrom, setDateFrom] = React.useState("");
   const [dateTo, setDateTo] = React.useState("");
+
+  // Pipeline run state
+  const [pipelineLoading, setPipelineLoading] = React.useState(false);
+  const [pipelineResult, setPipelineResult] = React.useState<{
+    ok: boolean;
+    duration_ms?: number;
+    error?: string | null;
+    result?: unknown;
+  } | null>(null);
 
   const loadSources = React.useCallback(async () => {
     const { data } = await supabase
@@ -74,11 +89,76 @@ export default function AdminIngestionPage() {
 
   const totalPages = count ? Math.max(1, Math.ceil(count / pageSize)) : 1;
 
+  const handleRunPipeline = React.useCallback(async () => {
+    setPipelineLoading(true);
+    setPipelineResult(null);
+
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        "admin-run-pipeline",
+        {
+          body: {}, // no payload needed
+        }
+      );
+
+      if (error) {
+        setPipelineResult({
+          ok: false,
+          error: error.message,
+        });
+      } else {
+        setPipelineResult(
+          (data as {
+            ok: boolean;
+            duration_ms?: number;
+            error?: string | null;
+            result?: unknown;
+          }) ?? {
+            ok: false,
+            error: "Unknown response from admin-run-pipeline",
+          }
+        );
+      }
+    } catch (err: any) {
+      console.error("admin-run-pipeline failed", err);
+      setPipelineResult({
+        ok: false,
+        error: err?.message ?? String(err),
+      });
+    } finally {
+      setPipelineLoading(false);
+    }
+  }, [supabase]);
+
+  const pipelineStatusColor =
+    pipelineResult == null
+      ? "text-muted-foreground"
+      : pipelineResult.ok
+      ? "text-emerald-600"
+      : "text-red-600";
+
   return (
     <Card className="max-w-7xl mx-auto">
-      <CardHeader className="flex items-center justify-between">
-        <CardTitle>Ingestion Queue</CardTitle>
-        <div className="flex items-center gap-2">
+      <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="space-y-1">
+          <CardTitle>Ingestion Queue</CardTitle>
+          <p className="text-xs text-muted-foreground">
+            Inspect queued ingest jobs. Use &quot;Run pipeline&quot; to trigger
+            ingest → cluster → generate via <code>run_ingestion_pipeline()</code>.
+          </p>
+        </div>
+        <div className="flex flex-col gap-2 md:flex-row md:items-center">
+          {/* Run pipeline button */}
+          <div className="flex items-center gap-2">
+            <Button onClick={handleRunPipeline} disabled={pipelineLoading}>
+              {pipelineLoading && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              {pipelineLoading ? "Running pipeline..." : "Run pipeline now"}
+            </Button>
+          </div>
+
+          {/* Refresh queue button */}
           <Button
             variant="outline"
             onClick={() => {
@@ -91,6 +171,26 @@ export default function AdminIngestionPage() {
         </div>
       </CardHeader>
       <CardContent>
+        {/* Pipeline status */}
+        {pipelineResult && (
+          <div className="mb-4 text-xs">
+            <span className={pipelineStatusColor}>
+              {pipelineResult.ok
+                ? `Pipeline succeeded in ${
+                    pipelineResult.duration_ms ?? "?"
+                  } ms`
+                : `Pipeline error: ${
+                    pipelineResult.error ?? "Unknown error"
+                  }`}
+            </span>
+            {pipelineResult.result && (
+              <pre className="mt-2 max-h-40 overflow-auto rounded bg-muted p-2 text-[11px]">
+                {JSON.stringify(pipelineResult.result, null, 2)}
+              </pre>
+            )}
+          </div>
+        )}
+
         {/* Filter bar */}
         <div className="grid grid-cols-1 md:grid-cols-5 gap-3 mb-4">
           {/* Status */}
@@ -157,7 +257,9 @@ export default function AdminIngestionPage() {
 
           {/* From date (created_at) */}
           <div>
-            <label className="text-xs text-muted-foreground">From (created_at)</label>
+            <label className="text-xs text-muted-foreground">
+              From (created_at)
+            </label>
             <Input
               type="datetime-local"
               value={dateFrom}
@@ -172,7 +274,9 @@ export default function AdminIngestionPage() {
 
           {/* To date (created_at) */}
           <div>
-            <label className="text-xs text-muted-foreground">To (created_at)</label>
+            <label className="text-xs text-muted-foreground">
+              To (created_at)
+            </label>
             <Input
               type="datetime-local"
               value={dateTo}
@@ -192,7 +296,7 @@ export default function AdminIngestionPage() {
           <div className="col-span-2">Source</div>
           <div>Lang</div>
           <div>Status</div>
-          {/* 👇 show job creation time */}
+          {/* 👇 created_at reflects when this job entered the queue */}
           <div className="col-span-2">Created at</div>
           <div className="col-span-4">Expand</div>
         </div>
@@ -203,7 +307,9 @@ export default function AdminIngestionPage() {
             <IngestionRow key={r.id} row={r} />
           ))}
           {!rows.length && (
-            <div className="p-6 text-sm text-muted-foreground">No results.</div>
+            <div className="p-6 text-sm text-muted-foreground">
+              No results.
+            </div>
           )}
         </div>
 
