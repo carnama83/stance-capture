@@ -1,170 +1,250 @@
-// src/routes/admin/ai-drafts/index.tsx
 import * as React from "react";
 import { createSupabase } from "@/lib/createSupabase";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Loader2, RefreshCw } from "lucide-react";
 
-type AiDraftState = "draft" | "published" | "error" | string;
-
-type AiQuestionDraft = {
-  id: string;
-  title: string;
-  summary: string | null;
-  tags: string[] | null;
-  sources: string[] | null;
-  lang: string | null;
-  cluster_id: string | null;
-  state: AiDraftState;
-  created_at: string;
+type FreshnessRow = {
+  last_ingest_queue: string | null;
+  last_topic_cluster: string | null;
+  last_ingest: string | null;
+  last_cluster: string | null;
+  last_generate: string | null;
 };
 
-export default function AiDraftsPage() {
+type Stats = {
+  newsCount: number | null;
+  newsLast24h: number | null;
+  topicDraftCount: number | null;
+  topicDraftsLast24h: number | null;
+  questionDraftCount: number | null;
+  questionDraftsLast24h: number | null;
+  liveQuestionCount: number | null;
+  freshness: FreshnessRow | null;
+};
+
+export default function AdminAIDashboardPage() {
   const supabase = React.useMemo(createSupabase, []);
-  const [rows, setRows] = React.useState<AiQuestionDraft[]>([]);
+  const [stats, setStats] = React.useState<Stats | null>(null);
   const [loading, setLoading] = React.useState(false);
-  const [search, setSearch] = React.useState("");
-  const [stateFilter, setStateFilter] = React.useState<"all" | AiDraftState>("draft");
-  const [publishingId, setPublishingId] = React.useState<string | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  const [lastRefreshMs, setLastRefreshMs] = React.useState<number | null>(null);
+  const [lastRefreshAt, setLastRefreshAt] = React.useState<string | null>(null);
 
-  const load = React.useCallback(async () => {
+  const loadStats = React.useCallback(async () => {
     setLoading(true);
-    let q = supabase
-      .from("ai_question_drafts")
-      .select("id,title,summary,tags,sources,lang,cluster_id,state,created_at")
-      .order("created_at", { ascending: false })
-      .limit(200);
+    setError(null);
 
-    if (stateFilter !== "all") {
-      q = q.eq("state", stateFilter);
-    }
-
-    const { data, error } = await q;
-    if (error) {
-      console.error("Failed to load ai_question_drafts:", error);
-      setRows([]);
-      setLoading(false);
-      return;
-    }
-
-    let items = (data ?? []) as AiQuestionDraft[];
-    if (search.trim()) {
-      const needle = search.trim().toLowerCase();
-      items = items.filter((r) =>
-        (r.title ?? "").toLowerCase().includes(needle),
-      );
-    }
-
-    setRows(items);
-    setLoading(false);
-  }, [supabase, stateFilter, search]);
-
-  React.useEffect(() => {
-    load();
-  }, [load]);
-
-  const handlePublishTopic = async (draft: AiQuestionDraft) => {
-    if (draft.state !== "draft") {
-      alert("Only DRAFT AI entries can be published as topics.");
-      return;
-    }
-    if (!confirm("Publish this AI draft as a Topic?")) return;
-
-    setPublishingId(draft.id);
+    const started = performance.now();
     try {
-      const { data, error } = await supabase.rpc("admin_publish_draft", {
-        p_draft_id: draft.id,
-        p_region_ids: null, // later we can pass specific region ids
+      const now = new Date();
+      const since24h = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+
+      // Helper to get total + last24h counts from a table by created_at
+      const countPair = async (table: string) => {
+        const total = await supabase
+          .from(table)
+          .select("id", { count: "exact", head: true });
+
+        const last24h = await supabase
+          .from(table)
+          .select("id", { count: "exact", head: true })
+          .gte("created_at", since24h);
+
+        return {
+          total: total.error ? null : total.count ?? null,
+          last24h: last24h.error ? null : last24h.count ?? null,
+        };
+      };
+
+      const [news, topicDrafts, questionDrafts, liveQuestions, freshnessRes] =
+        await Promise.all([
+          countPair("news_items"),
+          countPair("topic_drafts"),
+          countPair("topic_question_drafts"),
+          supabase
+            .from("questions")
+            .select("id", { count: "exact", head: true }),
+          supabase
+            .from("pipeline_freshness")
+            .select("*")
+            .maybeSingle(),
+        ]);
+
+      const freshness: FreshnessRow | null =
+        freshnessRes.error || !freshnessRes.data
+          ? null
+          : (freshnessRes.data as FreshnessRow);
+
+      setStats({
+        newsCount: news.total,
+        newsLast24h: news.last24h,
+        topicDraftCount: topicDrafts.total,
+        topicDraftsLast24h: topicDrafts.last24h,
+        questionDraftCount: questionDrafts.total,
+        questionDraftsLast24h: questionDrafts.last24h,
+        liveQuestionCount: liveQuestions.error
+          ? null
+          : liveQuestions.count ?? null,
+        freshness,
       });
 
-      if (error) {
-        console.error("admin_publish_draft error:", error);
-        alert(error.message ?? "Failed to publish topic.");
-        return;
-      }
-
-      alert(`Topic published. id=${data}`);
-      load();
+      const duration = Math.round(performance.now() - started);
+      setLastRefreshMs(duration);
+      setLastRefreshAt(new Date().toLocaleString());
     } catch (err: any) {
-      console.error("admin_publish_draft exception:", err);
-      alert(err?.message ?? String(err));
+      console.error("Failed to load AI dashboard stats", err);
+      setError(err?.message ?? String(err));
     } finally {
-      setPublishingId(null);
+      setLoading(false);
     }
-  };
+  }, [supabase]);
+
+  React.useEffect(() => {
+    loadStats();
+  }, [loadStats]);
+
+  const formatTs = (ts: string | null) =>
+    ts ? new Date(ts).toLocaleString() : "—";
 
   return (
-    <Card className="max-w-6xl mx-auto">
-      <CardHeader className="flex items-center justify-between gap-3">
-        <CardTitle>AI Question Drafts (Topics)</CardTitle>
+    <div className="max-w-7xl mx-auto space-y-4">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <h1 className="text-xl font-semibold">AI Pipeline Dashboard</h1>
+          <p className="text-xs text-muted-foreground">
+            High-level view of ingestion → topics → questions, plus pipeline freshness.
+          </p>
+        </div>
         <div className="flex items-center gap-2">
-          <Input
-            placeholder="Search title…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-56"
-          />
-          <select
-            className="border rounded px-2 py-1 text-sm"
-            value={stateFilter}
-            onChange={(e) => setStateFilter(e.target.value as "all" | AiDraftState)}
-          >
-            <option value="all">Any state</option>
-            <option value="draft">draft</option>
-            <option value="published">published</option>
-            <option value="error">error</option>
-          </select>
-          <Button variant="outline" size="sm" onClick={load}>
-            Refresh
+          <Button variant="outline" size="sm" onClick={loadStats} disabled={loading}>
+            {loading && <Loader2 className="mr-2 h-3 w-3 animate-spin" />}
+            {loading ? "Refreshing…" : "Refresh stats"}
+            <RefreshCw className="ml-1 h-3 w-3" />
           </Button>
         </div>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {loading && (
-          <div className="p-4 text-sm text-muted-foreground">Loading…</div>
-        )}
-        {!loading && rows.length === 0 && (
-          <div className="p-4 text-sm text-muted-foreground">
-            No AI drafts found.
-          </div>
-        )}
-        {rows.map((row) => (
-          <div key={row.id} className="border rounded p-4 space-y-2">
-            <div className="flex items-start justify-between gap-3">
-              <div className="space-y-1 min-w-0">
-                <div className="text-xs text-muted-foreground space-x-2">
-                  <span>State: {row.state}</span>
-                  <span>
-                    Created:{" "}
-                    {row.created_at
-                      ? new Date(row.created_at).toLocaleString()
-                      : "—"}
-                  </span>
-                </div>
-                <h3 className="text-base font-semibold break-words">
-                  {row.title}
-                </h3>
-                {row.tags && row.tags.length > 0 && (
-                  <div className="text-xs text-muted-foreground">
-                    Tags: {row.tags.join(", ")}
-                  </div>
-                )}
-              </div>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => handlePublishTopic(row)}
-                disabled={publishingId === row.id}
-              >
-                {publishingId === row.id ? "Publishing…" : "Publish Topic"}
-              </Button>
+      </div>
+
+      {error && (
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+          Failed to load stats: {error}
+        </div>
+      )}
+
+      {lastRefreshAt && (
+        <p className="text-[11px] text-muted-foreground">
+          Last refresh: {lastRefreshAt}
+          {lastRefreshMs != null && ` • took ${lastRefreshMs} ms`}
+        </p>
+      )}
+
+      {/* Top-level counts */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <MetricCard
+          label="News items"
+          total={stats?.newsCount}
+          last24h={stats?.newsLast24h}
+          hint="Raw articles in news_items"
+        />
+        <MetricCard
+          label="Topic drafts"
+          total={stats?.topicDraftCount}
+          last24h={stats?.topicDraftsLast24h}
+          hint="AI + pipeline-created topics awaiting review"
+        />
+        <MetricCard
+          label="Question drafts"
+          total={stats?.questionDraftCount}
+          last24h={stats?.questionDraftsLast24h}
+          hint="AI-generated stance questions for topics"
+        />
+        <MetricCard
+          label="Live questions"
+          total={stats?.liveQuestionCount}
+          last24h={null}
+          hint="Questions currently available to users"
+        />
+      </div>
+
+      {/* Pipeline freshness */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm">Pipeline freshness</CardTitle>
+        </CardHeader>
+        <CardContent className="text-xs">
+          {!stats?.freshness ? (
+            <p className="text-muted-foreground">
+              No freshness data yet. Run the pipeline at least once.
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-y-2 gap-x-6">
+              <FreshnessRowView
+                label="Ingest (legacy queue)"
+                value={formatTs(stats.freshness.last_ingest_queue)}
+              />
+              <FreshnessRowView
+                label="Cluster (legacy topic_clusters)"
+                value={formatTs(stats.freshness.last_topic_cluster)}
+              />
+              <FreshnessRowView
+                label="Ingest (news_items)"
+                value={formatTs(stats.freshness.last_ingest)}
+              />
+              <FreshnessRowView
+                label="Cluster (topic_drafts)"
+                value={formatTs(stats.freshness.last_cluster)}
+              />
+              <FreshnessRowView
+                label="Generate (topic_question_drafts)"
+                value={formatTs(stats.freshness.last_generate)}
+              />
             </div>
-            {row.summary && (
-              <p className="text-sm whitespace-pre-wrap">{row.summary}</p>
-            )}
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function MetricCard(props: {
+  label: string;
+  total: number | null | undefined;
+  last24h: number | null | undefined;
+  hint?: string;
+}) {
+  const { label, total, last24h, hint } = props;
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm">{label}</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-1">
+        <div className="text-2xl font-semibold">
+          {total == null ? "—" : total.toLocaleString()}
+        </div>
+        {typeof last24h === "number" && (
+          <div className="text-xs text-muted-foreground">
+            Last 24h:{" "}
+            <span className="font-medium">
+              {last24h.toLocaleString()}
+            </span>
           </div>
-        ))}
+        )}
+        {hint && (
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            {hint}
+          </p>
+        )}
       </CardContent>
     </Card>
+  );
+}
+
+function FreshnessRowView(props: { label: string; value: string }) {
+  return (
+    <div className="flex flex-col">
+      <span className="text-[11px] text-muted-foreground">{props.label}</span>
+      <span className="text-xs font-medium">{props.value}</span>
+    </div>
   );
 }
