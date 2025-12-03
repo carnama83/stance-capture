@@ -775,7 +775,7 @@ function LatestQuestions({
   return (
     <div className="rounded-lg border p-3">
       <div className="flex items-center justify-between mb-2">
-        <div className="text-sm font-medium">
+        <div className="text-sm font_medium">
           {isAuthed ? "Latest questions for you" : "Latest questions"}
         </div>
         <Link
@@ -808,7 +808,7 @@ function LatestQuestions({
               key={q.id}
               className="rounded-lg border px-3 py-2 hover:border-slate-900/70 transition"
             >
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start justify_between gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-semibold text-slate-900">
                     <Link to={`/q/${q.id}`} className="hover:underline">
@@ -1059,7 +1059,7 @@ function ExploreTopicsGrid({
                     {topic.tags.map((tag) => (
                       <span
                         key={tag}
-                        className="inline-flex items-center rounded-full border px-2 py-0.5 text-[9px] uppercase tracking-wide text-slate-600"
+                        className="inline-flex items_center rounded-full border px-2 py-0.5 text-[9px] uppercase tracking-wide text-slate-600"
                       >
                         {tag}
                       </span>
