@@ -239,23 +239,40 @@ async function fetchQuestionsForTopic(
 ): Promise<LiveQuestion[]> {
   const sb = getSupabase();
   if (!sb) throw new Error("Supabase client not available");
-  if (!topic || !topic.tags || topic.tags.length === 0) return [];
+  if (!topic) return [];
 
-  const { data, error } = await sb
-    .from("v_live_questions")
-    .select(
-      "id, question, summary, tags, location_label, published_at, status"
-    )
-    .eq("status", "active")
-    .overlaps("tags", topic.tags as string[])
-    .order("published_at", { ascending: false });
+  // 1) Prefer explicit linkage via questions.topic_draft_id -> topics.draft_id
+  const { data, error } = await sb.rpc("get_questions_for_topic", {
+    p_topic_id: topic.id,
+  });
 
   if (error) {
-    console.error("Failed to load questions for topic", error);
+    console.error("Failed to load questions for topic via RPC", error);
     throw error;
   }
 
-  return (data ?? []) as LiveQuestion[];
+  const linked = (data ?? []) as LiveQuestion[];
+
+  // 2) Fallback: tag-based match for older questions that may not have topic_draft_id set
+  if (linked.length === 0 && topic.tags && topic.tags.length > 0) {
+    const { data: tagData, error: tagError } = await sb
+      .from("v_live_questions")
+      .select(
+        "id, question, summary, tags, location_label, published_at, status"
+      )
+      .eq("status", "active")
+      .overlaps("tags", topic.tags as string[])
+      .order("published_at", { ascending: false });
+
+    if (tagError) {
+      console.error("Failed to load questions for topic via tags", tagError);
+      throw tagError;
+    }
+
+    return (tagData ?? []) as LiveQuestion[];
+  }
+
+  return linked;
 }
 
 // ----- Page -----
@@ -282,8 +299,8 @@ export default function TopicDetailPage() {
     isLoading: questionsLoading,
     isError: questionsError,
   } = useQuery({
-    enabled: !!topic && !!topic.tags && topic.tags.length > 0,
-    queryKey: ["topic-questions", topic?.id, topic?.tags ?? []],
+    enabled: !!topic, // now enabled as soon as topic exists
+    queryKey: ["topic-questions", topic?.id],
     queryFn: () => fetchQuestionsForTopic(topic ?? null),
     staleTime: 60_000,
   });
@@ -443,8 +460,7 @@ export default function TopicDetailPage() {
           {!questionsLoading && !hasQuestions && (
             <p className="text-xs text-slate-500">
               No live questions yet for this topic. Once questions are
-              published from the admin area with matching tags, they&apos;ll
-              appear here.
+              published from the admin area, they&apos;ll appear here.
             </p>
           )}
 
@@ -458,10 +474,7 @@ export default function TopicDetailPage() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-semibold text-slate-900">
-                        <Link
-                          to={`/q/${q.id}`}
-                          className="hover:underline"
-                        >
+                        <Link to={`/q/${q.id}`} className="hover:underline">
                           {q.question}
                         </Link>
                       </div>
@@ -525,9 +538,7 @@ export default function TopicDetailPage() {
               Topics
             </Link>
             <span>/</span>
-            <span className="text-slate-900 font-medium">
-              Topic detail
-            </span>
+            <span className="text-slate-900 font-medium">Topic detail</span>
           </div>
         </div>
         {content}
