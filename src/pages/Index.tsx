@@ -1,4 +1,4 @@
-// src/pages/Index.tsx — with Latest Questions section + card stance pill (Epic C C1)
+// src/pages/Index.tsx — with region-aware trending via list_trending_topics_for_me
 import * as React from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -184,34 +184,63 @@ async function fetchFromSource<T>(
   return [];
 }
 
-// ---------- Trending topics ----------
+// ---------- Trending topics (now region-aware when personalized) ----------
 async function fetchTrendingTopics(
   sb: ReturnType<typeof getSupabase> | null,
-  _options: { personalized: boolean; userId?: string | null }
+  options: { personalized: boolean; userId?: string | null }
 ): Promise<Topic[]> {
+  const { personalized } = options;
   const defaultSelect =
     "id, title, summary, tags, location_label, tier, updated_at, trending_score, activity_7d";
+  const limit = 8;
 
-  // For now, always use the global trending view (vw_topics_trending),
-  // backed by refresh_topic_region_trends + topics_trending.
+  // If no client (SSR-ish / fallback), just use global trending via view
   if (!sb) {
     return fetchFromSource<Topic>(null, {
       sourceCandidates: [],
       defaultSource: "vw_topics_trending",
       defaultSelect,
       defaultOrderCandidates: ["trending_score", "activity_7d", "updated_at"],
-      limit: 8,
+      limit,
       search: null,
     });
   }
 
+  // 1) Try region-aware RPC when personalization is ON
+  if (personalized) {
+    try {
+      const { data, error } = await sb.rpc("list_trending_topics_for_me", {
+        p_limit: limit,
+      });
+
+      if (error) {
+        console.warn(
+          "[fetchTrendingTopics] list_trending_topics_for_me error",
+          error
+        );
+      } else if (data && Array.isArray(data)) {
+        return data as Topic[];
+      }
+    } catch (err) {
+      console.warn(
+        "[fetchTrendingTopics] list_trending_topics_for_me exception",
+        err
+      );
+    }
+  }
+
+  // 2) Fallback: global trending via your existing views
   return fetchFromSource<Topic>(sb, {
     // Try the explicit global views first, fall back to the older view if needed
-    sourceCandidates: ["vw_topics_trending", "topics_trending", "topic_region_trends_v"],
+    sourceCandidates: [
+      "vw_topics_trending",
+      "topics_trending",
+      "topic_region_trends_v",
+    ],
     defaultSource: "vw_topics_trending",
     defaultSelect,
     defaultOrderCandidates: ["trending_score", "activity_7d", "updated_at"],
-    limit: 8,
+    limit,
     search: null,
   });
 }
@@ -287,7 +316,6 @@ export default function Index() {
       if (!sb)
         return fetchTrendingTopics(null, { personalized: false, userId: null });
       try {
-        // Options are ignored for now; we always use shared/global trending.
         return await fetchTrendingTopics(sb, {
           personalized: isAuthed,
           userId: session?.user?.id ?? null,
