@@ -1,1026 +1,845 @@
-// src/routes/admin/question-drafts/Index.tsx
-
 import * as React from "react";
-import { useNavigate } from "react-router-dom";
-import { useSupabaseClient } from "@supabase/auth-helpers-react";
-import {
-  useQuery,
-  useMutation,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
+import { supabase } from "@/lib/supabaseClient";
 
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogDescription,
-  DialogFooter,
 } from "@/components/ui/dialog";
 import {
   AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
   AlertDialogContent,
+  AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogCancel,
-  AlertDialogAction,
 } from "@/components/ui/alert-dialog";
-import { useToast } from "@/components/ui/use-toast";
-
 import {
-  Loader2,
-  Eye,
-  Send,
-  CheckCircle2,
-  XCircle,
-  Filter,
-  ChevronLeft,
-  ChevronRight,
-  ExternalLink,
-} from "lucide-react";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useToast } from "@/components/ui/use-toast";
+import { cn } from "@/lib/utils";
+
+type DraftStatus = "draft" | "approved" | "rejected";
 
 type AdminQuestionDraft = {
-  id: string;
-  topic_draft_id: string;
+  draft_id: string;
+  topic_draft_id: string | null;
   topic_id: string | null;
   question: string;
   summary: string | null;
   tags: string[] | null;
   location_label: string | null;
-  status: string; // 'draft' | 'approved' | 'rejected' | etc.
-  ai_version: string | null;
+  status: DraftStatus;
   created_at: string;
   updated_at: string;
   approved_at: string | null;
   rejected_at: string | null;
 
-  // From topic_drafts join
   topic_title: string | null;
-  topic_summary: string | null;
-  topic_tags: string[] | null;
   topic_location_label: string | null;
   topic_status: string | null;
-  topic_news_item_id: string | null;
 
-  // From news_items join
   news_title: string | null;
   news_url: string | null;
   news_published_at: string | null;
 };
 
-type QuestionDraftDetail = {
-  draft: {
-    id: string;
-    question: string;
-    summary: string | null;
-    tags: string[] | null;
-    location_label: string | null;
-    status: string;
-    topic_draft_id: string;
-    topic_id: string | null;
-  };
-  topic: {
-    id: string;
-    title: string;
-    summary: string | null;
-    tags: string[] | null;
-    location_label: string | null;
-    status: string;
-    news_item_id: string | null;
-  } | null;
-  news: {
-    id: string;
-    title: string;
-    url: string;
-    summary: string | null;
-    published_at: string | null;
-  } | null;
+type Question = {
+  id: string;
+  question: string;
+  summary: string | null;
+  tags: string[];
+  location_label: string | null;
+  published_at: string;
+  status: string;
 };
 
-const PAGE_SIZE = 25;
+type DraftDetail = AdminQuestionDraft;
 
-type StatusFilter = "all" | "draft" | "approved" | "rejected";
+const STATUS_FILTERS: { label: string; value: "all" | DraftStatus }[] = [
+  { label: "All", value: "all" },
+  { label: "Draft", value: "draft" },
+  { label: "Approved", value: "approved" },
+  { label: "Rejected", value: "rejected" },
+];
 
 export default function QuestionDraftsAdminPage() {
-  const supabase = useSupabaseClient();
-  const queryClient = useQueryClient();
   const { toast } = useToast();
-  const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
-  const [statusFilter, setStatusFilter] = React.useState<StatusFilter>("draft");
-  const [page, setPage] = React.useState(1);
+  const [statusFilter, setStatusFilter] = useState<"all" | DraftStatus>("all");
+  const [search, setSearch] = useState("");
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
+  const [showBulkPublishConfirm, setShowBulkPublishConfirm] = useState(false);
 
-  const [selectedIds, setSelectedIds] = React.useState<string[]>([]);
-
-  const [previewOpen, setPreviewOpen] = React.useState(false);
-  const [previewDraftId, setPreviewDraftId] = React.useState<string | null>(
-    null
-  );
-
-  const [confirmSinglePublishOpen, setConfirmSinglePublishOpen] =
-    React.useState(false);
-  const [confirmBulkPublishOpen, setConfirmBulkPublishOpen] =
-    React.useState(false);
-
-  // Edit fields in preview dialog
-  const [editSummary, setEditSummary] = React.useState("");
-  const [editTags, setEditTags] = React.useState("");
-  const [editLocation, setEditLocation] = React.useState("");
-
-  const queryKey = ["admin-question-drafts", statusFilter, page];
-
+  // === LIST QUERY ===
   const {
     data: drafts,
     isLoading,
     isError,
     error,
   } = useQuery<AdminQuestionDraft[], Error>({
-    queryKey,
+    queryKey: ["admin_question_drafts", statusFilter],
     queryFn: async () => {
       const { data, error } = await supabase.rpc(
         "admin_list_question_drafts",
         {
           p_status: statusFilter === "all" ? null : statusFilter,
-          p_limit: PAGE_SIZE,
-          p_offset: (page - 1) * PAGE_SIZE,
         }
       );
       if (error) throw error;
-      return (data ?? []) as AdminQuestionDraft[];
+      return (data || []) as AdminQuestionDraft[];
     },
   });
 
+  const filteredDrafts = useMemo(() => {
+    if (!drafts) return [];
+    if (!search.trim()) return drafts;
+
+    const q = search.toLowerCase();
+    return drafts.filter((d) => {
+      const fields = [
+        d.question,
+        d.summary || "",
+        d.location_label || "",
+        d.topic_title || "",
+        d.topic_location_label || "",
+        d.news_title || "",
+        d.news_url || "",
+        ...(d.tags || []),
+      ]
+        .join(" ")
+        .toLowerCase();
+
+      return fields.includes(q);
+    });
+  }, [drafts, search]);
+
+  const allVisibleSelected =
+    filteredDrafts.length > 0 &&
+    filteredDrafts.every((d) => selectedIds.includes(d.draft_id));
+
+  const toggleSelectAllVisible = () => {
+    if (allVisibleSelected) {
+      const visibleIds = new Set(filteredDrafts.map((d) => d.draft_id));
+      setSelectedIds((prev) => prev.filter((id) => !visibleIds.has(id)));
+    } else {
+      const visibleIds = filteredDrafts.map((d) => d.draft_id);
+      setSelectedIds((prev) => Array.from(new Set([...prev, ...visibleIds])));
+    }
+  };
+
+  const toggleRowSelection = (id: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
+  const openDraft = (id: string) => {
+    setActiveDraftId(id);
+  };
+
+  const closeDraft = () => {
+    setActiveDraftId(null);
+  };
+
+  // === DETAIL QUERY ===
   const {
-    data: detail,
+    data: draftDetail,
     isLoading: isDetailLoading,
-    isError: isDetailError,
-    error: detailError,
-    refetch: refetchDetail,
-  } = useQuery<QuestionDraftDetail, Error>({
-    queryKey: ["admin-question-draft-detail", previewDraftId],
-    enabled: !!previewDraftId && previewOpen,
+  } = useQuery<DraftDetail | null, Error>({
+    queryKey: ["admin_question_draft_detail", activeDraftId],
     queryFn: async () => {
-      if (!previewDraftId) throw new Error("No draft id");
+      if (!activeDraftId) return null;
       const { data, error } = await supabase.rpc(
         "admin_get_question_draft_detail",
-        { p_draft_id: previewDraftId }
+        { p_draft_id: activeDraftId }
       );
       if (error) throw error;
-      return data as QuestionDraftDetail;
+      if (!data) return null;
+      // assuming RPC returns a single row
+      return data as DraftDetail;
     },
+    enabled: !!activeDraftId,
   });
 
-  const resetPreviewState = () => {
-    setPreviewOpen(false);
-    setPreviewDraftId(null);
-    setConfirmSinglePublishOpen(false);
-    setEditSummary("");
-    setEditTags("");
-    setEditLocation("");
-  };
+  // Local edit state for "edit before publish"
+  const [editSummary, setEditSummary] = useState("");
+  const [editTags, setEditTags] = useState("");
+  const [editLocationLabel, setEditLocationLabel] = useState("");
 
+  // Reset edit fields whenever the detail changes
   React.useEffect(() => {
-    if (detail?.draft && previewOpen) {
-      setEditSummary(detail.draft.summary ?? "");
-      setEditTags(detail.draft.tags?.join(", ") ?? "");
-      setEditLocation(detail.draft.location_label ?? "");
+    if (draftDetail) {
+      setEditSummary(draftDetail.summary || "");
+      setEditTags((draftDetail.tags || []).join(", "));
+      setEditLocationLabel(draftDetail.location_label || "");
     }
-  }, [detail, previewOpen]);
+  }, [draftDetail]);
 
-  const invalidateList = () => {
-    queryClient.invalidateQueries({ queryKey });
-  };
+  // === MUTATIONS ===
 
   const updateDraftMutation = useMutation({
-    mutationFn: async () => {
-      if (!detail?.draft) throw new Error("No draft to update");
-      const tagsArray =
-        editTags.trim().length > 0
-          ? editTags
-              .split(",")
-              .map((t) => t.trim())
-              .filter(Boolean)
-          : null;
-
-      const { data, error } = await supabase.rpc(
-        "admin_update_question_draft",
-        {
-          p_draft_id: detail.draft.id,
-          p_summary: editSummary.trim().length ? editSummary.trim() : null,
-          p_tags: tagsArray,
-          p_location_label: editLocation.trim().length
-            ? editLocation.trim()
-            : null,
-        }
-      );
+    mutationFn: async (vars: {
+      draftId: string;
+      summary: string;
+      tags: string[];
+      locationLabel: string | null;
+    }) => {
+      const { error } = await supabase.rpc("admin_update_question_draft", {
+        p_draft_id: vars.draftId,
+        p_summary: vars.summary || null,
+        p_tags: vars.tags,
+        p_location_label: vars.locationLabel,
+      });
       if (error) throw error;
-      return data;
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin_question_drafts"] });
+      queryClient.invalidateQueries({
+        queryKey: ["admin_question_draft_detail"],
+      });
       toast({
         title: "Draft updated",
-        description: "Summary, tags, and location have been saved.",
+        description: "Summary, tags and location were saved.",
       });
-      invalidateList();
-      if (previewDraftId) {
-        refetchDetail();
-      }
     },
     onError: (err: any) => {
       toast({
         title: "Update failed",
-        description: err.message ?? "Could not update draft.",
+        description: err?.message ?? "Error updating draft",
         variant: "destructive",
       });
     },
   });
 
   const setStatusMutation = useMutation({
-    mutationFn: async (status: "draft" | "approved" | "rejected") => {
-      if (!detail?.draft) throw new Error("No draft to update status");
-      const { data, error } = await supabase.rpc(
-        "admin_set_question_draft_status",
-        {
-          p_draft_id: detail.draft.id,
-          p_status: status,
-        }
-      );
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: (_, status) => {
-      const statusLabel =
-        status === "approved"
-          ? "Draft approved"
-          : status === "rejected"
-          ? "Draft rejected"
-          : "Status updated";
-
-      toast({
-        title: statusLabel,
+    mutationFn: async (vars: { draftId: string; status: DraftStatus }) => {
+      const { error } = await supabase.rpc("admin_set_question_draft_status", {
+        p_draft_id: vars.draftId,
+        p_status: vars.status,
       });
-      invalidateList();
-      if (previewDraftId) {
-        refetchDetail();
-      }
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin_question_drafts"] });
+      queryClient.invalidateQueries({
+        queryKey: ["admin_question_draft_detail"],
+      });
+      toast({
+        title: "Status updated",
+      });
     },
     onError: (err: any) => {
       toast({
         title: "Status update failed",
-        description: err.message ?? "Could not update draft status.",
+        description: err?.message ?? "Error updating draft status",
         variant: "destructive",
       });
     },
   });
 
   const publishSingleMutation = useMutation({
-    mutationFn: async () => {
-      if (!detail?.draft) throw new Error("No draft to publish");
+    mutationFn: async (draftId: string): Promise<Question> => {
       const { data, error } = await supabase.rpc(
         "admin_publish_question_draft",
-        {
-          p_draft_id: detail.draft.id,
-        }
+        { p_draft_id: draftId }
       );
       if (error) throw error;
-      return data as { id: string };
+      return data as Question;
     },
     onSuccess: (question) => {
-      resetPreviewState();
-      invalidateList();
-
+      queryClient.invalidateQueries({ queryKey: ["admin_question_drafts"] });
+      queryClient.invalidateQueries({
+        queryKey: ["admin_question_draft_detail"],
+      });
       toast({
         title: "Question published",
-        description: "The draft has been published to the live feed.",
-        action: (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => navigate(`/questions/${question.id}`)}
-          >
-            View question
-          </Button>
-        ),
+        description: (
+          <div className="space-y-1">
+            <div>{question.question}</div>
+            <Link
+              to={`/questions/${question.id}`}
+              className="underline font-medium"
+            >
+              View live question
+            </Link>
+          </div>
+        ) as any,
       });
     },
     onError: (err: any) => {
       toast({
         title: "Publish failed",
-        description: err.message ?? "Could not publish this draft.",
+        description: err?.message ?? "Error publishing question",
         variant: "destructive",
       });
     },
   });
 
   const bulkPublishMutation = useMutation({
-    mutationFn: async (ids: string[]) => {
-      const { data, error } = await supabase.rpc(
-        "admin_publish_question_drafts_bulk",
-        { p_draft_ids: ids }
-      );
-      if (error) throw error;
-      // data is setof questions; treat as array
-      return (data ?? []) as { id: string }[];
+    mutationFn: async (draftIds: string[]) => {
+      if (draftIds.length === 0) return { success: 0, failed: 0 };
+
+      // Prefer bulk RPC if you created it; fall back to per-draft loop.
+      try {
+        const { data, error } = await supabase.rpc(
+          "admin_publish_question_drafts_bulk",
+          { p_draft_ids: draftIds }
+        );
+        if (error) throw error;
+        const questions = (data || []) as Question[];
+        return { success: questions.length, failed: draftIds.length - questions.length };
+      } catch {
+        // Fallback: sequential publish
+        let success = 0;
+        let failed = 0;
+        for (const id of draftIds) {
+          const { error } = await supabase.rpc("admin_publish_question_draft", {
+            p_draft_id: id,
+          });
+          if (error) {
+            failed += 1;
+          } else {
+            success += 1;
+          }
+        }
+        return { success, failed };
+      }
     },
-    onSuccess: (questions) => {
-      setSelectedIds([]);
-      setConfirmBulkPublishOpen(false);
-      invalidateList();
-
-      const count = questions.length;
-      const last = questions[questions.length - 1];
-
+    onSuccess: ({ success, failed }) => {
+      queryClient.invalidateQueries({ queryKey: ["admin_question_drafts"] });
       toast({
         title: "Bulk publish complete",
-        description: `Published ${count} question${
-          count === 1 ? "" : "s"
-        } from selected drafts.`,
-        action:
-          last && last.id ? (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => navigate(`/questions/${last.id}`)}
-            >
-              View latest
-            </Button>
-          ) : undefined,
+        description: `${success} published, ${failed} failed.`,
+        variant: failed ? "destructive" : "default",
       });
+      setSelectedIds([]);
     },
     onError: (err: any) => {
-      setConfirmBulkPublishOpen(false);
       toast({
         title: "Bulk publish failed",
-        description:
-          err.message ??
-          "Some drafts may not have been published. Check statuses and try again.",
+        description: err?.message ?? "Error publishing questions",
         variant: "destructive",
       });
     },
   });
 
-  const onToggleSelectAll = () => {
-    if (!drafts || drafts.length === 0) return;
+  const handleSaveEdits = () => {
+    if (!draftDetail) return;
+    const tags = editTags
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean);
 
-    // Only allow bulk publish of approved drafts
-    const approvedIds = drafts
-      .filter((d) => d.status === "approved")
-      .map((d) => d.id);
-
-    if (approvedIds.length === 0) {
-      setSelectedIds([]);
-      return;
-    }
-
-    if (selectedIds.length === approvedIds.length) {
-      setSelectedIds([]);
-    } else {
-      setSelectedIds(approvedIds);
-    }
+    updateDraftMutation.mutate({
+      draftId: draftDetail.draft_id,
+      summary: editSummary,
+      tags,
+      locationLabel: editLocationLabel || null,
+    });
   };
 
-  const onToggleSelect = (id: string, status: string) => {
-    if (status !== "approved") return; // only approved drafts participate in bulk
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    );
+  const handleSetStatus = (status: DraftStatus) => {
+    if (!draftDetail) return;
+    setStatusMutation.mutate({ draftId: draftDetail.draft_id, status });
   };
 
-  const openPreview = (id: string) => {
-    setPreviewDraftId(id);
-    setPreviewOpen(true);
+  const handlePublishSingle = () => {
+    if (!draftDetail) return;
+    publishSingleMutation.mutate(draftDetail.draft_id);
   };
 
-  const currentStatusBadge = (status: string) => {
-    const base = "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs";
-    if (status === "approved")
-      return (
-        <span className={`${base} bg-emerald-100 text-emerald-800`}>
-          <CheckCircle2 className="h-3 w-3" />
-          Approved
-        </span>
-      );
-    if (status === "rejected")
-      return (
-        <span className={`${base} bg-red-100 text-red-800`}>
-          <XCircle className="h-3 w-3" />
-          Rejected
-        </span>
-      );
-    return (
-      <span className={`${base} bg-sky-100 text-sky-800`}>
-        <Filter className="h-3 w-3" />
-        Draft
-      </span>
-    );
+  const handleBulkPublishConfirm = () => {
+    setShowBulkPublishConfirm(true);
   };
 
-  const selectedApprovedCount = selectedIds.length;
-  const hasNextPage =
-    drafts && drafts.length === PAGE_SIZE; // simple heuristic
+  const confirmBulkPublish = () => {
+    setShowBulkPublishConfirm(false);
+    if (selectedIds.length === 0) return;
+    bulkPublishMutation.mutate(selectedIds);
+  };
+
+  // === RENDER ===
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+    <div className="flex flex-col gap-4 p-4">
+      <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Question Drafts
-          </h1>
+          <h1 className="text-xl font-semibold">Question Drafts</h1>
           <p className="text-sm text-muted-foreground">
-            Review, edit, approve, and publish AI-generated question drafts into
-            live questions.
+            Review, tweak, approve, and publish AI-generated questions.
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Status filter */}
-          <div className="inline-flex rounded-full border bg-background p-1 text-xs">
-            {(["draft", "approved", "rejected", "all"] as StatusFilter[]).map(
-              (opt) => (
-                <button
-                  key={opt}
-                  type="button"
-                  onClick={() => {
-                    setStatusFilter(opt);
-                    setPage(1);
-                    setSelectedIds([]);
-                  }}
-                  className={`rounded-full px-3 py-1 transition ${
-                    statusFilter === opt
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:bg-muted"
-                  }`}
-                >
-                  {opt === "all"
-                    ? "All"
-                    : opt.charAt(0).toUpperCase() + opt.slice(1)}
-                </button>
-              )
-            )}
-          </div>
+        <div className="flex items-center gap-2">
+          <Input
+            placeholder="Search question, topic, tags, location…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-64"
+          />
 
-          {/* Bulk publish button */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm">
+                Status:{" "}
+                {
+                  STATUS_FILTERS.find((f) => f.value === statusFilter)?.label ??
+                  "All"
+                }
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {STATUS_FILTERS.map((f) => (
+                <DropdownMenuItem
+                  key={f.value}
+                  onClick={() => setStatusFilter(f.value)}
+                >
+                  {f.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
           <Button
             variant="outline"
             size="sm"
-            disabled={
-              selectedApprovedCount === 0 || bulkPublishMutation.isPending
-            }
-            onClick={() => setConfirmBulkPublishOpen(true)}
+            disabled={filteredDrafts.length === 0}
+            onClick={toggleSelectAllVisible}
           >
-            {bulkPublishMutation.isPending && (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            )}
-            Publish selected ({selectedApprovedCount})
+            {allVisibleSelected ? "Unselect visible" : "Select visible"}
+          </Button>
+
+          <Button
+            size="sm"
+            disabled={selectedIds.length === 0 || bulkPublishMutation.isLoading}
+            onClick={handleBulkPublishConfirm}
+          >
+            Bulk publish ({selectedIds.length})
           </Button>
         </div>
       </div>
 
-      {/* Table */}
-      <div className="overflow-x-auto rounded-xl border bg-card">
-        <table className="min-w-full text-sm">
-          <thead className="border-b bg-muted/40">
-            <tr className="text-left">
-              <th className="px-4 py-3">
-                <Checkbox
-                  aria-label="Select all"
-                  checked={
-                    drafts &&
-                    drafts.length > 0 &&
-                    drafts
-                      .filter((d) => d.status === "approved")
-                      .every((d) => selectedIds.includes(d.id))
+      <div className="border rounded-lg overflow-hidden">
+        <div className="flex items-center bg-muted px-3 py-2 text-xs font-medium text-muted-foreground">
+          <div className="w-10 flex items-center">
+            <input
+              type="checkbox"
+              className="h-4 w-4"
+              checked={allVisibleSelected}
+              onChange={toggleSelectAllVisible}
+            />
+          </div>
+          <div className="flex-1">Question</div>
+          <div className="w-40">Topic</div>
+          <div className="w-40">News</div>
+          <div className="w-28">Location</div>
+          <div className="w-24">Status</div>
+          <div className="w-32">Created</div>
+          <div className="w-24 text-right">Actions</div>
+        </div>
+
+        {isLoading && (
+          <div className="p-4 text-sm text-muted-foreground">Loading…</div>
+        )}
+
+        {isError && (
+          <div className="p-4 text-sm text-destructive">
+            Failed to load drafts: {error?.message}
+          </div>
+        )}
+
+        {!isLoading && !isError && filteredDrafts.length === 0 && (
+          <div className="p-4 text-sm text-muted-foreground">
+            No drafts found.
+          </div>
+        )}
+
+        {!isLoading &&
+          !isError &&
+          filteredDrafts.map((d) => {
+            const isSelected = selectedIds.includes(d.draft_id);
+            return (
+              <div
+                key={d.draft_id}
+                className={cn(
+                  "flex items-center border-t px-3 py-2 text-sm hover:bg-muted/60 cursor-pointer",
+                  isSelected && "bg-muted/80"
+                )}
+                onClick={(e) => {
+                  // avoid row click when toggling checkbox or clicking button
+                  const target = e.target as HTMLElement;
+                  if (
+                    target.closest("input[type=checkbox]") ||
+                    target.closest("button")
+                  ) {
+                    return;
                   }
-                  onCheckedChange={onToggleSelectAll}
-                />
-              </th>
-              <th className="px-4 py-3">Question</th>
-              <th className="px-4 py-3">Topic</th>
-              <th className="px-4 py-3">News</th>
-              <th className="px-4 py-3">Location</th>
-              <th className="px-4 py-3">Tags</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Created</th>
-              <th className="px-4 py-3 text-right">Actions</th>
-            </tr>
-          </thead>
+                  openDraft(d.draft_id);
+                }}
+              >
+                <div className="w-10 flex items-center">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4"
+                    checked={isSelected}
+                    onChange={() => toggleRowSelection(d.draft_id)}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                </div>
 
-          <tbody>
-            {isLoading && (
-              <tr>
-                <td colSpan={9} className="px-4 py-6 text-center">
-                  <div className="flex items-center justify-center gap-2 text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    <span>Loading drafts…</span>
-                  </div>
-                </td>
-              </tr>
-            )}
-
-            {isError && (
-              <tr>
-                <td colSpan={9} className="px-4 py-6 text-center">
-                  <div className="text-sm text-destructive">
-                    Failed to load drafts: {error?.message}
-                  </div>
-                </td>
-              </tr>
-            )}
-
-            {!isLoading && !isError && drafts && drafts.length === 0 && (
-              <tr>
-                <td colSpan={9} className="px-4 py-6 text-center">
-                  <div className="text-sm text-muted-foreground">
-                    No drafts found for this filter.
-                  </div>
-                </td>
-              </tr>
-            )}
-
-            {!isLoading &&
-              !isError &&
-              drafts &&
-              drafts.map((d) => {
-                const isSelected = selectedIds.includes(d.id);
-                const isApproved = d.status === "approved";
-
-                return (
-                  <tr
-                    key={d.id}
-                    className="border-b last:border-0 hover:bg-muted/40"
-                  >
-                    <td className="px-4 py-3 align-top">
-                      <Checkbox
-                        aria-label="Select draft"
-                        checked={isSelected}
-                        disabled={!isApproved}
-                        onCheckedChange={() => onToggleSelect(d.id, d.status)}
-                      />
-                    </td>
-
-                    <td className="px-4 py-3 align-top">
-                      <div className="max-w-md text-sm font-medium">
-                        {d.question}
-                      </div>
-                      {d.summary && (
-                        <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                          {d.summary}
-                        </div>
-                      )}
-                    </td>
-
-                    <td className="px-4 py-3 align-top">
-                      <div className="text-sm">
-                        {d.topic_title ?? "Untitled topic"}
-                      </div>
-                      {d.topic_status && (
-                        <div className="mt-1 text-xs text-muted-foreground">
-                          Topic: {d.topic_status}
-                        </div>
-                      )}
-                    </td>
-
-                    <td className="px-4 py-3 align-top">
-                      {d.news_title ? (
-                        <div className="space-y-1">
-                          <div className="line-clamp-1 text-sm">
-                            {d.news_title}
-                          </div>
-                          {d.news_url && (
-                            <a
-                              href={d.news_url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:underline"
-                            >
-                              Source
-                              <ExternalLink className="h-3 w-3" />
-                            </a>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">
-                          —
+                <div className="flex-1 pr-3">
+                  <div className="font-medium line-clamp-1">{d.question}</div>
+                  {d.summary && (
+                    <div className="text-xs text-muted-foreground line-clamp-1">
+                      {d.summary}
+                    </div>
+                  )}
+                  {d.tags && d.tags.length > 0 && (
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {d.tags.slice(0, 3).map((t) => (
+                        <Badge key={t} variant="outline" className="text-[10px]">
+                          {t}
+                        </Badge>
+                      ))}
+                      {d.tags.length > 3 && (
+                        <span className="text-[10px] text-muted-foreground">
+                          +{d.tags.length - 3} more
                         </span>
                       )}
-                    </td>
+                    </div>
+                  )}
+                </div>
 
-                    <td className="px-4 py-3 align-top">
-                      <div className="text-xs text-muted-foreground">
-                        {d.location_label ?? d.topic_location_label ?? "—"}
-                      </div>
-                    </td>
+                <div className="w-40 pr-3">
+                  <div className="text-xs font-medium line-clamp-1">
+                    {d.topic_title || "—"}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground line-clamp-1">
+                    {d.topic_location_label || ""}
+                  </div>
+                </div>
 
-                    <td className="px-4 py-3 align-top">
-                      <div className="flex max-w-[160px] flex-wrap gap-1">
-                        {d.tags?.length ? (
-                          d.tags.map((tag) => (
-                            <Badge key={tag} variant="secondary">
-                              {tag}
-                            </Badge>
-                          ))
-                        ) : (
-                          <span className="text-xs text-muted-foreground">
-                            No tags
-                          </span>
-                        )}
-                      </div>
-                    </td>
+                <div className="w-40 pr-3">
+                  <div className="text-xs line-clamp-1">
+                    {d.news_title || "—"}
+                  </div>
+                  {d.news_url && (
+                    <a
+                      href={d.news_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[11px] text-muted-foreground underline"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      Source
+                    </a>
+                  )}
+                </div>
 
-                    <td className="px-4 py-3 align-top">
-                      {currentStatusBadge(d.status)}
-                    </td>
+                <div className="w-28 pr-3 text-xs">
+                  {d.location_label || "—"}
+                </div>
 
-                    <td className="px-4 py-3 align-top text-xs text-muted-foreground">
-                      {new Date(d.created_at).toLocaleString()}
-                    </td>
+                <div className="w-24 pr-3">
+                  <StatusPill status={d.status} />
+                </div>
 
-                    <td className="px-4 py-3 align-top text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => openPreview(d.id)}
-                        >
-                          <Eye className="mr-2 h-4 w-4" />
-                          Preview
-                        </Button>
-                        <Button
-                          variant="default"
-                          size="sm"
-                          disabled={publishSingleMutation.isPending}
-                          onClick={() => {
-                            openPreview(d.id);
-                            setConfirmSinglePublishOpen(false);
-                          }}
-                        >
-                          <Send className="mr-2 h-4 w-4" />
-                          Publish
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-          </tbody>
-        </table>
+                <div className="w-32 pr-3 text-xs text-muted-foreground">
+                  {new Date(d.created_at).toLocaleString()}
+                </div>
+
+                <div className="w-24 flex justify-end">
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openDraft(d.draft_id);
+                    }}
+                  >
+                    Review
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
       </div>
 
-      {/* Pagination */}
-      <div className="flex items-center justify-between text-xs text-muted-foreground">
-        <div>
-          Page {page}
-          {drafts && drafts.length === 0 ? "" : " · " + PAGE_SIZE + " per page"}
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="icon"
-            disabled={page === 1 || isLoading}
-            onClick={() => {
-              setPage((p) => Math.max(1, p - 1));
-              setSelectedIds([]);
-            }}
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            disabled={!hasNextPage || isLoading}
-            onClick={() => {
-              setPage((p) => p + 1);
-              setSelectedIds([]);
-            }}
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
-
-      {/* Preview + edit + approve/publish dialog */}
-      <Dialog
-        open={previewOpen}
-        onOpenChange={(open) => {
-          if (!open) {
-            resetPreviewState();
-          } else if (previewDraftId) {
-            refetchDetail();
-          }
-        }}
-      >
+      {/* DETAIL DIALOG */}
+      <Dialog open={!!activeDraftId} onOpenChange={(open) => !open && closeDraft()}>
         <DialogContent className="max-w-3xl">
           <DialogHeader>
-            <DialogTitle>Preview question draft</DialogTitle>
+            <DialogTitle>Review Question Draft</DialogTitle>
             <DialogDescription>
-              Review and optionally tweak the metadata before approving and
-              publishing this question live.
+              Preview, tweak details, approve and publish this question.
             </DialogDescription>
           </DialogHeader>
 
           {isDetailLoading && (
-            <div className="flex items-center justify-center py-10 text-sm text-muted-foreground">
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            <div className="py-6 text-sm text-muted-foreground">
               Loading draft…
             </div>
           )}
 
-          {isDetailError && (
-            <div className="py-6 text-sm text-destructive">
-              Failed to load draft: {detailError?.message}
+          {!isDetailLoading && !draftDetail && (
+            <div className="py-6 text-sm text-muted-foreground">
+              Draft not found.
             </div>
           )}
 
-          {!isDetailLoading && detail && (
-            <div className="space-y-6">
-              {/* Question block */}
-              <div>
-                <div className="text-xs font-semibold uppercase text-muted-foreground">
+          {!isDetailLoading && draftDetail && (
+            <div className="space-y-5 py-2">
+              {/* Top meta */}
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <StatusPill status={draftDetail.status} />
+                <span className="text-muted-foreground">
+                  Created {new Date(draftDetail.created_at).toLocaleString()}
+                </span>
+                {draftDetail.topic_title && (
+                  <Badge variant="outline">
+                    Topic: {draftDetail.topic_title}
+                  </Badge>
+                )}
+                {draftDetail.location_label && (
+                  <Badge variant="outline">
+                    Question location: {draftDetail.location_label}
+                  </Badge>
+                )}
+              </div>
+
+              {/* Question */}
+              <div className="space-y-2">
+                <div className="text-xs font-semibold text-muted-foreground">
                   Question
                 </div>
-                <div className="mt-1 rounded-md border bg-muted/40 p-3 text-sm">
-                  {detail.draft.question}
+                <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
+                  {draftDetail.question}
                 </div>
               </div>
 
-              {/* Topic + news */}
-              <div className="grid gap-4 md:grid-cols-2">
+              {/* News preview */}
+              {(draftDetail.news_title || draftDetail.news_url) && (
                 <div className="space-y-2">
-                  <div className="text-xs font-semibold uppercase text-muted-foreground">
-                    Topic
-                  </div>
-                  <div className="rounded-md border bg-muted/40 p-3 text-sm">
-                    <div className="font-medium">
-                      {detail.topic?.title ?? "Untitled topic"}
-                    </div>
-                    {detail.topic?.summary && (
-                      <div className="mt-1 text-xs text-muted-foreground">
-                        {detail.topic.summary}
-                      </div>
-                    )}
-                    {detail.topic?.tags?.length ? (
-                      <div className="mt-2 flex flex-wrap gap-1">
-                        {detail.topic.tags.map((t) => (
-                          <Badge key={t} variant="secondary">
-                            {t}
-                          </Badge>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <div className="text-xs font-semibold uppercase text-muted-foreground">
+                  <div className="text-xs font-semibold text-muted-foreground">
                     Source article
                   </div>
-                  <div className="rounded-md border bg-muted/40 p-3 text-sm">
-                    {detail.news ? (
-                      <>
-                        <div className="font-medium">
-                          {detail.news.title}
-                        </div>
-                        {detail.news.published_at && (
-                          <div className="mt-1 text-xs text-muted-foreground">
-                            {new Date(
-                              detail.news.published_at
-                            ).toLocaleString()}
-                          </div>
-                        )}
-                        {detail.news.url && (
-                          <a
-                            href={detail.news.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="mt-2 inline-flex items-center gap-1 text-xs text-muted-foreground hover:underline"
-                          >
-                            Open article
-                            <ExternalLink className="h-3 w-3" />
-                          </a>
-                        )}
-                      </>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">
-                        No linked article.
-                      </span>
+                  <div className="rounded-md border bg-muted/40 px-3 py-2 text-xs">
+                    <div className="font-medium">
+                      {draftDetail.news_title || "Untitled article"}
+                    </div>
+                    {draftDetail.news_url && (
+                      <a
+                        href={draftDetail.news_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="underline text-muted-foreground"
+                      >
+                        Open article
+                      </a>
                     )}
                   </div>
                 </div>
-              </div>
+              )}
 
-              {/* Location */}
-              <div>
-                <div className="text-xs font-semibold uppercase text-muted-foreground">
-                  Location label
+              {/* Editable fields */}
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-muted-foreground">
+                    Summary (optional)
+                  </label>
+                  <textarea
+                    className="w-full rounded-md border px-3 py-2 text-sm min-h-[80px]"
+                    value={editSummary}
+                    onChange={(e) => setEditSummary(e.target.value)}
+                  />
                 </div>
-                <Input
-                  className="mt-1"
-                  placeholder="e.g. Mahwah, NJ · Bergen County"
-                  value={editLocation}
-                  onChange={(e) => setEditLocation(e.target.value)}
-                />
-                <p className="mt-1 text-xs text-muted-foreground">
-                  This controls the location badge users see on the question
-                  card.
-                </p>
-              </div>
 
-              {/* Summary */}
-              <div>
-                <div className="text-xs font-semibold uppercase text-muted-foreground">
-                  Summary
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-muted-foreground">
+                    Tags (comma separated)
+                  </label>
+                  <Input
+                    value={editTags}
+                    onChange={(e) => setEditTags(e.target.value)}
+                    placeholder="politics, election, economy"
+                  />
+                  <label className="text-xs font-semibold text-muted-foreground mt-2">
+                    Location label (user-visible)
+                  </label>
+                  <Input
+                    value={editLocationLabel}
+                    onChange={(e) => setEditLocationLabel(e.target.value)}
+                    placeholder="e.g., Mahwah, NJ or United States"
+                  />
                 </div>
-                <Textarea
-                  className="mt-1"
-                  rows={3}
-                  placeholder="Short description shown on question cards."
-                  value={editSummary}
-                  onChange={(e) => setEditSummary(e.target.value)}
-                />
               </div>
 
-              {/* Tags */}
-              <div>
-                <div className="text-xs font-semibold uppercase text-muted-foreground">
-                  Tags
+              {/* Footer actions */}
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t pt-4">
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleSaveEdits}
+                    disabled={updateDraftMutation.isLoading}
+                  >
+                    Save edits
+                  </Button>
+
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={setStatusMutation.isLoading}
+                      >
+                        Set status
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start">
+                      <DropdownMenuItem
+                        onClick={() => handleSetStatus("draft")}
+                      >
+                        Mark as draft
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => handleSetStatus("approved")}
+                      >
+                        Mark as approved
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => handleSetStatus("rejected")}
+                      >
+                        Mark as rejected
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
-                <Input
-                  className="mt-1"
-                  placeholder="Comma-separated tags, e.g. local, zoning, schools"
-                  value={editTags}
-                  onChange={(e) => setEditTags(e.target.value)}
-                />
-                <p className="mt-1 text-xs text-muted-foreground">
-                  These are used for topic / tag fallback and clustering. Leave
-                  blank to clear tags.
-                </p>
-              </div>
 
-              {/* Status pill */}
-              <div className="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2 text-xs">
                 <div className="flex items-center gap-2">
-                  <span className="text-muted-foreground">Current status:</span>
-                  {currentStatusBadge(detail.draft.status)}
-                </div>
-                <div className="flex items-center gap-2">
                   <Button
                     variant="outline"
                     size="sm"
-                    disabled={setStatusMutation.isPending}
-                    onClick={() => setStatusMutation.mutate("draft")}
+                    onClick={closeDraft}
+                    type="button"
                   >
-                    {setStatusMutation.isPending &&
-                    setStatusMutation.variables === "draft" ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : null}
-                    Mark draft
+                    Close
                   </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={setStatusMutation.isPending}
-                    onClick={() => setStatusMutation.mutate("rejected")}
-                  >
-                    {setStatusMutation.isPending &&
-                    setStatusMutation.variables === "rejected" ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : null}
-                    Reject
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={setStatusMutation.isPending}
-                    onClick={() => setStatusMutation.mutate("approved")}
-                  >
-                    {setStatusMutation.isPending &&
-                    setStatusMutation.variables === "approved" ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : null}
-                    Approve
-                  </Button>
+                  <AlertDialog>
+                    <AlertDialogTriggerButton
+                      disabled={publishSingleMutation.isLoading}
+                    />
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>
+                          Publish this question?
+                        </AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This will create a live question from this draft. You
+                          can still archive or edit the live question later, but
+                          users may start answering it immediately.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={handlePublishSingle}>
+                          Publish
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 </div>
               </div>
             </div>
           )}
-
-          <DialogFooter className="mt-4 flex items-center justify-between gap-2">
-            <Button variant="outline" onClick={resetPreviewState}>
-              Close
-            </Button>
-
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                disabled={
-                  updateDraftMutation.isPending || isDetailLoading || !detail
-                }
-                onClick={() => updateDraftMutation.mutate()}
-              >
-                {updateDraftMutation.isPending && (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                )}
-                Save changes
-              </Button>
-
-              <Button
-                disabled={
-                  !detail ||
-                  detail.draft.status !== "approved" ||
-                  publishSingleMutation.isPending
-                }
-                onClick={() => setConfirmSinglePublishOpen(true)}
-              >
-                {publishSingleMutation.isPending && (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                )}
-                Publish question
-              </Button>
-            </div>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Confirm single publish */}
+      {/* BULK PUBLISH CONFIRM */}
       <AlertDialog
-        open={confirmSinglePublishOpen}
-        onOpenChange={(open) => setConfirmSinglePublishOpen(open)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Publish this question?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will publish the approved draft as a live question visible on
-              the homepage, topic detail page, and question detail page. You can
-              still edit the live question later from the Questions admin page.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel
-              disabled={publishSingleMutation.isPending}
-            >
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction
-              disabled={publishSingleMutation.isPending}
-              onClick={() => publishSingleMutation.mutate()}
-            >
-              {publishSingleMutation.isPending && (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              )}
-              Publish
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Confirm bulk publish */}
-      <AlertDialog
-        open={confirmBulkPublishOpen}
-        onOpenChange={(open) => setConfirmBulkPublishOpen(open)}
+        open={showBulkPublishConfirm}
+        onOpenChange={setShowBulkPublishConfirm}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              Publish {selectedApprovedCount} approved draft
-              {selectedApprovedCount === 1 ? "" : "s"}?
+              Publish {selectedIds.length} selected draft
+              {selectedIds.length === 1 ? "" : "s"}?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              This will publish all selected approved drafts using their current
-              summary, tags, and location label. Drafts must be approved before
-              they can be published.
+              This will publish all selected drafts as live questions. Make sure
+              they are approved and edited as needed before continuing.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel
-              disabled={bulkPublishMutation.isPending}
-            >
-              Cancel
-            </AlertDialogCancel>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              disabled={
-                selectedApprovedCount === 0 || bulkPublishMutation.isPending
-              }
-              onClick={() =>
-                bulkPublishMutation.mutate([...selectedIds])
-              }
+              onClick={confirmBulkPublish}
+              disabled={bulkPublishMutation.isLoading}
             >
-              {bulkPublishMutation.isPending && (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              )}
-              Publish all
+              Publish {selectedIds.length}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </div>
   );
+}
+
+function StatusPill({ status }: { status: DraftStatus }) {
+  const color =
+    status === "approved"
+      ? "bg-emerald-100 text-emerald-800 border-emerald-200"
+      : status === "rejected"
+      ? "bg-red-100 text-red-800 border-red-200"
+      : "bg-slate-100 text-slate-800 border-slate-200";
+
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium",
+        color
+      )}
+    >
+      {status}
+    </span>
+  );
+}
+
+// Tiny helper so we can use AlertDialog as a button
+function AlertDialogTriggerButton(
+  props: React.ButtonHTMLAttributes<HTMLButtonElement> & { disabled?: boolean }
+) {
+  return (
+    <AlertDialogTrigger asChild>
+      <Button size="sm" {...props}>
+        Publish
+      </Button>
+    </AlertDialogTrigger>
+  );
+}
+
+// Re-export from shadcn since we used asChild pattern above
+// (If your AlertDialogTrigger is exported elsewhere, adjust this import)
+function AlertDialogTrigger(props: { asChild?: boolean; children: React.ReactNode }) {
+  // This dummy is here just to make TS happy in this standalone file.
+  // In your actual project, you should import { AlertDialogTrigger } from "@/components/ui/alert-dialog".
+  return <>{props.children}</>;
 }
