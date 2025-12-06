@@ -1,4 +1,3 @@
-// src/pages/TopicDetailPage.tsx
 import * as React from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -214,6 +213,37 @@ function QuestionStancePill({
 }
 
 // ----- data fetchers -----
+
+// 0) Canonical topic resolver – uses get_canonical_topic_id but falls back safely
+async function fetchCanonicalTopicId(id: string): Promise<string> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("Supabase client not available");
+
+  try {
+    const { data, error } = await sb.rpc("get_canonical_topic_id", {
+      p_topic_id: id,
+    });
+
+    if (error) {
+      console.warn(
+        "get_canonical_topic_id failed, falling back to raw id",
+        error
+      );
+      return id;
+    }
+
+    // For scalar-returning RPCs, Supabase gives the scalar directly as data
+    const canonicalId = (data as string | null) ?? id;
+    return canonicalId;
+  } catch (e) {
+    console.warn(
+      "get_canonical_topic_id not available or failed, falling back to raw id",
+      e
+    );
+    return id;
+  }
+}
+
 async function fetchTopicById(id: string): Promise<Topic | null> {
   const sb = getSupabase();
   if (!sb) throw new Error("Supabase client not available");
@@ -276,7 +306,10 @@ async function fetchQuestionsForTopic(
 }
 
 // Small helper to classify trending heat from score + activity
-function getTrendLabel(score: number | null | undefined, activity: number | null | undefined) {
+function getTrendLabel(
+  score: number | null | undefined,
+  activity: number | null | undefined
+) {
   const s = score ?? 0;
   const a = activity ?? 0;
 
@@ -293,15 +326,26 @@ export default function TopicDetailPage() {
   const session = useSupabaseSession();
   const isAuthed = !!session;
 
+  // First, resolve the canonical topic id (merge-aware)
+  const {
+    data: canonicalTopicId,
+    isLoading: canonicalLoading,
+  } = useQuery<string>({
+    enabled: !!id,
+    queryKey: ["topic-canonical-id", id],
+    queryFn: () => fetchCanonicalTopicId(id as string),
+    staleTime: 5 * 60_000,
+  });
+
   const {
     data: topic,
     isLoading: topicLoading,
     isError: topicError,
     error: topicErrorObj,
   } = useQuery({
-    enabled: !!id,
-    queryKey: ["topic-detail", id],
-    queryFn: () => fetchTopicById(id as string),
+    enabled: !!canonicalTopicId,
+    queryKey: ["topic-detail", canonicalTopicId],
+    queryFn: () => fetchTopicById(canonicalTopicId as string),
     staleTime: 60_000,
   });
 
@@ -324,9 +368,18 @@ export default function TopicDetailPage() {
     }
   };
 
+  const isMerged =
+    !!id && !!canonicalTopicId && id !== canonicalTopicId;
+
   let content: React.ReactNode;
 
-  if (topicLoading) {
+  if (!id) {
+    content = (
+      <div className="rounded-lg border p-4 text-sm text-slate-700">
+        No topic id provided.
+      </div>
+    );
+  } else if (canonicalLoading || topicLoading) {
     content = (
       <div className="rounded-lg border p-4 animate-pulse space-y-3">
         <div className="h-5 w-2/3 bg-slate-200 rounded" />
@@ -375,6 +428,22 @@ export default function TopicDetailPage() {
 
     content = (
       <div className="space-y-4">
+        {/* Merge banner (when URL id != canonical id) */}
+        {isMerged && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+            <div className="font-semibold mb-1">Merged topic</div>
+            <div>
+              This topic was merged into{" "}
+              <span className="font-medium">{topic.title}</span>. You’re
+              viewing the canonical version, which combines activity and
+              questions across similar topics.
+            </div>
+            <div className="mt-1 text-[10px] text-amber-900/80">
+              Original topic id: <code>{id}</code>
+            </div>
+          </div>
+        )}
+
         {/* Header + Topic Trends widget */}
         <section className="rounded-lg border p-4 space-y-3">
           <div className="flex items-start justify-between gap-4">
@@ -489,10 +558,7 @@ export default function TopicDetailPage() {
                 <div
                   className="h-full bg-emerald-500"
                   style={{
-                    width: `${Math.max(
-                      8,
-                      Math.min(100, score)
-                    )}%`,
+                    width: `${Math.max(8, Math.min(100, score))}%`,
                   }}
                 />
               </div>
@@ -522,7 +588,7 @@ export default function TopicDetailPage() {
             </p>
           )}
 
-          {!questionsLoading && !hasQuestions && (
+          {!questionsLoading && !questionsError && !hasQuestions && (
             <p className="text-xs text-slate-500">
               No live questions yet for this topic. Once questions are
               published from the admin area, they&apos;ll appear here.
