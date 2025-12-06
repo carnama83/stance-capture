@@ -10,6 +10,7 @@ import AuthReadyGate from "./components/AuthReadyGate";
 import { Protected, PublicOnly } from "./auth/route-guards";
 import AdminOnly from "./auth/AdminOnly";
 import { ROUTES } from "@/routes/paths";
+import AdminTopicsPage from "@/routes/admin/topics/Index";
 
 import TopicDetailPage from "./pages/TopicDetailPage";
 
@@ -95,6 +96,10 @@ const App: React.FC = () => {
                 }
               />
 
+// inside <Routes> ...
+<Route path="/admin/topics" element={<AdminTopicsPage />} />
+
+              
               <Route
                 path={ROUTES.RESET_PASSWORD}
                 element={
