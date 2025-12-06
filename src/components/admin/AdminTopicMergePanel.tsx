@@ -1,7 +1,9 @@
+// src/components/admin/AdminTopicMergePanel.tsx
 import * as React from "react";
 import { createSupabase } from "@/lib/createSupabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -11,7 +13,6 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
 
 type TopicRow = {
@@ -31,16 +32,15 @@ export function AdminTopicMergePanel() {
 
   const [topics, setTopics] = React.useState<TopicRow[]>([]);
   const [loading, setLoading] = React.useState(false);
-
   const [search, setSearch] = React.useState("");
+
+  const [dialogOpen, setDialogOpen] = React.useState(false);
   const [sourceId, setSourceId] = React.useState<string | null>(null);
   const [targetId, setTargetId] = React.useState<string | null>(null);
-  const [dialogOpen, setDialogOpen] = React.useState(false);
-  const [mergeRunning, setMergeRunning] = React.useState(false);
+  const [merging, setMerging] = React.useState(false);
 
   const loadTopics = React.useCallback(async () => {
     setLoading(true);
-    // You can refine this query (e.g., only topics seen in vw_topics_trending)
     const { data, error } = await supabase
       .from("topics")
       .select(
@@ -97,29 +97,42 @@ export function AdminTopicMergePanel() {
   const source = topics.find((t) => t.id === sourceId) || null;
   const target = topics.find((t) => t.id === targetId) || null;
 
-  const openMergeDialog = (t: TopicRow) => {
-    setSourceId(t.id);
+  const openMergeDialogFor = (topicId: string) => {
+    setSourceId(topicId);
     setTargetId(null);
     setDialogOpen(true);
   };
 
-  const runMerge = async () => {
-    if (!sourceId || !targetId) return;
+  const handleMerge = async () => {
+    if (!sourceId || !targetId) {
+      toast({
+        title: "Missing selection",
+        description: "Pick both a source and a target topic.",
+        variant: "destructive",
+      });
+      return;
+    }
     if (sourceId === targetId) {
       toast({
-        title: "Choose a different target",
-        description: "Source and target topics must be different.",
+        title: "Invalid merge",
+        description: "Source and target must be different topics.",
         variant: "destructive",
       });
       return;
     }
 
-    setMergeRunning(true);
+    // Quick extra guard for the user
+    const confirmed = window.confirm(
+      "Are you sure you want to merge the source topic into the target topic? This will treat the target as canonical going forward."
+    );
+    if (!confirmed) return;
+
+    setMerging(true);
     const { error } = await supabase.rpc("admin_merge_topic", {
       p_source_topic_id: sourceId,
       p_target_topic_id: targetId,
     });
-    setMergeRunning(false);
+    setMerging(false);
 
     if (error) {
       console.error("admin_merge_topic error:", error);
@@ -133,8 +146,10 @@ export function AdminTopicMergePanel() {
 
     toast({
       title: "Topics merged",
-      description: "Source topic is now merged into the canonical target.",
+      description:
+        "Source topic is now merged into the canonical target. Trending and topic question lists will now treat the target as canonical.",
     });
+
     setDialogOpen(false);
     setSourceId(null);
     setTargetId(null);
@@ -146,29 +161,32 @@ export function AdminTopicMergePanel() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">Topic dedupe / merge</h2>
-          <p className="text-xs text-muted-foreground">
-            Use this to merge near-duplicate topics. The source topic becomes an alias
-            of the target; trending lists and question lists will respect merges.
+          <p className="text-xs text-muted-foreground max-w-xl">
+            Use this tool to merge near-duplicate topics. The source topic becomes
+            an alias of the target; canonical topics appear in Trending and Topic
+            Detail, and questions are aggregated under the canonical topic.
           </p>
         </div>
 
         <Input
-          placeholder="Search topics by title, tags, location…"
           className="w-72"
+          placeholder="Search topics by title, tags, location…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
       </div>
 
-      <div className="border rounded-lg max-h-[420px] overflow-auto">
+      <div className="border rounded-lg max-h-[420px] overflow-auto text-sm">
         {loading && (
-          <div className="p-4 text-sm text-muted-foreground">Loading topics…</div>
+          <div className="p-4 text-muted-foreground">Loading topics…</div>
         )}
+
         {!loading && filteredTopics.length === 0 && (
-          <div className="p-4 text-sm text-muted-foreground">
+          <div className="p-4 text-muted-foreground">
             No topics match this search.
           </div>
         )}
+
         {!loading &&
           filteredTopics.map((t) => (
             <div
@@ -190,13 +208,9 @@ export function AdminTopicMergePanel() {
                       merged into {t.parent_topic_id.slice(0, 8)}…
                     </span>
                   )}
-                  <span>
-                    {new Date(t.created_at).toLocaleDateString()}
-                  </span>
+                  <span>{new Date(t.created_at).toLocaleDateString()}</span>
                 </div>
-                <div className="font-medium text-sm truncate">
-                  {t.title}
-                </div>
+                <div className="font-medium text-sm truncate">{t.title}</div>
                 {t.summary && (
                   <div className="text-xs text-muted-foreground line-clamp-2">
                     {t.summary}
@@ -205,7 +219,11 @@ export function AdminTopicMergePanel() {
                 {t.tags && t.tags.length > 0 && (
                   <div className="flex flex-wrap gap-1 mt-1">
                     {t.tags.slice(0, 4).map((tag) => (
-                      <Badge key={tag} variant="secondary" className="text-[10px]">
+                      <Badge
+                        key={tag}
+                        variant="secondary"
+                        className="text-[10px]"
+                      >
                         {tag}
                       </Badge>
                     ))}
@@ -217,10 +235,11 @@ export function AdminTopicMergePanel() {
                   </div>
                 )}
               </div>
+
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => openMergeDialog(t)}
+                onClick={() => openMergeDialogFor(t.id)}
               >
                 Merge…
               </Button>
@@ -234,9 +253,9 @@ export function AdminTopicMergePanel() {
           <DialogHeader>
             <DialogTitle>Merge topic into another</DialogTitle>
             <DialogDescription>
-              Choose the canonical topic that should “win.” The source topic becomes
-              an alias of the target; region coverage and question lists will use the
-              canonical topic going forward.
+              The source topic will become an alias of the target topic. Users will
+              see the target topic as canonical in Trending and Topic Detail, and
+              questions will be aggregated under the target.
             </DialogDescription>
           </DialogHeader>
 
@@ -248,13 +267,20 @@ export function AdminTopicMergePanel() {
               {source ? (
                 <div className="mt-1 space-y-1">
                   <div className="font-medium">{source.title}</div>
-                  <div className="text-xs text-muted-foreground line-clamp-2">
-                    {source.summary}
-                  </div>
+                  {source.location_label && (
+                    <div className="text-xs text-muted-foreground">
+                      {source.location_label}
+                    </div>
+                  )}
+                  {source.summary && (
+                    <div className="text-xs text-muted-foreground line-clamp-3">
+                      {source.summary}
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="mt-1 text-xs text-muted-foreground">
-                  Pick a topic in the list to merge from.
+                  Click “Merge…” on a topic in the list to pick a source.
                 </div>
               )}
             </div>
@@ -275,14 +301,15 @@ export function AdminTopicMergePanel() {
                   .filter((t) => !source || t.id !== source.id)
                   .map((t) => (
                     <option key={t.id} value={t.id}>
-                      {t.title}{" "}
-                      {t.location_label ? `· ${t.location_label}` : ""}
+                      {t.title}
+                      {t.location_label ? ` · ${t.location_label}` : ""}
                     </option>
                   ))}
               </select>
               {target && (
                 <p className="text-xs text-muted-foreground mt-1">
-                  Canonical topic will be: <span className="font-medium">{target.title}</span>
+                  Canonical topic will be{" "}
+                  <span className="font-medium">{target.title}</span>.
                 </p>
               )}
             </div>
@@ -292,15 +319,15 @@ export function AdminTopicMergePanel() {
             <Button
               variant="outline"
               onClick={() => setDialogOpen(false)}
-              disabled={mergeRunning}
+              disabled={merging}
             >
               Cancel
             </Button>
             <Button
-              onClick={runMerge}
-              disabled={!sourceId || !targetId || mergeRunning}
+              onClick={handleMerge}
+              disabled={!sourceId || !targetId || merging}
             >
-              {mergeRunning ? "Merging…" : "Merge topics"}
+              {merging ? "Merging…" : "Merge topics"}
             </Button>
           </DialogFooter>
         </DialogContent>
