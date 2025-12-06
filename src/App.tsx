@@ -96,10 +96,6 @@ const App: React.FC = () => {
                 }
               />
 
-// inside <Routes> ...
-<Route path="/admin/topics" element={<AdminTopicsPage />} />
-
-              
               <Route
                 path={ROUTES.RESET_PASSWORD}
                 element={
@@ -135,7 +131,6 @@ const App: React.FC = () => {
                 <Route path="profile" element={<SettingsProfile />} />
                 <Route path="security" element={<SettingsSecurity />} />
                 <Route path="sessions" element={<SettingsSessions />} />
-                {/* NEW: Location settings */}
                 <Route path="location" element={<SettingsLocation />} />
               </Route>
 
@@ -183,7 +178,6 @@ const App: React.FC = () => {
                 <Route path="sources" element={<AdminSourcesPage />} />
                 <Route path="ingestion" element={<AdminIngestionPage />} />
                 <Route path="drafts" element={<AdminDraftsPage />} />
-                {/* NEW: AI drafts route */}
                 <Route path="ai-drafts" element={<AdminAiDraftsPage />} />
                 <Route path="questions" element={<AdminQuestionsPage />} />
                 <Route
@@ -195,6 +189,9 @@ const App: React.FC = () => {
                   element={<AdminLiveQuestionShowPage />}
                 />
                 <Route path="news" element={<AdminNewsIndex />} />
+
+                {/* NEW: Admin Topics Page */}
+                <Route path="topics" element={<AdminTopicsPage />} />
               </Route>
 
               {/* Admin special page */}
