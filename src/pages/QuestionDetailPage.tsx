@@ -1,6 +1,10 @@
 // src/pages/QuestionDetailPage.tsx — Question detail with stance capture + regional comparison + related questions
 import * as React from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { QuestionStanceSlider } from "@/components/question/QuestionStanceSlider";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { getSupabase } from "@/lib/supabaseClient";
+
 import {
   useQuery,
   useMutation,
