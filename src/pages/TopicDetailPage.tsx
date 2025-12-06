@@ -275,6 +275,17 @@ async function fetchQuestionsForTopic(
   return linked;
 }
 
+// Small helper to classify trending heat from score + activity
+function getTrendLabel(score: number | null | undefined, activity: number | null | undefined) {
+  const s = score ?? 0;
+  const a = activity ?? 0;
+
+  if (a >= 20 || s >= 80) return "Very hot";
+  if (a >= 10 || s >= 50) return "Heating up";
+  if (a >= 3 || s >= 20) return "Some activity";
+  return "Quiet right now";
+}
+
 // ----- Page -----
 export default function TopicDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -299,7 +310,7 @@ export default function TopicDetailPage() {
     isLoading: questionsLoading,
     isError: questionsError,
   } = useQuery({
-    enabled: !!topic, // now enabled as soon as topic exists
+    enabled: !!topic,
     queryKey: ["topic-questions", topic?.id],
     queryFn: () => fetchQuestionsForTopic(topic ?? null),
     staleTime: 60_000,
@@ -358,16 +369,20 @@ export default function TopicDetailPage() {
     );
   } else {
     const hasQuestions = !!questions && questions.length > 0;
+    const trendLabel = getTrendLabel(topic.trending_score, topic.activity_7d);
+    const score = topic.trending_score ?? 0;
+    const activity = topic.activity_7d ?? 0;
 
     content = (
       <div className="space-y-4">
-        {/* Header */}
+        {/* Header + Topic Trends widget */}
         <section className="rounded-lg border p-4 space-y-3">
-          <div className="flex items-center justify-between gap-2">
-            <div>
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1 min-w-0">
               <h1 className="text-lg sm:text-xl font-semibold text-slate-900">
                 {topic.title}
               </h1>
+
               {topic.location_label && (
                 <div className="mt-1 text-xs text-slate-600 flex flex-wrap gap-1.5 items-center">
                   <span className="inline-flex items-center rounded-full border px-2 py-0.5 bg-slate-50">
@@ -390,49 +405,99 @@ export default function TopicDetailPage() {
                   )}
                 </div>
               )}
+
+              {topic.summary && (
+                <p className="mt-2 text-sm text-slate-700 leading-relaxed">
+                  {topic.summary}
+                </p>
+              )}
+
+              {topic.updated_at && (
+                <div className="mt-1 text-[11px] text-slate-500">
+                  Updated{" "}
+                  {new Date(topic.updated_at).toLocaleString(undefined, {
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                  })}
+                </div>
+              )}
+
+              {topic.tags && topic.tags.length > 0 && (
+                <div className="pt-2 border-t mt-2">
+                  <div className="text-[11px] font-medium text-slate-700 mb-1">
+                    Tags
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {topic.tags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-700"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
-            <button
-              type="button"
-              onClick={handleBack}
-              className="text-xs text-slate-600 hover:underline"
-            >
-              ← Back
-            </button>
-          </div>
 
-          {topic.summary && (
-            <p className="text-sm text-slate-700 leading-relaxed">
-              {topic.summary}
-            </p>
-          )}
-
-          {topic.updated_at && (
-            <div className="text-[11px] text-slate-500">
-              Updated{" "}
-              {new Date(topic.updated_at).toLocaleString(undefined, {
-                dateStyle: "medium",
-                timeStyle: "short",
-              })}
-            </div>
-          )}
-
-          {topic.tags && topic.tags.length > 0 && (
-            <div className="pt-2 border-t mt-1">
-              <div className="text-[11px] font-medium text-slate-700 mb-1">
-                Tags
+            {/* Topic Trends widget */}
+            <div className="w-44 shrink-0 rounded-lg border bg-slate-50 px-3 py-2 text-[11px] text-slate-700 flex flex-col gap-1.5">
+              <div className="flex items-center justify-between gap-1">
+                <span className="font-semibold text-slate-900">
+                  Topic trends
+                </span>
+                <button
+                  type="button"
+                  onClick={handleBack}
+                  className="text-[10px] text-slate-500 hover:underline"
+                >
+                  ← Back
+                </button>
               </div>
-              <div className="flex flex-wrap gap-1.5">
-                {topic.tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-700"
-                  >
-                    {tag}
+              <div className="text-[11px]">
+                <span className="font-medium">{trendLabel}</span>
+                {topic.location_label && (
+                  <>
+                    {" "}
+                    in{" "}
+                    <span className="font-medium">
+                      {topic.location_label}
+                    </span>
+                  </>
+                )}
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex flex-col">
+                  <span className="text-[10px] text-slate-500">
+                    Trend index
                   </span>
-                ))}
+                  <span className="text-xs font-semibold">
+                    {score.toFixed(0)}
+                  </span>
+                </div>
+                <div className="flex flex-col items-end">
+                  <span className="text-[10px] text-slate-500">
+                    7-day activity
+                  </span>
+                  <span className="text-xs font-semibold">
+                    {activity} response{activity === 1 ? "" : "s"}
+                  </span>
+                </div>
+              </div>
+              <div className="mt-1 h-1.5 w-full rounded-full bg-slate-200 overflow-hidden">
+                <div
+                  className="h-full bg-emerald-500"
+                  style={{
+                    width: `${Math.max(
+                      8,
+                      Math.min(100, score)
+                    )}%`,
+                  }}
+                />
               </div>
             </div>
-          )}
+          </div>
         </section>
 
         {/* Questions under this topic */}
