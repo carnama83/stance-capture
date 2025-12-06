@@ -350,25 +350,38 @@ export default function Index() {
       if (!sb) return [];
       try {
         if (isAuthed && session?.user?.id) {
-          // NOTE: no p_user_id here; function uses auth.uid() internally
+          // Pass p_user_id explicitly to match the SQL function signature
           const { data, error } = await sb.rpc("get_tailored_feed", {
+            p_user_id: session.user.id,
             p_limit: latestLimit,
           });
-          if (error) throw error;
-          return (data ?? []) as LiveQuestion[];
-        } else {
-          const { data, error } = await sb
-            .from("v_live_questions")
-            .select(
-              "id, question, summary, tags, location_label, published_at, status"
-            )
-            .order("published_at", { ascending: false })
-            .limit(latestLimit);
-          if (error) throw error;
-          return (data ?? []) as LiveQuestion[];
+
+          if (error) {
+            console.error("[get_tailored_feed] RPC error", error);
+          } else if (data) {
+            return data as LiveQuestion[];
+          }
         }
-      } catch (err) {
-        console.error("live questions feed error", err);
+
+        // Fallback: global live questions feed
+        const { data, error } = await sb
+          .from("v_live_questions")
+          .select(
+            "id, question, summary, tags, location_label, published_at, status"
+          )
+          .order("published_at", { ascending: false })
+          .limit(latestLimit);
+
+        if (error) throw error;
+        return (data ?? []) as LiveQuestion[];
+      } catch (err: any) {
+        console.error("live questions feed error", {
+          err,
+          message: err?.message,
+          details: err?.details,
+          hint: err?.hint,
+          code: err?.code,
+        });
         throw err instanceof Error ? err : new Error("Failed to load feed");
       }
     },
