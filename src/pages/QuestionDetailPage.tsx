@@ -1,17 +1,14 @@
 // src/pages/QuestionDetailPage.tsx — Question detail with stance capture + regional comparison + related questions
 import * as React from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { QuestionStanceSlider } from "@/components/question/QuestionStanceSlider";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { getSupabase } from "@/lib/supabaseClient";
-
+import PageLayout from "../components/PageLayout";
 import {
   useQuery,
   useMutation,
   useQueryClient,
 } from "@tanstack/react-query";
 import { getSupabase } from "../lib/supabaseClient";
-import PageLayout from "../components/PageLayout";
+import { QuestionStanceSlider } from "@/components/question/QuestionStanceSlider";
 
 type Session = import("@supabase/supabase-js").Session;
 
@@ -183,8 +180,7 @@ async function fetchQuestionStats(
   const regions = (raw.regions ?? {}) as QuestionStats["regions"];
 
   return {
-    my_stance:
-      typeof raw.my_stance === "number" ? raw.my_stance : null,
+    my_stance: typeof raw.my_stance === "number" ? raw.my_stance : null,
     location: raw.location ?? null,
     regions,
   };
@@ -290,15 +286,13 @@ function RegionComparison({ stats }: { stats: QuestionStats | null }) {
           const row = stats.regions?.[scope] ?? null;
           if (!row || row.total_responses === 0) return null;
 
-          const label =
-            scope === "global" ? "Global" : row.region_label;
+          const label = scope === "global" ? "Global" : row.region_label;
 
           const isMine =
             (scope === "city" && loc?.city === row.region_label) ||
             (scope === "county" && loc?.county === row.region_label) ||
             (scope === "state" && loc?.state === row.region_label) ||
-            (scope === "country" &&
-              loc?.country === row.region_label) ||
+            (scope === "country" && loc?.country === row.region_label) ||
             scope === "global";
 
           const agree = Math.max(0, row.pct_agree ?? 0);
@@ -458,14 +452,13 @@ export default function QuestionDetailPage() {
     navigate("/login");
   };
 
+  // For slider: always set stance to chosen value (no toggle). Use separate "Clear" button to remove stance.
   const handleSetStance = (value: number) => {
     if (!isAuthed) {
       handleRequireLogin();
       return;
     }
-    const current = myStance ?? null;
-    const next = current === value ? null : value;
-    stanceMutation.mutate(next);
+    stanceMutation.mutate(value);
   };
 
   const showLocationNudge =
@@ -477,8 +470,7 @@ export default function QuestionDetailPage() {
     !myRegion.country_label &&
     !myRegion.county_label;
 
-  const globalStats: RegionalStat | null =
-    stats?.regions?.global ?? null;
+  const globalStats: RegionalStat | null = stats?.regions?.global ?? null;
 
   // ---------- Render ----------
   let content: React.ReactNode;
@@ -521,11 +513,9 @@ export default function QuestionDetailPage() {
     const hasStats =
       !!globalStats &&
       globalStats.total_responses > 0 &&
-      (globalStats.pct_agree != null ||
-        globalStats.pct_disagree != null);
+      (globalStats.pct_agree != null || globalStats.pct_disagree != null);
 
-    const hasRelated =
-      relatedQuestions && relatedQuestions.length > 0;
+    const hasRelated = relatedQuestions && relatedQuestions.length > 0;
 
     content = (
       <article className="rounded-lg border p-4 space-y-4">
@@ -643,9 +633,8 @@ export default function QuestionDetailPage() {
               </div>
               {globalStats.avg_score != null && (
                 <div className="text-[11px] text-slate-500">
-                  Average stance:{" "}
-                  {globalStats.avg_score.toFixed(2)} (scale -2 to
-                  +2)
+                  Average stance: {globalStats.avg_score.toFixed(2)} (scale
+                  -2 to +2)
                 </div>
               )}
             </div>
@@ -679,31 +668,17 @@ export default function QuestionDetailPage() {
 
           {isAuthed && (
             <>
-              <div className="flex flex-wrap gap-2 mb-2">
-                {STANCE_SCALE.map((s) => {
-                  const selected = myStance === s.value;
-                  const busy = stanceMutation.isPending;
-                  const base =
-                    "rounded-full border px-3 py-1.5 text-xs transition";
-                  const selectedClasses =
-                    "bg-slate-900 border-slate-900 text-white";
-                  const unselectedClasses =
-                    "bg-white border-slate-300 text-slate-700 hover:bg-slate-50";
-                  return (
-                    <button
-                      key={s.value}
-                      type="button"
-                      disabled={busy}
-                      onClick={() => handleSetStance(s.value)}
-                      className={`${base} ${
-                        selected ? selectedClasses : unselectedClasses
-                      }`}
-                    >
-                      {s.labelShort}
-                    </button>
-                  );
-                })}
+              {/* Slider-based stance control */}
+              <div className="mb-2">
+                <QuestionStanceSlider
+                  questionId={questionId}
+                  initialValue={myStance ?? 0}
+                  disabled={stanceMutation.isPending}
+                  onSubmit={handleSetStance}
+                />
               </div>
+
+              {/* Status text + clear button */}
               <div className="text-[11px] text-slate-500 flex items-center gap-2">
                 {stanceLoading ? (
                   <span>Loading your stance…</span>
@@ -728,7 +703,7 @@ export default function QuestionDetailPage() {
                     <button
                       type="button"
                       className="underline"
-                      onClick={() => handleSetStance(myStance)}
+                      onClick={() => stanceMutation.mutate(null)}
                     >
                       Clear
                     </button>
