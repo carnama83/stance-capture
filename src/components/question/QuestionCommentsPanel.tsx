@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useToast } from "@/components/ui/use-toast";
 import { cn } from "@/lib/utils";
+import { getSentimentColorHex } from "@/lib/stanceColors";
 
 type QuestionCommentsPanelProps = {
   questionId: string;
@@ -34,7 +35,7 @@ type CommentNode = QuestionCommentRow & {
   children: CommentNode[];
 };
 
-// Thread-level sentiment row (matches the table we designed)
+// Thread-level sentiment row (matches your table)
 type ThreadSentimentRow = {
   question_id: string;
   avg_score: number | null;
@@ -273,29 +274,17 @@ export function QuestionCommentsPanel({ questionId }: QuestionCommentsPanelProps
   );
 
   const sentiment = threadSentimentQuery.data;
-
-  // Helper to map mood_score → color & label class
-  const moodBarClass = React.useMemo(() => {
-    if (!sentiment || sentiment.mood_score == null) return "bg-slate-300";
-    const score = sentiment.mood_score;
-    if (score <= -0.5) return "bg-rose-500";
-    if (score < 0.5) return "bg-amber-400";
-    return "bg-emerald-500";
-  }, [sentiment]);
-
   const moodLabel = sentiment?.mood_label ?? "No mood yet";
 
-  const moodStrengthWidth = React.useMemo(() => {
-    if (!sentiment || sentiment.mood_score == null) return "8%";
-    const width = Math.min(100, Math.max(8, Math.abs(sentiment.mood_score) * 100));
-    return `${width}%`;
-  }, [sentiment]);
+  const trendingColor = getSentimentColorHex(
+    sentiment?.mood_score ?? sentiment?.avg_score ?? null
+  );
 
   return (
     <Card className="mt-6">
       <CardHeader>
         <CardTitle className="text-sm font-semibold">
-          Discussion
+          Comments
         </CardTitle>
         <p className="mt-1 text-xs text-slate-500">
           Share your reasoning, questions, or concerns. Your stance slider captures your position;
@@ -310,42 +299,42 @@ export function QuestionCommentsPanel({ questionId }: QuestionCommentsPanelProps
               <span className="font-semibold text-slate-900">
                 Discussion mood
               </span>
+
               {threadSentimentQuery.isLoading && (
                 <span className="text-[11px] text-slate-500">
                   Analyzing comments…
                 </span>
               )}
+
               {!threadSentimentQuery.isLoading && !sentiment && (
                 <span className="text-[11px] text-slate-500">
                   No sentiment summary yet. Add a few comments to see the overall mood.
                 </span>
               )}
+
               {!threadSentimentQuery.isLoading && sentiment && (
-                <span className="text-[11px] text-slate-700">
-                  Overall tone:{" "}
-                  <span className="font-medium">{moodLabel}</span>
-                  {sentiment.comment_count != null && sentiment.comment_count > 0 && (
-                    <> · based on {sentiment.comment_count} comment{sentiment.comment_count === 1 ? "" : "s"}</>
-                  )}
+                <span className="text-[11px] text-slate-700 flex items-center gap-2">
+                  <span className="font-medium">Trending</span>
+                  <span
+                    className="inline-flex h-2.5 w-2.5 rounded-full"
+                    style={{ backgroundColor: trendingColor }}
+                  />
+                  {sentiment.comment_count != null &&
+                    sentiment.comment_count > 0 && (
+                      <span className="text-[10px] text-slate-500">
+                        {moodLabel && (
+                          <>
+                            {moodLabel}
+                            {" · "}
+                          </>
+                        )}
+                        Based on {sentiment.comment_count} comment
+                        {sentiment.comment_count === 1 ? "" : "s"}
+                      </span>
+                    )}
                 </span>
               )}
             </div>
-            {sentiment && sentiment.mood_score != null && (
-              <div className="flex flex-col items-end gap-1">
-                <span className="text-[10px] text-slate-500">
-                  Mood index
-                </span>
-                <div className="h-1.5 w-24 rounded-full bg-slate-200 overflow-hidden">
-                  <div
-                    className={cn(
-                      "h-full transition-all",
-                      moodBarClass
-                    )}
-                    style={{ width: moodStrengthWidth }}
-                  />
-                </div>
-              </div>
-            )}
           </div>
         </div>
 
