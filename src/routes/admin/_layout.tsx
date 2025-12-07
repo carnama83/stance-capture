@@ -57,6 +57,9 @@ export default function AdminLayout() {
           </div>
 
           {/* Left Navigation */}
+          <div className="px-2 text-[10px] font-medium tracking-wide text-muted-foreground uppercase mb-1">
+            Content &amp; Pipelines
+          </div>
           <AdminLink
             to="/admin/sources"
             icon={<Library className="h-4 w-4" />}
@@ -72,7 +75,7 @@ export default function AdminLayout() {
             icon={<FileText className="h-4 w-4" />}
             label="Drafts"
           />
-          {/* NEW: AI Drafts */}
+          {/* NEW: AI Drafts (topics from AI pipeline) */}
           <AdminLink
             to="/admin/ai-drafts"
             icon={<FileText className="h-4 w-4" />}
@@ -94,7 +97,11 @@ export default function AdminLayout() {
             label="News"
           />
 
-          {/* ⭐ NEW: Stance Metrics (Epic D) */}
+          <Separator className="my-2" />
+
+          <div className="px-2 text-[10px] font-medium tracking-wide text-muted-foreground uppercase mb-1">
+            Insights (Epic D)
+          </div>
           <AdminLink
             to="/admin/stance-metrics"
             icon={<BarChart3 className="h-4 w-4" />}
@@ -102,7 +109,9 @@ export default function AdminLayout() {
           />
 
           <Separator className="my-2" />
-          <div className="px-2 text-xs text-muted-foreground">Epic B — Admin</div>
+          <div className="px-2 text-xs text-muted-foreground">
+            Epics B &amp; D — Admin
+          </div>
         </Card>
       </aside>
 
