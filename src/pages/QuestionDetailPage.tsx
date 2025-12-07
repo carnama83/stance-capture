@@ -2,6 +2,8 @@
 import * as React from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import PageLayout from "../components/PageLayout";
+import { QuestionCommentsPanel } from "@/components/question/QuestionCommentsPanel";
+
 import {
   useQuery,
   useMutation,
