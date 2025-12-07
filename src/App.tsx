@@ -54,6 +54,9 @@ import SettingsLocation from "./pages/SettingsLocation";
 
 import RouteDebug from "./components/RouteDebug";
 
+// NEW: Admin stance metrics page
+import AdminStanceMetricsPage from "./pages/AdminStanceMetricsPage";
+
 const queryClient = new QueryClient();
 
 const App: React.FC = () => {
@@ -192,6 +195,12 @@ const App: React.FC = () => {
 
                 {/* NEW: Admin Topics Page */}
                 <Route path="topics" element={<AdminTopicsPage />} />
+
+                {/* NEW: Admin Stance Metrics Page */}
+                <Route
+                  path="stance-metrics"
+                  element={<AdminStanceMetricsPage />}
+                />
               </Route>
 
               {/* Admin special page */}
