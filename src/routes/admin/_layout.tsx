@@ -3,7 +3,7 @@ import { Outlet, NavLink, Link, useLocation, useNavigate } from "react-router-do
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
-import { Library, Database, FileText, ChevronRight, LogOut, User } from "lucide-react";
+import { Library, Database, FileText, ChevronRight, LogOut, User, BarChart3 } from "lucide-react";
 
 import {
   DropdownMenu,
@@ -72,7 +72,7 @@ export default function AdminLayout() {
             icon={<FileText className="h-4 w-4" />}
             label="Drafts"
           />
-          {/* NEW: AI Drafts (topics from AI pipeline) */}
+          {/* NEW: AI Drafts */}
           <AdminLink
             to="/admin/ai-drafts"
             icon={<FileText className="h-4 w-4" />}
@@ -92,6 +92,13 @@ export default function AdminLayout() {
             to="/admin/news"
             icon={<FileText className="h-4 w-4" />}
             label="News"
+          />
+
+          {/* ⭐ NEW: Stance Metrics (Epic D) */}
+          <AdminLink
+            to="/admin/stance-metrics"
+            icon={<BarChart3 className="h-4 w-4" />}
+            label="Stance Metrics"
           />
 
           <Separator className="my-2" />
