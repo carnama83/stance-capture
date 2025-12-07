@@ -672,23 +672,14 @@ export default function QuestionDetailPage() {
             <>
               {/* Slider-based stance control */}
               <div className="mb-2">
-                {/* <QuestionStanceSlider
+                <QuestionStanceSlider
                   questionId={questionId}
+                  questionText={question.question}
+                  summary={question.summary ?? null}
                   initialValue={myStance ?? 0}
                   disabled={stanceMutation.isPending}
                   onSubmit={handleSetStance}
-                /> */}
-<QuestionStanceSlider
-  questionId={questionId}
-  questionText={question.question}
-  summary={question.summary ?? null}
-  initialValue={myStance ?? 0}
-  disabled={stanceMutation.isPending}
-  onSubmit={handleSetStance}
-/>
-
-
-                
+                />
               </div>
 
               {/* Status text + clear button */}
@@ -725,6 +716,9 @@ export default function QuestionDetailPage() {
             </>
           )}
         </section>
+
+        {/* Discussion / comments */}
+        <QuestionCommentsPanel questionId={questionId} />
 
         {/* Related questions */}
         <section className="border-t pt-4 mt-2">
