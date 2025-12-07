@@ -6,7 +6,6 @@ import { createSupabase } from "@/lib/createSupabase";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useToast } from "@/components/ui/use-toast";
 import { cn } from "@/lib/utils";
@@ -33,6 +32,16 @@ type QuestionCommentRow = {
 
 type CommentNode = QuestionCommentRow & {
   children: CommentNode[];
+};
+
+// Thread-level sentiment row (matches the table we designed)
+type ThreadSentimentRow = {
+  question_id: string;
+  avg_score: number | null;
+  mood_label: string | null;
+  mood_score: number | null;
+  comment_count: number | null;
+  last_run_at: string | null;
 };
 
 function buildCommentTree(rows: QuestionCommentRow[]): CommentNode[] {
@@ -75,20 +84,13 @@ export function QuestionCommentsPanel({ questionId }: QuestionCommentsPanelProps
   const runSentimentWorkers = React.useCallback(
     (commentId: string, body: string) => {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
-      if (!supabaseUrl || !anonKey) {
+      if (!supabaseUrl) {
         console.warn(
-          "[QuestionCommentsPanel] Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY; skipping sentiment workers."
+          "[QuestionCommentsPanel] VITE_SUPABASE_URL is not set; skipping sentiment workers."
         );
         return;
       }
-
-      const commonHeaders: HeadersInit = {
-        "Content-Type": "application/json",
-        apikey: anonKey,
-        Authorization: `Bearer ${anonKey}`,
-      };
 
       const commentPayload = {
         comment_id: commentId,
@@ -99,11 +101,18 @@ export function QuestionCommentsPanel({ questionId }: QuestionCommentsPanelProps
       (async () => {
         // Per-comment sentiment
         try {
-          await fetch(`${supabaseUrl}/functions/v1/comment-sentiment`, {
+          const res = await fetch(`${supabaseUrl}/functions/v1/comment-sentiment`, {
             method: "POST",
-            headers: commonHeaders,
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify(commentPayload),
           });
+
+          if (!res.ok) {
+            console.warn(
+              "[QuestionCommentsPanel] comment-sentiment returned non-200",
+              res.status
+            );
+          }
         } catch (err) {
           console.warn(
             "[QuestionCommentsPanel] comment-sentiment call failed",
@@ -113,11 +122,18 @@ export function QuestionCommentsPanel({ questionId }: QuestionCommentsPanelProps
 
         // Thread-level sentiment summary
         try {
-          await fetch(`${supabaseUrl}/functions/v1/thread-sentiment`, {
+          const res = await fetch(`${supabaseUrl}/functions/v1/thread-sentiment`, {
             method: "POST",
-            headers: commonHeaders,
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ question_id: questionId }),
           });
+
+          if (!res.ok) {
+            console.warn(
+              "[QuestionCommentsPanel] thread-sentiment returned non-200",
+              res.status
+            );
+          }
         } catch (err) {
           console.warn(
             "[QuestionCommentsPanel] thread-sentiment call failed",
@@ -163,6 +179,32 @@ export function QuestionCommentsPanel({ questionId }: QuestionCommentsPanelProps
     },
   });
 
+  // Load thread-level sentiment summary
+  const threadSentimentQuery = useQuery({
+    enabled: !!questionId,
+    queryKey: ["question-thread-sentiment", questionId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("question_comment_sentiment")
+        .select("*")
+        .eq("question_id", questionId)
+        .maybeSingle();
+
+      if (error) {
+        // PGRST116 is "Results contain 0 rows"
+        // For that case, we just treat it as "no sentiment yet"
+        // @ts-ignore - PostgREST error shape
+        if (error.code !== "PGRST116") {
+          console.error("question_comment_sentiment query error", error);
+          throw error;
+        }
+      }
+
+      return (data ?? null) as ThreadSentimentRow | null;
+    },
+    staleTime: 30_000,
+  });
+
   const createCommentMutation = useMutation({
     mutationFn: async (args: { body: string; parentId: string | null }) => {
       const { body, parentId } = args;
@@ -182,6 +224,9 @@ export function QuestionCommentsPanel({ questionId }: QuestionCommentsPanelProps
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["question-comments", questionId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["question-thread-sentiment", questionId],
       });
     },
   });
@@ -227,6 +272,25 @@ export function QuestionCommentsPanel({ questionId }: QuestionCommentsPanelProps
     [commentsQuery.data]
   );
 
+  const sentiment = threadSentimentQuery.data;
+
+  // Helper to map mood_score → color & label class
+  const moodBarClass = React.useMemo(() => {
+    if (!sentiment || sentiment.mood_score == null) return "bg-slate-300";
+    const score = sentiment.mood_score;
+    if (score <= -0.5) return "bg-rose-500";
+    if (score < 0.5) return "bg-amber-400";
+    return "bg-emerald-500";
+  }, [sentiment]);
+
+  const moodLabel = sentiment?.mood_label ?? "No mood yet";
+
+  const moodStrengthWidth = React.useMemo(() => {
+    if (!sentiment || sentiment.mood_score == null) return "8%";
+    const width = Math.min(100, Math.max(8, Math.abs(sentiment.mood_score) * 100));
+    return `${width}%`;
+  }, [sentiment]);
+
   return (
     <Card className="mt-6">
       <CardHeader>
@@ -239,6 +303,52 @@ export function QuestionCommentsPanel({ questionId }: QuestionCommentsPanelProps
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Discussion mood summary */}
+        <div className="rounded-md border bg-slate-50 px-3 py-2 text-[11px] flex flex-col gap-1.5">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex flex-col">
+              <span className="font-semibold text-slate-900">
+                Discussion mood
+              </span>
+              {threadSentimentQuery.isLoading && (
+                <span className="text-[11px] text-slate-500">
+                  Analyzing comments…
+                </span>
+              )}
+              {!threadSentimentQuery.isLoading && !sentiment && (
+                <span className="text-[11px] text-slate-500">
+                  No sentiment summary yet. Add a few comments to see the overall mood.
+                </span>
+              )}
+              {!threadSentimentQuery.isLoading && sentiment && (
+                <span className="text-[11px] text-slate-700">
+                  Overall tone:{" "}
+                  <span className="font-medium">{moodLabel}</span>
+                  {sentiment.comment_count != null && sentiment.comment_count > 0 && (
+                    <> · based on {sentiment.comment_count} comment{sentiment.comment_count === 1 ? "" : "s"}</>
+                  )}
+                </span>
+              )}
+            </div>
+            {sentiment && sentiment.mood_score != null && (
+              <div className="flex flex-col items-end gap-1">
+                <span className="text-[10px] text-slate-500">
+                  Mood index
+                </span>
+                <div className="h-1.5 w-24 rounded-full bg-slate-200 overflow-hidden">
+                  <div
+                    className={cn(
+                      "h-full transition-all",
+                      moodBarClass
+                    )}
+                    style={{ width: moodStrengthWidth }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
         {/* Top-level composer */}
         <div className="space-y-2">
           <Textarea
@@ -362,10 +472,7 @@ function CommentThread({ node, depth, onReply }: CommentThreadProps) {
       <div className="flex items-start gap-2">
         <Avatar className="h-7 w-7">
           {node.profile_avatar_url ? (
-            <AvatarImage
-              src={node.profile_avatar_url}
-              alt={node.user_display ?? ""}
-            />
+            <AvatarImage src={node.profile_avatar_url} alt={node.user_display ?? ""} />
           ) : (
             <AvatarFallback className="text-[10px]">
               {getInitials(node.user_display)}
@@ -404,31 +511,27 @@ function CommentThread({ node, depth, onReply }: CommentThreadProps) {
               </button>
             )}
           </div>
-
           {isReplying && canReply && (
-            <div className="mt-2 space-y-1">
+            <div className="mt-2 space-y-2">
               <Textarea
                 rows={2}
+                className="text-xs"
+                placeholder="Write a reply..."
                 value={replyText}
                 onChange={(e) => setReplyText(e.target.value)}
-                className="text-xs"
-                placeholder="Write a reply…"
                 disabled={submitting}
               />
-              <div className="flex justify-end gap-2">
+              <div className="flex items-center gap-2 justify-end">
                 <Button
-                  size="xs"
+                  size="sm"
                   variant="outline"
-                  onClick={() => {
-                    setIsReplying(false);
-                    setReplyText("");
-                  }}
+                  onClick={() => setIsReplying(false)}
                   disabled={submitting}
                 >
                   Cancel
                 </Button>
                 <Button
-                  size="xs"
+                  size="sm"
                   onClick={handleSubmitReply}
                   disabled={submitting || !replyText.trim()}
                 >
@@ -441,21 +544,13 @@ function CommentThread({ node, depth, onReply }: CommentThreadProps) {
       </div>
 
       {node.children.length > 0 && (
-        <div
-          className={cn(
-            "mt-1 border-l pl-3 space-y-3",
-            depth >= 1 && "ml-4",
-            depth >= 2 && "ml-6"
-          )}
-        >
+        <div className="mt-2 ml-6 border-l pl-4 space-y-3">
           {node.children.map((child) => (
             <CommentThread
               key={child.id}
               node={child}
               depth={depth + 1}
-              onReply={async (body) => {
-                await onReply(body);
-              }}
+              onReply={onReply}
             />
           ))}
         </div>
