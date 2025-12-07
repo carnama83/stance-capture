@@ -35,13 +35,14 @@ type CommentNode = QuestionCommentRow & {
   children: CommentNode[];
 };
 
-// Thread-level sentiment row (matches your table)
+// This matches the row we upsert from thread-sentiment
 type ThreadSentimentRow = {
   question_id: string;
-  avg_score: number | null;
-  mood_label: string | null;
-  mood_score: number | null;
+  avg_sentiment: number | null;
+  sentiment_variance: number | null;
   comment_count: number | null;
+  summary_text: string | null;
+  model: string | null;
   last_run_at: string | null;
 };
 
@@ -70,6 +71,13 @@ function getInitials(name: string | null | undefined): string {
   const parts = name.split(" ").filter(Boolean);
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[1][0]).toUpperCase();
+}
+
+function describeMood(avg: number | null | undefined): string {
+  if (avg == null || Number.isNaN(avg)) return "No mood yet";
+  if (avg <= -0.3) return "Mostly critical";
+  if (avg < 0.3) return "Mixed / divided";
+  return "Mostly supportive";
 }
 
 export function QuestionCommentsPanel({ questionId }: QuestionCommentsPanelProps) {
@@ -274,11 +282,9 @@ export function QuestionCommentsPanel({ questionId }: QuestionCommentsPanelProps
   );
 
   const sentiment = threadSentimentQuery.data;
-  const moodLabel = sentiment?.mood_label ?? "No mood yet";
-
-  const trendingColor = getSentimentColorHex(
-    sentiment?.mood_score ?? sentiment?.avg_score ?? null
-  );
+  const avg = sentiment?.avg_sentiment ?? null;
+  const moodLabel = describeMood(avg);
+  const trendingColor = getSentimentColorHex(avg);
 
   return (
     <Card className="mt-6">
@@ -322,12 +328,8 @@ export function QuestionCommentsPanel({ questionId }: QuestionCommentsPanelProps
                   {sentiment.comment_count != null &&
                     sentiment.comment_count > 0 && (
                       <span className="text-[10px] text-slate-500">
-                        {moodLabel && (
-                          <>
-                            {moodLabel}
-                            {" · "}
-                          </>
-                        )}
+                        {moodLabel}
+                        {" · "}
                         Based on {sentiment.comment_count} comment
                         {sentiment.comment_count === 1 ? "" : "s"}
                       </span>
