@@ -1,7 +1,6 @@
 // src/lib/stanceColors.ts
 //
 // Centralized color helpers for stance slider and sentiment mood.
-// We use hex colors so they can be applied via inline styles anywhere.
 
 /**
  * Map stance value (-2..2) to a hex color.
@@ -26,14 +25,16 @@ export function getStanceColorHex(value: number): string {
 
 /**
  * Map sentiment score (-1..1-ish) to a hex color.
- * Used for "Trending" circle in Discussion Mood.
+ * Used for "Trending" dot in Discussion Mood.
  *
  * Rough thresholds:
- *   <= -0.3  → red (negative)
+ *   <= -0.3   → red (negative)
  *   -0.3..0.3 → orange (mixed/neutral-ish)
- *   >= 0.3   → green (positive)
+ *   >= 0.3    → green (positive)
  */
-export function getSentimentColorHex(score: number | null | undefined): string {
+export function getSentimentColorHex(
+  score: number | null | undefined
+): string {
   if (score == null || Number.isNaN(score)) {
     return "#9ca3af"; // slate-400 – unknown / no data
   }
