@@ -74,16 +74,21 @@ export function QuestionCommentsPanel({ questionId }: QuestionCommentsPanelProps
   // Fire-and-forget helpers to trigger Edge Functions for sentiment
   const runSentimentWorkers = React.useCallback(
     (commentId: string, body: string) => {
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as
-        | string
-        | undefined;
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
-      if (!supabaseUrl) {
+      if (!supabaseUrl || !anonKey) {
         console.warn(
-          "[QuestionCommentsPanel] VITE_SUPABASE_URL is not set; skipping sentiment workers."
+          "[QuestionCommentsPanel] Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY; skipping sentiment workers."
         );
         return;
       }
+
+      const commonHeaders: HeadersInit = {
+        "Content-Type": "application/json",
+        apikey: anonKey,
+        Authorization: `Bearer ${anonKey}`,
+      };
 
       const commentPayload = {
         comment_id: commentId,
@@ -96,7 +101,7 @@ export function QuestionCommentsPanel({ questionId }: QuestionCommentsPanelProps
         try {
           await fetch(`${supabaseUrl}/functions/v1/comment-sentiment`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: commonHeaders,
             body: JSON.stringify(commentPayload),
           });
         } catch (err) {
@@ -110,7 +115,7 @@ export function QuestionCommentsPanel({ questionId }: QuestionCommentsPanelProps
         try {
           await fetch(`${supabaseUrl}/functions/v1/thread-sentiment`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: commonHeaders,
             body: JSON.stringify({ question_id: questionId }),
           });
         } catch (err) {
@@ -347,9 +352,7 @@ function CommentThread({ node, depth, onReply }: CommentThreadProps) {
     }
   };
 
-  const created = node.created_at
-    ? new Date(node.created_at)
-    : null;
+  const created = node.created_at ? new Date(node.created_at) : null;
 
   const maxDepth = 3;
   const canReply = depth < maxDepth;
@@ -359,7 +362,10 @@ function CommentThread({ node, depth, onReply }: CommentThreadProps) {
       <div className="flex items-start gap-2">
         <Avatar className="h-7 w-7">
           {node.profile_avatar_url ? (
-            <AvatarImage src={node.profile_avatar_url} alt={node.user_display ?? ""} />
+            <AvatarImage
+              src={node.profile_avatar_url}
+              alt={node.user_display ?? ""}
+            />
           ) : (
             <AvatarFallback className="text-[10px]">
               {getInitials(node.user_display)}
