@@ -66,6 +66,14 @@ type RegionRow = {
   country_label: string | null;
 };
 
+type ThreadSentimentRow = {
+  question_id: string;
+  avg_sentiment: number | null;
+  sentiment_variance: number | null;
+  comment_count: number;
+  summary_text: string | null;
+};
+
 const STANCE_SCALE = [
   { value: -2, labelShort: "Strongly disagree", label: "Strongly disagree" },
   { value: -1, labelShort: "Disagree", label: "Disagree" },
@@ -241,6 +249,28 @@ async function fetchRelatedQuestions(
   }
 
   return (data ?? []) as LiveQuestion[];
+}
+
+async function fetchThreadSentiment(
+  questionId: string
+): Promise<ThreadSentimentRow | null> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("Supabase client not available");
+
+  const { data, error } = await sb
+    .from("question_comment_sentiment")
+    .select(
+      "question_id, avg_sentiment, sentiment_variance, comment_count, summary_text"
+    )
+    .eq("question_id", questionId)
+    .maybeSingle<ThreadSentimentRow>();
+
+  if (error) {
+    console.error("Failed to load thread sentiment", error);
+    return null;
+  }
+
+  return data ?? null;
 }
 
 // ---------- Region comparison widget ----------
@@ -426,6 +456,16 @@ export default function QuestionDetailPage() {
         (question?.tags as string[]) ?? [],
         (question?.location_label as string | null) ?? null
       ),
+    staleTime: 60_000,
+  });
+
+  const {
+    data: threadSentiment,
+    isLoading: threadSentimentLoading,
+  } = useQuery({
+    enabled: !!questionId,
+    queryKey: ["question-thread-sentiment", questionId],
+    queryFn: () => fetchThreadSentiment(questionId),
     staleTime: 60_000,
   });
 
@@ -645,6 +685,35 @@ export default function QuestionDetailPage() {
           {/* Regional comparison (mini-heatmap) for logged-in user */}
           {isAuthed && <RegionComparison stats={stats ?? null} />}
         </section>
+
+        {/* Discussion mood / AI summary */}
+        {threadSentimentLoading && !threadSentiment && (
+          <section className="border-t pt-4 mt-2">
+            <p className="text-xs text-slate-500">
+              Analyzing discussion sentiment…
+            </p>
+          </section>
+        )}
+        {threadSentiment && (
+          <section className="border-t pt-4 mt-2">
+            <h2 className="text-sm font-medium text-slate-900 mb-1">
+              Discussion mood
+            </h2>
+            <p className="text-xs text-slate-600">
+              {threadSentiment.comment_count ?? 0} comment
+              {threadSentiment.comment_count === 1 ? "" : "s"}
+              {typeof threadSentiment.avg_sentiment === "number" &&
+                ` · avg sentiment ${threadSentiment.avg_sentiment.toFixed(
+                  2
+                )} (−1 to +1)`}
+            </p>
+            {threadSentiment.summary_text && (
+              <p className="text-sm text-slate-700 mt-1">
+                {threadSentiment.summary_text}
+              </p>
+            )}
+          </section>
+        )}
 
         {/* Your stance */}
         <section className="border-t pt-4 mt-2">
