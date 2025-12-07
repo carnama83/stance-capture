@@ -71,6 +71,59 @@ export function QuestionCommentsPanel({ questionId }: QuestionCommentsPanelProps
   const [newComment, setNewComment] = React.useState("");
   const [posting, setPosting] = React.useState(false);
 
+  // Fire-and-forget helpers to trigger Edge Functions for sentiment
+  const runSentimentWorkers = React.useCallback(
+    (commentId: string, body: string) => {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as
+        | string
+        | undefined;
+
+      if (!supabaseUrl) {
+        console.warn(
+          "[QuestionCommentsPanel] VITE_SUPABASE_URL is not set; skipping sentiment workers."
+        );
+        return;
+      }
+
+      const commentPayload = {
+        comment_id: commentId,
+        body,
+        question_id: questionId,
+      };
+
+      (async () => {
+        // Per-comment sentiment
+        try {
+          await fetch(`${supabaseUrl}/functions/v1/comment-sentiment`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(commentPayload),
+          });
+        } catch (err) {
+          console.warn(
+            "[QuestionCommentsPanel] comment-sentiment call failed",
+            err
+          );
+        }
+
+        // Thread-level sentiment summary
+        try {
+          await fetch(`${supabaseUrl}/functions/v1/thread-sentiment`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ question_id: questionId }),
+          });
+        } catch (err) {
+          console.warn(
+            "[QuestionCommentsPanel] thread-sentiment call failed",
+            err
+          );
+        }
+      })();
+    },
+    [questionId]
+  );
+
   // Load current user (for gating commenting)
   React.useEffect(() => {
     let cancelled = false;
@@ -143,11 +196,16 @@ export function QuestionCommentsPanel({ questionId }: QuestionCommentsPanelProps
 
     try {
       setPosting(true);
-      await createCommentMutation.mutateAsync({
+      const saved = await createCommentMutation.mutateAsync({
         body,
         parentId: null,
       });
       setNewComment("");
+
+      // Kick off sentiment workers for this new top-level comment
+      if (saved?.id) {
+        runSentimentWorkers(saved.id, body);
+      }
     } catch (err: any) {
       toast({
         title: "Could not post comment",
@@ -237,10 +295,15 @@ export function QuestionCommentsPanel({ questionId }: QuestionCommentsPanelProps
                     const trimmed = body.trim();
                     if (!trimmed) return;
                     try {
-                      await createCommentMutation.mutateAsync({
+                      const saved = await createCommentMutation.mutateAsync({
                         body: trimmed,
                         parentId: node.id,
                       });
+
+                      // Kick off sentiment workers for this reply
+                      if (saved?.id) {
+                        runSentimentWorkers(saved.id, trimmed);
+                      }
                     } catch (err: any) {
                       toast({
                         title: "Could not post reply",
