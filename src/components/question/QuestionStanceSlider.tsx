@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
 import { createSupabase } from "@/lib/createSupabase";
+import { getStanceColorHex } from "@/lib/stanceColors";
 
 export type QuestionStanceSliderProps = {
   questionId: string;
@@ -35,23 +36,6 @@ const STANCE_TIPS_FALLBACK: Record<number, string> = {
   [2]:
     "You strongly support this, even accepting real tradeoffs to move it forward.",
 };
-
-function getStanceColor(value: number): string {
-  switch (value) {
-    case -2:
-      return "bg-red-500";
-    case -1:
-      return "bg-orange-500";
-    case 0:
-      return "bg-amber-500";
-    case 1:
-      return "bg-lime-500";
-    case 2:
-      return "bg-emerald-500";
-    default:
-      return "bg-slate-400";
-  }
-}
 
 // ---- AI tip hook ----
 function useAiStanceTip(
@@ -156,6 +140,11 @@ export function QuestionStanceSlider({
     }
   };
 
+  // Color + fill width for visual feedback
+  const stanceColor = getStanceColorHex(value);
+  const rawPercent = ((value + 2) / 4) * 100;
+  const fillPercent = Math.max(8, rawPercent); // minimum width so red is visible at -2
+
   return (
     <div className="w-full space-y-3">
       {/* Header */}
@@ -181,14 +170,15 @@ export function QuestionStanceSlider({
             onValueCommit={handleCommit}
             className="relative w-full"
           />
+          {/* Colored fill under the thumb */}
           <div className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 h-2 sm:h-1.5 rounded-full bg-slate-200">
             <div
               className={cn(
-                "h-full rounded-full transition-[width,background-color] duration-300",
-                getStanceColor(value)
+                "h-full rounded-full transition-[width,background-color] duration-300"
               )}
               style={{
-                width: `${((value + 2) / 4) * 100}%`,
+                width: `${fillPercent}%`,
+                backgroundColor: stanceColor,
               }}
             />
           </div>
