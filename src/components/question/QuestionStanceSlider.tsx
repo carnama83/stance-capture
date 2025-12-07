@@ -1,3 +1,5 @@
+// src/components/question/QuestionStanceSlider.tsx
+
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Slider } from "@/components/ui/slider";
@@ -82,23 +84,30 @@ function useAiStanceTip(
           "[QuestionStanceSlider] ai-stance-tip error; using fallback",
           error
         );
-        return { tip: null as string | null, source: "fallback" as const };
+        return {
+          tip: null as string | null,
+          source: "fallback" as const,
+          reason: "invoke_error" as const,
+        };
       }
 
+      const raw = data as any;
       const tipText =
-        data && typeof (data as any).tip === "string"
-          ? ((data as any).tip as string).trim()
+        raw && typeof raw.tip === "string"
+          ? (raw.tip as string).trim()
           : null;
       const source =
-        (data as any).source === "ai" ? "ai" : "fallback";
+        raw && raw.source === "ai" ? ("ai" as const) : ("fallback" as const);
+      const reason = raw?.reason ?? null;
 
       console.info("[QuestionStanceSlider] ai-stance-tip result", {
         stance,
         source,
+        reason,
         tip: tipText,
       });
 
-      return { tip: tipText, source };
+      return { tip: tipText, source, reason };
     },
   });
 }
@@ -185,6 +194,7 @@ export function QuestionStanceSlider({
           </div>
         </div>
 
+        {/* Tick labels */}
         <div className="flex justify-between text-[10px] text-slate-500">
           <span className="max-w-[48px] sm:max-w-none">
             Strongly{" "}
