@@ -40,13 +40,14 @@ export function TodayQuestionsFeed({
   limit = 7,
   buildQuestionLink = (id) => `/q/${id}`,
 }: TodayQuestionsFeedProps) {
-  const supabase = React.useMemo(getSupabase, []);
+  const sb = React.useMemo(getSupabase, []);
 
   const { data, isLoading, isError, error, refetch } =
     useQuery<TodayQuestionRow[]>({
       queryKey: ["today-questions", { limit }],
       queryFn: async () => {
-        const { data, error } = await supabase.rpc("get_today_questions", {
+        if (!sb) return [];
+        const { data, error } = await sb.rpc("get_today_questions", {
           p_limit: limit,
         });
 
@@ -56,6 +57,7 @@ export function TodayQuestionsFeed({
         }
         return (data ?? []) as TodayQuestionRow[];
       },
+      staleTime: 60_000,
     });
 
   const todayLabel = React.useMemo(() => {
