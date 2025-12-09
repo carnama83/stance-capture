@@ -1,10 +1,15 @@
-//src/components/TodayQuestionsFeed.tsx
+// src/components/Question/TodayQuestionsFeed.tsx
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
-// Adjust this import to match your project:
-import { supabase } from "@/lib/supabaseClient";
+import { getSupabase } from "@/lib/supabaseClient";
 
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -35,22 +40,26 @@ interface TodayQuestionsFeedProps {
 
 export function TodayQuestionsFeed({
   limit = 7,
-  buildQuestionLink = (id) => `/questions/${id}`, // TODO: adjust to your route
+  // Default to your actual question detail route
+  buildQuestionLink = (id) => `/q/${id}`,
 }: TodayQuestionsFeedProps) {
-  const { data, isLoading, isError, error, refetch } = useQuery<TodayQuestionRow[]>({
-    queryKey: ["today-questions", { limit }],
-    queryFn: async () => {
-      const { data, error } = await supabase.rpc("get_today_questions", {
-        p_limit: limit,
-      });
+  const supabase = React.useMemo(getSupabase, []);
 
-      if (error) {
-        console.error("get_today_questions error:", error);
-        throw error;
-      }
-      return (data ?? []) as TodayQuestionRow[];
-    },
-  });
+  const { data, isLoading, isError, error, refetch } =
+    useQuery<TodayQuestionRow[]>({
+      queryKey: ["today-questions", { limit }],
+      queryFn: async () => {
+        const { data, error } = await supabase.rpc("get_today_questions", {
+          p_limit: limit,
+        });
+
+        if (error) {
+          console.error("get_today_questions error:", error);
+          throw error;
+        }
+        return (data ?? []) as TodayQuestionRow[];
+      },
+    });
 
   const todayLabel = React.useMemo(() => {
     if (!data || data.length === 0) return "Today’s Questions";
@@ -70,7 +79,8 @@ export function TodayQuestionsFeed({
             Today’s {limit} Questions
           </CardTitle>
           <CardDescription className="text-xs sm:text-sm">
-            A curated set of high-impact, stance-worthy questions selected by our AI + editorial engine.
+            A curated set of high-impact, stance-worthy questions selected by
+            our AI + editorial engine.
           </CardDescription>
         </div>
         <Button
@@ -96,14 +106,15 @@ export function TodayQuestionsFeed({
 
         {isError && (
           <p className="text-xs text-destructive">
-            Error loading Today’s Questions: {(error as any)?.message ?? "Unknown error"}
+            Error loading Today’s Questions:{" "}
+            {(error as any)?.message ?? "Unknown error"}
           </p>
         )}
 
         {!isLoading && !isError && (!data || data.length === 0) && (
           <p className="text-xs text-muted-foreground">
-            No curated questions are available yet for today. The system will fall back to high-impact
-            questions as scoring runs.
+            No curated questions are available yet for today. The system will
+            fall back to high-impact questions as scoring runs.
           </p>
         )}
 
@@ -165,7 +176,9 @@ export function TodayQuestionsFeed({
                         )}
                         {q.question_published_at && (
                           <span className="text-[10px] text-muted-foreground">
-                            {new Date(q.question_published_at).toLocaleTimeString(undefined, {
+                            {new Date(
+                              q.question_published_at
+                            ).toLocaleTimeString(undefined, {
                               hour: "numeric",
                               minute: "2-digit",
                             })}
