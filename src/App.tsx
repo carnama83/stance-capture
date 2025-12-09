@@ -44,6 +44,9 @@ import AdminLiveQuestionShowPage from "@/routes/admin/live-questions/Show";
 // NEW: AI Drafts admin page
 import AdminAiDraftsPage from "@/routes/admin/ai-drafts/Index";
 
+// NEW: Impact Dashboard admin page (Epic P)
+import AdminImpactDashboardPage from "@/routes/admin/impact-dashboard/Index";
+
 // My stances
 import MyStancesPage from "./pages/MyStancesPage";
 
@@ -195,6 +198,12 @@ const App: React.FC = () => {
 
                 {/* NEW: Admin Topics Page */}
                 <Route path="topics" element={<AdminTopicsPage />} />
+
+                {/* NEW: Impact Dashboard (Epic P) */}
+                <Route
+                  path="impact-dashboard"
+                  element={<AdminImpactDashboardPage />}
+                />
 
                 {/* NEW: Admin Stance Metrics Page */}
                 <Route
