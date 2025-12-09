@@ -1,10 +1,7 @@
-//src/routes/admin/impact-dashboard/Index.tsx
+// src/routes/admin/impact-dashboard/Index.tsx
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-// ⬇️ Adjust this import to match your project setup
-// e.g., import { supabase } from "@/lib/supabaseClient";
-// or useSupabaseClient from your auth helper.
-import { supabase } from "@/lib/supabaseClient";
+import { getSupabase } from "@/lib/supabaseClient";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -23,12 +20,22 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/components/ui/use-toast";
 import { cn } from "@/lib/utils";
 
-type QuestionVisibilityEnum = "visible" | "suppressed" | "archived" | "manual_only";
+type QuestionVisibilityEnum =
+  | "visible"
+  | "suppressed"
+  | "archived"
+  | "manual_only";
 
 interface QuestionImpactRow {
   question_id: string | null;
@@ -75,7 +82,10 @@ const visibilityLabels: Record<QuestionVisibilityEnum, string> = {
   manual_only: "Manual only",
 };
 
-const visibilityBadgeVariant: Record<QuestionVisibilityEnum, "default" | "secondary" | "destructive" | "outline"> = {
+const visibilityBadgeVariant: Record<
+  QuestionVisibilityEnum,
+  "default" | "secondary" | "destructive" | "outline"
+> = {
   visible: "default",
   suppressed: "destructive",
   archived: "secondary",
@@ -93,26 +103,28 @@ const compositeColor = (score: number | null | undefined): string => {
 export default function AdminImpactDashboardPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const supabase = React.useMemo(getSupabase, []);
 
   // -----------------------------
   // Data: Questions + Impact + Visibility
   // -----------------------------
-  const { data, isLoading, isError, error, refetch } = useQuery<QuestionImpactRow[]>({
-    queryKey: ["impact-dashboard", "v_question_impact_admin"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("v_question_impact_admin")
-        .select("*")
-        .order("composite_score", { ascending: false })
-        .limit(100);
+  const { data, isLoading, isError, error, refetch } =
+    useQuery<QuestionImpactRow[]>({
+      queryKey: ["impact-dashboard", "v_question_impact_admin"],
+      queryFn: async () => {
+        const { data, error } = await supabase
+          .from("v_question_impact_admin")
+          .select("*")
+          .order("composite_score", { ascending: false })
+          .limit(100);
 
-      if (error) {
-        console.error("Error loading v_question_impact_admin:", error);
-        throw error;
-      }
-      return (data ?? []) as QuestionImpactRow[];
-    },
-  });
+        if (error) {
+          console.error("Error loading v_question_impact_admin:", error);
+          throw error;
+        }
+        return (data ?? []) as QuestionImpactRow[];
+      },
+    });
 
   // -----------------------------
   // Mutation: Set question visibility
@@ -166,8 +178,8 @@ export default function AdminImpactDashboardPage() {
         new Set(
           data
             .map((row) => row.topic_id)
-            .filter((id): id is string => !!id),
-        ),
+            .filter((id): id is string => !!id)
+        )
       );
 
       if (topicIds.length === 0) {
@@ -179,14 +191,10 @@ export default function AdminImpactDashboardPage() {
       }
 
       // Call the Edge Function impact-score-batch
-      // NOTE: This assumes you've deployed that function and
-      // supabase.functions.invoke is configured in your client lib.
-      const { data: fnData, error: fnError } = await supabase.functions.invoke(
-        "impact-score-batch",
-        {
+      const { data: fnData, error: fnError } =
+        await supabase.functions.invoke("impact-score-batch", {
           body: { topic_ids: topicIds },
-        },
-      );
+        });
 
       if (fnError) {
         console.error("impact-score-batch error:", fnError);
@@ -224,7 +232,8 @@ export default function AdminImpactDashboardPage() {
           <div>
             <CardTitle>Impact Dashboard</CardTitle>
             <CardDescription>
-              Review AI impact scores, stance potential, and visibility for candidate questions.
+              Review AI impact scores, stance potential, and visibility for
+              candidate questions.
             </CardDescription>
           </div>
           <div className="flex flex-row items-center gap-2">
@@ -247,7 +256,11 @@ export default function AdminImpactDashboardPage() {
           </div>
         </CardHeader>
         <CardContent>
-          {isLoading && <p className="text-sm text-muted-foreground">Loading impact data…</p>}
+          {isLoading && (
+            <p className="text-sm text-muted-foreground">
+              Loading impact data…
+            </p>
+          )}
           {isError && (
             <p className="text-sm text-destructive">
               Error loading data: {(error as any)?.message ?? "Unknown error"}
@@ -255,7 +268,8 @@ export default function AdminImpactDashboardPage() {
           )}
           {!isLoading && !isError && (!data || data.length === 0) && (
             <p className="text-sm text-muted-foreground">
-              No questions found. Publish some questions first, then run impact scoring.
+              No questions found. Publish some questions first, then run impact
+              scoring.
             </p>
           )}
 
@@ -279,12 +293,15 @@ export default function AdminImpactDashboardPage() {
                       row.visibility ?? "visible";
 
                     return (
-                      <TableRow key={row.question_id ?? row.topic_id ?? Math.random()}>
+                      <TableRow
+                        key={row.question_id ?? row.topic_id ?? Math.random()}
+                      >
                         {/* Question */}
                         <TableCell>
                           <div className="flex flex-col gap-1">
                             <div className="font-medium line-clamp-2">
-                              {row.question_text || "(draft / missing question text)"}
+                              {row.question_text ||
+                                "(draft / missing question text)"}
                             </div>
                             {row.question_summary && (
                               <div className="text-xs text-muted-foreground line-clamp-2">
@@ -293,7 +310,10 @@ export default function AdminImpactDashboardPage() {
                             )}
                             <div className="flex flex-wrap gap-1 mt-1">
                               {row.question_location_label && (
-                                <Badge variant="outline" className="text-[10px]">
+                                <Badge
+                                  variant="outline"
+                                  className="text-[10px]"
+                                >
                                   {row.question_location_label}
                                 </Badge>
                               )}
@@ -323,12 +343,18 @@ export default function AdminImpactDashboardPage() {
                             )}
                             <div className="flex flex-wrap gap-1 mt-1">
                               {row.topic_tier && (
-                                <Badge variant="outline" className="text-[10px]">
+                                <Badge
+                                  variant="outline"
+                                  className="text-[10px]"
+                                >
                                   Tier: {row.topic_tier}
                                 </Badge>
                               )}
                               {row.topic_location_label && (
-                                <Badge variant="outline" className="text-[10px]">
+                                <Badge
+                                  variant="outline"
+                                  className="text-[10px]"
+                                >
                                   {row.topic_location_label}
                                 </Badge>
                               )}
@@ -339,14 +365,31 @@ export default function AdminImpactDashboardPage() {
                         {/* Scores */}
                         <TableCell>
                           <div className="flex flex-col text-xs items-start gap-0.5">
-                            <div className={cn("font-semibold", compositeColor(composite))}>
-                              Composite: {composite != null ? composite.toFixed(2) : "—"}
+                            <div
+                              className={cn(
+                                "font-semibold",
+                                compositeColor(composite)
+                              )}
+                            >
+                              Composite:{" "}
+                              {composite != null
+                                ? composite.toFixed(2)
+                                : "—"}
                             </div>
                             <div>Impact: {row.impact_score ?? "—"}</div>
-                            <div>Stance: {row.stance_potential_score ?? "—"}</div>
-                            <div>Cluster: {row.cluster_density_score ?? "—"}</div>
-                            <div>Region: {row.region_relevance_score ?? "—"}</div>
-                            <div>Engagement: {row.engagement_prediction_score ?? "—"}</div>
+                            <div>
+                              Stance: {row.stance_potential_score ?? "—"}
+                            </div>
+                            <div>
+                              Cluster: {row.cluster_density_score ?? "—"}
+                            </div>
+                            <div>
+                              Region: {row.region_relevance_score ?? "—"}
+                            </div>
+                            <div>
+                              Engagement:{" "}
+                              {row.engagement_prediction_score ?? "—"}
+                            </div>
                           </div>
                         </TableCell>
 
@@ -400,7 +443,9 @@ export default function AdminImpactDashboardPage() {
                         <TableCell>
                           <div className="text-xs text-muted-foreground">
                             {row.scores_updated_at
-                              ? new Date(row.scores_updated_at).toLocaleString()
+                              ? new Date(
+                                  row.scores_updated_at
+                                ).toLocaleString()
                               : "—"}
                           </div>
                         </TableCell>
