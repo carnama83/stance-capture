@@ -99,6 +99,18 @@ export default function AdminLayout() {
 
           <Separator className="my-2" />
 
+          {/* NEW: Impact & Curation (Epic P) */}
+          <div className="px-2 text-[10px] font-medium tracking-wide text-muted-foreground uppercase mb-1">
+            Impact &amp; Curation (Epic P)
+          </div>
+          <AdminLink
+            to="/admin/impact-dashboard"
+            icon={<BarChart3 className="h-4 w-4" />}
+            label="Impact Dashboard"
+          />
+
+          <Separator className="my-2" />
+
           <div className="px-2 text-[10px] font-medium tracking-wide text-muted-foreground uppercase mb-1">
             Insights (Epic D)
           </div>
@@ -110,7 +122,7 @@ export default function AdminLayout() {
 
           <Separator className="my-2" />
           <div className="px-2 text-xs text-muted-foreground">
-            Epics B &amp; D — Admin
+            Epics B, D &amp; P — Admin
           </div>
         </Card>
       </aside>
