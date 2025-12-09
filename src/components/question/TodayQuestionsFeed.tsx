@@ -31,16 +31,13 @@ interface TodayQuestionsFeedProps {
   limit?: number;
   /**
    * Build the URL for a question detail page.
-   * Adjust this to match your actual routing, e.g.:
-   *   (id) => `/questions/${id}`
-   *   (id) => `/q/${id}`
+   * Default matches your /q/:id QuestionDetailPage route.
    */
   buildQuestionLink?: (questionId: string) => string;
 }
 
 export function TodayQuestionsFeed({
   limit = 7,
-  // Default to your actual question detail route
   buildQuestionLink = (id) => `/q/${id}`,
 }: TodayQuestionsFeedProps) {
   const supabase = React.useMemo(getSupabase, []);
