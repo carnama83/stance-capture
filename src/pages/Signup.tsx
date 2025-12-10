@@ -119,6 +119,7 @@ function LocationSelect(props: {
     })();
   }, [props.country]);
 
+  // 🔧 FIXED: load counties from geo_counties_v using state_code
   React.useEffect(() => {
     (async () => {
       if (!props.stateCode) {
@@ -135,13 +136,10 @@ function LocationSelect(props: {
       setCities([]);
       props.setCityCode("");
 
-      const stateIso = `${props.country}-${props.stateCode}`;
-
       const { data, error } = await sb
-        .from("locations")
-        .select("iso_code, name")
-        .eq("type", "county")
-        .like("iso_code", `${stateIso}-%`)
+        .from("geo_counties_v")
+        .select("code, name, state_code")
+        .eq("state_code", props.stateCode)
         .order("name");
 
       setLoadingCounties(false);
@@ -149,13 +147,14 @@ function LocationSelect(props: {
       if (!error && data) {
         setCounties(
           data.map((row) => ({
-            code: row.iso_code.split("-").slice(2).join("-"),
+            // keep using the trailing part as the "code" so resolveLocation continues to work
+            code: row.code.split("-").slice(2).join("-"),
             name: row.name,
           }))
         );
       }
     })();
-  }, [props.country, props.stateCode]);
+  }, [props.stateCode]);
 
   React.useEffect(() => {
     (async () => {
