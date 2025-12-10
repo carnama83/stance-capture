@@ -60,9 +60,15 @@ import RouteDebug from "./components/RouteDebug";
 // NEW: Admin stance metrics page
 import AdminStanceMetricsPage from "./pages/AdminStanceMetricsPage";
 
+// 👇 NEW: bootstrap hook
+import { useBootstrapUser } from "@/hooks/useBootstrapUser";
+
 const queryClient = new QueryClient();
 
 const App: React.FC = () => {
+  // Ensure public.users + profiles are bootstrapped for any logged-in user
+  useBootstrapUser();
+
   // Dev expose Supabase
   if (import.meta.env.DEV) {
     import("@/lib/createSupabase").then(({ createSupabase }) => {
