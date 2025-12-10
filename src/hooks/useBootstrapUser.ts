@@ -1,33 +1,51 @@
 // src/hooks/useBootstrapUser.ts
 import { useEffect } from "react";
-import { getSupabaseClient } from "@/client/supabaseClient"; // adjust path to your helper
+import { createClient } from "@supabase/supabase-js";
+
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+
+// Local client just for bootstrapping
+const sb = createClient(supabaseUrl, supabaseAnonKey);
 
 export function useBootstrapUser() {
   useEffect(() => {
-    const supabase = getSupabaseClient();
+    let isMounted = true;
 
-    // 1) Run once on mount if there is already a session
-    supabase.auth.getSession().then(({ data }) => {
-      const session = data.session;
-      if (!session?.user) return;
+    // Case 1: App loads & session already exists
+    const checkInitial = async () => {
+      try {
+        const { data } = await sb.auth.getSession();
+        if (!isMounted) return;
 
-      supabase
-        .rpc("bootstrap_user_after_login")
-        .catch((err) => console.error("bootstrap_user_after_login (initial) failed", err));
-    });
+        if (data.session?.user) {
+          await sb.rpc("bootstrap_user_after_login");
+        }
+      } catch (err) {
+        console.error("bootstrap_user_after_login (initial) failed:", err);
+      }
+    };
 
-    // 2) Subscribe to auth state changes (login / logout)
-    const { data: subscription } = supabase.auth.onAuthStateChange(
+    checkInitial();
+
+    // Case 2: User logs in / session changes
+    const { data: subscription } = sb.auth.onAuthStateChange(
       (_event, session) => {
-        if (!session?.user) return;
-
-        supabase
-          .rpc("bootstrap_user_after_login")
-          .catch((err) => console.error("bootstrap_user_after_login (onAuthStateChange) failed", err));
+        if (session?.user) {
+          sb
+            .rpc("bootstrap_user_after_login")
+            .catch((err) =>
+              console.error(
+                "bootstrap_user_after_login (auth state change) failed:",
+                err
+              )
+            );
+        }
       }
     );
 
     return () => {
+      isMounted = false;
       subscription?.subscription?.unsubscribe?.();
     };
   }, []);
