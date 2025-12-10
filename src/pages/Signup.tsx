@@ -1,4 +1,3 @@
-// src/pages/Signup.tsx
 import * as React from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { createClient } from "@supabase/supabase-js";
@@ -119,7 +118,7 @@ function LocationSelect(props: {
     })();
   }, [props.country]);
 
-  // 🔧 FIXED: load counties from geo_counties_v using state_code
+  // Counties from geo_counties_v
   React.useEffect(() => {
     (async () => {
       if (!props.stateCode) {
@@ -147,7 +146,6 @@ function LocationSelect(props: {
       if (!error && data) {
         setCounties(
           data.map((row) => ({
-            // keep using the trailing part as the "code" so resolveLocation continues to work
             code: row.code.split("-").slice(2).join("-"),
             name: row.name,
           }))
@@ -217,8 +215,8 @@ function LocationSelect(props: {
             data-error="location"
           >
             <option value="">Select country</option>
-            {countries.map((c) => (
-              <option key={c.code} value={c.code}>
+            {countries.map((c, idx) => (
+              <option key={c.code || `country-${idx}`} value={c.code}>
                 {c.name}
               </option>
             ))}
@@ -244,8 +242,8 @@ function LocationSelect(props: {
             disabled={!props.country || loadingStates}
           >
             <option value="">Select state / region</option>
-            {states.map((s) => (
-              <option key={s.code} value={s.code}>
+            {states.map((s, idx) => (
+              <option key={s.code || `state-${idx}`} value={s.code}>
                 {s.name}
               </option>
             ))}
@@ -279,8 +277,8 @@ function LocationSelect(props: {
             disabled={!props.stateCode || loadingCounties}
           >
             <option value="">Select county</option>
-            {counties.map((c) => (
-              <option key={c.code} value={c.code}>
+            {counties.map((c, idx) => (
+              <option key={c.code || `county-${idx}`} value={c.code}>
                 {c.name}
               </option>
             ))}
@@ -314,8 +312,8 @@ function LocationSelect(props: {
             disabled={!props.countyCode || loadingCities}
           >
             <option value="">Select city</option>
-            {cities.map((c) => (
-              <option key={c.code} value={c.code}>
+            {cities.map((c, idx) => (
+              <option key={c.code || `city-${idx}`} value={c.code}>
                 {c.name}
               </option>
             ))}
@@ -474,8 +472,6 @@ export default function SignupPage() {
   }
 
   async function finalizeOnboarding() {
-    // Let server-side helpers (set_username, profile_set_dob_checked, etc.)
-    // create the profile row if needed. No direct init_user_after_signup call here.
     if (username.trim()) {
       const u = await sb.rpc("set_username", {
         p_username: username.trim().toLowerCase(),
