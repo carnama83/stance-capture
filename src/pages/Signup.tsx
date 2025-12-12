@@ -59,6 +59,7 @@ function LocationSelect(props: {
   const [loadingCounties, setLoadingCounties] = React.useState(false);
   const [loadingCities, setLoadingCities] = React.useState(false);
 
+  // Countries
   React.useEffect(() => {
     (async () => {
       const { data, error } = await sb
@@ -78,6 +79,7 @@ function LocationSelect(props: {
     })();
   }, []);
 
+  // States
   React.useEffect(() => {
     (async () => {
       if (!props.country) {
@@ -118,7 +120,7 @@ function LocationSelect(props: {
     })();
   }, [props.country]);
 
-  // Counties from geo_counties_v
+  // Counties from geo_counties_v – use full iso_code as value
   React.useEffect(() => {
     (async () => {
       if (!props.stateCode) {
@@ -146,7 +148,8 @@ function LocationSelect(props: {
       if (!error && data) {
         setCounties(
           data.map((row) => ({
-            code: row.code.split("-").slice(2).join("-"),
+            // row.code is locations.iso_code; use it directly
+            code: row.code,
             name: row.name,
           }))
         );
@@ -154,6 +157,7 @@ function LocationSelect(props: {
     })();
   }, [props.stateCode]);
 
+  // Cities – look up by county iso_code prefix
   React.useEffect(() => {
     (async () => {
       if (!props.countyCode) {
@@ -166,14 +170,11 @@ function LocationSelect(props: {
       setCities([]);
       props.setCityCode("");
 
-      const stateIso = `${props.country}-${props.stateCode}`;
-      const countyIso = `${stateIso}-${props.countyCode}`;
-
       const { data, error } = await sb
         .from("locations")
         .select("iso_code, name")
         .eq("type", "city")
-        .like("iso_code", `${countyIso}-%`)
+        .like("iso_code", `${props.countyCode}-%`)
         .order("name");
 
       setLoadingCities(false);
@@ -181,13 +182,14 @@ function LocationSelect(props: {
       if (!error && data) {
         setCities(
           data.map((row) => ({
-            code: row.iso_code.split("-").slice(3).join("-"),
+            // again, keep full iso_code as the value
+            code: row.iso_code,
             name: row.name,
           }))
         );
       }
     })();
-  }, [props.country, props.stateCode, props.countyCode]);
+  }, [props.countyCode]);
 
   return (
     <div aria-live="polite">
@@ -415,32 +417,31 @@ export default function SignupPage() {
     | null
   > {
     if (cityCode) {
-      const guesses = [
-        `${country}-${stateCode}-${countyCode}-${cityCode}`,
-        `${country}-${stateCode}-${cityCode}`,
-      ];
       const r = await sb
         .from("locations")
         .select("id, iso_code")
         .eq("type", "city")
-        .in("iso_code", guesses);
-      const row = r.data?.[0];
-      if (!r.error && row?.id) return { locationId: row.id, precision: "city" };
+        .eq("iso_code", cityCode)
+        .limit(1)
+        .single();
+      const row = r.data;
+      if (!r.error && row?.id) {
+        return { locationId: row.id, precision: "city" };
+      }
     }
 
     if (countyCode) {
-      const guesses = [
-        `${country}-${stateCode}-${countyCode}`,
-        `${country}-${countyCode}`,
-      ];
       const r = await sb
         .from("locations")
         .select("id, iso_code")
         .eq("type", "county")
-        .in("iso_code", guesses);
-      const row = r.data?.[0];
-      if (!r.error && row?.id)
+        .eq("iso_code", countyCode)
+        .limit(1)
+        .single();
+      const row = r.data;
+      if (!r.error && row?.id) {
         return { locationId: row.id, precision: "county" };
+      }
     }
 
     if (stateCode) {
