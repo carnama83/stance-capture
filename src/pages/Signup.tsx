@@ -444,7 +444,7 @@ export default function Signup() {
   const [password, setPassword] = React.useState("");
   const [username, setUsername] = React.useState("");
 
-  const [dob, setDob] = React.useState<string>("");
+  const [dob, setDob] = React.useState<string>(""); // ✅ required now
   const [gender, setGender] = React.useState<GenderState>({
     value: "",
     selfDescribe: "",
@@ -517,14 +517,15 @@ export default function Signup() {
       next.username = "Username must be 3–20 characters.";
     }
 
-    if (dob) {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(dob)) {
-        next.dob = "Use format YYYY-MM-DD.";
-      } else {
-        const age = calcAge(dob);
-        if (age != null && age < 13) {
-          next.dob = "You must be at least 13 to use this app.";
-        }
+    // ✅ DOB REQUIRED
+    if (!dob || !dob.trim()) {
+      next.dob = "Date of birth is required.";
+    } else if (!/^\d{4}-\d{2}-\d{2}$/.test(dob)) {
+      next.dob = "Use format YYYY-MM-DD.";
+    } else {
+      const age = calcAge(dob);
+      if (age != null && age < 13) {
+        next.dob = "You must be at least 13 to use this app.";
       }
     }
 
@@ -624,11 +625,12 @@ export default function Signup() {
       }
     }
 
-    // 2) DOB via helper
-    if (dob) {
-      const d = await sb.rpc("profile_set_dob_checked", { p_dob_text: dob });
-      if (d.error) throw d.error;
+    // ✅ 2) DOB REQUIRED via helper (always call)
+    if (!dob || !dob.trim()) {
+      throw new Error("Date of birth is required.");
     }
+    const d = await sb.rpc("profile_set_dob_checked", { p_dob_text: dob });
+    if (d.error) throw d.error;
 
     // 3) Gender via helper, with fallback to direct update
     const g = await sb.rpc("profile_set_gender", {
@@ -781,20 +783,19 @@ export default function Signup() {
             )}
           </div>
 
-         {/* Username */}
-<UsernameField
-  value={username}
-  onChange={(v: any) => {
-    // Support both: onChange(value: string) and onChange(event)
-    if (typeof v === "string") setUsername(v);
-    else setUsername(v?.target?.value ?? "");
-  }}
-  setValue={setUsername} // keep for backward compatibility if UsernameField uses it
-  error={errors.username}
-  status={uStatus}
-  setStatus={setUStatus}
-/>
-
+          {/* Username */}
+          <UsernameField
+            value={username}
+            onChange={(v: any) => {
+              // Support both: onChange(value: string) and onChange(event)
+              if (typeof v === "string") setUsername(v);
+              else setUsername(v?.target?.value ?? "");
+            }}
+            setValue={setUsername} // keep for backward compatibility if UsernameField uses it
+            error={errors.username}
+            status={uStatus}
+            setStatus={setUStatus}
+          />
 
           {/* DOB */}
           <DobField
