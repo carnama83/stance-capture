@@ -7,15 +7,14 @@ type SignupStashV1 = {
   dob?: string; // "YYYY-MM-DD"
   gender?: string;
   genderSelf?: string;
-  country?: string; // e.g. "US"
-  stateCode?: string; // e.g. "NJ"
-  countyCode?: string; // e.g. "34003" (matches locations.iso_code for county)
-  cityId?: string; // uuid from geo_cities_v.id
+  country?: string;     // e.g. "US"
+  stateCode?: string;   // e.g. "NJ"
+  countyCode?: string;  // e.g. "34003"
+  cityId?: string;      // uuid from geo_cities_v.id
 };
 
 type Precision = "city" | "county" | "state" | "country" | "none";
 
-/** Stable per-device fingerprint stored in localStorage */
 function getDeviceFingerprint(): string {
   const key = "device_fingerprint_v1";
   const existing = window.localStorage.getItem(key);
@@ -24,18 +23,13 @@ function getDeviceFingerprint(): string {
   const fp =
     globalThis.crypto?.randomUUID?.() ??
     `fp_${Math.random().toString(36).slice(2)}_${Date.now()}`;
-
   window.localStorage.setItem(key, fp);
   return fp;
 }
 
 async function resolveLocationFromStash(sb: any, stash: SignupStashV1) {
-  // City: stash stores uuid from geo_cities_v.id
-  if (stash.cityId) {
-    return { locationId: stash.cityId, precision: "city" as Precision };
-  }
+  if (stash.cityId) return { locationId: stash.cityId, precision: "city" as Precision };
 
-  // County: stash stores geo_counties_v.code, should match locations.iso_code for county
   if (stash.countyCode) {
     const r = await sb
       .from("locations")
@@ -44,13 +38,9 @@ async function resolveLocationFromStash(sb: any, stash: SignupStashV1) {
       .eq("iso_code", stash.countyCode)
       .limit(1)
       .single();
-
-    if (!r.error && r.data?.id) {
-      return { locationId: r.data.id, precision: "county" as Precision };
-    }
+    if (!r.error && r.data?.id) return { locationId: r.data.id, precision: "county" as Precision };
   }
 
-  // State: try both "NJ" and "US-NJ"
   if (stash.stateCode) {
     const guesses = stash.country
       ? [stash.stateCode, `${stash.country}-${stash.stateCode}`]
@@ -64,12 +54,9 @@ async function resolveLocationFromStash(sb: any, stash: SignupStashV1) {
       .limit(1);
 
     const row = r.data?.[0];
-    if (!r.error && row?.id) {
-      return { locationId: row.id, precision: "state" as Precision };
-    }
+    if (!r.error && row?.id) return { locationId: row.id, precision: "state" as Precision };
   }
 
-  // Country
   if (stash.country) {
     const r = await sb
       .from("locations")
@@ -78,10 +65,7 @@ async function resolveLocationFromStash(sb: any, stash: SignupStashV1) {
       .eq("iso_code", stash.country)
       .limit(1)
       .single();
-
-    if (!r.error && r.data?.id) {
-      return { locationId: r.data.id, precision: "country" as Precision };
-    }
+    if (!r.error && r.data?.id) return { locationId: r.data.id, precision: "country" as Precision };
   }
 
   return null;
@@ -110,16 +94,15 @@ async function applySignupStashIfPresent(sb: any) {
     if (r.error) console.warn("set_username failed (non-fatal):", r.error);
   }
 
-  // DOB (non-fatal)
-  // Try p_dob (date) first; fallback to p_dob_text for older overloads.
+  // DOB: only apply if profile.dob is still NULL (prevents double-apply 400s)
   if (stash.dob && stash.dob.trim()) {
-    const dob = stash.dob.trim();
-    let r = await sb.rpc("profile_set_dob_checked", { p_dob: dob });
-    if (r.error) {
-      // fallback
-      const r2 = await sb.rpc("profile_set_dob_checked", { p_dob_text: dob });
-      if (r2.error) {
-        console.warn("profile_set_dob_checked failed (non-fatal):", r2.error);
+    const prof = await sb.from("profiles").select("dob").eq("user_id", uid).single();
+    if (!prof.error && !prof.data?.dob) {
+      // Try newer param, then fallback
+      const r1 = await sb.rpc("profile_set_dob_checked", { p_dob: stash.dob.trim() });
+      if (r1.error) {
+        const r2 = await sb.rpc("profile_set_dob_checked", { p_dob_text: stash.dob.trim() });
+        if (r2.error) console.warn("profile_set_dob_checked failed (non-fatal):", r2.error);
       }
     }
   }
@@ -128,15 +111,12 @@ async function applySignupStashIfPresent(sb: any) {
   if (stash.gender && stash.gender.trim()) {
     const r = await sb.rpc("profile_set_gender", {
       p_gender: stash.gender,
-      p_gender_self:
-        stash.gender === "self_described" ? stash.genderSelf ?? null : null,
+      p_gender_self: stash.gender === "self_described" ? stash.genderSelf ?? null : null,
     });
     if (r.error) console.warn("profile_set_gender failed (non-fatal):", r.error);
   }
 
-  // Location (non-fatal)
-  // ✅ IMPORTANT FIX:
-  // Use set_my_location (current user) instead of set_user_location(p_user_id,...)
+  // Location (non-fatal): use set_my_location (no p_user_id signature mismatch)
   const resolved = await resolveLocationFromStash(sb, stash);
   if (resolved) {
     const r = await sb.rpc("set_my_location", {
@@ -148,92 +128,72 @@ async function applySignupStashIfPresent(sb: any) {
     if (r.error) console.warn("set_my_location failed (non-fatal):", r.error);
   }
 
-  // Clear stash once we attempted to apply
   window.localStorage.removeItem("signup_stash_v1");
 }
 
 async function touchSessionAndDevice(sb: any) {
-  // These should be best-effort and never block login
   try {
     const ua = typeof navigator !== "undefined" ? navigator.userAgent : null;
 
-    // Session heartbeat
     const s = await sb.rpc("touch_session", { p_ua: ua });
     if (s.error) console.warn("touch_session failed (non-fatal):", s.error);
 
-    // Device heartbeat
     const fp = getDeviceFingerprint();
     const d = await sb.rpc("touch_device", { p_device_fingerprint: fp });
     if (d.error) console.warn("touch_device failed (non-fatal):", d.error);
   } catch (e) {
-    console.warn("touch session/device exception (non-fatal):", e);
+    console.warn("touchSessionAndDevice exception (non-fatal):", e);
   }
 }
 
 async function runBootstrap(sb: any) {
-  // Ensure public.users + public.profiles exist
   const r = await sb.rpc("bootstrap_user_after_login");
   if (r.error) {
     console.error("bootstrap_user_after_login failed:", r.error);
     return;
   }
 
-  // Apply stashed signup fields (username/dob/gender/location)
   await applySignupStashIfPresent(sb);
-
-  // Track sessions & devices
   await touchSessionAndDevice(sb);
 }
 
 export function useBootstrapUser() {
   useEffect(() => {
     const sb = getSupabase();
-
-    let unsub: (() => void) | null = null;
     let cancelled = false;
+    let unsub: (() => void) | null = null;
 
-    // ✅ Minimal guard: prevents running bootstrap multiple times per user per page load
+    // Prevent duplicate runs per user per page load
     let lastBootstrappedUserId: string | null = null;
 
     const maybeBootstrap = async () => {
-      try {
-        const { data: userRes } = await sb.auth.getUser();
-        const uid = userRes.user?.id;
-        if (!uid) return;
+      const { data } = await sb.auth.getUser();
+      const uid = data.user?.id;
+      if (!uid) return;
 
-        if (lastBootstrappedUserId === uid) return;
-        lastBootstrappedUserId = uid;
+      if (lastBootstrappedUserId === uid) return;
+      lastBootstrappedUserId = uid;
 
-        await runBootstrap(sb);
-      } catch (e) {
-        console.error("maybeBootstrap failed:", e);
-      }
+      await runBootstrap(sb);
     };
 
     (async () => {
-      try {
-        // Initial check
-        const { data } = await sb.auth.getSession();
-        if (cancelled) return;
+      const { data: sess } = await sb.auth.getSession();
+      if (cancelled) return;
 
-        if (data.session?.user) {
-          await maybeBootstrap();
-        }
-
-        // Subscribe to auth changes
-        const { data: sub } = sb.auth.onAuthStateChange(async (_event, session) => {
-          // SIGNED_OUT or no session -> do nothing (prevents “logout undo”)
-          if (!session?.user) {
-            lastBootstrappedUserId = null; // reset so next login can bootstrap again
-            return;
-          }
-          await maybeBootstrap();
-        });
-
-        unsub = () => sub?.subscription?.unsubscribe?.();
-      } catch (e) {
-        console.error("useBootstrapUser init failed:", e);
+      if (sess.session?.user) {
+        await maybeBootstrap();
       }
+
+      const { data: sub } = sb.auth.onAuthStateChange(async (_event, session) => {
+        if (!session?.user) {
+          lastBootstrappedUserId = null;
+          return;
+        }
+        await maybeBootstrap();
+      });
+
+      unsub = () => sub?.subscription?.unsubscribe?.();
     })();
 
     return () => {
