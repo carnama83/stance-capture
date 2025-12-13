@@ -41,41 +41,45 @@ import AdminQuestionsPage from "@/routes/admin/questions/Index";
 import AdminNewsIndex from "@/routes/admin/news/Index";
 import AdminLiveQuestionsPage from "@/routes/admin/live-questions/Index";
 import AdminLiveQuestionShowPage from "@/routes/admin/live-questions/Show";
-// NEW: AI Drafts admin page
 import AdminAiDraftsPage from "@/routes/admin/ai-drafts/Index";
-
-// NEW: Impact Dashboard admin page (Epic P)
 import AdminImpactDashboardPage from "@/routes/admin/impact-dashboard/Index";
 
 // My stances
 import MyStancesPage from "./pages/MyStancesPage";
 
 import SettingsLayout from "./pages/SettingsLayout";
-
-// NEW: Settings → Location page
 import SettingsLocation from "./pages/SettingsLocation";
 
 import RouteDebug from "./components/RouteDebug";
 
-// NEW: Admin stance metrics page
+// Admin stance metrics page
 import AdminStanceMetricsPage from "./pages/AdminStanceMetricsPage";
 
-// 👇 NEW: bootstrap hook
-import { useBootstrapUser } from "@/hooks/useBootstrapUser";
+// ✅ Bootstrap hook (IMPORTANT: use relative path if alias ever misbehaves)
+import { useBootstrapUser } from "./hooks/useBootstrapUser";
 
 const queryClient = new QueryClient();
 
 const App: React.FC = () => {
-  // Ensure public.users + profiles are bootstrapped for any logged-in user
+  // ✅ Ensures public.users + public.profiles are created/updated after login,
+  // and your signup stash can be applied after email-confirm login.
   useBootstrapUser();
 
-  // Dev expose Supabase
-  if (import.meta.env.DEV) {
+  // Dev expose Supabase once (avoid re-import on every render)
+  React.useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    let cancelled = false;
+
     import("@/lib/createSupabase").then(({ createSupabase }) => {
+      if (cancelled) return;
       (window as any).sb = createSupabase();
       console.log("%cSupabase client (window.sb)", "color: green;");
     });
-  }
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -192,26 +196,18 @@ const App: React.FC = () => {
                 <Route path="drafts" element={<AdminDraftsPage />} />
                 <Route path="ai-drafts" element={<AdminAiDraftsPage />} />
                 <Route path="questions" element={<AdminQuestionsPage />} />
-                <Route
-                  path="live-questions"
-                  element={<AdminLiveQuestionsPage />}
-                />
+                <Route path="live-questions" element={<AdminLiveQuestionsPage />} />
                 <Route
                   path="live-questions/:id"
                   element={<AdminLiveQuestionShowPage />}
                 />
                 <Route path="news" element={<AdminNewsIndex />} />
 
-                {/* NEW: Admin Topics Page */}
                 <Route path="topics" element={<AdminTopicsPage />} />
-
-                {/* NEW: Impact Dashboard (Epic P) */}
                 <Route
                   path="impact-dashboard"
                   element={<AdminImpactDashboardPage />}
                 />
-
-                {/* NEW: Admin Stance Metrics Page */}
                 <Route
                   path="stance-metrics"
                   element={<AdminStanceMetricsPage />}
