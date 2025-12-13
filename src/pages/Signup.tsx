@@ -444,7 +444,7 @@ export default function Signup() {
   const [password, setPassword] = React.useState("");
   const [username, setUsername] = React.useState("");
 
-  const [dob, setDob] = React.useState<string>(""); // ✅ required now
+  const [dob, setDob] = React.useState<string>("");
   const [gender, setGender] = React.useState<GenderState>({
     value: "",
     selfDescribe: "",
@@ -517,7 +517,7 @@ export default function Signup() {
       next.username = "Username must be 3–20 characters.";
     }
 
-    // ✅ DOB REQUIRED
+    // DOB required
     if (!dob || !dob.trim()) {
       next.dob = "Date of birth is required.";
     } else if (!/^\d{4}-\d{2}-\d{2}$/.test(dob)) {
@@ -569,9 +569,7 @@ export default function Signup() {
   async function resolveLocationForSelection(): Promise<
     { locationId: string; precision: Precision } | null
   > {
-    if (cityId) {
-      return { locationId: cityId, precision: "city" };
-    }
+    if (cityId) return { locationId: cityId, precision: "city" };
 
     if (countyCode) {
       const r = await sb
@@ -614,6 +612,19 @@ export default function Signup() {
     return null;
   }
 
+  // local helper used only here
+  function getDeviceFingerprint(): string {
+    const key = "device_fingerprint_v1";
+    const existing = window.localStorage.getItem(key);
+    if (existing && existing.length >= 16) return existing;
+
+    const fp =
+      globalThis.crypto?.randomUUID?.() ??
+      `fp_${Math.random().toString(36).slice(2)}_${Date.now()}`;
+    window.localStorage.setItem(key, fp);
+    return fp;
+  }
+
   async function finalizeOnboarding() {
     // 1) username via RPC
     if (username.trim()) {
@@ -625,7 +636,7 @@ export default function Signup() {
       }
     }
 
-    // ✅ 2) DOB REQUIRED via helper (always call)
+    // 2) DOB REQUIRED via helper (always call)
     if (!dob || !dob.trim()) {
       throw new Error("Date of birth is required.");
     }
@@ -662,18 +673,28 @@ export default function Signup() {
     // 4) Location via set_user_location
     const resolved = await resolveLocationForSelection();
     if (resolved) {
-      const who = await sb.rpc("whoami");
-      if (!who.error && who.data) {
-        const l = await sb.rpc("set_user_location", {
-          p_user_id: String(who.data),
-          p_location_id: resolved.locationId,
-          p_precision: resolved.precision,
-          p_override: false,
-          p_source: "signup",
-        });
-        if (l.error) throw l.error;
-      }
+      // ✅ Use auth.getUser() instead of whoami, so this always works when session exists
+      const { data: u } = await sb.auth.getUser();
+      const uid = u.user?.id;
+      if (!uid) throw new Error("Not authenticated after signup.");
+
+      const l = await sb.rpc("set_user_location", {
+        p_user_id: uid,
+        p_location_id: resolved.locationId,
+        p_precision: resolved.precision,
+        p_override: false,
+        p_source: "signup",
+      });
+      if (l.error) throw l.error;
     }
+
+    // ✅ 5) Session + Device tracking (so tables populate immediately on immediate-login path)
+    const s = await sb.rpc("touch_session", { p_ua: navigator.userAgent });
+    if (s.error) throw s.error;
+
+    const fp = getDeviceFingerprint();
+    const dev = await sb.rpc("touch_device", { p_device_fingerprint: fp });
+    if (dev.error) throw dev.error;
   }
 
   function stashForFirstLogin() {
@@ -791,7 +812,7 @@ export default function Signup() {
               if (typeof v === "string") setUsername(v);
               else setUsername(v?.target?.value ?? "");
             }}
-            setValue={setUsername} // keep for backward compatibility if UsernameField uses it
+            setValue={setUsername}
             error={errors.username}
             status={uStatus}
             setStatus={setUStatus}
