@@ -4,13 +4,13 @@ import { getSupabase } from "../lib/supabaseClient";
 
 type SignupStashV1 = {
   username?: string;
-  dob?: string; // "YYYY-MM-DD"
+  dob?: string; // YYYY-MM-DD
   gender?: string;
   genderSelf?: string;
-  country?: string;     // e.g. "US"
-  stateCode?: string;   // e.g. "NJ"
-  countyCode?: string;  // e.g. "34003"
-  cityId?: string;      // uuid from geo_cities_v.id
+  country?: string;
+  stateCode?: string;
+  countyCode?: string;
+  cityId?: string;
 };
 
 type Precision = "city" | "county" | "state" | "country" | "none";
@@ -28,7 +28,9 @@ function getDeviceFingerprint(): string {
 }
 
 async function resolveLocationFromStash(sb: any, stash: SignupStashV1) {
-  if (stash.cityId) return { locationId: stash.cityId, precision: "city" as Precision };
+  if (stash.cityId) {
+    return { locationId: stash.cityId, precision: "city" as Precision };
+  }
 
   if (stash.countyCode) {
     const r = await sb
@@ -38,7 +40,9 @@ async function resolveLocationFromStash(sb: any, stash: SignupStashV1) {
       .eq("iso_code", stash.countyCode)
       .limit(1)
       .single();
-    if (!r.error && r.data?.id) return { locationId: r.data.id, precision: "county" as Precision };
+    if (!r.error && r.data?.id) {
+      return { locationId: r.data.id, precision: "county" as Precision };
+    }
   }
 
   if (stash.stateCode) {
@@ -54,7 +58,9 @@ async function resolveLocationFromStash(sb: any, stash: SignupStashV1) {
       .limit(1);
 
     const row = r.data?.[0];
-    if (!r.error && row?.id) return { locationId: row.id, precision: "state" as Precision };
+    if (!r.error && row?.id) {
+      return { locationId: row.id, precision: "state" as Precision };
+    }
   }
 
   if (stash.country) {
@@ -65,7 +71,9 @@ async function resolveLocationFromStash(sb: any, stash: SignupStashV1) {
       .eq("iso_code", stash.country)
       .limit(1)
       .single();
-    if (!r.error && r.data?.id) return { locationId: r.data.id, precision: "country" as Precision };
+    if (!r.error && r.data?.id) {
+      return { locationId: r.data.id, precision: "country" as Precision };
+    }
   }
 
   return null;
@@ -94,15 +102,27 @@ async function applySignupStashIfPresent(sb: any) {
     if (r.error) console.warn("set_username failed (non-fatal):", r.error);
   }
 
-  // DOB: only apply if profile.dob is still NULL (prevents double-apply 400s)
+  // ✅ FIXED: DOB check now uses dob_encrypted (not non-existent dob)
   if (stash.dob && stash.dob.trim()) {
-    const prof = await sb.from("profiles").select("dob_encrypted").eq("user_id", uid).single();
-    if (!prof.error && !prof.data?.dob) {
+    const prof = await sb
+      .from("profiles")
+      .select("dob_encrypted")
+      .eq("user_id", uid)
+      .single();
+
+    if (!prof.error && !prof.data?.dob_encrypted) {
+      const dob = stash.dob.trim();
+
       // Try newer param, then fallback
-      const r1 = await sb.rpc("profile_set_dob_checked", { p_dob: stash.dob.trim() });
+      const r1 = await sb.rpc("profile_set_dob_checked", { p_dob: dob });
       if (r1.error) {
-        const r2 = await sb.rpc("profile_set_dob_checked", { p_dob_text: stash.dob.trim() });
-        if (r2.error) console.warn("profile_set_dob_checked failed (non-fatal):", r2.error);
+        const r2 = await sb.rpc("profile_set_dob_checked", { p_dob_text: dob });
+        if (r2.error) {
+          console.warn(
+            "profile_set_dob_checked failed (non-fatal):",
+            r2.error
+          );
+        }
       }
     }
   }
@@ -111,12 +131,13 @@ async function applySignupStashIfPresent(sb: any) {
   if (stash.gender && stash.gender.trim()) {
     const r = await sb.rpc("profile_set_gender", {
       p_gender: stash.gender,
-      p_gender_self: stash.gender === "self_described" ? stash.genderSelf ?? null : null,
+      p_gender_self:
+        stash.gender === "self_described" ? stash.genderSelf ?? null : null,
     });
     if (r.error) console.warn("profile_set_gender failed (non-fatal):", r.error);
   }
 
-  // Location (non-fatal): use set_my_location (no p_user_id signature mismatch)
+  // Location (non-fatal)
   const resolved = await resolveLocationFromStash(sb, stash);
   if (resolved) {
     const r = await sb.rpc("set_my_location", {
@@ -162,7 +183,6 @@ export function useBootstrapUser() {
     let cancelled = false;
     let unsub: (() => void) | null = null;
 
-    // Prevent duplicate runs per user per page load
     let lastBootstrappedUserId: string | null = null;
 
     const maybeBootstrap = async () => {
@@ -184,13 +204,15 @@ export function useBootstrapUser() {
         await maybeBootstrap();
       }
 
-      const { data: sub } = sb.auth.onAuthStateChange(async (_event, session) => {
-        if (!session?.user) {
-          lastBootstrappedUserId = null;
-          return;
+      const { data: sub } = sb.auth.onAuthStateChange(
+        async (_event, session) => {
+          if (!session?.user) {
+            lastBootstrappedUserId = null;
+            return;
+          }
+          await maybeBootstrap();
         }
-        await maybeBootstrap();
-      });
+      );
 
       unsub = () => sub?.subscription?.unsubscribe?.();
     })();
