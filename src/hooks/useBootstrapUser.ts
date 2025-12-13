@@ -7,18 +7,29 @@ type SignupStashV1 = {
   dob?: string;
   gender?: string;
   genderSelf?: string;
-  country?: string;     // e.g. "US"
-  stateCode?: string;   // e.g. "NJ"
-  countyCode?: string;  // e.g. "34003" (matches locations.iso_code for county)
-  cityId?: string;      // uuid from geo_cities_v.id
+  country?: string;
+  stateCode?: string;
+  countyCode?: string;
+  cityId?: string; // uuid from geo_cities_v.id
 };
 
 type Precision = "city" | "county" | "state" | "country" | "none";
 
+function getDeviceFingerprint(): string {
+  const key = "device_fingerprint_v1";
+  const existing = window.localStorage.getItem(key);
+  if (existing && existing.length >= 16) return existing;
+
+  const fp =
+    (globalThis.crypto?.randomUUID?.() ??
+      `fp_${Math.random().toString(36).slice(2)}_${Date.now()}`);
+
+  window.localStorage.setItem(key, fp);
+  return fp;
+}
+
 async function resolveLocationFromStash(sb: any, stash: SignupStashV1) {
-  if (stash.cityId) {
-    return { locationId: stash.cityId, precision: "city" as Precision };
-  }
+  if (stash.cityId) return { locationId: stash.cityId, precision: "city" as Precision };
 
   if (stash.countyCode) {
     const r = await sb
@@ -28,28 +39,21 @@ async function resolveLocationFromStash(sb: any, stash: SignupStashV1) {
       .eq("iso_code", stash.countyCode)
       .limit(1)
       .single();
-
-    if (!r.error && r.data?.id) {
-      return { locationId: r.data.id, precision: "county" as Precision };
-    }
+    if (!r.error && r.data?.id) return { locationId: r.data.id, precision: "county" as Precision };
   }
 
   if (stash.stateCode) {
     const guesses = stash.country
       ? [stash.stateCode, `${stash.country}-${stash.stateCode}`]
       : [stash.stateCode];
-
     const r = await sb
       .from("locations")
       .select("id, iso_code")
       .eq("type", "state")
       .in("iso_code", guesses)
       .limit(1);
-
     const row = r.data?.[0];
-    if (!r.error && row?.id) {
-      return { locationId: row.id, precision: "state" as Precision };
-    }
+    if (!r.error && row?.id) return { locationId: row.id, precision: "state" as Precision };
   }
 
   if (stash.country) {
@@ -60,10 +64,7 @@ async function resolveLocationFromStash(sb: any, stash: SignupStashV1) {
       .eq("iso_code", stash.country)
       .limit(1)
       .single();
-
-    if (!r.error && r.data?.id) {
-      return { locationId: r.data.id, precision: "country" as Precision };
-    }
+    if (!r.error && r.data?.id) return { locationId: r.data.id, precision: "country" as Precision };
   }
 
   return null;
@@ -85,30 +86,24 @@ async function applySignupStashIfPresent(sb: any) {
   const uid = userRes.user?.id;
   if (!uid) return;
 
-  // username
   if (stash.username && stash.username.trim()) {
-    const uname = stash.username.trim().toLowerCase();
-    const r = await sb.rpc("set_username", { p_username: uname });
+    const r = await sb.rpc("set_username", { p_username: stash.username.trim().toLowerCase() });
     if (r.error) console.warn("set_username failed:", r.error);
   }
 
-  // dob
   if (stash.dob && stash.dob.trim()) {
     const r = await sb.rpc("profile_set_dob_checked", { p_dob_text: stash.dob });
     if (r.error) console.warn("profile_set_dob_checked failed:", r.error);
   }
 
-  // gender
   if (stash.gender && stash.gender.trim()) {
     const r = await sb.rpc("profile_set_gender", {
       p_gender: stash.gender,
-      p_gender_self:
-        stash.gender === "self_described" ? stash.genderSelf ?? null : null,
+      p_gender_self: stash.gender === "self_described" ? stash.genderSelf ?? null : null,
     });
     if (r.error) console.warn("profile_set_gender failed:", r.error);
   }
 
-  // location
   const resolved = await resolveLocationFromStash(sb, stash);
   if (resolved) {
     const r = await sb.rpc("set_user_location", {
@@ -121,8 +116,20 @@ async function applySignupStashIfPresent(sb: any) {
     if (r.error) console.warn("set_user_location failed:", r.error);
   }
 
-  // clear stash only after we attempted to apply
   window.localStorage.removeItem("signup_stash_v1");
+}
+
+async function touchSessionAndDevice(sb: any) {
+  try {
+    // session heartbeat
+    await sb.rpc("touch_session", { p_ua: navigator.userAgent });
+
+    // device heartbeat
+    const fp = getDeviceFingerprint();
+    await sb.rpc("touch_device", { p_device_fingerprint: fp });
+  } catch (e) {
+    console.warn("touch session/device failed:", e);
+  }
 }
 
 async function runBootstrap(sb: any) {
@@ -133,8 +140,11 @@ async function runBootstrap(sb: any) {
     return;
   }
 
-  // Apply stashed signup fields after confirm-email login
+  // Apply saved signup fields after confirm-email login
   await applySignupStashIfPresent(sb);
+
+  // Track session + device
+  await touchSessionAndDevice(sb);
 }
 
 export function useBootstrapUser() {
@@ -145,7 +155,6 @@ export function useBootstrapUser() {
     let cancelled = false;
 
     (async () => {
-      // initial check
       const { data } = await sb.auth.getSession();
       if (cancelled) return;
 
@@ -153,13 +162,8 @@ export function useBootstrapUser() {
         await runBootstrap(sb);
       }
 
-      // subscribe
-      const { data: sub } = sb.auth.onAuthStateChange(async (event, session) => {
-        if (!session?.user) {
-          // SIGNED_OUT etc. -> do nothing (prevents “logout undo” behavior)
-          return;
-        }
-        // SIGNED_IN / TOKEN_REFRESHED / USER_UPDATED
+      const { data: sub } = sb.auth.onAuthStateChange(async (_event, session) => {
+        if (!session?.user) return; // signed out -> do nothing
         await runBootstrap(sb);
       });
 
