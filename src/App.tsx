@@ -55,17 +55,16 @@ import RouteDebug from "./components/RouteDebug";
 // Admin stance metrics page
 import AdminStanceMetricsPage from "./pages/AdminStanceMetricsPage";
 
-// ✅ Bootstrap hook (IMPORTANT: use relative path if alias ever misbehaves)
+// ✅ ADD: Bootstrap hook
 import { useBootstrapUser } from "./hooks/useBootstrapUser";
 
 const queryClient = new QueryClient();
 
 const App: React.FC = () => {
-  // ✅ Ensures public.users + public.profiles are created/updated after login,
-  // and your signup stash can be applied after email-confirm login.
+  // ✅ ADD: run bootstrap on auth/session changes
   useBootstrapUser();
 
-  // Dev expose Supabase once (avoid re-import on every render)
+  // Dev expose Supabase once (unchanged)
   React.useEffect(() => {
     if (!import.meta.env.DEV) return;
     let cancelled = false;
