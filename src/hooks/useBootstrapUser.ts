@@ -96,7 +96,7 @@ async function applySignupStashIfPresent(sb: any) {
 
   // DOB: only apply if profile.dob is still NULL (prevents double-apply 400s)
   if (stash.dob && stash.dob.trim()) {
-    const prof = await sb.from("profiles").select("dob").eq("user_id", uid).single();
+    const prof = await sb.from("profiles").select("dob_encrypted").eq("user_id", uid).single();
     if (!prof.error && !prof.data?.dob) {
       // Try newer param, then fallback
       const r1 = await sb.rpc("profile_set_dob_checked", { p_dob: stash.dob.trim() });
