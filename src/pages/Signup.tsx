@@ -781,14 +781,20 @@ export default function Signup() {
             )}
           </div>
 
-          {/* Username */}
-          <UsernameField
-            value={username}
-            setValue={setUsername}
-            error={errors.username}
-            status={uStatus}
-            setStatus={setUStatus}
-          />
+         {/* Username */}
+<UsernameField
+  value={username}
+  onChange={(v: any) => {
+    // Support both: onChange(value: string) and onChange(event)
+    if (typeof v === "string") setUsername(v);
+    else setUsername(v?.target?.value ?? "");
+  }}
+  setValue={setUsername} // keep for backward compatibility if UsernameField uses it
+  error={errors.username}
+  status={uStatus}
+  setStatus={setUStatus}
+/>
+
 
           {/* DOB */}
           <DobField
