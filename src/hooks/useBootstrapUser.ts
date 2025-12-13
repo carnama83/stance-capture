@@ -110,32 +110,42 @@ async function applySignupStashIfPresent(sb: any) {
     if (r.error) console.warn("set_username failed (non-fatal):", r.error);
   }
 
-  // DOB (non-fatal) — IMPORTANT: uses p_dob_text
+  // DOB (non-fatal)
+  // Try p_dob (date) first; fallback to p_dob_text for older overloads.
   if (stash.dob && stash.dob.trim()) {
-    const r = await sb.rpc("profile_set_dob_checked", { p_dob_text: stash.dob });
-    if (r.error) console.warn("profile_set_dob_checked failed (non-fatal):", r.error);
+    const dob = stash.dob.trim();
+    let r = await sb.rpc("profile_set_dob_checked", { p_dob: dob });
+    if (r.error) {
+      // fallback
+      const r2 = await sb.rpc("profile_set_dob_checked", { p_dob_text: dob });
+      if (r2.error) {
+        console.warn("profile_set_dob_checked failed (non-fatal):", r2.error);
+      }
+    }
   }
 
   // Gender (non-fatal)
   if (stash.gender && stash.gender.trim()) {
     const r = await sb.rpc("profile_set_gender", {
       p_gender: stash.gender,
-      p_gender_self: stash.gender === "self_described" ? stash.genderSelf ?? null : null,
+      p_gender_self:
+        stash.gender === "self_described" ? stash.genderSelf ?? null : null,
     });
     if (r.error) console.warn("profile_set_gender failed (non-fatal):", r.error);
   }
 
   // Location (non-fatal)
+  // ✅ IMPORTANT FIX:
+  // Use set_my_location (current user) instead of set_user_location(p_user_id,...)
   const resolved = await resolveLocationFromStash(sb, stash);
   if (resolved) {
-    const r = await sb.rpc("set_user_location", {
-      p_user_id: uid,
+    const r = await sb.rpc("set_my_location", {
       p_location_id: resolved.locationId,
       p_precision: resolved.precision,
       p_override: false,
       p_source: "signup",
     });
-    if (r.error) console.warn("set_user_location failed (non-fatal):", r.error);
+    if (r.error) console.warn("set_my_location failed (non-fatal):", r.error);
   }
 
   // Clear stash once we attempted to apply
