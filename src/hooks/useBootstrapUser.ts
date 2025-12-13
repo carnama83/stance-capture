@@ -182,6 +182,24 @@ export function useBootstrapUser() {
     let unsub: (() => void) | null = null;
     let cancelled = false;
 
+    // ✅ Minimal guard: prevents running bootstrap multiple times per user per page load
+    let lastBootstrappedUserId: string | null = null;
+
+    const maybeBootstrap = async () => {
+      try {
+        const { data: userRes } = await sb.auth.getUser();
+        const uid = userRes.user?.id;
+        if (!uid) return;
+
+        if (lastBootstrappedUserId === uid) return;
+        lastBootstrappedUserId = uid;
+
+        await runBootstrap(sb);
+      } catch (e) {
+        console.error("maybeBootstrap failed:", e);
+      }
+    };
+
     (async () => {
       try {
         // Initial check
@@ -189,15 +207,17 @@ export function useBootstrapUser() {
         if (cancelled) return;
 
         if (data.session?.user) {
-          await runBootstrap(sb);
+          await maybeBootstrap();
         }
 
         // Subscribe to auth changes
         const { data: sub } = sb.auth.onAuthStateChange(async (_event, session) => {
           // SIGNED_OUT or no session -> do nothing (prevents “logout undo”)
-          if (!session?.user) return;
-
-          await runBootstrap(sb);
+          if (!session?.user) {
+            lastBootstrappedUserId = null; // reset so next login can bootstrap again
+            return;
+          }
+          await maybeBootstrap();
         });
 
         unsub = () => sub?.subscription?.unsubscribe?.();
