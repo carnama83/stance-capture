@@ -38,6 +38,9 @@ export default function AppTopBar({ rightSlot }: { rightSlot?: React.ReactNode }
       nav(ROUTES.HOME, { replace: true });
     } catch {
       // ignore
+    } finally {
+      // Ensure UI reflects logout immediately (no refresh needed)
+      setSession(null);
     }
   }
 
@@ -111,29 +114,17 @@ export default function AppTopBar({ rightSlot }: { rightSlot?: React.ReactNode }
                   <DropdownMenuLabel className="truncate">Settings</DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem asChild>
-                    <Link
-                      role="menuitem"
-                      to={ROUTES.SETTINGS_PROFILE}
-                      className="block w-full px-1.5 py-0.5"
-                    >
+                    <Link role="menuitem" to={ROUTES.SETTINGS_PROFILE} className="block w-full px-1.5 py-0.5">
                       Profile
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
-                    <Link
-                      role="menuitem"
-                      to={ROUTES.SETTINGS_SECURITY}
-                      className="block w-full px-1.5 py-0.5"
-                    >
+                    <Link role="menuitem" to={ROUTES.SETTINGS_SECURITY} className="block w-full px-1.5 py-0.5">
                       Security
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
-                    <Link
-                      role="menuitem"
-                      to={ROUTES.SETTINGS_SESSIONS}
-                      className="block w-full px-1.5 py-0.5"
-                    >
+                    <Link role="menuitem" to={ROUTES.SETTINGS_SESSIONS} className="block w-full px-1.5 py-0.5">
                       Sessions
                     </Link>
                   </DropdownMenuItem>
@@ -142,6 +133,7 @@ export default function AppTopBar({ rightSlot }: { rightSlot?: React.ReactNode }
 
               {/* Logout */}
               <Button
+                type="button"
                 onClick={logout}
                 variant="outline"
                 className="px-3 py-1.5 h-auto text-sm"
