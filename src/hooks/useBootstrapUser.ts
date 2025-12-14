@@ -140,11 +140,13 @@ async function applySignupStashIfPresent(sb: any) {
   // Location (non-fatal)
   const resolved = await resolveLocationFromStash(sb, stash);
   if (resolved) {
-    const r = await sb.rpc("set_my_location", {
-      p_location_id: resolved.locationId,
-      p_precision: resolved.precision,
-      p_source: "signup",
-    });
+    const r = await sb.rpc("set_user_location", {
+  p_user_id: uid,
+  p_location_id: resolved.locationId,
+  p_precision: resolved.precision,
+  p_override: false,
+  p_source: "signup",
+})
     if (r.error) console.warn("set_my_location failed (non-fatal):", r.error);
   }
 
