@@ -114,16 +114,10 @@ async function applySignupStashIfPresent(sb: any) {
       const dob = stash.dob.trim();
 
       // Try newer param, then fallback
-      const r1 = await sb.rpc("profile_set_dob_checked", { p_dob: dob });
-      if (r1.error) {
-        const r2 = await sb.rpc("profile_set_dob_checked", { p_dob_text: dob });
-        if (r2.error) {
-          console.warn(
-            "profile_set_dob_checked failed (non-fatal):",
-            r2.error
-          );
-        }
-      }
+     const r2 = await sb.rpc("profile_set_dob_checked", { p_dob_text: dob });
+if (r2.error) {
+  console.warn("profile_set_dob_checked failed (non-fatal):", r2.error);
+}
     }
   }
 
