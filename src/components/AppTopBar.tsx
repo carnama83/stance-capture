@@ -17,11 +17,20 @@ import { Button } from "@/components/ui/button";
 
 type Session = import("@supabase/supabase-js").Session;
 
+type ProfileIdentity = {
+  random_id: string | null;
+  username: string | null;
+  display_handle_mode: "random_id" | "username" | null;
+};
+
 export default function AppTopBar({ rightSlot }: { rightSlot?: React.ReactNode }) {
   const sb = React.useMemo(getSupabase, []);
   const nav = useNavigate();
   const loc = useLocation();
   const [session, setSession] = React.useState<Session | null>(null);
+
+  // ✅ NEW: identity used for display (random_id / username)
+  const [identity, setIdentity] = React.useState<ProfileIdentity | null>(null);
 
   React.useEffect(() => {
     if (!sb) return;
@@ -32,6 +41,42 @@ export default function AppTopBar({ rightSlot }: { rightSlot?: React.ReactNode }
     return () => subscription?.unsubscribe();
   }, [sb]);
 
+  // ✅ NEW: load profile identity whenever session user changes
+  React.useEffect(() => {
+    if (!sb) return;
+
+    let cancelled = false;
+
+    async function loadIdentity(userId: string) {
+      try {
+        const { data, error } = await sb
+          .from("profiles")
+          .select("random_id, username, display_handle_mode")
+          .eq("user_id", userId)
+          .maybeSingle();
+
+        if (error) throw error;
+
+        if (!cancelled) {
+          setIdentity((data as ProfileIdentity) ?? null);
+        }
+      } catch {
+        if (!cancelled) setIdentity(null);
+      }
+    }
+
+    const userId = session?.user?.id;
+    if (!userId) {
+      setIdentity(null);
+      return;
+    }
+
+    loadIdentity(userId);
+    return () => {
+      cancelled = true;
+    };
+  }, [sb, session?.user?.id]);
+
   async function logout() {
     try {
       await sb?.auth.signOut();
@@ -41,17 +86,28 @@ export default function AppTopBar({ rightSlot }: { rightSlot?: React.ReactNode }
     } finally {
       // Ensure UI reflects logout immediately (no refresh needed)
       setSession(null);
+      setIdentity(null);
     }
   }
 
   const isAuthed = !!session;
-  const displayName =
-    (session?.user.user_metadata?.full_name as string | undefined) ||
-    (session?.user.user_metadata?.name as string | undefined) ||
-    session?.user.email ||
-    "";
 
-  const firstName = displayName ? displayName.split(" ")[0] : "";
+  // ✅ Primary + secondary (based on chosen display_handle_mode)
+  const primaryHandle = (() => {
+    if (!identity) return "";
+    const mode = identity.display_handle_mode ?? "random_id";
+    if (mode === "username" && identity.username) return identity.username;
+    return identity.random_id || identity.username || "";
+  })();
+
+  const secondaryText = (() => {
+    if (!identity) return "";
+    const mode = identity.display_handle_mode ?? "random_id";
+    if (mode === "username") {
+      return identity.random_id ? `ID: ${identity.random_id}` : "";
+    }
+    return identity.username ? `Username: ${identity.username}` : "";
+  })();
 
   return (
     <header className="sticky top-0 z-40 h-14 border-b bg-white/80 backdrop-blur">
@@ -94,16 +150,19 @@ export default function AppTopBar({ rightSlot }: { rightSlot?: React.ReactNode }
             </>
           ) : (
             <div className="flex items-center gap-2">
-              {/* ✅ Option A: Profile quick link goes to Settings Profile */}
-              <Link
-                to={ROUTES.SETTINGS_PROFILE}
-                className="hidden sm:inline-block text-sm text-slate-700 hover:underline"
-                title={displayName}
-              >
-                {firstName ? `Hi, ${firstName}` : "Profile"}
-              </Link>
+              {/* ✅ Replace email-based greeting with handle-based identity (primary + secondary) */}
+              <div className="hidden sm:flex flex-col items-end leading-tight">
+                <Link
+                  to={ROUTES.SETTINGS_PROFILE}
+                  className="text-sm text-slate-700 hover:underline"
+                  title="Profile settings"
+                >
+                  {primaryHandle ? `@${primaryHandle}` : "Profile"}
+                </Link>
+                {secondaryText ? <div className="text-xs text-slate-500">{secondaryText}</div> : null}
+              </div>
 
-              {/* Settings dropdown — Option A: asChild Links inside shadcn Dropdown */}
+              {/* Settings dropdown — unchanged structure */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" className="px-3 py-1.5 h-auto text-sm">
