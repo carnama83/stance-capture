@@ -188,6 +188,7 @@ export default function SettingsProfile() {
         <div className="flex flex-wrap gap-2">
           {/* ✅ Rename Save → Update */}
           <button
+            type="button"
             className="border rounded px-3 py-1"
             onClick={updateUsername}
             disabled={busy || !isUsernameSet}
@@ -207,6 +208,7 @@ export default function SettingsProfile() {
 
         <div className="flex flex-wrap gap-2">
           <button
+            type="button"
             className="border rounded px-3 py-1"
             onClick={() => setDisplay("random_id")}
             disabled={busy}
@@ -217,6 +219,7 @@ export default function SettingsProfile() {
           </button>
 
           <button
+            type="button"
             className="border rounded px-3 py-1"
             onClick={() => setDisplay("username")}
             disabled={busy || !isUsernameSet}
@@ -250,6 +253,7 @@ export default function SettingsProfile() {
 
       {/* Save bio/avatar */}
       <button
+        type="button"
         className="rounded bg-slate-900 text-white px-4 py-2"
         onClick={saveProfile}
         disabled={busy}
