@@ -12,10 +12,11 @@ type ProfileRow = {
   display_handle_mode?: "random_id" | "username" | null;
   bio?: string | null;
   avatar_url?: string | null;
+
   // Optional extras if you materialize/join them elsewhere:
   dob?: string | null;
-  country_code?: string | null;
   state_code?: string | null;
+  country_code?: string | null;
   county_name?: string | null;
   city_name?: string | null;
 };
@@ -34,33 +35,15 @@ export default function Profile() {
     false | "random_id" | "username"
   >(false);
 
-  // Supabase off-guard
-  if (!sb) {
-    return (
-      <div className="mx-auto max-w-2xl p-6 space-y-4">
-        {/* Header with Home */}
-        <div className="mb-2 flex items-center justify-between">
-          <h1 className="text-2xl font-bold">My Profile</h1>
-          <Link to={ROUTES.HOME}>
-            <Button variant="outline" className="h-auto px-3 py-1.5 text-sm">
-              Home
-            </Button>
-          </Link>
-        </div>
-        <p className="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded p-3">
-          Supabase is OFF (check env).
-        </p>
-      </div>
-    );
-  }
-
-  // Track session
+  // Load session + subscribe to auth changes
   React.useEffect(() => {
-    let unsub: (() => void) | undefined;
+    let unsub: undefined | (() => void);
+
     (async () => {
       try {
         const { data } = await sb.auth.getSession();
-        setSession(data.session ?? null);
+        setSession(data.session);
+
         const sub = sb.auth.onAuthStateChange((_evt, s) => setSession(s));
         unsub = sub?.data?.subscription?.unsubscribe;
       } catch (e: any) {
@@ -70,6 +53,7 @@ export default function Profile() {
         setSession(null);
       }
     })();
+
     return () => unsub?.();
   }, [sb]);
 
@@ -81,71 +65,67 @@ export default function Profile() {
       setBusy(true);
       setMsg(null);
       try {
-        // 1) Try to fetch
+        // 1) Fetch current profile row
         const got = await sb
           .from("profiles")
           .select("*")
           .eq("user_id", userId)
           .maybeSingle();
+
         if (got.error) throw got.error;
 
         let profile = (got.data as ProfileRow) ?? null;
 
-        // 2) If missing, init then re-fetch once
+        // 2) If missing, bootstrap then re-fetch once
         if (!profile) {
-          const init = await sb.rpc("init_user_after_signup");
-          if (init.error) {
-            throw new Error(`Init profile failed: ${init.error.message}`);
+          // ✅ Per public_schema.sql, this is the idempotent bootstrap function
+          // that ensures public.users + public.profiles (with generate_random_id()).
+          const boot = await sb.rpc("bootstrap_user_after_login");
+          if (boot.error) {
+            throw new Error(`Bootstrap failed: ${boot.error.message}`);
           }
 
-          const after = await sb
+          const got2 = await sb
             .from("profiles")
             .select("*")
             .eq("user_id", userId)
             .maybeSingle();
-          if (after.error) throw after.error;
 
-          profile = (after.data as ProfileRow) ?? null;
+          if (got2.error) throw got2.error;
+          profile = (got2.data as ProfileRow) ?? null;
         }
 
         if (!cancelled) setRow(profile);
       } catch (e: any) {
         // eslint-disable-next-line no-console
         console.error(e);
-        if (!cancelled) {
-          const hint = /gen_random_bytes|pgcrypto/i.test(e?.message || "")
-            ? " (DB: enable pgcrypto and/or include 'extensions' in function search_path)"
-            : "";
-          setMsg((e?.message ?? "Failed to load profile") + hint);
-        }
+        if (!cancelled) setMsg(e?.message ?? "Failed to load profile");
       } finally {
         if (!cancelled) setBusy(false);
       }
     }
 
-    const uid = session?.user?.id;
-    if (uid) fetchOrInitProfile(uid);
+    if (session?.user?.id) {
+      fetchOrInitProfile(session.user.id);
+    } else {
+      setRow(null);
+    }
 
     return () => {
       cancelled = true;
     };
   }, [sb, session?.user?.id]);
 
-  // Helper to refresh current profile row
-  const refreshProfile = React.useCallback(
-    async (uid: string) => {
-      const after = await sb
-        .from("profiles")
-        .select("*")
-        .eq("user_id", uid)
-        .maybeSingle();
-      if (!after.error) setRow(after.data as ProfileRow);
-      else setMsg(after.error.message);
-    },
-    [sb]
-  );
+  async function refreshProfile(userId: string) {
+    const got = await sb
+      .from("profiles")
+      .select("*")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (!got.error) setRow((got.data as ProfileRow) ?? null);
+  }
 
-  // Use the non-overloaded, enum-typed RPC to switch handle mode
+  // RPC to switch handle mode
   async function setHandleMode(mode: "random_id" | "username") {
     try {
       setSwitchingHandle(mode);
@@ -160,8 +140,7 @@ export default function Profile() {
       // Call wrapper RPC: set_my_display_handle(p_mode display_handle_mode_enum)
       const r = await sb.rpc("set_my_display_handle", { p_mode: mode });
       if (r.error) {
-        setMsg(r.error.message);
-        return;
+        throw new Error(r.error.message);
       }
 
       // Refresh
@@ -187,102 +166,137 @@ export default function Profile() {
     <div className="mx-auto max-w-2xl p-6 space-y-4">
       {/* Header with Home */}
       <div className="mb-2 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">My Profile</h1>
-        <Link to={ROUTES.HOME}>
-          <Button variant="outline" className="h-auto px-3 py-1.5 text-sm">
-            Home
-          </Button>
-        </Link>
+        <h1 className="text-xl font-semibold">Profile</h1>
+        <Button asChild variant="outline">
+          <Link to={ROUTES.home}>Home</Link>
+        </Button>
       </div>
 
-      {session === undefined && (
-        <div className="text-sm text-slate-600">Restoring session…</div>
-      )}
-
-      {session === null && (
-        <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-amber-800 text-sm">
-          Not logged in. Please use the Login page and come back.
+      {session === undefined ? (
+        <div className="text-slate-600">Loading session…</div>
+      ) : !session ? (
+        <div className="rounded border p-4">
+          <div className="text-slate-700">You are not logged in.</div>
+          <div className="mt-3 flex gap-2">
+            <Button asChild>
+              <Link to={ROUTES.login}>Log in</Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link to={ROUTES.signup}>Sign up</Link>
+            </Button>
+          </div>
         </div>
-      )}
+      ) : (
+        <div className="rounded border p-4 space-y-3">
+          {msg && (
+            <div className="rounded bg-amber-50 border border-amber-200 p-3 text-amber-900 text-sm">
+              {msg}
+            </div>
+          )}
 
-      {busy && <div className="text-sm">Loading…</div>}
+          <div className="flex items-start gap-3">
+            <div className="h-14 w-14 rounded bg-slate-200 overflow-hidden flex items-center justify-center">
+              {row?.avatar_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={row.avatar_url}
+                  alt="avatar"
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <span className="text-slate-600 text-sm">No<br />Avatar</span>
+              )}
+            </div>
 
-      {!!msg && (
-        <div className="rounded-md border border-rose-200 bg-rose-50 p-3 text-rose-700 text-sm">
-          {msg}
-        </div>
-      )}
+            <div className="flex-1">
+              <div className="text-sm text-slate-600">Signed in as</div>
+              <div className="font-medium">{session.user.email}</div>
 
-      {row && (
-        <div className="rounded-2xl border bg-white p-4 shadow-sm space-y-4">
-          {/* Header */}
-          <div className="flex items-center gap-3">
-            <img
-              src={row.avatar_url || "https://placehold.co/64x64"}
-              className="h-16 w-16 rounded-full object-cover border"
-              alt={handle ? `Avatar of @${handle}` : "Avatar"}
-            />
-            <div>
-              <div className="text-lg font-semibold">
-                {handle ? `@${handle}` : "unknown"}
+              <div className="mt-2 text-sm">
+                <span className="text-slate-600">Your handle: </span>
+                <span className="font-medium">{handle}</span>
               </div>
-              <div className="text-sm text-slate-600">{row.bio || "No bio yet."}</div>
+              <div className="text-sm text-slate-600">{row?.bio || "No bio yet."}</div>
             </div>
           </div>
 
           {/* Handle mode controls */}
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm text-slate-600">
-              Display handle:&nbsp;
-              <strong>{row.display_handle_mode ?? "random_id"}</strong>
-            </span>
+          {row && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm text-slate-600">
+                Display handle:&nbsp;
+                <strong>{row.display_handle_mode ?? "random_id"}</strong>
+              </span>
 
-            <button
-              type="button"
-              onClick={() => setHandleMode("random_id")}
-              className="rounded bg-slate-900 px-3 py-1 text-white text-sm disabled:opacity-60"
-              disabled={switchingHandle === "random_id"}
-            >
-              {switchingHandle === "random_id" ? "Switching…" : "Use Random ID"}
-            </button>
+              <button
+                type="button"
+                onClick={() => setHandleMode("random_id")}
+                className="rounded bg-slate-200 px-3 py-1 text-slate-900 text-sm disabled:opacity-60"
+                disabled={switchingHandle === "random_id"}
+              >
+                {switchingHandle === "random_id" ? "Switching…" : "Use Random ID"}
+              </button>
 
-            <button
-              type="button"
-              onClick={() => setHandleMode("username")}
-              className="rounded bg-slate-200 px-3 py-1 text-slate-900 text-sm disabled:opacity-60"
-              disabled={switchingHandle === "username" || !row.username}
-              title={!row.username ? "Set a username first" : ""}
-            >
-              {switchingHandle === "username" ? "Switching…" : "Use Username"}
-            </button>
-          </div>
-
-          {/* Optional details */}
-          {(row.dob ||
-            row.city_name ||
-            row.county_name ||
-            row.state_code ||
-            row.country_code) && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-              <div>
-                <div className="text-slate-500">DOB</div>
-                <div>{row.dob ?? "—"}</div>
-              </div>
-              <div>
-                <div className="text-slate-500">Location</div>
-                <div>
-                  {[row.city_name, row.county_name, row.state_code, row.country_code]
-                    .filter(Boolean)
-                    .join(" / ") || "—"}
-                </div>
-              </div>
+              <button
+                type="button"
+                onClick={() => setHandleMode("username")}
+                className="rounded bg-slate-200 px-3 py-1 text-slate-900 text-sm disabled:opacity-60"
+                disabled={switchingHandle === "username" || !row.username}
+                title={!row.username ? "Set a username first" : ""}
+              >
+                {switchingHandle === "username" ? "Switching…" : "Use Username"}
+              </button>
             </div>
           )}
 
-          <div className="text-sm">
-            <Link to={ROUTES.SETTINGS_PROFILE} className="underline">
-              Edit profile →
-            </Link>
+          {/* Optional details */}
+          {(row?.dob ||
+            row?.city_name ||
+            row?.county_name ||
+            row?.state_code ||
+            row?.country_code) && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+              {row?.dob && (
+                <div>
+                  <span className="text-slate-600">DOB: </span>
+                  <span>{row.dob}</span>
+                </div>
+              )}
+              {row?.city_name && (
+                <div>
+                  <span className="text-slate-600">City: </span>
+                  <span>{row.city_name}</span>
+                </div>
+              )}
+              {row?.county_name && (
+                <div>
+                  <span className="text-slate-600">County: </span>
+                  <span>{row.county_name}</span>
+                </div>
+              )}
+              {row?.state_code && (
+                <div>
+                  <span className="text-slate-600">State: </span>
+                  <span>{row.state_code}</span>
+                </div>
+              )}
+              {row?.country_code && (
+                <div>
+                  <span className="text-slate-600">Country: </span>
+                  <span>{row.country_code}</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="pt-2 flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => session?.user?.id && refreshProfile(session.user.id)}
+              disabled={busy}
+            >
+              {busy ? "Loading…" : "Refresh"}
+            </Button>
           </div>
         </div>
       )}
