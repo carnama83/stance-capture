@@ -10,7 +10,7 @@ export default function SettingsProfile() {
   const sb = React.useMemo(getSupabase, []);
   const [uid, setUid] = React.useState<string>("");
 
-  // ✅ NEW: store random_id explicitly so we can display it + use it as fallback
+  // store random_id explicitly so we can display it + use it as fallback
   const [randomId, setRandomId] = React.useState<string>("");
 
   const [form, setForm] = React.useState({
@@ -24,16 +24,49 @@ export default function SettingsProfile() {
   const [msg, setMsg] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
 
+  // ✅ NEW: track auth session more robustly across navigation
+  const [sessionUserId, setSessionUserId] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!sb) return;
+
+    let unsub: (() => void) | undefined;
+
+    (async () => {
+      try {
+        // Prefer local session read first
+        const sess = await sb.auth.getSession();
+        const id = sess.data.session?.user?.id ?? null;
+        setSessionUserId(id);
+
+        const sub = sb.auth.onAuthStateChange((_evt, s) => {
+          setSessionUserId(s?.user?.id ?? null);
+        });
+        unsub = sub?.data?.subscription?.unsubscribe;
+      } catch (e) {
+        // If session read fails, keep null; UI will show "Please log in."
+        setSessionUserId(null);
+      }
+    })();
+
+    return () => unsub?.();
+  }, [sb]);
+
+  // ✅ Fetch profile whenever session user id is present/changes
   React.useEffect(() => {
     (async () => {
       if (!sb) return setMsg("Supabase is OFF (check env).");
+
+      // Clear any stale "Please log in" message when we do have a session
+      if (!sessionUserId) {
+        setUid("");
+        setMsg("Please log in.");
+        return;
+      }
+
       try {
-        const u = await sb.auth.getUser();
-        const id = u.data.user?.id;
-        if (!id) {
-          setMsg("Please log in.");
-          return;
-        }
+        setMsg(null);
+        const id = sessionUserId;
         setUid(id);
 
         const { data, error } = await sb
@@ -53,14 +86,12 @@ export default function SettingsProfile() {
         setRandomId(rid);
         setForm({ username, display_handle_mode: mode, bio, avatar_url });
 
-        // ✅ identity shown across app depends on this mode
-        // default should be random_id (DB default). We just reflect it.
         setHandle(mode === "username" ? (username || rid) : rid);
       } catch (e: any) {
         setMsg(e.message || "Failed to load profile");
       }
     })();
-  }, [sb]);
+  }, [sb, sessionUserId]);
 
   async function saveProfile() {
     setMsg(null);
@@ -83,7 +114,6 @@ export default function SettingsProfile() {
     }
   }
 
-  // ✅ Username update uses your canonical RPC
   async function updateUsername() {
     setMsg(null);
     if (!sb) return setMsg("Supabase is OFF (check env).");
@@ -114,7 +144,6 @@ export default function SettingsProfile() {
         return;
       }
 
-      // keep local form; handle may need refresh if user is in username mode
       setForm((f) => ({ ...f, username: desired }));
       setMsg("Username updated.");
 
@@ -128,7 +157,6 @@ export default function SettingsProfile() {
     }
   }
 
-  // ✅ Toggle what other users see (random_id vs username)
   async function setDisplay(mode: DisplayHandleMode) {
     setMsg(null);
     if (!sb) return setMsg("Supabase is OFF (check env).");
@@ -140,8 +168,6 @@ export default function SettingsProfile() {
 
     try {
       setBusy(true);
-
-      // ✅ Use canonical RPC that you already use elsewhere
       const { error } = await sb.rpc("set_my_display_handle", { p_mode: mode });
       if (error) throw error;
 
@@ -162,7 +188,7 @@ export default function SettingsProfile() {
       <h1 className="text-2xl font-bold">Profile settings</h1>
       {msg && <p className="text-sm text-slate-700">{msg}</p>}
 
-      {/* ✅ Random ID (read-only, always visible) */}
+      {/* Random ID (read-only, always visible) */}
       <div className="rounded border p-3 space-y-1">
         <div className="text-sm font-medium">Your Random ID (read-only)</div>
         <div className="text-sm text-slate-700 break-all">
@@ -186,7 +212,6 @@ export default function SettingsProfile() {
         />
 
         <div className="flex flex-wrap gap-2">
-          {/* ✅ Rename Save → Update */}
           <button
             type="button"
             className="border rounded px-3 py-1"
@@ -199,7 +224,7 @@ export default function SettingsProfile() {
         </div>
       </div>
 
-      {/* ✅ Display choice (default random_id already; UI reflects it) */}
+      {/* Display choice */}
       <div className="rounded border p-3 space-y-2">
         <div className="text-sm font-medium">Public display</div>
         <div className="text-xs text-slate-500">
