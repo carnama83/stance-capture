@@ -19,7 +19,7 @@ import Index from "./pages/Index";
 import Signup from "./pages/Signup";
 import Login from "./pages/Login";
 import ResetPassword from "./pages/ResetPassword";
-import Profile from "./pages/Profile";
+// ✅ Option A: keep /profile route but redirect; Profile page no longer needed here
 import SettingsProfile from "./pages/SettingsProfile";
 import SettingsSecurity from "./pages/SettingsSecurity";
 import SettingsSessions from "./pages/SettingsSessions";
@@ -168,12 +168,12 @@ const App: React.FC = () => {
                 }
               />
 
-              {/* Profile (protected) */}
+              {/* ✅ Option A: Profile route redirects to Settings Profile */}
               <Route
                 path={ROUTES.PROFILE}
                 element={
                   <Protected>
-                    <Profile />
+                    <Navigate to={ROUTES.SETTINGS_PROFILE} replace />
                   </Protected>
                 }
               />
