@@ -9,6 +9,7 @@ type DisplayHandleMode = "random_id" | "username";
 export default function SettingsProfile() {
   const sb = React.useMemo(getSupabase, []);
   const [uid, setUid] = React.useState<string>("");
+  const [randomId, setRandomId] = React.useState<string>(""); // ✅ keep random_id for correct handle updates
   const [form, setForm] = React.useState({
     username: "",
     display_handle_mode: "random_id" as DisplayHandleMode,
@@ -43,12 +44,12 @@ export default function SettingsProfile() {
           (data?.display_handle_mode as DisplayHandleMode) || "random_id";
         const bio = data?.bio || "";
         const avatar_url = data?.avatar_url || "";
+        const rid = data?.random_id || "";
 
+        setRandomId(rid);
         setForm({ username, display_handle_mode: mode, bio, avatar_url });
 
-        setHandle(
-          mode === "username" ? (username || data?.random_id) : data?.random_id
-        );
+        setHandle(mode === "username" ? (username || rid) : rid);
       } catch (e: any) {
         setMsg(e.message || "Failed to load profile");
       }
@@ -110,7 +111,7 @@ export default function SettingsProfile() {
       setForm((f) => ({ ...f, username: desired }));
       setMsg("Username updated.");
       if (form.display_handle_mode === "username") {
-        setHandle(desired);
+        setHandle(desired || randomId);
       }
     } catch (e: any) {
       setMsg(e.message || "Could not set username");
@@ -128,13 +129,15 @@ export default function SettingsProfile() {
     }
     try {
       setBusy(true);
-      const { error } = await sb.rpc("set_display_handle", {
-        p_handle: mode,
+
+      // ✅ Use the same canonical RPC as the Profile toggle page
+      const { error } = await sb.rpc("set_my_display_handle", {
+        p_mode: mode,
       });
       if (error) throw error;
 
       setForm((f) => ({ ...f, display_handle_mode: mode }));
-      setHandle(mode === "username" ? form.username : handle /* random_id stays */);
+      setHandle(mode === "username" ? (form.username || randomId) : randomId);
       setMsg("Display handle updated.");
     } catch (e: any) {
       setMsg(e.message || "Could not update display mode");
