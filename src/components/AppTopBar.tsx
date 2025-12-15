@@ -94,9 +94,9 @@ export default function AppTopBar({ rightSlot }: { rightSlot?: React.ReactNode }
             </>
           ) : (
             <div className="flex items-center gap-2">
-              {/* Profile quick link */}
+              {/* ✅ Option A: Profile quick link goes to Settings Profile */}
               <Link
-                to={ROUTES.PROFILE}
+                to={ROUTES.SETTINGS_PROFILE}
                 className="hidden sm:inline-block text-sm text-slate-700 hover:underline"
                 title={displayName}
               >
