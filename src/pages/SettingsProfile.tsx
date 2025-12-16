@@ -27,6 +27,9 @@ export default function SettingsProfile() {
   // ✅ NEW: track auth session more robustly across navigation
   const [sessionUserId, setSessionUserId] = React.useState<string | null>(null);
 
+  // ✅ NEW: keep the username we loaded from DB so we can prevent no-op updates / double-click spam
+  const [initialUsername, setInitialUsername] = React.useState<string>("");
+
   React.useEffect(() => {
     if (!sb) return;
 
@@ -86,6 +89,9 @@ export default function SettingsProfile() {
         setRandomId(rid);
         setForm({ username, display_handle_mode: mode, bio, avatar_url });
 
+        // ✅ store baseline username for "no-op" comparison
+        setInitialUsername(username);
+
         setHandle(mode === "username" ? (username || rid) : rid);
       } catch (e: any) {
         setMsg(e.message || "Failed to load profile");
@@ -115,13 +121,26 @@ export default function SettingsProfile() {
   }
 
   async function updateUsername() {
+    // ✅ prevent rapid multi-click from firing multiple RPCs
+    if (busy) return;
+
     setMsg(null);
     if (!sb) return setMsg("Supabase is OFF (check env).");
+
     const desired = (form.username || "").trim().toLowerCase();
+    const current = (initialUsername || "").trim().toLowerCase();
+
     if (!desired) {
       setMsg("Enter a username first.");
       return;
     }
+
+    // ✅ prevent no-op update (avoids unnecessary RPC + possible 400s)
+    if (desired === current) {
+      setMsg("That’s already your current username.");
+      return;
+    }
+
     try {
       setBusy(true);
       const { error } = await sb.rpc("set_username", {
@@ -145,6 +164,7 @@ export default function SettingsProfile() {
       }
 
       setForm((f) => ({ ...f, username: desired }));
+      setInitialUsername(desired); // ✅ keep baseline in sync after success
       setMsg("Username updated.");
 
       if (form.display_handle_mode === "username") {
@@ -182,6 +202,9 @@ export default function SettingsProfile() {
   }
 
   const isUsernameSet = !!(form.username || "").trim();
+  const isUsernameChanged =
+    (form.username || "").trim().toLowerCase() !==
+    (initialUsername || "").trim().toLowerCase();
 
   return (
     <div className="mx-auto max-w-xl p-6 space-y-4">
@@ -216,8 +239,14 @@ export default function SettingsProfile() {
             type="button"
             className="border rounded px-3 py-1"
             onClick={updateUsername}
-            disabled={busy || !isUsernameSet}
-            title={!isUsernameSet ? "Enter a username first" : ""}
+            disabled={busy || !isUsernameSet || !isUsernameChanged}
+            title={
+              !isUsernameSet
+                ? "Enter a username first"
+                : !isUsernameChanged
+                ? "No changes to save"
+                : ""
+            }
           >
             {isUsernameSet ? "Update Username" : "Set Username"}
           </button>
