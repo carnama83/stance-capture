@@ -24,11 +24,14 @@ export default function SettingsProfile() {
   const [msg, setMsg] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
 
-  // ✅ NEW: track auth session more robustly across navigation
+  // track auth session more robustly across navigation
   const [sessionUserId, setSessionUserId] = React.useState<string | null>(null);
 
-  // ✅ NEW: keep the username we loaded from DB so we can prevent no-op updates / double-click spam
+  // keep the username we loaded from DB so we can prevent no-op updates / double-click spam
   const [initialUsername, setInitialUsername] = React.useState<string>("");
+
+  // ✅ NEW: show raw error payload when set_username fails
+  const [lastUsernameError, setLastUsernameError] = React.useState<any>(null);
 
   React.useEffect(() => {
     if (!sb) return;
@@ -55,7 +58,7 @@ export default function SettingsProfile() {
     return () => unsub?.();
   }, [sb]);
 
-  // ✅ Fetch profile whenever session user id is present/changes
+  // Fetch profile whenever session user id is present/changes
   React.useEffect(() => {
     (async () => {
       if (!sb) return setMsg("Supabase is OFF (check env).");
@@ -89,7 +92,7 @@ export default function SettingsProfile() {
         setRandomId(rid);
         setForm({ username, display_handle_mode: mode, bio, avatar_url });
 
-        // ✅ store baseline username for "no-op" comparison
+        // store baseline username for "no-op" comparison
         setInitialUsername(username);
 
         setHandle(mode === "username" ? (username || rid) : rid);
@@ -121,69 +124,79 @@ export default function SettingsProfile() {
   }
 
   async function updateUsername() {
-  if (busy) return;
+    if (busy) return;
 
-  setMsg(null);
-  if (!sb) return setMsg("Supabase is OFF (check env).");
+    setMsg(null);
+    setLastUsernameError(null);
 
-  const desired = (form.username || "").trim().toLowerCase();
-  const current = (initialUsername || "").trim().toLowerCase();
+    if (!sb) return setMsg("Supabase is OFF (check env).");
 
-  if (!desired) {
-    setMsg("Enter a username first.");
-    return;
-  }
-  if (desired === current) {
-    setMsg("That’s already your current username.");
-    return;
-  }
+    const desired = (form.username || "").trim().toLowerCase();
+    const current = (initialUsername || "").trim().toLowerCase();
 
-  try {
-    setBusy(true);
-
-    const { data, error } = await sb.rpc("set_username", { p_username: desired });
-
-    if (error) {
-      // ✅ Surface the real error so we know why Postgres rejected it
-      const raw = String(error.message || "").trim();
-
-      // Friendly mappings (keep yours + add a couple common ones)
-      if (raw.startsWith("ERR_USERNAME_LIMIT")) {
-        setMsg("You’ve hit the username change limit (30 days). Try again later.");
-      } else if (raw.toLowerCase().includes("reserved")) {
-        setMsg("That username is reserved. Please choose another.");
-      } else if (raw.toLowerCase().includes("taken") || error.code === "23505") {
-        setMsg("That username is already taken.");
-      } else if (
-        raw.toLowerCase().includes("invalid username") ||
-        raw.toLowerCase().includes("3–20") ||
-        raw.toLowerCase().includes("3-20")
-      ) {
-        setMsg("Invalid username. Use 3–20 characters: a–z, 0–9, underscore.");
-      } else if (raw.toLowerCase().includes("not authenticated") || raw.toLowerCase().includes("auth")) {
-        setMsg("Session not detected. Please refresh and try again.");
-      } else {
-        // ✅ show raw so you can paste it back to me
-        setMsg(`Username update failed: ${raw}`);
-      }
+    if (!desired) {
+      setMsg("Enter a username first.");
+      return;
+    }
+    if (desired === current) {
+      setMsg("That’s already your current username.");
       return;
     }
 
-    // success
-    setForm((f) => ({ ...f, username: desired }));
-    setInitialUsername(desired);
-    setMsg("Username updated.");
+    try {
+      setBusy(true);
 
-    if (form.display_handle_mode === "username") {
-      setHandle(desired || randomId);
+      const res = await sb.rpc("set_username", { p_username: desired });
+
+      if (res.error) {
+        // ✅ capture full error payload so we can see the real reason behind 400
+        setLastUsernameError({
+          code: res.error.code,
+          message: res.error.message,
+          details: (res.error as any).details,
+          hint: (res.error as any).hint,
+        });
+
+        const raw = String(res.error.message || "").trim();
+
+        if (raw.startsWith("ERR_USERNAME_LIMIT")) {
+          setMsg("You’ve hit the username change limit (30 days). Try again later.");
+        } else if (raw.toLowerCase().includes("reserved")) {
+          setMsg("That username is reserved. Please choose another.");
+        } else if (raw.toLowerCase().includes("taken") || res.error.code === "23505") {
+          setMsg("That username is already taken.");
+        } else if (
+          raw.toLowerCase().includes("invalid username") ||
+          raw.toLowerCase().includes("3–20") ||
+          raw.toLowerCase().includes("3-20")
+        ) {
+          setMsg("Invalid username. Use 3–20 characters: a–z, 0–9, underscore.");
+        } else if (
+          raw.toLowerCase().includes("not authenticated") ||
+          raw.toLowerCase().includes("auth")
+        ) {
+          setMsg("Session not detected. Please refresh and try again.");
+        } else {
+          setMsg(`Username update failed: ${raw}`);
+        }
+        return;
+      }
+
+      // success
+      setForm((f) => ({ ...f, username: desired }));
+      setInitialUsername(desired);
+      setMsg("Username updated.");
+
+      if (form.display_handle_mode === "username") {
+        setHandle(desired || randomId);
+      }
+    } catch (e: any) {
+      setLastUsernameError({ message: e?.message ?? String(e) });
+      setMsg(`Username update failed: ${e?.message ?? "Unknown error"}`);
+    } finally {
+      setBusy(false);
     }
-  } catch (e: any) {
-    // ✅ show unexpected failures too
-    setMsg(`Username update failed: ${e?.message ?? "Unknown error"}`);
-  } finally {
-    setBusy(false);
   }
-}
 
   async function setDisplay(mode: DisplayHandleMode) {
     setMsg(null);
@@ -218,6 +231,16 @@ export default function SettingsProfile() {
     <div className="mx-auto max-w-xl p-6 space-y-4">
       <h1 className="text-2xl font-bold">Profile settings</h1>
       {msg && <p className="text-sm text-slate-700">{msg}</p>}
+
+      {/* ✅ Debug panel (only shows when set_username fails) */}
+      {lastUsernameError && (
+        <div className="rounded border p-3 text-xs bg-white">
+          <div className="font-medium mb-1">set_username error (debug)</div>
+          <pre className="whitespace-pre-wrap break-words">
+            {JSON.stringify(lastUsernameError, null, 2)}
+          </pre>
+        </div>
+      )}
 
       {/* Random ID (read-only, always visible) */}
       <div className="rounded border p-3 space-y-1">
@@ -325,4 +348,3 @@ export default function SettingsProfile() {
     </div>
   );
 }
-
