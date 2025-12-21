@@ -88,10 +88,12 @@ async function setUserLocationByIso(
   const sb = getSupabase();
   if (!sb) throw new Error("Supabase client not available");
 
-  const { error } = await sb.rpc("set_user_location_by_iso", {
-    p_iso_code: isoCode,
-    p_precision: precision,
-  });
+  const { error } = await sb.rpc("set_user_location_cascade_by_iso", {
+  p_iso_code: isoCode,
+  p_precision: precision,
+  p_source: "settings",
+  p_override: false,
+});
 
   if (error) {
     console.error("Failed to set user location", error);
