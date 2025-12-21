@@ -678,7 +678,7 @@ export default function Signup() {
       const uid = u.user?.id;
       if (!uid) throw new Error("Not authenticated after signup.");
 
-      const l = await sb.rpc("set_user_location", {
+      const l = await sb.rpc("set_user_location_cascade", {
         p_user_id: uid,
         p_location_id: resolved.locationId,
         p_precision: resolved.precision,
