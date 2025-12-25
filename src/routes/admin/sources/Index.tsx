@@ -170,6 +170,53 @@ export default function AdminSourcesIndex() {
     };
   }
 
+  // ✅ NEW: always load canonical row from topic_sources before editing
+  async function openEdit(row: SourceRow) {
+    setErr(null);
+    setBusyId(row.id);
+
+    try {
+      const { data, error } = await supabase
+        .from("topic_sources")
+        .select("id,name,kind,endpoint,country_name,is_enabled")
+        .eq("id", row.id)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      const canonical = data ?? {
+        id: row.id,
+        name: row.name,
+        kind: row.kind,
+        endpoint: row.endpoint,
+        country_name: row.country_name,
+        is_enabled: row.is_enabled,
+      };
+
+      setEditing({
+        id: canonical.id,
+        name: canonical.name ?? "",
+        kind: (canonical.kind as SourceKind) ?? "rss",
+        endpoint: canonical.endpoint ?? "",
+        country_name: canonical.country_name ?? "",
+        is_enabled: canonical.is_enabled ?? true,
+      });
+    } catch (e: any) {
+      alert(`Failed to open edit: ${e?.message ?? e}`);
+      // fallback to whatever we have locally
+      setEditing({
+        id: row.id,
+        name: row.name ?? "",
+        kind: row.kind ?? "rss",
+        endpoint: row.endpoint ?? "",
+        country_name: row.country_name ?? "",
+        is_enabled: row.is_enabled ?? true,
+      });
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function onToggle(row: SourceRow, nextEnabled: boolean) {
     setBusyId(row.id);
     const prev = rows;
@@ -222,8 +269,13 @@ export default function AdminSourcesIndex() {
   async function onSave(draft: Partial<SourceRow>) {
     if (saving) return;
 
-    if (!draft.name || !draft.endpoint || !draft.kind) {
-      alert("Please provide name, kind, and endpoint.");
+    // ✅ improved validation so you know exactly what is missing
+    const missing: string[] = [];
+    if (!draft.name?.trim()) missing.push("name");
+    if (!draft.kind) missing.push("kind");
+    if (!draft.endpoint?.trim()) missing.push("endpoint");
+    if (missing.length) {
+      alert(`Please provide: ${missing.join(", ")}`);
       return;
     }
 
@@ -240,8 +292,8 @@ export default function AdminSourcesIndex() {
         const p = supabase
           .from("topic_sources")
           .update({
-            name: draft.name,
-            endpoint: draft.endpoint,
+            name: draft.name!.trim(),
+            endpoint: draft.endpoint!.trim(),
             kind: draft.kind,
             country_name: countryName,
             is_enabled: draft.is_enabled ?? true,
@@ -252,8 +304,8 @@ export default function AdminSourcesIndex() {
         if (error) throw error;
       } else {
         const p = supabase.from("topic_sources").insert({
-          name: draft.name,
-          endpoint: draft.endpoint,
+          name: draft.name!.trim(),
+          endpoint: draft.endpoint!.trim(),
           kind: draft.kind,
           country_name: countryName,
           is_enabled: draft.is_enabled ?? true,
@@ -437,7 +489,8 @@ export default function AdminSourcesIndex() {
                   </td>,
                   <td key="actions" style={{ textAlign: "right" }}>
                     <div style={{ display: "inline-flex", gap: 8 }}>
-                      <button disabled={busyId === r.id} onClick={() => setEditing(r)}>
+                      {/* ✅ FIXED: load canonical row before editing */}
+                      <button disabled={busyId === r.id} onClick={() => openEdit(r)}>
                         Edit
                       </button>
                       <button disabled={busyId === r.id} onClick={() => onRun(r)}>
