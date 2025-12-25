@@ -26,6 +26,23 @@ const adminNavItems = [
   { label: "News", to: ROUTES.ADMIN_NEWS },
 ];
 
+// ✅ Change #1: timeout helper so UI never gets stuck on a hung request
+function withTimeout<T>(p: Promise<T>, ms = 15000): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`Timed out after ${ms}ms`)), ms);
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      }
+    );
+  });
+}
+
 export default function AdminSourcesIndex() {
   const supabase = useMemo(createSupabase, []);
   const location = useLocation();
@@ -144,13 +161,16 @@ export default function AdminSourcesIndex() {
     setRows((rs) =>
       rs.map((x) => (x.id === row.id ? { ...x, is_enabled: nextEnabled } : x))
     );
+
     const { error } = await supabase
       .from("topic_sources")
       .update({ is_enabled: nextEnabled })
       .eq("id", row.id)
       .select()
       .single();
+
     setBusyId(null);
+
     if (error) {
       alert(`Failed to toggle: ${error.message}`);
       setRows(prev);
@@ -198,7 +218,9 @@ export default function AdminSourcesIndex() {
 
     try {
       if (draft.id) {
-        const { error } = await supabase
+        // ✅ Change #2: no select().single()
+        // ✅ Change #1: timeout wrapper
+        const p = supabase
           .from("topic_sources")
           .update({
             name: draft.name,
@@ -206,31 +228,29 @@ export default function AdminSourcesIndex() {
             kind: draft.kind,
             is_enabled: draft.is_enabled ?? true,
           })
-          .eq("id", draft.id)
-          .select()
-          .single();
+          .eq("id", draft.id);
 
+        const { error } = await withTimeout(p, 15000);
         if (error) throw error;
       } else {
-        const { error } = await supabase
-          .from("topic_sources")
-          .insert({
-            name: draft.name,
-            endpoint: draft.endpoint,
-            kind: draft.kind,
-            is_enabled: draft.is_enabled ?? true,
-          })
-          .select()
-          .single();
+        // ✅ Change #2: no select().single()
+        // ✅ Change #1: timeout wrapper
+        const p = supabase.from("topic_sources").insert({
+          name: draft.name,
+          endpoint: draft.endpoint,
+          kind: draft.kind,
+          is_enabled: draft.is_enabled ?? true,
+        });
 
+        const { error } = await withTimeout(p, 15000);
         if (error) throw error;
       }
 
-      // Close modal first (prevents overlay click + state glitches)
+      // Close modal immediately on success
       setEditing(null);
 
-      // Refetch after closing
-      await fetchRows();
+      // ✅ Change #1/2: don't block UI on refetch
+      void fetchRows();
     } catch (e: any) {
       alert(`Save failed: ${e?.message ?? e}`);
     } finally {
@@ -452,10 +472,8 @@ export default function AdminSourcesIndex() {
             placeItems: "center",
             padding: 16,
           }}
-          onClick={() => {
-            // prevent accidental close while saving
-            if (!saving) setEditing(null);
-          }}
+          // ✅ Change #4: allow overlay click to close even while saving
+          onClick={() => setEditing(null)}
         >
           <div
             style={{
@@ -541,9 +559,9 @@ export default function AdminSourcesIndex() {
                 marginTop: 16,
               }}
             >
-              <button disabled={saving} onClick={() => setEditing(null)}>
-                Cancel
-              </button>
+              {/* ✅ Change #3: keep Cancel enabled even while saving */}
+              <button onClick={() => setEditing(null)}>Cancel</button>
+
               <button
                 disabled={saving}
                 onClick={() => onSave(editing!)}
