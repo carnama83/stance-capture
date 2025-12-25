@@ -355,7 +355,7 @@ export default function AdminSourcesIndex() {
         <div style={{ marginTop: 12, overflowX: "auto" }}>
           <table width="100%" cellPadding={8} style={{ borderCollapse: "collapse" }}>
            <thead>
-  <tr style={{ textAlign: "left", borderBottom: "1px solid #ddd" }}>
+  <tr style={{textAlign: "left", borderBottom: "1px solid #ddd"}}>
     {[
       "Name",
       "Kind",
