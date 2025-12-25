@@ -10,7 +10,7 @@ type SourceRow = {
   name: string;
   kind: SourceKind;
   endpoint: string;
-  country_name: string | null; // ✅ NEW
+  country_name: string | null;
   is_enabled: boolean;
   last_polled_at: string | null;
   last_status: string | null;
@@ -27,7 +27,6 @@ const adminNavItems = [
   { label: "News", to: ROUTES.ADMIN_NEWS },
 ];
 
-// ✅ timeout helper so UI never gets stuck on a hung request
 function withTimeout<T>(p: Promise<T>, ms = 15000): Promise<T> {
   return new Promise((resolve, reject) => {
     const t = setTimeout(() => reject(new Error(`Timed out after ${ms}ms`)), ms);
@@ -52,15 +51,29 @@ export default function AdminSourcesIndex() {
   const [loading, setLoading] = useState<boolean>(true);
   const [err, setErr] = useState<string | null>(null);
 
-  // simple filters (client-side)
   const [kind, setKind] = useState<"all" | SourceKind>("all");
   const [enabled, setEnabled] = useState<"all" | "on" | "off">("all");
   const [q, setQ] = useState<string>("");
 
-  // edit/create modal state
   const [editing, setEditing] = useState<Partial<SourceRow> | null>(null);
-  const [busyId, setBusyId] = useState<string | null>(null); // per-row action gate
-  const [saving, setSaving] = useState<boolean>(false); // modal save gate
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [saving, setSaving] = useState<boolean>(false);
+
+  const headers = useMemo(
+    () => [
+      "Name",
+      "Kind",
+      "Country",
+      "Endpoint",
+      "Enabled",
+      "Success",
+      "Failure",
+      "Last Status",
+      "Last Run",
+      "Actions",
+    ],
+    []
+  );
 
   async function fetchRows() {
     setLoading(true);
@@ -83,7 +96,7 @@ export default function AdminSourcesIndex() {
         }
       }
 
-      // Attempt 2: topic_sources (map to the UI shape)
+      // Attempt 2: topic_sources
       {
         const { data, error } = await supabase
           .from("topic_sources")
@@ -118,7 +131,7 @@ export default function AdminSourcesIndex() {
       if (enabled === "off" && r.is_enabled) return false;
       if (q) {
         const qq = q.toLowerCase();
-        const hay = `${r.name} ${r.endpoint} ${r.country_name ?? ""}`.toLowerCase(); // ✅ include
+        const hay = `${r.name} ${r.endpoint} ${r.country_name ?? ""}`.toLowerCase();
         if (!hay.includes(qq)) return false;
       }
       return true;
@@ -131,7 +144,7 @@ export default function AdminSourcesIndex() {
       name: r.name,
       kind: r.kind as SourceKind,
       endpoint: r.endpoint,
-      country_name: r.country_name ?? null, // ✅ NEW
+      country_name: r.country_name ?? null,
       is_enabled: !!r.is_enabled,
       last_polled_at: r.last_polled_at ?? r.last_run_at ?? null,
       last_status: r.last_status ?? null,
@@ -147,7 +160,7 @@ export default function AdminSourcesIndex() {
       name: r.name,
       kind: (r.kind as SourceKind) ?? "rss",
       endpoint: r.endpoint ?? r.url ?? "",
-      country_name: r.country_name ?? null, // ✅ NEW
+      country_name: r.country_name ?? null,
       is_enabled: !!(r.is_enabled ?? r.enabled ?? true),
       last_polled_at: r.last_polled_at ?? r.last_run_at ?? null,
       last_status: r.last_status ?? null,
@@ -217,7 +230,6 @@ export default function AdminSourcesIndex() {
     setSaving(true);
     setErr(null);
 
-    // normalize country_name: empty -> null
     const countryName =
       draft.country_name && draft.country_name.trim().length > 0
         ? draft.country_name.trim()
@@ -231,7 +243,7 @@ export default function AdminSourcesIndex() {
             name: draft.name,
             endpoint: draft.endpoint,
             kind: draft.kind,
-            country_name: countryName, // ✅ NEW
+            country_name: countryName,
             is_enabled: draft.is_enabled ?? true,
           })
           .eq("id", draft.id);
@@ -243,7 +255,7 @@ export default function AdminSourcesIndex() {
           name: draft.name,
           endpoint: draft.endpoint,
           kind: draft.kind,
-          country_name: countryName, // ✅ NEW
+          country_name: countryName,
           is_enabled: draft.is_enabled ?? true,
         });
 
@@ -271,7 +283,6 @@ export default function AdminSourcesIndex() {
 
   return (
     <div style={{ padding: 16 }}>
-      {/* Top admin nav */}
       <div
         style={{
           display: "flex",
@@ -304,7 +315,6 @@ export default function AdminSourcesIndex() {
         })}
       </div>
 
-      {/* Header / filters */}
       <div
         style={{
           display: "flex",
@@ -338,7 +348,7 @@ export default function AdminSourcesIndex() {
               setEditing({
                 kind: "rss",
                 is_enabled: true,
-                country_name: "", // ✅ NEW default field
+                country_name: "",
               } as Partial<SourceRow>)
             }
           >
@@ -347,37 +357,30 @@ export default function AdminSourcesIndex() {
         </div>
       </div>
 
-      {/* Errors / loading */}
       {err && <p style={{ color: "crimson", marginTop: 8 }}>Error: {err}</p>}
+
       {loading ? (
         <p style={{ marginTop: 12 }}>Loading…</p>
       ) : (
         <div style={{ marginTop: 12, overflowX: "auto" }}>
           <table width="100%" cellPadding={8} style={{ borderCollapse: "collapse" }}>
-           <thead>
-  <tr style={{textAlign: "left", borderBottom: "1px solid #ddd"}}>
-    {[
-      "Name",
-      "Kind",
-      "Country",
-      "Endpoint",
-      "Enabled",
-      "Success",
-      "Failure",
-      "Last Status",
-      "Last Run",
-      "Actions",
-    ].map((h) => (
-      <th key={h} style={h === "Actions" ? { textAlign: "right" } : undefined}>
-        {h}
-      </th>
-    ))}
-  </tr>
-</thead>
-  <tbody>
-              {filtered.map((r) => (
-                <tr key={r.id} style={{ borderBottom: "1px solid #eee" }}>
+            <thead>
+              <tr style={{ textAlign: "left", borderBottom: "1px solid #ddd" }}>
+                {headers.map((h) => (
+                  <th
+                    key={h}
+                    style={h === "Actions" ? { textAlign: "right" } : undefined}
+                  >
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((r) => {
+                const cells: React.ReactNode[] = [
                   <td
+                    key="name"
                     style={{
                       maxWidth: 260,
                       whiteSpace: "nowrap",
@@ -386,10 +389,11 @@ export default function AdminSourcesIndex() {
                     }}
                   >
                     {r.name}
-                  </td>
-                  <td>{r.kind}</td>
-                  <td>{r.country_name ?? "—"}</td> {/* ✅ NEW */}
+                  </td>,
+                  <td key="kind">{r.kind}</td>,
+                  <td key="country">{r.country_name ?? "—"}</td>,
                   <td
+                    key="endpoint"
                     style={{
                       maxWidth: 420,
                       whiteSpace: "nowrap",
@@ -399,15 +403,9 @@ export default function AdminSourcesIndex() {
                     title={r.endpoint}
                   >
                     {r.endpoint}
-                  </td>
-                  <td>
-                    <label
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 6,
-                      }}
-                    >
+                  </td>,
+                  <td key="enabled">
+                    <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                       <input
                         type="checkbox"
                         checked={!!r.is_enabled}
@@ -416,28 +414,28 @@ export default function AdminSourcesIndex() {
                       />
                       {r.is_enabled ? "On" : "Off"}
                     </label>
-                  </td>
-                  <td>{r.success_count ?? 0}</td>
-                  <td>{r.failure_count ?? 0}</td>
-                  <td>
-                    {!r.last_status ? "—" : r.last_status === "ok" ? "✅ ok" : "⚠️ " + r.last_status}
+                  </td>,
+                  <td key="success">{r.success_count ?? 0}</td>,
+                  <td key="failure">{r.failure_count ?? 0}</td>,
+                  <td key="status">
+                    {!r.last_status
+                      ? "—"
+                      : r.last_status === "ok"
+                      ? "✅ ok"
+                      : "⚠️ " + r.last_status}
                     {r.last_error ? (
                       <span
                         title={r.last_error}
-                        style={{
-                          marginLeft: 6,
-                          color: "#b00",
-                          cursor: "help",
-                        }}
+                        style={{ marginLeft: 6, color: "#b00", cursor: "help" }}
                       >
                         ⓘ
                       </span>
                     ) : null}
-                  </td>
-                  <td>
+                  </td>,
+                  <td key="lastrun">
                     {r.last_polled_at ? new Date(r.last_polled_at).toLocaleString() : "—"}
-                  </td>
-                  <td style={{ textAlign: "right" }}>
+                  </td>,
+                  <td key="actions" style={{ textAlign: "right" }}>
                     <div style={{ display: "inline-flex", gap: 8 }}>
                       <button disabled={busyId === r.id} onClick={() => setEditing(r)}>
                         Edit
@@ -453,30 +451,32 @@ export default function AdminSourcesIndex() {
                         Delete
                       </button>
                     </div>
-                  </td>
-                </tr>
-              ))}
-              {!filtered.length && (
+                  </td>,
+                ];
+
+                return (
+                  <tr key={r.id} style={{ borderBottom: "1px solid #eee" }}>
+                    {cells}
+                  </tr>
+                );
+              })}
+
+              {!filtered.length ? (
                 <tr>
                   <td
-                    colSpan={10} // ✅ was 9
-                    style={{
-                      padding: 24,
-                      textAlign: "center",
-                      color: "#666",
-                    }}
+                    colSpan={10}
+                    style={{ padding: 24, textAlign: "center", color: "#666" }}
                   >
                     No sources found.
                   </td>
                 </tr>
-              )}
+              ) : null}
             </tbody>
           </table>
         </div>
       )}
 
-      {/* Modal for create/edit */}
-      {editing && (
+      {editing ? (
         <div
           role="dialog"
           aria-modal="true"
@@ -519,10 +519,7 @@ export default function AdminSourcesIndex() {
                 <select
                   value={(editing.kind as SourceKind) ?? "rss"}
                   onChange={(e) =>
-                    setEditing({
-                      ...editing,
-                      kind: e.target.value as SourceKind,
-                    })
+                    setEditing({ ...editing, kind: e.target.value as SourceKind })
                   }
                   style={{ width: "100%" }}
                   disabled={saving}
@@ -533,12 +530,13 @@ export default function AdminSourcesIndex() {
                 </select>
               </label>
 
-              {/* ✅ NEW: Country Name field */}
               <label>
                 <div>Country Name</div>
                 <input
                   value={editing.country_name ?? ""}
-                  onChange={(e) => setEditing({ ...editing, country_name: e.target.value })}
+                  onChange={(e) =>
+                    setEditing({ ...editing, country_name: e.target.value })
+                  }
                   placeholder="e.g., Australia"
                   style={{ width: "100%" }}
                   disabled={saving}
@@ -556,22 +554,11 @@ export default function AdminSourcesIndex() {
                 />
               </label>
 
-              <label
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 8,
-                }}
-              >
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
                 <input
                   type="checkbox"
                   checked={editing.is_enabled ?? true}
-                  onChange={(e) =>
-                    setEditing({
-                      ...editing,
-                      is_enabled: e.target.checked,
-                    })
-                  }
+                  onChange={(e) => setEditing({ ...editing, is_enabled: e.target.checked })}
                   disabled={saving}
                 />
                 Enabled
@@ -587,10 +574,9 @@ export default function AdminSourcesIndex() {
               }}
             >
               <button onClick={() => setEditing(null)}>Cancel</button>
-
               <button
                 disabled={saving}
-                onClick={() => onSave(editing!)}
+                onClick={() => onSave(editing)}
                 style={{ fontWeight: 600 }}
               >
                 {saving ? "Saving..." : editing.id ? "Save changes" : "Create"}
@@ -598,7 +584,7 @@ export default function AdminSourcesIndex() {
             </div>
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
