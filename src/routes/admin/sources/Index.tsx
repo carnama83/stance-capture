@@ -75,39 +75,89 @@ export default function AdminSourcesIndex() {
     []
   );
 
+  function mapHealthToRow(r: any): SourceRow {
+    return {
+      id: r.id,
+      name: r.name ?? "",
+      kind: (r.kind ?? "rss") as SourceKind,
+      endpoint: r.endpoint ?? "",
+      country_name: r.country_name ?? null,
+      is_enabled: !!r.is_enabled,
+      last_polled_at: r.last_polled_at ?? r.last_run_at ?? null,
+      last_status: r.last_status ?? null,
+      last_error: r.last_error ?? null,
+      success_count: r.success_count ?? null,
+      failure_count: r.failure_count ?? null,
+    };
+  }
+
+  function mapTopicSourcesToRow(r: any): SourceRow {
+    return {
+      id: r.id,
+      name: r.name ?? "",
+      kind: (r.kind as SourceKind) ?? "rss",
+      endpoint: r.endpoint ?? r.url ?? "",
+      country_name: r.country_name ?? null,
+      is_enabled: !!(r.is_enabled ?? r.enabled ?? true),
+      last_polled_at: r.last_polled_at ?? r.last_run_at ?? null,
+      last_status: r.last_status ?? null,
+      last_error: r.last_error ?? null,
+      success_count: r.success_count ?? null,
+      failure_count: r.failure_count ?? null,
+    };
+  }
+
+  // ✅ FIX: merge v_source_health (health fields) + topic_sources (country_name)
   async function fetchRows() {
     setLoading(true);
     setErr(null);
 
     try {
-      // Attempt 1: v_source_health
-      {
-        const qSel = supabase
+      const [healthRes, srcRes] = await Promise.all([
+        supabase
           .from("v_source_health")
           .select("*")
           .order("is_enabled", { ascending: false })
-          .order("last_polled_at", { ascending: false });
-
-        const { data, error } = await qSel;
-        if (!error && data) {
-          setRows((data as any[]).map(mapHealthToRow));
-          setLoading(false);
-          return;
-        }
-      }
-
-      // Attempt 2: topic_sources
-      {
-        const { data, error } = await supabase
+          .order("last_polled_at", { ascending: false }),
+        supabase
           .from("topic_sources")
-          .select("*")
-          .order("name", { ascending: true });
+          .select("id,name,kind,endpoint,country_name,is_enabled")
+          .order("name", { ascending: true }),
+      ]);
 
-        if (error) throw error;
+      const { data: healthData, error: healthError } = healthRes;
+      const { data: srcData, error: srcError } = srcRes;
 
-        const mapped = (data ?? []).map(mapTopicSourcesToRow);
-        setRows(mapped);
+      if (srcError) throw srcError;
+
+      const srcById = new Map<string, any>();
+      (srcData ?? []).forEach((s: any) => srcById.set(s.id, s));
+
+      // If health view works, use it as base and merge in country_name (and other canonical fields)
+      if (!healthError && healthData) {
+        const merged: SourceRow[] = (healthData as any[]).map((h) => {
+          const s = srcById.get(h.id);
+
+          // Start with health row
+          const base = mapHealthToRow(h);
+
+          return {
+            ...base,
+            // Prefer canonical values where health is missing
+            name: base.name || (s?.name ?? ""),
+            kind: (base.kind || s?.kind || "rss") as SourceKind,
+            endpoint: base.endpoint || (s?.endpoint ?? ""),
+            country_name: base.country_name ?? (s?.country_name ?? null),
+            is_enabled: typeof h.is_enabled === "boolean" ? h.is_enabled : !!s?.is_enabled,
+          };
+        });
+
+        setRows(merged);
+        return;
       }
+
+      // Otherwise fall back to topic_sources
+      setRows((srcData ?? []).map(mapTopicSourcesToRow));
     } catch (e: any) {
       setErr(e?.message ?? "Failed to load sources");
     } finally {
@@ -138,39 +188,7 @@ export default function AdminSourcesIndex() {
     });
   }, [rows, kind, enabled, q]);
 
-  function mapHealthToRow(r: any): SourceRow {
-    return {
-      id: r.id,
-      name: r.name,
-      kind: r.kind as SourceKind,
-      endpoint: r.endpoint,
-      country_name: r.country_name ?? null,
-      is_enabled: !!r.is_enabled,
-      last_polled_at: r.last_polled_at ?? r.last_run_at ?? null,
-      last_status: r.last_status ?? null,
-      last_error: r.last_error ?? null,
-      success_count: r.success_count ?? null,
-      failure_count: r.failure_count ?? null,
-    };
-  }
-
-  function mapTopicSourcesToRow(r: any): SourceRow {
-    return {
-      id: r.id,
-      name: r.name,
-      kind: (r.kind as SourceKind) ?? "rss",
-      endpoint: r.endpoint ?? r.url ?? "",
-      country_name: r.country_name ?? null,
-      is_enabled: !!(r.is_enabled ?? r.enabled ?? true),
-      last_polled_at: r.last_polled_at ?? r.last_run_at ?? null,
-      last_status: r.last_status ?? null,
-      last_error: r.last_error ?? null,
-      success_count: r.success_count ?? null,
-      failure_count: r.failure_count ?? null,
-    };
-  }
-
-  // ✅ NEW: always load canonical row from topic_sources before editing
+  // Always load canonical row from topic_sources before editing
   async function openEdit(row: SourceRow) {
     setErr(null);
     setBusyId(row.id);
@@ -203,7 +221,6 @@ export default function AdminSourcesIndex() {
       });
     } catch (e: any) {
       alert(`Failed to open edit: ${e?.message ?? e}`);
-      // fallback to whatever we have locally
       setEditing({
         id: row.id,
         name: row.name ?? "",
@@ -269,7 +286,6 @@ export default function AdminSourcesIndex() {
   async function onSave(draft: Partial<SourceRow>) {
     if (saving) return;
 
-    // ✅ improved validation so you know exactly what is missing
     const missing: string[] = [];
     if (!draft.name?.trim()) missing.push("name");
     if (!draft.kind) missing.push("kind");
@@ -489,7 +505,6 @@ export default function AdminSourcesIndex() {
                   </td>,
                   <td key="actions" style={{ textAlign: "right" }}>
                     <div style={{ display: "inline-flex", gap: 8 }}>
-                      {/* ✅ FIXED: load canonical row before editing */}
                       <button disabled={busyId === r.id} onClick={() => openEdit(r)}>
                         Edit
                       </button>
@@ -587,9 +602,7 @@ export default function AdminSourcesIndex() {
                 <div>Country Name</div>
                 <input
                   value={editing.country_name ?? ""}
-                  onChange={(e) =>
-                    setEditing({ ...editing, country_name: e.target.value })
-                  }
+                  onChange={(e) => setEditing({ ...editing, country_name: e.target.value })}
                   placeholder="e.g., Australia"
                   style={{ width: "100%" }}
                   disabled={saving}
