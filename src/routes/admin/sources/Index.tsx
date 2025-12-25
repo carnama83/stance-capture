@@ -42,6 +42,7 @@ export default function AdminSourcesIndex() {
   // edit/create modal state
   const [editing, setEditing] = useState<Partial<SourceRow> | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null); // per-row action gate
+  const [saving, setSaving] = useState<boolean>(false); // modal save gate
 
   async function fetchRows() {
     setLoading(true);
@@ -87,6 +88,11 @@ export default function AdminSourcesIndex() {
     fetchRows();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Reset modal "saving" state each time it opens/closes (prevents sticky disabled Create)
+  useEffect(() => {
+    if (editing) setSaving(false);
+  }, [editing]);
 
   const filtered = useMemo(() => {
     return rows.filter((r) => {
@@ -180,46 +186,62 @@ export default function AdminSourcesIndex() {
   }
 
   async function onSave(draft: Partial<SourceRow>) {
+    if (saving) return;
+
     if (!draft.name || !draft.endpoint || !draft.kind) {
-      return alert("Please provide name, kind, and endpoint.");
+      alert("Please provide name, kind, and endpoint.");
+      return;
     }
-    if (draft.id) {
-      const { error } = await supabase
-        .from("topic_sources")
-        .update({
-          name: draft.name,
-          endpoint: draft.endpoint,
-          kind: draft.kind,
-          is_enabled: draft.is_enabled ?? true,
-        })
-        .eq("id", draft.id)
-        .select()
-        .single();
-      if (error) return alert(`Update failed: ${error.message}`);
-    } else {
-      const { error } = await supabase
-        .from("topic_sources")
-        .insert({
-          name: draft.name,
-          endpoint: draft.endpoint,
-          kind: draft.kind,
-          is_enabled: draft.is_enabled ?? true,
-        })
-        .select()
-        .single();
-      if (error) return alert(`Create failed: ${error.message}`);
+
+    setSaving(true);
+    setErr(null);
+
+    try {
+      if (draft.id) {
+        const { error } = await supabase
+          .from("topic_sources")
+          .update({
+            name: draft.name,
+            endpoint: draft.endpoint,
+            kind: draft.kind,
+            is_enabled: draft.is_enabled ?? true,
+          })
+          .eq("id", draft.id)
+          .select()
+          .single();
+
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from("topic_sources")
+          .insert({
+            name: draft.name,
+            endpoint: draft.endpoint,
+            kind: draft.kind,
+            is_enabled: draft.is_enabled ?? true,
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+      }
+
+      // Close modal first (prevents overlay click + state glitches)
+      setEditing(null);
+
+      // Refetch after closing
+      await fetchRows();
+    } catch (e: any) {
+      alert(`Save failed: ${e?.message ?? e}`);
+    } finally {
+      setSaving(false);
     }
-    setEditing(null);
-    fetchRows();
   }
 
   async function onDelete(row: SourceRow) {
     if (!confirm(`Delete source "${row.name}"?`)) return;
     setBusyId(row.id);
-    const { error } = await supabase
-      .from("topic_sources")
-      .delete()
-      .eq("id", row.id);
+    const { error } = await supabase.from("topic_sources").delete().eq("id", row.id);
     setBusyId(null);
     if (error) return alert(`Delete failed: ${error.message}`);
     fetchRows();
@@ -272,19 +294,13 @@ export default function AdminSourcesIndex() {
       >
         <h1 style={{ margin: 0 }}>Sources</h1>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <select
-            value={kind}
-            onChange={(e) => setKind(e.target.value as any)}
-          >
+          <select value={kind} onChange={(e) => setKind(e.target.value as any)}>
             <option value="all">All kinds</option>
             <option value="rss">rss</option>
             <option value="api">api</option>
             <option value="social">social</option>
           </select>
-          <select
-            value={enabled}
-            onChange={(e) => setEnabled(e.target.value as any)}
-          >
+          <select value={enabled} onChange={(e) => setEnabled(e.target.value as any)}>
             <option value="all">All</option>
             <option value="on">Enabled</option>
             <option value="off">Disabled</option>
@@ -296,9 +312,7 @@ export default function AdminSourcesIndex() {
             style={{ minWidth: 240 }}
           />
           <button
-            onClick={() =>
-              setEditing({ kind: "rss", is_enabled: true } as Partial<SourceRow>)
-            }
+            onClick={() => setEditing({ kind: "rss", is_enabled: true } as Partial<SourceRow>)}
           >
             + New
           </button>
@@ -311,11 +325,7 @@ export default function AdminSourcesIndex() {
         <p style={{ marginTop: 12 }}>Loading…</p>
       ) : (
         <div style={{ marginTop: 12, overflowX: "auto" }}>
-          <table
-            width="100%"
-            cellPadding={8}
-            style={{ borderCollapse: "collapse" }}
-          >
+          <table width="100%" cellPadding={8} style={{ borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ textAlign: "left", borderBottom: "1px solid #ddd" }}>
                 <th>Name</th>
@@ -374,11 +384,7 @@ export default function AdminSourcesIndex() {
                   <td>{r.success_count ?? 0}</td>
                   <td>{r.failure_count ?? 0}</td>
                   <td>
-                    {!r.last_status
-                      ? "—"
-                      : r.last_status === "ok"
-                      ? "✅ ok"
-                      : "⚠️ " + r.last_status}
+                    {!r.last_status ? "—" : r.last_status === "ok" ? "✅ ok" : "⚠️ " + r.last_status}
                     {r.last_error ? (
                       <span
                         title={r.last_error}
@@ -393,22 +399,14 @@ export default function AdminSourcesIndex() {
                     ) : null}
                   </td>
                   <td>
-                    {r.last_polled_at
-                      ? new Date(r.last_polled_at).toLocaleString()
-                      : "—"}
+                    {r.last_polled_at ? new Date(r.last_polled_at).toLocaleString() : "—"}
                   </td>
                   <td style={{ textAlign: "right" }}>
                     <div style={{ display: "inline-flex", gap: 8 }}>
-                      <button
-                        disabled={busyId === r.id}
-                        onClick={() => setEditing(r)}
-                      >
+                      <button disabled={busyId === r.id} onClick={() => setEditing(r)}>
                         Edit
                       </button>
-                      <button
-                        disabled={busyId === r.id}
-                        onClick={() => onRun(r)}
-                      >
+                      <button disabled={busyId === r.id} onClick={() => onRun(r)}>
                         Run
                       </button>
                       <button
@@ -454,7 +452,10 @@ export default function AdminSourcesIndex() {
             placeItems: "center",
             padding: 16,
           }}
-          onClick={() => setEditing(null)}
+          onClick={() => {
+            // prevent accidental close while saving
+            if (!saving) setEditing(null);
+          }}
         >
           <div
             style={{
@@ -466,20 +467,17 @@ export default function AdminSourcesIndex() {
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 style={{ marginTop: 0 }}>
-              {editing.id ? "Edit source" : "New source"}
-            </h3>
+            <h3 style={{ marginTop: 0 }}>{editing.id ? "Edit source" : "New source"}</h3>
 
             <div style={{ display: "grid", gap: 12 }}>
               <label>
                 <div>Name</div>
                 <input
                   value={editing.name ?? ""}
-                  onChange={(e) =>
-                    setEditing({ ...editing, name: e.target.value })
-                  }
+                  onChange={(e) => setEditing({ ...editing, name: e.target.value })}
                   placeholder="e.g., BBC World RSS"
                   style={{ width: "100%" }}
+                  disabled={saving}
                 />
               </label>
 
@@ -494,6 +492,7 @@ export default function AdminSourcesIndex() {
                     })
                   }
                   style={{ width: "100%" }}
+                  disabled={saving}
                 >
                   <option value="rss">rss</option>
                   <option value="api">api</option>
@@ -505,11 +504,10 @@ export default function AdminSourcesIndex() {
                 <div>Endpoint (URL)</div>
                 <input
                   value={editing.endpoint ?? ""}
-                  onChange={(e) =>
-                    setEditing({ ...editing, endpoint: e.target.value })
-                  }
+                  onChange={(e) => setEditing({ ...editing, endpoint: e.target.value })}
                   placeholder="https://example.com/feed.xml"
                   style={{ width: "100%" }}
+                  disabled={saving}
                 />
               </label>
 
@@ -529,6 +527,7 @@ export default function AdminSourcesIndex() {
                       is_enabled: e.target.checked,
                     })
                   }
+                  disabled={saving}
                 />
                 Enabled
               </label>
@@ -542,12 +541,15 @@ export default function AdminSourcesIndex() {
                 marginTop: 16,
               }}
             >
-              <button onClick={() => setEditing(null)}>Cancel</button>
+              <button disabled={saving} onClick={() => setEditing(null)}>
+                Cancel
+              </button>
               <button
+                disabled={saving}
                 onClick={() => onSave(editing!)}
                 style={{ fontWeight: 600 }}
               >
-                {editing.id ? "Save changes" : "Create"}
+                {saving ? "Saving..." : editing.id ? "Save changes" : "Create"}
               </button>
             </div>
           </div>
