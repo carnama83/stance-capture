@@ -10,6 +10,7 @@ type SourceRow = {
   name: string;
   kind: SourceKind;
   endpoint: string;
+  country_name: string | null; // ✅ NEW
   is_enabled: boolean;
   last_polled_at: string | null;
   last_status: string | null;
@@ -26,7 +27,7 @@ const adminNavItems = [
   { label: "News", to: ROUTES.ADMIN_NEWS },
 ];
 
-// ✅ Change #1: timeout helper so UI never gets stuck on a hung request
+// ✅ timeout helper so UI never gets stuck on a hung request
 function withTimeout<T>(p: Promise<T>, ms = 15000): Promise<T> {
   return new Promise((resolve, reject) => {
     const t = setTimeout(() => reject(new Error(`Timed out after ${ms}ms`)), ms);
@@ -106,7 +107,6 @@ export default function AdminSourcesIndex() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Reset modal "saving" state each time it opens/closes (prevents sticky disabled Create)
   useEffect(() => {
     if (editing) setSaving(false);
   }, [editing]);
@@ -118,7 +118,7 @@ export default function AdminSourcesIndex() {
       if (enabled === "off" && r.is_enabled) return false;
       if (q) {
         const qq = q.toLowerCase();
-        const hay = `${r.name} ${r.endpoint}`.toLowerCase();
+        const hay = `${r.name} ${r.endpoint} ${r.country_name ?? ""}`.toLowerCase(); // ✅ include
         if (!hay.includes(qq)) return false;
       }
       return true;
@@ -131,6 +131,7 @@ export default function AdminSourcesIndex() {
       name: r.name,
       kind: r.kind as SourceKind,
       endpoint: r.endpoint,
+      country_name: r.country_name ?? null, // ✅ NEW
       is_enabled: !!r.is_enabled,
       last_polled_at: r.last_polled_at ?? r.last_run_at ?? null,
       last_status: r.last_status ?? null,
@@ -146,6 +147,7 @@ export default function AdminSourcesIndex() {
       name: r.name,
       kind: (r.kind as SourceKind) ?? "rss",
       endpoint: r.endpoint ?? r.url ?? "",
+      country_name: r.country_name ?? null, // ✅ NEW
       is_enabled: !!(r.is_enabled ?? r.enabled ?? true),
       last_polled_at: r.last_polled_at ?? r.last_run_at ?? null,
       last_status: r.last_status ?? null,
@@ -179,7 +181,6 @@ export default function AdminSourcesIndex() {
     }
   }
 
-  // Run ingestion via Edge Function (uses user JWT; function checks is_admin_me)
   async function onRun(row: SourceRow) {
     setBusyId(row.id);
     try {
@@ -216,16 +217,21 @@ export default function AdminSourcesIndex() {
     setSaving(true);
     setErr(null);
 
+    // normalize country_name: empty -> null
+    const countryName =
+      draft.country_name && draft.country_name.trim().length > 0
+        ? draft.country_name.trim()
+        : null;
+
     try {
       if (draft.id) {
-        // ✅ Change #2: no select().single()
-        // ✅ Change #1: timeout wrapper
         const p = supabase
           .from("topic_sources")
           .update({
             name: draft.name,
             endpoint: draft.endpoint,
             kind: draft.kind,
+            country_name: countryName, // ✅ NEW
             is_enabled: draft.is_enabled ?? true,
           })
           .eq("id", draft.id);
@@ -233,12 +239,11 @@ export default function AdminSourcesIndex() {
         const { error } = await withTimeout(p, 15000);
         if (error) throw error;
       } else {
-        // ✅ Change #2: no select().single()
-        // ✅ Change #1: timeout wrapper
         const p = supabase.from("topic_sources").insert({
           name: draft.name,
           endpoint: draft.endpoint,
           kind: draft.kind,
+          country_name: countryName, // ✅ NEW
           is_enabled: draft.is_enabled ?? true,
         });
 
@@ -246,10 +251,7 @@ export default function AdminSourcesIndex() {
         if (error) throw error;
       }
 
-      // Close modal immediately on success
       setEditing(null);
-
-      // ✅ Change #1/2: don't block UI on refetch
       void fetchRows();
     } catch (e: any) {
       alert(`Save failed: ${e?.message ?? e}`);
@@ -269,7 +271,7 @@ export default function AdminSourcesIndex() {
 
   return (
     <div style={{ padding: 16 }}>
-      {/* Top admin nav (Sources, Ingestion, Drafts, Questions, News) */}
+      {/* Top admin nav */}
       <div
         style={{
           display: "flex",
@@ -284,7 +286,7 @@ export default function AdminSourcesIndex() {
           const active = location.pathname === item.to;
           return (
             <Link
-              key={`${item.to}-${idx}`} // 🔑 force uniqueness even if paths duplicate
+              key={`${item.to}-${idx}`}
               to={item.to}
               style={{
                 padding: "6px 10px",
@@ -326,13 +328,19 @@ export default function AdminSourcesIndex() {
             <option value="off">Disabled</option>
           </select>
           <input
-            placeholder="Search name or endpoint…"
+            placeholder="Search name, endpoint, or country…"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             style={{ minWidth: 240 }}
           />
           <button
-            onClick={() => setEditing({ kind: "rss", is_enabled: true } as Partial<SourceRow>)}
+            onClick={() =>
+              setEditing({
+                kind: "rss",
+                is_enabled: true,
+                country_name: "", // ✅ NEW default field
+              } as Partial<SourceRow>)
+            }
           >
             + New
           </button>
@@ -350,6 +358,7 @@ export default function AdminSourcesIndex() {
               <tr style={{ textAlign: "left", borderBottom: "1px solid #ddd" }}>
                 <th>Name</th>
                 <th>Kind</th>
+                <th>Country</th> {/* ✅ NEW */}
                 <th>Endpoint</th>
                 <th>Enabled</th>
                 <th>Success</th>
@@ -373,6 +382,7 @@ export default function AdminSourcesIndex() {
                     {r.name}
                   </td>
                   <td>{r.kind}</td>
+                  <td>{r.country_name ?? "—"}</td> {/* ✅ NEW */}
                   <td
                     style={{
                       maxWidth: 420,
@@ -443,7 +453,7 @@ export default function AdminSourcesIndex() {
               {!filtered.length && (
                 <tr>
                   <td
-                    colSpan={9}
+                    colSpan={10} // ✅ was 9
                     style={{
                       padding: 24,
                       textAlign: "center",
@@ -472,7 +482,6 @@ export default function AdminSourcesIndex() {
             placeItems: "center",
             padding: 16,
           }}
-          // ✅ Change #4: allow overlay click to close even while saving
           onClick={() => setEditing(null)}
         >
           <div
@@ -518,6 +527,18 @@ export default function AdminSourcesIndex() {
                 </select>
               </label>
 
+              {/* ✅ NEW: Country Name field */}
+              <label>
+                <div>Country Name</div>
+                <input
+                  value={editing.country_name ?? ""}
+                  onChange={(e) => setEditing({ ...editing, country_name: e.target.value })}
+                  placeholder="e.g., Australia"
+                  style={{ width: "100%" }}
+                  disabled={saving}
+                />
+              </label>
+
               <label>
                 <div>Endpoint (URL)</div>
                 <input
@@ -559,7 +580,6 @@ export default function AdminSourcesIndex() {
                 marginTop: 16,
               }}
             >
-              {/* ✅ Change #3: keep Cancel enabled even while saving */}
               <button onClick={() => setEditing(null)}>Cancel</button>
 
               <button
