@@ -374,8 +374,7 @@ export default function AdminSourcesIndex() {
     ))}
   </tr>
 </thead>
-
-            <tbody>
+  <tbody>
               {filtered.map((r) => (
                 <tr key={r.id} style={{ borderBottom: "1px solid #eee" }}>
                   <td
