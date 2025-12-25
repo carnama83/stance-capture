@@ -28,10 +28,12 @@ function getDeviceFingerprint(): string {
 }
 
 async function resolveLocationFromStash(sb: any, stash: SignupStashV1) {
+  // City: stash.cityId is already a locations.id (UUID) in your current Signup flow
   if (stash.cityId) {
     return { locationId: stash.cityId, precision: "city" as Precision };
   }
 
+  // County: stash.countyCode is iso_code; resolve to locations.id
   if (stash.countyCode) {
     const r = await sb
       .from("locations")
@@ -40,11 +42,13 @@ async function resolveLocationFromStash(sb: any, stash: SignupStashV1) {
       .eq("iso_code", stash.countyCode)
       .limit(1)
       .single();
+
     if (!r.error && r.data?.id) {
       return { locationId: r.data.id, precision: "county" as Precision };
     }
   }
 
+  // State: stateCode might be "NJ" or "US-NJ" depending on your dataset
   if (stash.stateCode) {
     const guesses = stash.country
       ? [stash.stateCode, `${stash.country}-${stash.stateCode}`]
@@ -63,6 +67,7 @@ async function resolveLocationFromStash(sb: any, stash: SignupStashV1) {
     }
   }
 
+  // Country: stash.country is iso_code; resolve to locations.id
   if (stash.country) {
     const r = await sb
       .from("locations")
@@ -71,6 +76,7 @@ async function resolveLocationFromStash(sb: any, stash: SignupStashV1) {
       .eq("iso_code", stash.country)
       .limit(1)
       .single();
+
     if (!r.error && r.data?.id) {
       return { locationId: r.data.id, precision: "country" as Precision };
     }
@@ -102,7 +108,7 @@ async function applySignupStashIfPresent(sb: any) {
     if (r.error) console.warn("set_username failed (non-fatal):", r.error);
   }
 
-  // ✅ FIXED: DOB check now uses dob_encrypted (not non-existent dob)
+  // DOB (non-fatal) — checks dob_encrypted is empty before setting
   if (stash.dob && stash.dob.trim()) {
     const prof = await sb
       .from("profiles")
@@ -112,12 +118,10 @@ async function applySignupStashIfPresent(sb: any) {
 
     if (!prof.error && !prof.data?.dob_encrypted) {
       const dob = stash.dob.trim();
-
-      // Try newer param, then fallback
-     const r2 = await sb.rpc("profile_set_dob_checked", { p_dob_text: dob });
-if (r2.error) {
-  console.warn("profile_set_dob_checked failed (non-fatal):", r2.error);
-}
+      const r2 = await sb.rpc("profile_set_dob_checked", { p_dob_text: dob });
+      if (r2.error) {
+        console.warn("profile_set_dob_checked failed (non-fatal):", r2.error);
+      }
     }
   }
 
@@ -131,17 +135,26 @@ if (r2.error) {
     if (r.error) console.warn("profile_set_gender failed (non-fatal):", r.error);
   }
 
-  // Location (non-fatal)
+  // ✅ Location (non-fatal) — Option 1: ALWAYS CASCADE
+  // This ensures signup/confirm-email path creates 4 rows (city+county+state+country)
   const resolved = await resolveLocationFromStash(sb, stash);
   if (resolved) {
-    const r = await sb.rpc("set_my_location", {
+    const r = await sb.rpc("set_user_location_cascade", {
+      p_user_id: uid,
       p_location_id: resolved.locationId,
       p_precision: resolved.precision,
-      p_source: "signup",
+      p_override: false,
+      p_source: "bootstrap",
     });
-    if (r.error) console.warn("set_my_location failed (non-fatal):", r.error);
+    if (r.error) {
+      console.warn(
+        "set_user_location_cascade failed (non-fatal):",
+        r.error
+      );
+    }
   }
 
+  // Clear stash only after we attempted to apply it
   window.localStorage.removeItem("signup_stash_v1");
 }
 
@@ -160,11 +173,38 @@ async function touchSessionAndDevice(sb: any) {
   }
 }
 
+function isConflictError(err: any): boolean {
+  // Supabase/PostgREST usually surfaces status for HTTP errors; sometimes only message/code is present.
+  const status = err?.status ?? err?.cause?.status;
+  if (status === 409) return true;
+
+  // Also treat common unique-violation patterns as conflict-ish
+  const code = String(err?.code ?? "");
+  if (code === "23505") return true;
+
+  const msg = String(err?.message ?? "").toLowerCase();
+  if (msg.includes("409") || msg.includes("conflict") || msg.includes("duplicate")) {
+    return true;
+  }
+
+  return false;
+}
+
 async function runBootstrap(sb: any) {
   const r = await sb.rpc("bootstrap_user_after_login");
+
+  // ✅ Important: don’t abort stash application on 409
+  // 409 generally means "already bootstrapped / idempotent conflict", so continue.
   if (r.error) {
-    console.error("bootstrap_user_after_login failed:", r.error);
-    return;
+    if (isConflictError(r.error)) {
+      console.warn(
+        "bootstrap_user_after_login returned conflict (continuing):",
+        r.error
+      );
+    } else {
+      console.error("bootstrap_user_after_login failed:", r.error);
+      // Still continue — stash application and session/device touches are safe and useful
+    }
   }
 
   await applySignupStashIfPresent(sb);
@@ -184,6 +224,7 @@ export function useBootstrapUser() {
       const uid = data.user?.id;
       if (!uid) return;
 
+      // prevent duplicate bootstrap runs per user per mount
       if (lastBootstrappedUserId === uid) return;
       lastBootstrappedUserId = uid;
 
@@ -198,15 +239,13 @@ export function useBootstrapUser() {
         await maybeBootstrap();
       }
 
-      const { data: sub } = sb.auth.onAuthStateChange(
-        async (_event, session) => {
-          if (!session?.user) {
-            lastBootstrappedUserId = null;
-            return;
-          }
-          await maybeBootstrap();
+      const { data: sub } = sb.auth.onAuthStateChange(async (_event, session) => {
+        if (!session?.user) {
+          lastBootstrappedUserId = null;
+          return;
         }
-      );
+        await maybeBootstrap();
+      });
 
       unsub = () => sub?.subscription?.unsubscribe?.();
     })();
