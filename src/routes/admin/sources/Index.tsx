@@ -107,7 +107,6 @@ export default function AdminSourcesIndex() {
     };
   }
 
-  // ✅ FIX: merge v_source_health (health fields) + topic_sources (country_name)
   async function fetchRows() {
     setLoading(true);
     setErr(null);
@@ -133,22 +132,19 @@ export default function AdminSourcesIndex() {
       const srcById = new Map<string, any>();
       (srcData ?? []).forEach((s: any) => srcById.set(s.id, s));
 
-      // If health view works, use it as base and merge in country_name (and other canonical fields)
       if (!healthError && healthData) {
         const merged: SourceRow[] = (healthData as any[]).map((h) => {
           const s = srcById.get(h.id);
-
-          // Start with health row
           const base = mapHealthToRow(h);
 
           return {
             ...base,
-            // Prefer canonical values where health is missing
             name: base.name || (s?.name ?? ""),
             kind: (base.kind || s?.kind || "rss") as SourceKind,
             endpoint: base.endpoint || (s?.endpoint ?? ""),
             country_name: base.country_name ?? (s?.country_name ?? null),
-            is_enabled: typeof h.is_enabled === "boolean" ? h.is_enabled : !!s?.is_enabled,
+            is_enabled:
+              typeof h.is_enabled === "boolean" ? h.is_enabled : !!s?.is_enabled,
           };
         });
 
@@ -156,7 +152,6 @@ export default function AdminSourcesIndex() {
         return;
       }
 
-      // Otherwise fall back to topic_sources
       setRows((srcData ?? []).map(mapTopicSourcesToRow));
     } catch (e: any) {
       setErr(e?.message ?? "Failed to load sources");
@@ -188,7 +183,6 @@ export default function AdminSourcesIndex() {
     });
   }, [rows, kind, enabled, q]);
 
-  // Always load canonical row from topic_sources before editing
   async function openEdit(row: SourceRow) {
     setErr(null);
     setBusyId(row.id);
@@ -258,24 +252,63 @@ export default function AdminSourcesIndex() {
     }
   }
 
+  // ✅ FIXED: Run ingestion with Edge Function first, then fallback to RPC admin_ingest_source
   async function onRun(row: SourceRow) {
     setBusyId(row.id);
+
     try {
-      const { data, error } = await supabase.functions.invoke("ingest", {
-        body: { source_id: row.id },
-      });
-      if (error) throw error;
+      // Attempt A: Edge Function (if it exists in your project)
+      try {
+        const { data, error } = await withTimeout(
+          supabase.functions.invoke("ingest", {
+            body: { source_id: row.id },
+          }),
+          15000
+        );
 
-      const statusLine =
-        typeof data?.status !== "undefined" ? `Status: ${data.status}` : "";
-      const traceLine = data?.traceId ? `Trace: ${data.traceId}` : "";
-      alert(
-        `Triggered ingest for "${row.name}".\n${[statusLine, traceLine]
-          .filter(Boolean)
-          .join("\n")}`
-      );
+        if (error) throw error;
 
-      fetchRows();
+        const statusLine =
+          typeof (data as any)?.status !== "undefined" ? `Status: ${(data as any).status}` : "";
+        const traceLine = (data as any)?.traceId ? `Trace: ${(data as any).traceId}` : "";
+
+        alert(
+          `Triggered ingest for "${row.name}".\n${[statusLine, traceLine]
+            .filter(Boolean)
+            .join("\n")}`
+        );
+
+        void fetchRows();
+        return;
+      } catch (edgeErr: any) {
+        // fall through to RPC
+        console.warn("Edge ingest failed; falling back to RPC admin_ingest_source", edgeErr);
+      }
+
+      // Attempt B: RPC admin_ingest_source(uuid)
+      // Parameter name can vary; try a few common ones.
+      const paramCandidates = [
+        { source_id: row.id },
+        { p_source_id: row.id },
+        { p_source: row.id },
+        { id: row.id },
+      ];
+
+      let lastRpcError: any = null;
+      for (const args of paramCandidates) {
+        const { error } = await withTimeout(
+          supabase.rpc("admin_ingest_source", args as any),
+          15000
+        );
+        if (!error) {
+          alert(`Triggered ingest for "${row.name}" via admin_ingest_source().`);
+          void fetchRows();
+          return;
+        }
+        lastRpcError = error;
+      }
+
+      throw lastRpcError ?? new Error("RPC admin_ingest_source failed (unknown error)");
     } catch (e: any) {
       alert(`Run failed: ${e?.message || e}`);
     } finally {
@@ -602,7 +635,9 @@ export default function AdminSourcesIndex() {
                 <div>Country Name</div>
                 <input
                   value={editing.country_name ?? ""}
-                  onChange={(e) => setEditing({ ...editing, country_name: e.target.value })}
+                  onChange={(e) =>
+                    setEditing({ ...editing, country_name: e.target.value })
+                  }
                   placeholder="e.g., Australia"
                   style={{ width: "100%" }}
                   disabled={saving}
@@ -624,7 +659,9 @@ export default function AdminSourcesIndex() {
                 <input
                   type="checkbox"
                   checked={editing.is_enabled ?? true}
-                  onChange={(e) => setEditing({ ...editing, is_enabled: e.target.checked })}
+                  onChange={(e) =>
+                    setEditing({ ...editing, is_enabled: e.target.checked })
+                  }
                   disabled={saving}
                 />
                 Enabled
