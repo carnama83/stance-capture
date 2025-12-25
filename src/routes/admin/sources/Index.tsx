@@ -354,20 +354,27 @@ export default function AdminSourcesIndex() {
       ) : (
         <div style={{ marginTop: 12, overflowX: "auto" }}>
           <table width="100%" cellPadding={8} style={{ borderCollapse: "collapse" }}>
-            <thead>
-              <tr style={{ textAlign: "left", borderBottom: "1px solid #ddd" }}>
-                <th>Name</th>
-                <th>Kind</th>
-                <th>Country</th> {/* ✅ NEW */}
-                <th>Endpoint</th>
-                <th>Enabled</th>
-                <th>Success</th>
-                <th>Failure</th>
-                <th>Last Status</th>
-                <th>Last Run</th>
-                <th style={{ textAlign: "right" }}>Actions</th>
-              </tr>
-            </thead>
+           <thead>
+  <tr style={{ textAlign: "left", borderBottom: "1px solid #ddd" }}>
+    {[
+      "Name",
+      "Kind",
+      "Country",
+      "Endpoint",
+      "Enabled",
+      "Success",
+      "Failure",
+      "Last Status",
+      "Last Run",
+      "Actions",
+    ].map((h) => (
+      <th key={h} style={h === "Actions" ? { textAlign: "right" } : undefined}>
+        {h}
+      </th>
+    ))}
+  </tr>
+</thead>
+
             <tbody>
               {filtered.map((r) => (
                 <tr key={r.id} style={{ borderBottom: "1px solid #eee" }}>
