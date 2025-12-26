@@ -43,6 +43,85 @@ function withTimeout<T>(p: Promise<T>, ms = 15000): Promise<T> {
   });
 }
 
+/**
+ * UI polish: show appropriate icon/color for status instead of always warning triangle.
+ * Does not affect any existing functionality (pure render helper).
+ */
+function StatusPill({
+  status,
+  error,
+}: {
+  status: string | null;
+  error: string | null;
+}) {
+  const raw = (status ?? "").toLowerCase().trim();
+
+  // Normalize common aliases
+  const norm =
+    raw === "ok" || raw === "success"
+      ? "done"
+      : raw === "fail" || raw === "failed"
+      ? "error"
+      : raw;
+
+  const meta = (() => {
+    switch (norm) {
+      case "":
+        return { icon: "—", text: "—", bg: "transparent", fg: "inherit" };
+
+      case "queued":
+      case "pending":
+      case "new":
+        return { icon: "🕒", text: norm, bg: "#f1f5f9", fg: "#334155" };
+
+      case "running":
+        return { icon: "🔄", text: "running", bg: "#e0f2fe", fg: "#075985" };
+
+      case "done":
+        return { icon: "✅", text: "done", bg: "#dcfce7", fg: "#166534" };
+
+      case "error":
+        return { icon: "❌", text: "error", bg: "#fee2e2", fg: "#991b1b" };
+
+      default:
+        return { icon: "⚠️", text: norm || "unknown", bg: "#fef3c7", fg: "#92400e" };
+    }
+  })();
+
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+      <span
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          padding: "2px 8px",
+          borderRadius: 999,
+          background: meta.bg,
+          color: meta.fg,
+          fontSize: 12,
+          fontWeight: 600,
+          lineHeight: 1.6,
+          whiteSpace: "nowrap",
+        }}
+        title={error ? `Error: ${error}` : meta.text}
+      >
+        <span>{meta.icon}</span>
+        <span>{meta.text}</span>
+      </span>
+
+      {error ? (
+        <span
+          title={error}
+          style={{ marginLeft: 2, color: "#b00", cursor: "help" }}
+        >
+          ⓘ
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
 export default function AdminSourcesIndex() {
   const supabase = useMemo(createSupabase, []);
   const location = useLocation();
@@ -518,21 +597,12 @@ export default function AdminSourcesIndex() {
                   </td>,
                   <td key="success">{r.success_count ?? 0}</td>,
                   <td key="failure">{r.failure_count ?? 0}</td>,
+
+                  // ✅ Polished status UI (no more always-yellow)
                   <td key="status">
-                    {!r.last_status
-                      ? "—"
-                      : r.last_status === "ok"
-                      ? "✅ ok"
-                      : "⚠️ " + r.last_status}
-                    {r.last_error ? (
-                      <span
-                        title={r.last_error}
-                        style={{ marginLeft: 6, color: "#b00", cursor: "help" }}
-                      >
-                        ⓘ
-                      </span>
-                    ) : null}
+                    <StatusPill status={r.last_status} error={r.last_error} />
                   </td>,
+
                   <td key="lastrun">
                     {r.last_polled_at ? new Date(r.last_polled_at).toLocaleString() : "—"}
                   </td>,
