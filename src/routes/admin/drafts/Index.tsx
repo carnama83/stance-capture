@@ -52,9 +52,11 @@ export default function TopicDraftsPage() {
 
   const [rows, setRows] = React.useState<TopicDraftRow[]>([]);
   const [loading, setLoading] = React.useState(false);
-  const [statusFilter, setStatusFilter] = React.useState<"all" | DraftStatus>(
-    "all",
-  );
+
+  // NEW: cluster button state
+  const [clusterLoading, setClusterLoading] = React.useState(false);
+
+  const [statusFilter, setStatusFilter] = React.useState<"all" | DraftStatus>("all");
   const [search, setSearch] = React.useState("");
   const [dateFrom, setDateFrom] = React.useState("");
   const [dateTo, setDateTo] = React.useState("");
@@ -88,15 +90,9 @@ export default function TopicDraftsPage() {
       .order("created_at", { ascending: false })
       .limit(200);
 
-    if (statusFilter !== "all") {
-      q = q.eq("status", statusFilter);
-    }
-    if (dateFrom) {
-      q = q.gte("created_at", dateFrom);
-    }
-    if (dateTo) {
-      q = q.lte("created_at", dateTo);
-    }
+    if (statusFilter !== "all") q = q.eq("status", statusFilter);
+    if (dateFrom) q = q.gte("created_at", dateFrom);
+    if (dateTo) q = q.lte("created_at", dateTo);
 
     const { data, error } = await q;
     if (error) {
@@ -114,9 +110,7 @@ export default function TopicDraftsPage() {
     let items = (data ?? []) as TopicDraftRow[];
     if (search.trim()) {
       const needle = search.trim().toLowerCase();
-      items = items.filter((r) =>
-        (r.title ?? "").toLowerCase().includes(needle),
-      );
+      items = items.filter((r) => (r.title ?? "").toLowerCase().includes(needle));
     }
 
     setRows(items);
@@ -126,6 +120,60 @@ export default function TopicDraftsPage() {
   React.useEffect(() => {
     load();
   }, [load]);
+
+  // NEW: run cluster
+  const runCluster = React.useCallback(async () => {
+    if (clusterLoading) return;
+    setClusterLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-run-cluster", { body: {} });
+
+      if (error) {
+        console.error("admin-run-cluster error:", error);
+        toast({
+          title: "Cluster failed",
+          description: error.message ?? "Edge Function returned a non-2xx status code.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const payload: any = data ?? {};
+      if (payload?.ok === false) {
+        toast({
+          title: "Cluster failed",
+          description: payload?.error ?? "Cluster returned ok=false. Check Edge logs.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const created =
+        payload?.cluster_response?.created ??
+        payload?.cluster_response?.created_count ??
+        payload?.cluster_response?.drafts_created ??
+        null;
+
+      toast({
+        title: "Cluster completed",
+        description:
+          created != null
+            ? `Created ${created} topic draft(s).`
+            : "Cluster ran successfully. Refreshing drafts…",
+      });
+
+      await load();
+    } catch (e: any) {
+      console.error("runCluster exception:", e);
+      toast({
+        title: "Cluster failed",
+        description: e?.message ?? String(e),
+        variant: "destructive",
+      });
+    } finally {
+      setClusterLoading(false);
+    }
+  }, [clusterLoading, supabase, toast, load]);
 
   return (
     <Card className="max-w-6xl mx-auto">
@@ -142,9 +190,7 @@ export default function TopicDraftsPage() {
             type="datetime-local"
             value={dateFrom}
             onChange={(e) =>
-              setDateFrom(
-                e.target.value ? new Date(e.target.value).toISOString() : "",
-              )
+              setDateFrom(e.target.value ? new Date(e.target.value).toISOString() : "")
             }
             className="w-48"
           />
@@ -152,18 +198,14 @@ export default function TopicDraftsPage() {
             type="datetime-local"
             value={dateTo}
             onChange={(e) =>
-              setDateTo(
-                e.target.value ? new Date(e.target.value).toISOString() : "",
-              )
+              setDateTo(e.target.value ? new Date(e.target.value).toISOString() : "")
             }
             className="w-48"
           />
           <select
             className="border rounded px-2 py-1 text-sm"
             value={statusFilter}
-            onChange={(e) =>
-              setStatusFilter(e.target.value as "all" | DraftStatus)
-            }
+            onChange={(e) => setStatusFilter(e.target.value as "all" | DraftStatus)}
           >
             {STATUS_FILTERS.map((s) => (
               <option key={s.value} value={s.value}>
@@ -171,20 +213,35 @@ export default function TopicDraftsPage() {
               </option>
             ))}
           </select>
-          <Button variant="outline" size="icon" onClick={load}>
+
+          {/* NEW: cluster button */}
+          <Button variant="outline" onClick={runCluster} disabled={clusterLoading}>
+            {clusterLoading ? "Running Cluster…" : "Run Cluster Now"}
+          </Button>
+
+          <Button variant="outline" size="icon" onClick={load} title="Refresh">
             <RefreshCw className="h-4 w-4" />
           </Button>
         </div>
       </CardHeader>
+
       <CardContent className="space-y-3">
-        {loading && (
-          <div className="p-4 text-sm text-muted-foreground">Loading…</div>
-        )}
+        {loading && <div className="p-4 text-sm text-muted-foreground">Loading…</div>}
+
         {!loading && rows.length === 0 && (
-          <div className="p-4 text-sm text-muted-foreground">
-            No topic drafts found.
+          <div className="p-4 text-sm text-muted-foreground space-y-2">
+            <div>No topic drafts found.</div>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={runCluster} disabled={clusterLoading}>
+                {clusterLoading ? "Running Cluster…" : "Run Cluster Now"}
+              </Button>
+              <Button variant="outline" onClick={load}>
+                Refresh
+              </Button>
+            </div>
           </div>
         )}
+
         {rows.map((row) => (
           <TopicDraftRowView key={row.id} row={row} onChanged={load} />
         ))}
@@ -193,17 +250,8 @@ export default function TopicDraftsPage() {
   );
 }
 
-function TopicDraftRowView({
-  row,
-  onChanged,
-}: {
-  row: TopicDraftRow;
-  onChanged: () => void;
-}) {
-  const sourceName =
-    row.location_label ??
-    row.news_items?.title ??
-    "—";
+function TopicDraftRowView({ row, onChanged }: { row: TopicDraftRow; onChanged: () => void }) {
+  const sourceName = row.location_label ?? row.news_items?.title ?? "—";
   const newsUrl = row.news_items?.url ?? null;
   const newsTitle = row.news_items?.title ?? null;
 
@@ -214,11 +262,7 @@ function TopicDraftRowView({
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <span className="font-medium">{sourceName}</span>
             <StatusBadge status={row.status} />
-            <span>
-              {row.created_at
-                ? new Date(row.created_at).toLocaleString()
-                : "—"}
-            </span>
+            <span>{row.created_at ? new Date(row.created_at).toLocaleString() : "—"}</span>
           </div>
           <h3 className="text-lg font-semibold break-words">{row.title}</h3>
           {row.tags && row.tags.length > 0 && (
@@ -240,9 +284,7 @@ function TopicDraftRowView({
         </div>
       </div>
 
-      {row.summary && (
-        <p className="text-sm whitespace-pre-wrap">{row.summary}</p>
-      )}
+      {row.summary && <p className="text-sm whitespace-pre-wrap">{row.summary}</p>}
 
       {newsUrl && (
         <a
@@ -255,9 +297,7 @@ function TopicDraftRowView({
         </a>
       )}
       {newsTitle && (
-        <div className="text-xs text-muted-foreground mt-1 line-clamp-2">
-          Article: {newsTitle}
-        </div>
+        <div className="text-xs text-muted-foreground mt-1 line-clamp-2">Article: {newsTitle}</div>
       )}
     </div>
   );
@@ -283,21 +323,13 @@ function StatusBadge({ status }: { status: DraftStatus }) {
   }
 
   return (
-    <span
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${cls}`}
-    >
+    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${cls}`}>
       {label}
     </span>
   );
 }
 
-function EditTopicDialog({
-  row,
-  onSaved,
-}: {
-  row: TopicDraftRow;
-  onSaved: () => void;
-}) {
+function EditTopicDialog({ row, onSaved }: { row: TopicDraftRow; onSaved: () => void }) {
   const supabase = React.useMemo(createSupabase, []);
   const { toast } = useToast();
 
@@ -361,11 +393,7 @@ function EditTopicDialog({
         <div className="grid gap-3">
           <div>
             <Label>Title</Label>
-            <Input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Topic title"
-            />
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Topic title" />
           </div>
           <div>
             <Label>Summary</Label>
@@ -378,19 +406,11 @@ function EditTopicDialog({
           </div>
           <div>
             <Label>Tags (comma-separated)</Label>
-            <Input
-              value={tags}
-              onChange={(e) => setTags(e.target.value)}
-              placeholder="politics, local, zoning"
-            />
+            <Input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="politics, local, zoning" />
           </div>
           <div>
             <Label>Location label</Label>
-            <Input
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-              placeholder="e.g., New Jersey"
-            />
+            <Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="e.g., New Jersey" />
           </div>
         </div>
         <DialogFooter>
@@ -403,18 +423,10 @@ function EditTopicDialog({
   );
 }
 
-function StatusButtons({
-  row,
-  onChanged,
-}: {
-  row: TopicDraftRow;
-  onChanged: () => void;
-}) {
+function StatusButtons({ row, onChanged }: { row: TopicDraftRow; onChanged: () => void }) {
   const supabase = React.useMemo(createSupabase, []);
   const { toast } = useToast();
-  const [loadingStatus, setLoadingStatus] = React.useState<DraftStatus | null>(
-    null,
-  );
+  const [loadingStatus, setLoadingStatus] = React.useState<DraftStatus | null>(null);
 
   const updateStatus = async (status: DraftStatus) => {
     if (loadingStatus) return;
@@ -422,7 +434,6 @@ function StatusButtons({
 
     const now = new Date().toISOString();
     const patch: any = { status };
-
     if (status === "approved") {
       patch.approved_at = now;
       patch.rejected_at = null;
@@ -430,10 +441,7 @@ function StatusButtons({
       patch.rejected_at = now;
     }
 
-    const { error } = await supabase
-      .from("topic_drafts")
-      .update(patch)
-      .eq("id", row.id);
+    const { error } = await supabase.from("topic_drafts").update(patch).eq("id", row.id);
 
     setLoadingStatus(null);
 
@@ -476,13 +484,7 @@ function StatusButtons({
   );
 }
 
-function CreateQuestionDraftButton({
-  row,
-  onCreated,
-}: {
-  row: TopicDraftRow;
-  onCreated: () => void;
-}) {
+function CreateQuestionDraftButton({ row, onCreated }: { row: TopicDraftRow; onCreated: () => void }) {
   const supabase = React.useMemo(createSupabase, []);
   const { toast } = useToast();
   const [loading, setLoading] = React.useState(false);
@@ -491,12 +493,9 @@ function CreateQuestionDraftButton({
     if (loading) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke(
-        "admin-create-question-draft",
-        {
-          body: { topic_draft_id: row.id },
-        },
-      );
+      const { data, error } = await supabase.functions.invoke("admin-create-question-draft", {
+        body: { topic_draft_id: row.id },
+      });
 
       if (error) {
         console.error("admin-create-question-draft error:", error);
@@ -508,31 +507,25 @@ function CreateQuestionDraftButton({
         return;
       }
 
-      const anyData = data as any;
-      if (!anyData?.ok) {
-        console.warn(
-          "admin-create-question-draft returned non-ok payload:",
-          anyData,
-        );
+      const payload: any = data ?? {};
+      if (!payload?.ok) {
         toast({
           title: "Question draft not created",
-          description:
-            "The function completed but did not return an ok flag. Check logs.",
+          description: "The function completed but did not return ok=true. Check logs.",
           variant: "destructive",
         });
       } else {
         toast({
           title: "Question draft created",
-          description:
-            "A question draft was generated from this topic. Review it on the Question Drafts admin page.",
+          description: "A question draft was generated from this topic.",
         });
         onCreated();
       }
-    } catch (err: any) {
-      console.error("admin-create-question-draft exception:", err);
+    } catch (e: any) {
+      console.error("admin-create-question-draft exception:", e);
       toast({
         title: "Question draft creation failed",
-        description: err?.message ?? String(err),
+        description: e?.message ?? String(e),
         variant: "destructive",
       });
     } finally {
@@ -541,12 +534,7 @@ function CreateQuestionDraftButton({
   };
 
   return (
-    <Button
-      size="sm"
-      variant="outline"
-      onClick={handleClick}
-      disabled={loading}
-    >
+    <Button size="sm" variant="outline" onClick={handleClick} disabled={loading}>
       {loading ? "Creating…" : "Create Question Draft"}
     </Button>
   );
