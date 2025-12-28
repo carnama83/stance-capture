@@ -46,10 +46,7 @@ type DebugEntry = {
 
 function safeErr(e: any) {
   if (!e) return e;
-  // supabase errors often have: message, status, code, details, hint
-  const out: any = {
-    message: e.message ?? String(e),
-  };
+  const out: any = { message: e.message ?? String(e) };
   if (e.status) out.status = e.status;
   if (e.code) out.code = e.code;
   if (e.details) out.details = e.details;
@@ -62,6 +59,26 @@ function maskEmail(v: string) {
   const at = s.indexOf("@");
   if (at <= 1) return s ? "***" : "";
   return `${s.slice(0, 1)}***${s.slice(at - 1)}`;
+}
+
+function getDebugFlag(): boolean {
+  try {
+    // Normal router: /signup?debug=1
+    const sp = new URLSearchParams(window.location.search);
+    if (sp.get("debug") === "1") return true;
+
+    // HashRouter: #/signup?debug=1
+    const h = window.location.hash || "";
+    const qIndex = h.indexOf("?");
+    if (qIndex >= 0) {
+      const hp = new URLSearchParams(h.slice(qIndex + 1));
+      if (hp.get("debug") === "1") return true;
+    }
+
+    return window.localStorage.getItem("auth_debug") === "1";
+  } catch {
+    return false;
+  }
 }
 
 // ---------- Geo data loader (uses geo_*_v views) ----------
@@ -462,20 +479,11 @@ export default function Signup() {
   const sb = React.useMemo(getSupabase, []);
   const nav = useNavigate();
 
-  // debug mode: ?debug=1 OR localStorage auth_debug=1
-  const debugEnabled = React.useMemo(() => {
-    try {
-      const qs = new URLSearchParams(window.location.search);
-      return (
-        qs.get("debug") === "1" || window.localStorage.getItem("auth_debug") === "1"
-      );
-    } catch {
-      return false;
-    }
-  }, []);
-
+  // ---- Debug mode: supports HashRouter (#/signup?debug=1) ----
+  const debugEnabled = React.useMemo(() => getDebugFlag(), []);
   const debugStartRef = React.useRef<number>(performance.now());
   const [debugLogs, setDebugLogs] = React.useState<DebugEntry[]>([]);
+
   const addLog = React.useCallback(
     (step: string, data?: any) => {
       if (!debugEnabled) return;
@@ -488,17 +496,13 @@ export default function Signup() {
       };
       setDebugLogs((prev) => {
         const next = [...prev, entry];
-        // keep last 200 to avoid runaway growth
         return next.length > 200 ? next.slice(next.length - 200) : next;
       });
-      // also mirror to console for quick capture
-      // eslint-disable-next-line no-console
       console.info(`[signup][${entry.ms}ms] ${step}`, data ?? "");
     },
     [debugEnabled]
   );
 
-  // Subscribe to auth state changes in debug mode
   React.useEffect(() => {
     if (!sb || !debugEnabled) return;
     addLog("auth.subscribe.start");
@@ -515,6 +519,12 @@ export default function Signup() {
       addLog("auth.subscribe.stop");
     };
   }, [sb, debugEnabled, addLog]);
+
+  async function copyDebug() {
+    const payload = JSON.stringify(debugLogs, null, 2);
+    await navigator.clipboard.writeText(payload);
+    addLog("debug.copy.ok", { bytes: payload.length });
+  }
 
   // refs for autofocus/scroll-to-first-error
   const refEmail = React.useRef<HTMLInputElement>(null);
@@ -783,6 +793,7 @@ export default function Signup() {
     addLog("onboarding.location.resolve.result", resolved ?? null);
 
     if (resolved) {
+      // ✅ Use auth.getUser() instead of whoami, so this always works when session exists
       const { data: u } = await sb.auth.getUser();
       const uid = u.user?.id;
       if (!uid) {
@@ -809,7 +820,7 @@ export default function Signup() {
       addLog("onboarding.location.set.ok");
     }
 
-    // 5) Session + Device tracking
+    // ✅ 5) Session + Device tracking (so tables populate immediately on immediate-login path)
     addLog("onboarding.touch_session.start");
     const s = await sb.rpc("touch_session", { p_ua: navigator.userAgent });
     if (s.error) {
@@ -856,6 +867,7 @@ export default function Signup() {
 
     debugStartRef.current = performance.now();
     if (debugEnabled) setDebugLogs([]);
+
     addLog("submit.start", {
       email: maskEmail(email),
       username: username.trim(),
@@ -878,9 +890,6 @@ export default function Signup() {
     try {
       setBusy(true);
 
-      // Helpful to know if env is present
-      addLog("supabase.present", { ok: !!sb });
-
       addLog("auth.signUp.start", { email: maskEmail(email) });
       const { error: signErr, data: signData } = await sb.auth.signUp({
         email,
@@ -891,7 +900,6 @@ export default function Signup() {
         throw signErr;
       }
       addLog("auth.signUp.ok", {
-        // signData may include user; session often null until confirm, depending on settings
         hasUser: !!signData?.user,
         hasSession: !!signData?.session,
       });
@@ -924,16 +932,6 @@ export default function Signup() {
     } finally {
       setBusy(false);
       addLog("submit.done");
-    }
-  }
-
-  async function copyDebug() {
-    try {
-      const payload = JSON.stringify(debugLogs, null, 2);
-      await navigator.clipboard.writeText(payload);
-      addLog("debug.copy.ok", { bytes: payload.length });
-    } catch (e) {
-      addLog("debug.copy.error", safeErr(e));
     }
   }
 
@@ -1101,21 +1099,23 @@ export default function Signup() {
               </div>
             </div>
             <p className="text-xs text-muted-foreground">
-              Debug enabled via <code>?debug=1</code> or{" "}
+              Debug enabled via <code>?debug=1</code> (HashRouter supported) or{" "}
               <code>localStorage.auth_debug=1</code>. Password is never logged.
             </p>
             <div className="max-h-64 overflow-auto rounded border bg-slate-50 p-2">
               <pre className="text-[11px] leading-4 whitespace-pre-wrap">
-{debugLogs.length
-  ? debugLogs
-      .map(
-        (l) =>
-          `${l.ms}ms | ${l.step}${
-            l.data !== undefined ? ` | ${JSON.stringify(l.data)}` : ""
-          }`
-      )
-      .join("\n")
-  : "No logs yet."}
+                {debugLogs.length
+                  ? debugLogs
+                      .map(
+                        (l) =>
+                          `${l.ms}ms | ${l.step}${
+                            l.data !== undefined
+                              ? ` | ${JSON.stringify(l.data)}`
+                              : ""
+                          }`
+                      )
+                      .join("\n")
+                  : "No logs yet."}
               </pre>
             </div>
           </div>
