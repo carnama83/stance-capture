@@ -47,7 +47,7 @@ const STATUS_FILTERS: { value: "all" | DraftStatus; label: string }[] = [
 ];
 
 export default function TopicDraftsPage() {
-  const supabase = React.useMemo(createSupabase, []);
+  const supabase = createSupabase(); // Call directly instead of useMemo
   const { toast } = useToast();
 
   const [rows, setRows] = React.useState<TopicDraftRow[]>([]);
@@ -330,7 +330,7 @@ function StatusBadge({ status }: { status: DraftStatus }) {
 }
 
 function EditTopicDialog({ row, onSaved }: { row: TopicDraftRow; onSaved: () => void }) {
-  const supabase = React.useMemo(createSupabase, []);
+  const supabase = createSupabase(); // Call directly
   const { toast } = useToast();
 
   const [open, setOpen] = React.useState(false);
@@ -430,7 +430,7 @@ function StatusButtons({
   row: TopicDraftRow;
   onChanged: () => void;
 }) {
-  const supabase = React.useMemo(createSupabase, []);
+  const supabase = createSupabase(); // Call directly
   const { toast } = useToast();
 
   const [loadingStatus, setLoadingStatus] = React.useState<DraftStatus | null>(null);
@@ -611,7 +611,7 @@ function StatusButtons({
 }
 
 function CreateQuestionDraftButton({ row, onCreated }: { row: TopicDraftRow; onCreated: () => void }) {
-  const supabase = React.useMemo(createSupabase, []);
+  const supabase = createSupabase(); // Call directly
   const { toast } = useToast();
   const [loading, setLoading] = React.useState(false);
 
