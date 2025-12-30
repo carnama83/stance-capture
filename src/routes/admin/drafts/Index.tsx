@@ -442,101 +442,104 @@ function StatusButtons({
     setOptimisticStatus(row.status);
   }, [row.status]);
 
-const withTimeout = async <T,>(
-  run: (signal: AbortSignal) => Promise<T>,
-  ms: number,
-): Promise<T> => {
-  const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), ms);
+  const withTimeout = async <T,>(
+    run: (signal: AbortSignal) => Promise<T>,
+    ms: number,
+  ): Promise<T> => {
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), ms);
 
-  try {
-    return await run(controller.signal);
-  } catch (e: any) {
-    // Normalize abort into your existing timeout message
-    if (e?.name === "AbortError") {
-      throw new Error(`Request timed out after ${ms}ms`);
+    try {
+      return await run(controller.signal);
+    } catch (e: any) {
+      // Normalize abort into your existing timeout message
+      if (e?.name === "AbortError") {
+        throw new Error(`Request timed out after ${ms}ms`);
+      }
+      throw e;
+    } finally {
+      clearTimeout(t);
     }
-    throw e;
-  } finally {
-    clearTimeout(t);
-  }
-};
+  };
 
   const updateStatus = async (status: DraftStatus) => {
-  if (loadingStatus) return;
+    if (loadingStatus) return;
 
-  // optimistic UI
-  setOptimisticStatus(status);
-  setLoadingStatus(status);
+    // optimistic UI
+    setOptimisticStatus(status);
+    setLoadingStatus(status);
 
-  const now = new Date().toISOString();
-  const patch: any = { status };
-  if (status === "approved") {
-    patch.approved_at = now;
-    patch.rejected_at = null;
-  } else if (status === "rejected") {
-    patch.rejected_at = now;
-  }
-// 🔍 DEBUG: confirm update payload
-console.log("Updating draft", row.id, patch);
-  try {
-    const { error } = await withTimeout(
-      (signal) =>
-        supabase
-          .from("topic_drafts")
-          .update(patch)
-          .eq("id", row.id)
-          .abortSignal(signal),
-      30000, // keep your 30s if you want
-    );
-
-    if (error) {
-      setOptimisticStatus(row.status);
-
-      console.error("Failed to update status:", error);
-      toast({
-        title: "Failed to update status",
-        description: error.message,
-        variant: "destructive",
-      });
-      return;
+    const now = new Date().toISOString();
+    const patch: any = { status };
+    if (status === "approved") {
+      patch.approved_at = now;
+      patch.rejected_at = null;
+    } else if (status === "rejected") {
+      patch.rejected_at = now;
     }
 
-const isAbort =
-  error?.code === "20" ||
-  String(error?.message ?? "").toLowerCase().includes("aborterror");
+    // 🔍 DEBUG: confirm update payload
+    console.log("Updating draft", row.id, patch);
 
-if (isAbort) {
-  toast({
-    title: "Status update timed out",
-    description: "The request took too long. Please try again.",
-    variant: "destructive",
-  });
-  return;
-}
+    try {
+      const { error } = await withTimeout(
+        (signal) =>
+          supabase
+            .from("topic_drafts")
+            .update(patch)
+            .eq("id", row.id)
+            .abortSignal(signal),
+        30000,
+      );
 
+      if (error) {
+        // Revert optimistic UI on error
+        setOptimisticStatus(row.status);
 
-    
-    toast({
-      title: "Status updated",
-      description: `Topic draft marked as ${status}.`,
-    });
+        // Check if it's an abort/timeout error
+        const isAbort =
+          error?.code === "20" ||
+          String(error?.message ?? "").toLowerCase().includes("aborterror");
 
-    // ✅ refresh list without holding the button spinner
-    void onChanged();
-  } catch (e: any) {
-    setOptimisticStatus(row.status);
+        if (isAbort) {
+          toast({
+            title: "Status update timed out",
+            description: "The request took too long. Please try again.",
+            variant: "destructive",
+          });
+        } else {
+          console.error("Failed to update status:", error);
+          toast({
+            title: "Failed to update status",
+            description: error.message,
+            variant: "destructive",
+          });
+        }
+        return;
+      }
 
-    console.error("updateStatus exception:", e);
-    toast({
-      title: "Status update failed",
-      description: e?.message ?? String(e),
-      variant: "destructive",
-    });
-  } finally {
-    setLoadingStatus(null);
-  }
-};
+      // Only reach here if no error - success!
+      toast({
+        title: "Status updated",
+        description: `Topic draft marked as ${status}.`,
+      });
+
+      // ✅ refresh list without holding the button spinner
+      void onChanged();
+    } catch (e: any) {
+      // Revert optimistic UI on exception
+      setOptimisticStatus(row.status);
+
+      console.error("updateStatus exception:", e);
+      toast({
+        title: "Status update failed",
+        description: e?.message ?? String(e),
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingStatus(null);
+    }
+  };
 
   const effectiveStatus = optimisticStatus;
 
