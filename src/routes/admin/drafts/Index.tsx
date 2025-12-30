@@ -443,22 +443,21 @@ function StatusButtons({
   }, [row.status]);
 
   const withTimeout = async <T,>(
-    run: (signal: AbortSignal) => Promise<T>,
+    promise: Promise<T>,
     ms: number,
   ): Promise<T> => {
-    const controller = new AbortController();
-    const t = setTimeout(() => controller.abort(), ms);
+    let timeoutId: NodeJS.Timeout;
+    
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        reject(new Error(`Request timed out after ${ms}ms`));
+      }, ms);
+    });
 
     try {
-      return await run(controller.signal);
-    } catch (e: any) {
-      // Normalize abort into your existing timeout message
-      if (e?.name === "AbortError") {
-        throw new Error(`Request timed out after ${ms}ms`);
-      }
-      throw e;
+      return await Promise.race([promise, timeoutPromise]);
     } finally {
-      clearTimeout(t);
+      clearTimeout(timeoutId!);
     }
   };
 
@@ -484,17 +483,13 @@ function StatusButtons({
 
     try {
       console.log("⏱️ Starting withTimeout wrapper...");
-      const result = await withTimeout(
-        (signal) => {
-          console.log("🚀 Executing supabase update...");
-          return supabase
-            .from("topic_drafts")
-            .update(patch)
-            .eq("id", row.id)
-            .abortSignal(signal);
-        },
-        30000,
-      );
+      const supabasePromise = supabase
+        .from("topic_drafts")
+        .update(patch)
+        .eq("id", row.id);
+      
+      console.log("🚀 Executing supabase update...");
+      const result = await withTimeout(supabasePromise, 30000);
 
       console.log("✅ withTimeout completed, result:", result);
       const { data, error } = result;
