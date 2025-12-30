@@ -465,6 +465,8 @@ function StatusButtons({
   const updateStatus = async (status: DraftStatus) => {
     if (loadingStatus) return;
 
+    console.log("🔵 Starting status update", { status, rowId: row.id });
+
     // optimistic UI
     setOptimisticStatus(status);
     setLoadingStatus(status);
@@ -478,21 +480,27 @@ function StatusButtons({
       patch.rejected_at = now;
     }
 
-    // 🔍 DEBUG: confirm update payload
-    console.log("Updating draft", row.id, patch);
+    console.log("📦 Patch payload:", patch);
 
     try {
-      const { error } = await withTimeout(
-        (signal) =>
-          supabase
+      console.log("⏱️ Starting withTimeout wrapper...");
+      const result = await withTimeout(
+        (signal) => {
+          console.log("🚀 Executing supabase update...");
+          return supabase
             .from("topic_drafts")
             .update(patch)
             .eq("id", row.id)
-            .abortSignal(signal),
+            .abortSignal(signal);
+        },
         30000,
       );
 
+      console.log("✅ withTimeout completed, result:", result);
+      const { data, error } = result;
+
       if (error) {
+        console.error("❌ Supabase returned error:", error);
         // Revert optimistic UI on error
         setOptimisticStatus(row.status);
 
@@ -502,13 +510,14 @@ function StatusButtons({
           String(error?.message ?? "").toLowerCase().includes("aborterror");
 
         if (isAbort) {
+          console.log("⏱️ Detected abort/timeout");
           toast({
             title: "Status update timed out",
             description: "The request took too long. Please try again.",
             variant: "destructive",
           });
         } else {
-          console.error("Failed to update status:", error);
+          console.error("💥 Non-timeout error:", error);
           toast({
             title: "Failed to update status",
             description: error.message,
@@ -519,24 +528,42 @@ function StatusButtons({
       }
 
       // Only reach here if no error - success!
+      console.log("🎉 Update successful, data:", data);
       toast({
         title: "Status updated",
         description: `Topic draft marked as ${status}.`,
       });
 
       // ✅ refresh list without holding the button spinner
+      console.log("🔄 Calling onChanged to refresh list...");
       void onChanged();
     } catch (e: any) {
+      console.error("💥 Exception caught:", e);
+      console.error("Exception name:", e?.name);
+      console.error("Exception message:", e?.message);
+      
       // Revert optimistic UI on exception
       setOptimisticStatus(row.status);
 
-      console.error("updateStatus exception:", e);
-      toast({
-        title: "Status update failed",
-        description: e?.message ?? String(e),
-        variant: "destructive",
-      });
+      const isAbortError = e?.name === "AbortError" || e?.message?.includes("timed out");
+      
+      if (isAbortError) {
+        console.log("⏱️ Timeout exception caught");
+        toast({
+          title: "Status update timed out",
+          description: "The request took too long. Please try again.",
+          variant: "destructive",
+        });
+      } else {
+        console.error("💥 Non-timeout exception");
+        toast({
+          title: "Status update failed",
+          description: e?.message ?? String(e),
+          variant: "destructive",
+        });
+      }
     } finally {
+      console.log("🏁 Finally block - clearing loading status");
       setLoadingStatus(null);
     }
   };
