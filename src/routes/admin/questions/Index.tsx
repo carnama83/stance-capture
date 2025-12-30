@@ -598,4 +598,23 @@ function PullBackLiveQuestionButton({
 
       if (error) {
         console.error("admin_pull_back_live_question error:", error);
-        alert(error.mes
+        alert(error.message ?? "Failed to pull back live question.");
+        return;
+      }
+
+      alert("Live question pulled back.");
+      onPulledBack();
+    } catch (err: any) {
+      console.error("admin_pull_back_live_question exception:", err);
+      alert(err?.message ?? String(err));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Button size="sm" variant="outline" onClick={handlePullBack} disabled={loading}>
+      {loading ? "Pulling back…" : "Pull Back Live Question"}
+    </Button>
+  );
+}
