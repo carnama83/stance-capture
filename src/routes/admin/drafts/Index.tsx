@@ -466,17 +466,33 @@ function StatusButtons({
 
     console.log("🔵 Starting status update", { status, rowId: row.id });
 
+    // 🔍 DEBUG: Check authentication
+    const { data: { user } } = await supabase.auth.getUser();
+    console.log("👤 Current user:", user?.id, user?.email);
+    
+    // Check if user is admin
+    const { data: adminCheck } = await supabase
+      .from('admin_users')
+      .select('user_id')
+      .eq('user_id', user?.id)
+      .single();
+    console.log("🔑 Is admin:", !!adminCheck);
+
     // optimistic UI
     setOptimisticStatus(status);
     setLoadingStatus(status);
 
     const now = new Date().toISOString();
+    
     const patch: any = { status };
     if (status === "approved") {
       patch.approved_at = now;
       patch.rejected_at = null;
+      patch.approved_by = user?.id || null;
+      patch.rejected_by = null;
     } else if (status === "rejected") {
       patch.rejected_at = now;
+      patch.rejected_by = user?.id || null;
     }
 
     console.log("📦 Patch payload:", patch);
@@ -489,7 +505,7 @@ function StatusButtons({
         .eq("id", row.id);
       
       console.log("🚀 Executing supabase update...");
-      const result = await withTimeout(supabasePromise, 30000);
+      const result = await withTimeout(supabasePromise, 10000); // Reduced to 10s for faster feedback
 
       console.log("✅ withTimeout completed, result:", result);
       const { data, error } = result;
