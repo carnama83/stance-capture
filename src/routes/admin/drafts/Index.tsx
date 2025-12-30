@@ -477,7 +477,8 @@ const withTimeout = async <T,>(
   } else if (status === "rejected") {
     patch.rejected_at = now;
   }
-
+// 🔍 DEBUG: confirm update payload
+console.log("Updating draft", row.id, patch);
   try {
     const { error } = await withTimeout(
       (signal) =>
