@@ -442,91 +442,85 @@ function StatusButtons({
     setOptimisticStatus(row.status);
   }, [row.status]);
 
-  const withTimeout = async <T,>(p: Promise<T>, ms: number): Promise<T> => {
-    return await Promise.race([
-      p,
-      new Promise<T>((_, reject) =>
-        setTimeout(() => reject(new Error(`Request timed out after ${ms}ms`)), ms),
-      ),
-    ]);
-  };
+const withTimeout = async <T,>(
+  run: (signal: AbortSignal) => Promise<T>,
+  ms: number,
+): Promise<T> => {
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), ms);
+
+  try {
+    return await run(controller.signal);
+  } catch (e: any) {
+    // Normalize abort into your existing timeout message
+    if (e?.name === "AbortError") {
+      throw new Error(`Request timed out after ${ms}ms`);
+    }
+    throw e;
+  } finally {
+    clearTimeout(t);
+  }
+};
 
   const updateStatus = async (status: DraftStatus) => {
-    if (loadingStatus) return;
+  if (loadingStatus) return;
 
-    // ✅ immediate UI feedback (optimistic)
-    setOptimisticStatus(status);
-    setLoadingStatus(status);
+  // optimistic UI
+  setOptimisticStatus(status);
+  setLoadingStatus(status);
 
-    const now = new Date().toISOString();
-    const patch: any = { status };
-    if (status === "approved") {
-      patch.approved_at = now;
-      patch.rejected_at = null;
-    } else if (status === "rejected") {
-      patch.rejected_at = now;
-    }
+  const now = new Date().toISOString();
+  const patch: any = { status };
+  if (status === "approved") {
+    patch.approved_at = now;
+    patch.rejected_at = null;
+  } else if (status === "rejected") {
+    patch.rejected_at = now;
+  }
 
-    try {
-      // ✅ request the updated row back so we KNOW it changed
-      const req = supabase
-        .from("topic_drafts")
-        .update(patch)
-        .eq("id", row.id)
-        .select("id,status,approved_at,rejected_at")
-        .single();
+  try {
+    const { error } = await withTimeout(
+      (signal) =>
+        supabase
+          .from("topic_drafts")
+          .update(patch)
+          .eq("id", row.id)
+          .abortSignal(signal),
+      30000, // keep your 30s if you want
+    );
 
-      const { data, error } = await withTimeout(req, 30000);
-
-      if (error) {
-        // rollback optimistic UI
-        setOptimisticStatus(row.status);
-
-        console.error("Failed to update status:", error);
-        toast({
-          title: "Failed to update status",
-          description: error.message,
-          variant: "destructive",
-        });
-        return;
-      }
-
-      if (!data?.id) {
-        // rollback optimistic UI
-        setOptimisticStatus(row.status);
-
-        toast({
-          title: "No row updated",
-          description:
-            "The update returned no row. This usually means RLS blocked it or the row no longer exists.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      toast({
-        title: "Status updated",
-        description: `Topic draft marked as ${data.status}.`,
-      });
-
-      // ✅ refresh list so status filter / ordering stays correct
-      //await onChanged();
-      void onChanged(); // fire-and-forget refresh; don’t hold the “Approving…” spinner hostage
-
-    } catch (e: any) {
-      // rollback optimistic UI
+    if (error) {
       setOptimisticStatus(row.status);
 
-      console.error("updateStatus exception:", e);
+      console.error("Failed to update status:", error);
       toast({
-        title: "Status update failed",
-        description: e?.message ?? String(e),
+        title: "Failed to update status",
+        description: error.message,
         variant: "destructive",
       });
-    } finally {
-      setLoadingStatus(null);
+      return;
     }
-  };
+
+    toast({
+      title: "Status updated",
+      description: `Topic draft marked as ${status}.`,
+    });
+
+    // ✅ refresh list without holding the button spinner
+    void onChanged();
+  } catch (e: any) {
+    setOptimisticStatus(row.status);
+
+    console.error("updateStatus exception:", e);
+    toast({
+      title: "Status update failed",
+      description: e?.message ?? String(e),
+      variant: "destructive",
+    });
+  } finally {
+    setLoadingStatus(null);
+  }
+};
 
   const effectiveStatus = optimisticStatus;
 
