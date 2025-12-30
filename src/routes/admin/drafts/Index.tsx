@@ -502,6 +502,21 @@ console.log("Updating draft", row.id, patch);
       return;
     }
 
+const isAbort =
+  error?.code === "20" ||
+  String(error?.message ?? "").toLowerCase().includes("aborterror");
+
+if (isAbort) {
+  toast({
+    title: "Status update timed out",
+    description: "The request took too long. Please try again.",
+    variant: "destructive",
+  });
+  return;
+}
+
+
+    
     toast({
       title: "Status updated",
       description: `Topic draft marked as ${status}.`,
