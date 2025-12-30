@@ -485,6 +485,20 @@ function StatusButtons({
     try {
       console.log("⏱️ Starting withTimeout wrapper...");
       
+      // First, try to SELECT the row to confirm we can read it
+      console.log("🔍 Testing SELECT first...");
+      const { data: testRead, error: readError } = await supabase
+        .from("topic_drafts")
+        .select("id, status")
+        .eq("id", row.id)
+        .single();
+      
+      console.log("📖 SELECT result:", { data: testRead, error: readError });
+      
+      if (readError) {
+        throw new Error(`Cannot read row: ${readError.message}`);
+      }
+      
       // Create the update query
       const updateQuery = supabase
         .from("topic_drafts")
