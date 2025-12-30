@@ -476,7 +476,7 @@ function StatusButtons({
         .select("id,status,approved_at,rejected_at")
         .single();
 
-      const { data, error } = await withTimeout(req, 12000);
+      const { data, error } = await withTimeout(req, 30000);
 
       if (error) {
         // rollback optimistic UI
@@ -510,7 +510,9 @@ function StatusButtons({
       });
 
       // ✅ refresh list so status filter / ordering stays correct
-      await onChanged();
+      --await onChanged();
+      void onChanged(); // fire-and-forget refresh; don’t hold the “Approving…” spinner hostage
+
     } catch (e: any) {
       // rollback optimistic UI
       setOptimisticStatus(row.status);
