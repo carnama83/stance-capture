@@ -53,6 +53,9 @@ const STATUS_FILTERS: { value: "all" | QuestionStatus; label: string }[] = [
   { value: "rejected", label: "Rejected" },
 ];
 
+// 👇 Change this if your RPC name differs
+const PULL_BACK_RPC = "admin_pull_back_live_question";
+
 export default function QuestionDraftsPage() {
   const supabase = React.useMemo(createSupabase, []);
   const [rows, setRows] = React.useState<QuestionDraftRow[]>([]);
@@ -64,19 +67,10 @@ export default function QuestionDraftsPage() {
   const [dateFrom, setDateFrom] = React.useState("");
   const [dateTo, setDateTo] = React.useState("");
 
-  // UI-only “published” state. (If you want persistence across refresh, we’ll wire it to DB.)
+  // ✅ persisted-by-query published state (survives refresh)
   const [publishedDraftIds, setPublishedDraftIds] = React.useState<Set<string>>(
     () => new Set(),
   );
-
-  const markPublished = React.useCallback((draftId: string, v: boolean) => {
-    setPublishedDraftIds((prev) => {
-      const next = new Set(prev);
-      if (v) next.add(draftId);
-      else next.delete(draftId);
-      return next;
-    });
-  }, []);
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -115,21 +109,16 @@ export default function QuestionDraftsPage() {
       .order("created_at", { ascending: false })
       .limit(200);
 
-    if (statusFilter !== "all") {
-      q = q.eq("status", statusFilter);
-    }
-    if (dateFrom) {
-      q = q.gte("created_at", dateFrom);
-    }
-    if (dateTo) {
-      q = q.lte("created_at", dateTo);
-    }
+    if (statusFilter !== "all") q = q.eq("status", statusFilter);
+    if (dateFrom) q = q.gte("created_at", dateFrom);
+    if (dateTo) q = q.lte("created_at", dateTo);
 
     const { data, error } = await q;
 
     if (error) {
       console.error("Failed to load question_drafts:", error);
       setRows([]);
+      setPublishedDraftIds(new Set());
       setLoading(false);
       return;
     }
@@ -137,10 +126,18 @@ export default function QuestionDraftsPage() {
     let items = (data ?? []) as QuestionDraftRow[];
     if (search.trim()) {
       const needle = search.trim().toLowerCase();
-      items = items.filter((r) => (r.question ?? "").toLowerCase().includes(needle));
+      items = items.filter((r) =>
+        (r.question ?? "").toLowerCase().includes(needle),
+      );
     }
 
     setRows(items);
+
+    // ✅ detect published drafts by checking live questions table(s)
+    const ids = items.map((r) => r.id);
+    const publishedSet = await fetchPublishedDraftIds(supabase, ids);
+    setPublishedDraftIds(publishedSet);
+
     setLoading(false);
   }, [supabase, statusFilter, search, dateFrom, dateTo]);
 
@@ -163,7 +160,9 @@ export default function QuestionDraftsPage() {
             type="datetime-local"
             value={dateFrom}
             onChange={(e) =>
-              setDateFrom(e.target.value ? new Date(e.target.value).toISOString() : "")
+              setDateFrom(
+                e.target.value ? new Date(e.target.value).toISOString() : "",
+              )
             }
             className="w-48"
           />
@@ -171,14 +170,18 @@ export default function QuestionDraftsPage() {
             type="datetime-local"
             value={dateTo}
             onChange={(e) =>
-              setDateTo(e.target.value ? new Date(e.target.value).toISOString() : "")
+              setDateTo(
+                e.target.value ? new Date(e.target.value).toISOString() : "",
+              )
             }
             className="w-48"
           />
           <select
             className="border rounded px-2 py-1 text-sm"
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as "all" | QuestionStatus)}
+            onChange={(e) =>
+              setStatusFilter(e.target.value as "all" | QuestionStatus)
+            }
           >
             {STATUS_FILTERS.map((s) => (
               <option key={s.value} value={s.value}>
@@ -193,9 +196,13 @@ export default function QuestionDraftsPage() {
       </CardHeader>
 
       <CardContent className="space-y-3">
-        {loading && <div className="p-4 text-sm text-muted-foreground">Loading…</div>}
+        {loading && (
+          <div className="p-4 text-sm text-muted-foreground">Loading…</div>
+        )}
         {!loading && rows.length === 0 && (
-          <div className="p-4 text-sm text-muted-foreground">No question drafts found.</div>
+          <div className="p-4 text-sm text-muted-foreground">
+            No question drafts found.
+          </div>
         )}
 
         {rows.map((row) => (
@@ -204,7 +211,6 @@ export default function QuestionDraftsPage() {
             row={row}
             onChanged={load}
             isPublished={publishedDraftIds.has(row.id)}
-            markPublished={markPublished}
           />
         ))}
       </CardContent>
@@ -212,16 +218,64 @@ export default function QuestionDraftsPage() {
   );
 }
 
+/**
+ * Attempts to determine which question_drafts have already been published
+ * by looking for live rows referencing the draft id.
+ *
+ * Tries common combinations:
+ * - questions.draft_id
+ * - questions.question_draft_id
+ * - live_questions.draft_id
+ * - live_questions.question_draft_id
+ */
+async function fetchPublishedDraftIds(
+  supabase: ReturnType<typeof createSupabase>,
+  draftIds: string[],
+): Promise<Set<string>> {
+  const out = new Set<string>();
+  if (draftIds.length === 0) return out;
+
+  const candidates: Array<{ table: string; col: string }> = [
+    { table: "questions", col: "draft_id" },
+    { table: "questions", col: "question_draft_id" },
+    { table: "live_questions", col: "draft_id" },
+    { table: "live_questions", col: "question_draft_id" },
+  ];
+
+  for (const c of candidates) {
+    const { data, error } = await supabase
+      .from(c.table)
+      .select(`${c.col}`)
+      .in(c.col, draftIds)
+      .limit(1000);
+
+    if (error) {
+      // Try next candidate silently; we’ll only warn if none work.
+      continue;
+    }
+
+    for (const row of data ?? []) {
+      const id = (row as any)[c.col];
+      if (typeof id === "string") out.add(id);
+    }
+    return out; // success with this candidate
+  }
+
+  console.warn(
+    "Could not detect published questions: none of the candidate live tables/columns worked. " +
+      "Update fetchPublishedDraftIds() to match your schema.",
+  );
+  return out;
+}
+
 function QuestionDraftRowView({
   row,
   onChanged,
   isPublished,
-  markPublished,
 }: {
   row: QuestionDraftRow;
   onChanged: () => void;
   isPublished: boolean;
-  markPublished: (draftId: string, v: boolean) => void;
 }) {
   const topic = row.topic_drafts ?? null;
   const news = topic?.news_items ?? null;
@@ -244,7 +298,9 @@ function QuestionDraftRowView({
                 Published
               </span>
             )}
-            <span>{row.created_at ? new Date(row.created_at).toLocaleString() : "—"}</span>
+            <span>
+              {row.created_at ? new Date(row.created_at).toLocaleString() : "—"}
+            </span>
           </div>
 
           <h3 className="text-base font-semibold break-words">{row.question}</h3>
@@ -259,7 +315,11 @@ function QuestionDraftRowView({
             </div>
           )}
 
-          {topic?.title && <div className="text-xs text-muted-foreground mt-1">Topic: {topic.title}</div>}
+          {topic?.title && (
+            <div className="text-xs text-muted-foreground mt-1">
+              Topic: {topic.title}
+            </div>
+          )}
         </div>
 
         <div className="flex flex-col gap-2 items-end">
@@ -267,30 +327,25 @@ function QuestionDraftRowView({
           <div className="flex gap-2 flex-wrap justify-end">
             <PublishButton
               row={row}
-              onPublished={() => {
-                markPublished(row.id, true);
-                onChanged();
-              }}
-              disabledBecauseRejected={isRejected}
-              disabledBecausePublished={isPublished}
+              onPublished={onChanged}
+              isPublished={isPublished}
             />
-
             <StatusButtons
               row={row}
               onChanged={onChanged}
-              disabledBecauseRejected={isRejected}
-              disabledBecausePublished={isPublished}
+              isPublished={isPublished}
             />
-
             <PullBackLiveQuestionButton
-              row={row}
+              draftId={row.id}
               visible={isPublished}
-              onPulledBack={() => {
-                markPublished(row.id, false);
-                onChanged();
-              }}
+              onPulledBack={onChanged}
             />
           </div>
+          {isRejected && (
+            <div className="text-[11px] text-muted-foreground">
+              Rejected → Approve/Publish disabled
+            </div>
+          )}
         </div>
       </div>
 
@@ -306,7 +361,11 @@ function QuestionDraftRowView({
           View article <ExternalLink className="h-3 w-3" />
         </a>
       )}
-      {newsTitle && <div className="text-xs text-muted-foreground mt-1 line-clamp-2">Article: {newsTitle}</div>}
+      {newsTitle && (
+        <div className="text-xs text-muted-foreground mt-1 line-clamp-2">
+          Article: {newsTitle}
+        </div>
+      )}
     </div>
   );
 }
@@ -331,7 +390,9 @@ function StatusBadge({ status }: { status: QuestionStatus }) {
   }
 
   return (
-    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${cls}`}>
+    <span
+      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${cls}`}
+    >
       {label}
     </span>
   );
@@ -393,7 +454,11 @@ function EditQuestionDialog({
           </div>
           <div>
             <Label>Summary</Label>
-            <Textarea rows={4} value={summary} onChange={(e) => setSummary(e.target.value)} />
+            <Textarea
+              rows={4}
+              value={summary}
+              onChange={(e) => setSummary(e.target.value)}
+            />
           </div>
           <div>
             <Label>Tags (comma-separated)</Label>
@@ -419,13 +484,11 @@ function EditQuestionDialog({
 function StatusButtons({
   row,
   onChanged,
-  disabledBecauseRejected,
-  disabledBecausePublished,
+  isPublished,
 }: {
   row: QuestionDraftRow;
   onChanged: () => void;
-  disabledBecauseRejected: boolean;
-  disabledBecausePublished: boolean;
+  isPublished: boolean;
 }) {
   const supabase = React.useMemo(createSupabase, []);
 
@@ -449,11 +512,11 @@ function StatusButtons({
     onChanged();
   };
 
-  const approveDisabled =
-    disabledBecausePublished || disabledBecauseRejected || row.status === "approved";
-
-  // You can still reject an approved draft (until it’s published). Once rejected, others disable.
-  const rejectDisabled = disabledBecausePublished || row.status === "rejected";
+  // ✅ Your rules:
+  // - If rejected → approve disabled
+  // - If published → approve + reject disabled
+  const approveDisabled = isPublished || row.status === "rejected" || row.status === "approved";
+  const rejectDisabled = isPublished || row.status === "rejected";
 
   return (
     <div className="flex gap-2">
@@ -462,13 +525,7 @@ function StatusButtons({
         variant="outline"
         onClick={() => updateStatus("approved")}
         disabled={approveDisabled}
-        title={
-          disabledBecausePublished
-            ? "Already published"
-            : disabledBecauseRejected
-              ? "Rejected drafts cannot be approved"
-              : undefined
-        }
+        title={isPublished ? "Already published" : row.status === "rejected" ? "Rejected cannot be approved" : ""}
       >
         Approve
       </Button>
@@ -477,7 +534,7 @@ function StatusButtons({
         variant="outline"
         onClick={() => updateStatus("rejected")}
         disabled={rejectDisabled}
-        title={disabledBecausePublished ? "Already published" : undefined}
+        title={isPublished ? "Already published" : ""}
       >
         Reject
       </Button>
@@ -488,13 +545,11 @@ function StatusButtons({
 function PublishButton({
   row,
   onPublished,
-  disabledBecauseRejected,
-  disabledBecausePublished,
+  isPublished,
 }: {
   row: QuestionDraftRow;
   onPublished: () => void;
-  disabledBecauseRejected: boolean;
-  disabledBecausePublished: boolean;
+  isPublished: boolean;
 }) {
   const supabase = React.useMemo(createSupabase, []);
   const [loading, setLoading] = React.useState(false);
@@ -502,9 +557,12 @@ function PublishButton({
   const handleClick = async () => {
     if (loading) return;
 
-    if (disabledBecausePublished) return;
+    if (isPublished) {
+      alert("Already published.");
+      return;
+    }
 
-    if (disabledBecauseRejected) {
+    if (row.status === "rejected") {
       alert("Rejected drafts cannot be published.");
       return;
     }
@@ -518,9 +576,7 @@ function PublishButton({
 
     setLoading(true);
     try {
-      const { data, error } = await supabase.rpc("admin_publish_question_draft", {
-        p_draft_id: row.id,
-      });
+      const { error } = await supabase.rpc("admin_publish_question_draft", { p_draft_id: row.id });
 
       if (error) {
         console.error("admin_publish_question_draft error:", error);
@@ -528,10 +584,8 @@ function PublishButton({
         return;
       }
 
-      // success: lock actions + show “Pull Back” button
       alert("Question published.");
       onPublished();
-      // optional: console.log("Published question:", data);
     } catch (err: any) {
       console.error("admin_publish_question_draft exception:", err);
       alert(err?.message ?? String(err));
@@ -540,64 +594,45 @@ function PublishButton({
     }
   };
 
+  // ✅ Your rules:
+  // - rejected → publish disabled
+  // - published → publish disabled
+  // - only approved → enabled
   const disabled =
-    loading ||
-    disabledBecauseRejected ||
-    disabledBecausePublished ||
-    row.status !== "approved";
+    loading || isPublished || row.status === "rejected" || row.status !== "approved";
 
   return (
-    <Button
-      size="sm"
-      variant="outline"
-      onClick={handleClick}
-      disabled={disabled}
-      title={
-        disabledBecausePublished
-          ? "Already published"
-          : disabledBecauseRejected
-            ? "Rejected drafts cannot be published"
-            : row.status !== "approved"
-              ? "Approve before publishing"
-              : undefined
-      }
-    >
+    <Button size="sm" variant="outline" onClick={handleClick} disabled={disabled}>
       {loading ? "Publishing…" : "Publish"}
     </Button>
   );
 }
 
 function PullBackLiveQuestionButton({
-  row,
+  draftId,
   visible,
   onPulledBack,
 }: {
-  row: QuestionDraftRow;
+  draftId: string;
   visible: boolean;
   onPulledBack: () => void;
 }) {
   const supabase = React.useMemo(createSupabase, []);
   const [loading, setLoading] = React.useState(false);
 
+  // ✅ only visible after publish
   if (!visible) return null;
 
   const handlePullBack = async () => {
     if (loading) return;
-    if (!confirm("Pull back (unpublish) this live question?")) return;
+    if (!confirm("Pull Back this live question?")) return;
 
     setLoading(true);
     try {
-      // 🔧 IMPORTANT:
-      // Replace this RPC name/args with your actual unpublish function.
-      // Common choices:
-      // - admin_pull_back_live_question(p_draft_id uuid)
-      // - admin_unpublish_question_draft(p_draft_id uuid)
-      const { error } = await supabase.rpc("admin_pull_back_live_question", {
-        p_draft_id: row.id,
-      });
+      const { error } = await supabase.rpc(PULL_BACK_RPC, { p_draft_id: draftId });
 
       if (error) {
-        console.error("admin_pull_back_live_question error:", error);
+        console.error(`${PULL_BACK_RPC} error:`, error);
         alert(error.message ?? "Failed to pull back live question.");
         return;
       }
@@ -605,7 +640,7 @@ function PullBackLiveQuestionButton({
       alert("Live question pulled back.");
       onPulledBack();
     } catch (err: any) {
-      console.error("admin_pull_back_live_question exception:", err);
+      console.error(`${PULL_BACK_RPC} exception:`, err);
       alert(err?.message ?? String(err));
     } finally {
       setLoading(false);
