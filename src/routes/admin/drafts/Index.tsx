@@ -423,13 +423,39 @@ function EditTopicDialog({ row, onSaved }: { row: TopicDraftRow; onSaved: () => 
   );
 }
 
-function StatusButtons({ row, onChanged }: { row: TopicDraftRow; onChanged: () => void }) {
+function StatusButtons({
+  row,
+  onChanged,
+}: {
+  row: TopicDraftRow;
+  onChanged: () => void;
+}) {
   const supabase = React.useMemo(createSupabase, []);
   const { toast } = useToast();
+
   const [loadingStatus, setLoadingStatus] = React.useState<DraftStatus | null>(null);
+
+  // Local optimistic status so the UI doesn't "snap back" while refresh is happening
+  const [optimisticStatus, setOptimisticStatus] = React.useState<DraftStatus>(row.status);
+
+  React.useEffect(() => {
+    setOptimisticStatus(row.status);
+  }, [row.status]);
+
+  const withTimeout = async <T,>(p: Promise<T>, ms: number): Promise<T> => {
+    return await Promise.race([
+      p,
+      new Promise<T>((_, reject) =>
+        setTimeout(() => reject(new Error(`Request timed out after ${ms}ms`)), ms),
+      ),
+    ]);
+  };
 
   const updateStatus = async (status: DraftStatus) => {
     if (loadingStatus) return;
+
+    // ✅ immediate UI feedback (optimistic)
+    setOptimisticStatus(status);
     setLoadingStatus(status);
 
     const now = new Date().toISOString();
@@ -441,26 +467,66 @@ function StatusButtons({ row, onChanged }: { row: TopicDraftRow; onChanged: () =
       patch.rejected_at = now;
     }
 
-    const { error } = await supabase.from("topic_drafts").update(patch).eq("id", row.id);
+    try {
+      // ✅ request the updated row back so we KNOW it changed
+      const req = supabase
+        .from("topic_drafts")
+        .update(patch)
+        .eq("id", row.id)
+        .select("id,status,approved_at,rejected_at")
+        .single();
 
-    setLoadingStatus(null);
+      const { data, error } = await withTimeout(req, 12000);
 
-    if (error) {
-      console.error("Failed to update status:", error);
+      if (error) {
+        // rollback optimistic UI
+        setOptimisticStatus(row.status);
+
+        console.error("Failed to update status:", error);
+        toast({
+          title: "Failed to update status",
+          description: error.message,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (!data?.id) {
+        // rollback optimistic UI
+        setOptimisticStatus(row.status);
+
+        toast({
+          title: "No row updated",
+          description:
+            "The update returned no row. This usually means RLS blocked it or the row no longer exists.",
+          variant: "destructive",
+        });
+        return;
+      }
+
       toast({
-        title: "Failed to update status",
-        description: error.message,
+        title: "Status updated",
+        description: `Topic draft marked as ${data.status}.`,
+      });
+
+      // ✅ refresh list so status filter / ordering stays correct
+      await onChanged();
+    } catch (e: any) {
+      // rollback optimistic UI
+      setOptimisticStatus(row.status);
+
+      console.error("updateStatus exception:", e);
+      toast({
+        title: "Status update failed",
+        description: e?.message ?? String(e),
         variant: "destructive",
       });
-      return;
+    } finally {
+      setLoadingStatus(null);
     }
-
-    toast({
-      title: "Status updated",
-      description: `Topic draft marked as ${status}.`,
-    });
-    onChanged();
   };
+
+  const effectiveStatus = optimisticStatus;
 
   return (
     <div className="flex gap-2">
@@ -468,17 +534,18 @@ function StatusButtons({ row, onChanged }: { row: TopicDraftRow; onChanged: () =
         size="sm"
         variant="outline"
         onClick={() => updateStatus("approved")}
-        disabled={row.status === "approved" || loadingStatus === "approved"}
+        disabled={effectiveStatus === "approved" || loadingStatus === "approved"}
       >
-        {loadingStatus === "approved" ? "Approving…" : "Approve"}
+        {loadingStatus === "approved" ? "Approving…" : effectiveStatus === "approved" ? "Approved" : "Approve"}
       </Button>
+
       <Button
         size="sm"
         variant="outline"
         onClick={() => updateStatus("rejected")}
-        disabled={row.status === "rejected" || loadingStatus === "rejected"}
+        disabled={effectiveStatus === "rejected" || loadingStatus === "rejected"}
       >
-        {loadingStatus === "rejected" ? "Rejecting…" : "Reject"}
+        {loadingStatus === "rejected" ? "Rejecting…" : effectiveStatus === "rejected" ? "Rejected" : "Reject"}
       </Button>
     </div>
   );
