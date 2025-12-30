@@ -466,18 +466,6 @@ function StatusButtons({
 
     console.log("🔵 Starting status update", { status, rowId: row.id });
 
-    // 🔍 DEBUG: Check authentication
-    const { data: { user } } = await supabase.auth.getUser();
-    console.log("👤 Current user:", user?.id, user?.email);
-    
-    // Check if user is admin
-    const { data: adminCheck } = await supabase
-      .from('admin_users')
-      .select('user_id')
-      .eq('user_id', user?.id)
-      .single();
-    console.log("🔑 Is admin:", !!adminCheck);
-
     // optimistic UI
     setOptimisticStatus(status);
     setLoadingStatus(status);
@@ -488,24 +476,28 @@ function StatusButtons({
     if (status === "approved") {
       patch.approved_at = now;
       patch.rejected_at = null;
-      patch.approved_by = user?.id || null;
-      patch.rejected_by = null;
     } else if (status === "rejected") {
       patch.rejected_at = now;
-      patch.rejected_by = user?.id || null;
     }
 
     console.log("📦 Patch payload:", patch);
 
     try {
       console.log("⏱️ Starting withTimeout wrapper...");
-      const supabasePromise = supabase
+      
+      // Create the update query
+      const updateQuery = supabase
         .from("topic_drafts")
         .update(patch)
         .eq("id", row.id);
       
+      console.log("🔗 Supabase URL:", supabase['supabaseUrl']);
+      console.log("🔑 Has auth?:", !!supabase['supabaseKey']);
+      
+      const supabasePromise = updateQuery;
+      
       console.log("🚀 Executing supabase update...");
-      const result = await withTimeout(supabasePromise, 10000); // Reduced to 10s for faster feedback
+      const result = await withTimeout(supabasePromise, 5000); // Reduced to 5s for faster debugging
 
       console.log("✅ withTimeout completed, result:", result);
       const { data, error } = result;
