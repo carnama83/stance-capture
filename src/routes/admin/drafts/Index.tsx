@@ -510,7 +510,7 @@ function StatusButtons({
       });
 
       // ✅ refresh list so status filter / ordering stays correct
-      --await onChanged();
+      //await onChanged();
       void onChanged(); // fire-and-forget refresh; don’t hold the “Approving…” spinner hostage
 
     } catch (e: any) {
