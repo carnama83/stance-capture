@@ -485,67 +485,33 @@ function StatusButtons({
     try {
       console.log("⏱️ Starting withTimeout wrapper...");
       
-      // First, try to SELECT the row to confirm we can read it
-      console.log("🔍 Testing SELECT first...");
-      const { data: testRead, error: readError } = await supabase
-        .from("topic_drafts")
-        .select("id, status")
-        .eq("id", row.id)
-        .single();
+      // Try using the REST API directly instead of the query builder
+      console.log("🔧 Attempting direct fetch to Supabase REST API...");
       
-      console.log("📖 SELECT result:", { data: testRead, error: readError });
+      const supabaseUrl = 'https://yzxzpnomcarnxixhjlba.supabase.co';
+      const response = await fetch(`${supabaseUrl}/rest/v1/topic_drafts?id=eq.${row.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': supabase['supabaseKey'] || '',
+          'Authorization': `Bearer ${supabase['supabaseKey'] || ''}`,
+          'Prefer': 'return=representation'
+        },
+        body: JSON.stringify(patch)
+      });
+
+      console.log("📡 Fetch response status:", response.status);
       
-      if (readError) {
-        throw new Error(`Cannot read row: ${readError.message}`);
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("❌ Fetch error:", errorText);
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
       
-      // Create the update query
-      const updateQuery = supabase
-        .from("topic_drafts")
-        .update(patch)
-        .eq("id", row.id);
-      
-      console.log("🔗 Supabase URL:", supabase['supabaseUrl']);
-      console.log("🔑 Has auth?:", !!supabase['supabaseKey']);
-      
-      const supabasePromise = updateQuery;
-      
-      console.log("🚀 Executing supabase update...");
-      const result = await withTimeout(supabasePromise, 5000); // Reduced to 5s for faster debugging
-
-      console.log("✅ withTimeout completed, result:", result);
-      const { data, error } = result;
-
-      if (error) {
-        console.error("❌ Supabase returned error:", error);
-        // Revert optimistic UI on error
-        setOptimisticStatus(row.status);
-
-        // Check if it's an abort/timeout error
-        const isAbort =
-          error?.code === "20" ||
-          String(error?.message ?? "").toLowerCase().includes("aborterror");
-
-        if (isAbort) {
-          console.log("⏱️ Detected abort/timeout");
-          toast({
-            title: "Status update timed out",
-            description: "The request took too long. Please try again.",
-            variant: "destructive",
-          });
-        } else {
-          console.error("💥 Non-timeout error:", error);
-          toast({
-            title: "Failed to update status",
-            description: error.message,
-            variant: "destructive",
-          });
-        }
-        return;
-      }
+      const result = await response.json();
+      console.log("✅ Direct fetch succeeded:", result);
 
       // Only reach here if no error - success!
-      console.log("🎉 Update successful, data:", data);
       toast({
         title: "Status updated",
         description: `Topic draft marked as ${status}.`,
