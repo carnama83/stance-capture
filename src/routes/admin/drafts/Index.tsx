@@ -121,48 +121,35 @@ export default function TopicDraftsPage() {
     load();
   }, [load]);
 
-  // NEW: run cluster
+    // Run cluster via RPC function
   const runCluster = React.useCallback(async () => {
     if (clusterLoading) return;
     setClusterLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke("admin-run-cluster", { body: {} });
+      // ✅ run_cluster_http returns void, so we only check for errors
+      const { error } = await supabase.rpc("run_cluster_http");
 
       if (error) {
-        console.error("admin-run-cluster error:", error);
+        console.error("run_cluster_http error:", error);
         toast({
           title: "Cluster failed",
-          description: error.message ?? "Edge Function returned a non-2xx status code.",
+          description: error.message ?? "Failed to trigger cluster job.",
           variant: "destructive",
         });
         return;
       }
 
-      const payload: any = data ?? {};
-      if (payload?.ok === false) {
-        toast({
-          title: "Cluster failed",
-          description: payload?.error ?? "Cluster returned ok=false. Check Edge logs.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      const created =
-        payload?.cluster_response?.created ??
-        payload?.cluster_response?.created_count ??
-        payload?.cluster_response?.drafts_created ??
-        null;
-
+      // ✅ Success - cluster job triggered (no response data)
       toast({
-        title: "Cluster completed",
-        description:
-          created != null
-            ? `Created ${created} topic draft(s).`
-            : "Cluster ran successfully. Refreshing drafts…",
+        title: "Cluster started",
+        description: "Cluster job has been triggered. Refreshing drafts in a moment...",
       });
 
-      await load();
+      // Wait a bit for cluster to process, then refresh
+      setTimeout(async () => {
+        await load();
+      }, 2000); // 2 second delay to let cluster create some drafts
+
     } catch (e: any) {
       console.error("runCluster exception:", e);
       toast({
