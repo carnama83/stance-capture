@@ -1,7 +1,7 @@
 // src/components/admin/AdminTopicMergePanel.tsx
 
 import * as React from "react";
-import { createSupabase } from "@/lib/createSupabase";
+import { getSupabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -28,7 +28,7 @@ type TopicRow = {
 };
 
 export function AdminTopicMergePanel() {
-  const supabase = React.useMemo(createSupabase, []);
+  const supabase = getSupabase()!;
   const { toast } = useToast();
 
   const [topics, setTopics] = React.useState<TopicRow[]>([]);
