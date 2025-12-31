@@ -2,7 +2,7 @@
 import * as React from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { createSupabase } from "@/lib/createSupabase";
+import { getSupabase } from "@/lib/supabaseClient";
 
 type Topic = {
   id: string;
@@ -16,7 +16,7 @@ type Topic = {
 };
 
 export default function TopicsIndex() {
-  const supabase = React.useMemo(createSupabase, []);
+  const supabase = React.useMemo(getSupabase, []);
   const navigate = useNavigate();
 
   const { data, isLoading } = useQuery({
