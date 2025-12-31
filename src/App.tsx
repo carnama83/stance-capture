@@ -69,9 +69,9 @@ const App: React.FC = () => {
     if (!import.meta.env.DEV) return;
     let cancelled = false;
 
-    import("@/lib/createSupabase").then(({ createSupabase }) => {
+    import("@/lib/supabaseClient").then(({ getSupabase }) => {
       if (cancelled) return;
-      (window as any).sb = createSupabase();
+      (window as any).sb = getSupabase();
       console.log("%cSupabase client (window.sb)", "color: green;");
     });
 
