@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { createSupabase } from "@/lib/createSupabase";
+import { getSupabase } from "@/lib/supabaseClient";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -81,7 +81,7 @@ function describeMood(avg: number | null | undefined): string {
 }
 
 export function QuestionCommentsPanel({ questionId }: QuestionCommentsPanelProps) {
-  const supabase = React.useMemo(createSupabase, []);
+  const supabase = getSupabase()!;
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
