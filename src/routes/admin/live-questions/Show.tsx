@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useParams, Link } from "react-router-dom";
-import { createSupabase } from "@/lib/createSupabase";
+import { getSupabase } from "@/lib/supabaseClient";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -47,7 +47,7 @@ type QuestionDetail = {
 
 export default function AdminLiveQuestionShowPage() {
   const { id } = useParams();
-  const supabase = React.useMemo(createSupabase, []);
+  const supabase = getSupabase()!;
   const [loading, setLoading] = React.useState(true);
   const [row, setRow] = React.useState<QuestionDetail | null>(null);
   const [error, setError] = React.useState<string | null>(null);
