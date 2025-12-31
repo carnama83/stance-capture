@@ -30,6 +30,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/components/ui/use-toast";
 import { cn } from "@/lib/utils";
+import { Loader2 } from "lucide-react"; // NEW IMPORT
 
 type QuestionVisibilityEnum =
   | "visible"
@@ -163,62 +164,143 @@ export default function AdminImpactDashboardPage() {
     },
   });
 
-  // -----------------------------
-  // Action: Re-score top topics now
-  // Uses impact-score-batch for all topic_ids in view
-  // -----------------------------
+  // =============================
+  // NEW: Bootstrap Epic P (One-click setup)
+  // =============================
+  const [isBootstrapping, setIsBootstrapping] = React.useState(false);
+
+  const handleBootstrap = async () => {
+    setIsBootstrapping(true);
+    try {
+      const { data: result, error } = await supabase.rpc('bootstrap_epic_p_data');
+      
+      if (error) throw error;
+      
+      toast({
+        title: "✅ Epic P Bootstrapped!",
+        description: `Scored ${result.questions_scored} questions, updated ${result.visibility_rules_updated} visibility rules, curated ${result.curated_questions} questions.`,
+      });
+      
+      await refetch();
+    } catch (err: any) {
+      toast({
+        title: "Bootstrap Failed",
+        description: err?.message ?? "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setIsBootstrapping(false);
+    }
+  };
+
+  // =============================
+  // UPDATED: Score All Questions (uses new RPC)
+  // =============================
   const [isRescoring, setIsRescoring] = React.useState(false);
 
-  const handleRescoreTopTopics = async () => {
+  const handleRescoreAllQuestions = async () => {
     if (!data || data.length === 0) return;
     setIsRescoring(true);
     try {
-      // Collect unique topic IDs (non-null)
-      const topicIds = Array.from(
-        new Set(
-          data
-            .map((row) => row.topic_id)
-            .filter((id): id is string => !!id)
-        )
-      );
+      // Get all question IDs from the view
+      const questionIds = data
+        .map((row) => row.question_id)
+        .filter((id): id is string => !!id);
 
-      if (topicIds.length === 0) {
+      if (questionIds.length === 0) {
         toast({
           title: "Nothing to re-score",
-          description: "No topics found in current view.",
+          description: "No questions found in current view.",
         });
         return;
       }
 
-      // Call the Edge Function impact-score-batch
-      const { data: fnData, error: fnError } =
-        await supabase.functions.invoke("impact-score-batch", {
-          body: { topic_ids: topicIds },
-        });
+      // Call NEW batch scoring function
+      const { data: result, error } = await supabase.rpc(
+        'calculate_question_impact_scores_batch',
+        { p_question_ids: questionIds }
+      );
 
-      if (fnError) {
-        console.error("impact-score-batch error:", fnError);
-        throw fnError;
-      }
-
-      console.log("impact-score-batch result:", fnData);
+      if (error) throw error;
 
       toast({
-        title: "Re-scoring started",
-        description: `Requested re-score for ${topicIds.length} topics.`,
+        title: "Re-scoring Complete!",
+        description: `Scored ${result.total_processed} questions successfully.`,
       });
 
-      // Refresh dashboard after scoring
       await refetch();
     } catch (err: any) {
-      console.error("handleRescoreTopTopics error:", err);
       toast({
-        title: "Error re-scoring topics",
+        title: "Error re-scoring",
         description: err?.message ?? "Unknown error",
         variant: "destructive",
       });
     } finally {
       setIsRescoring(false);
+    }
+  };
+
+  // =============================
+  // NEW: Apply Visibility Rules
+  // =============================
+  const [isApplyingVisibility, setIsApplyingVisibility] = React.useState(false);
+
+  const handleApplyVisibility = async () => {
+    setIsApplyingVisibility(true);
+    try {
+      const { data: result, error } = await supabase.rpc('update_visibility_rules');
+      
+      if (error) throw error;
+      
+      const updatedCount = result?.length || 0;
+      
+      toast({
+        title: "Visibility Rules Applied!",
+        description: `Updated ${updatedCount} questions based on their scores.`,
+      });
+      
+      await refetch();
+    } catch (err: any) {
+      toast({
+        title: "Failed to Apply Rules",
+        description: err?.message ?? "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setIsApplyingVisibility(false);
+    }
+  };
+
+  // =============================
+  // NEW: Re-score Single Question
+  // =============================
+  const [rescoringQuestion, setRescoringQuestion] = React.useState<string | null>(null);
+
+  const handleRescoreSingle = async (questionId: string | null) => {
+    if (!questionId) return;
+    setRescoringQuestion(questionId);
+    try {
+      const { data: result, error } = await supabase.rpc(
+        'calculate_question_impact_score',
+        { p_question_id: questionId }
+      );
+      
+      if (error) throw error;
+      
+      toast({
+        title: "Question Re-scored!",
+        description: `New composite score: ${result.composite_score}`,
+      });
+      
+      await refetch();
+    } catch (err: any) {
+      toast({
+        title: "Re-score Failed",
+        description: err?.message ?? "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setRescoringQuestion(null);
     }
   };
 
@@ -236,6 +318,8 @@ export default function AdminImpactDashboardPage() {
               candidate questions.
             </CardDescription>
           </div>
+          
+          {/* UPDATED: Button Group */}
           <div className="flex flex-row items-center gap-2">
             <Button
               variant="outline"
@@ -245,16 +329,49 @@ export default function AdminImpactDashboardPage() {
             >
               Refresh
             </Button>
+            
+            {/* NEW: Bootstrap Button (Only show if no data yet) */}
+            {(!data || data.length === 0) && (
+              <Button
+                variant="default"
+                size="sm"
+                onClick={handleBootstrap}
+                disabled={isBootstrapping}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                {isBootstrapping ? (
+                  <>
+                    <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                    Bootstrapping...
+                  </>
+                ) : (
+                  <>🚀 Bootstrap Epic P</>
+                )}
+              </Button>
+            )}
+            
+            {/* UPDATED: Score All Questions */}
             <Button
               variant="default"
               size="sm"
-              onClick={handleRescoreTopTopics}
+              onClick={handleRescoreAllQuestions}
               disabled={isRescoring || !data || data.length === 0}
             >
-              {isRescoring ? "Re-scoring…" : "Re-score top topics now"}
+              {isRescoring ? "Scoring…" : "Score All Questions"}
+            </Button>
+            
+            {/* NEW: Apply Visibility Rules */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleApplyVisibility}
+              disabled={isApplyingVisibility || !data || data.length === 0}
+            >
+              {isApplyingVisibility ? "Applying..." : "Apply Visibility Rules"}
             </Button>
           </div>
         </CardHeader>
+        
         <CardContent>
           {isLoading && (
             <p className="text-sm text-muted-foreground">
@@ -267,10 +384,11 @@ export default function AdminImpactDashboardPage() {
             </p>
           )}
           {!isLoading && !isError && (!data || data.length === 0) && (
-            <p className="text-sm text-muted-foreground">
-              No questions found. Publish some questions first, then run impact
-              scoring.
-            </p>
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                No questions found. Click "Bootstrap Epic P" to score all questions and set up Epic P data.
+              </p>
+            </div>
           )}
 
           {!isLoading && !isError && data && data.length > 0 && (
@@ -284,6 +402,7 @@ export default function AdminImpactDashboardPage() {
                     <TableHead>Visibility</TableHead>
                     <TableHead className="w-[220px]">Explanation</TableHead>
                     <TableHead className="w-[160px]">Last Updated</TableHead>
+                    <TableHead className="w-[80px]">Actions</TableHead> {/* NEW COLUMN */}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -448,6 +567,23 @@ export default function AdminImpactDashboardPage() {
                                 ).toLocaleString()
                               : "—"}
                           </div>
+                        </TableCell>
+
+                        {/* NEW: Actions Column */}
+                        <TableCell>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleRescoreSingle(row.question_id)}
+                            disabled={rescoringQuestion === row.question_id}
+                            title="Re-score this question"
+                          >
+                            {rescoringQuestion === row.question_id ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <span className="text-base">↻</span>
+                            )}
+                          </Button>
                         </TableCell>
                       </TableRow>
                     );
