@@ -1,5 +1,5 @@
 import * as React from "react";
-import { createSupabase } from "@/lib/createSupabase";
+import { getSupabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -57,7 +57,7 @@ const STATUS_FILTERS: { value: "all" | QuestionStatus; label: string }[] = [
 const PULL_BACK_RPC = "admin_pull_back_live_question";
 
 export default function QuestionDraftsPage() {
-  const supabase = React.useMemo(createSupabase, []);
+  const supabase = getSupabase()!;
   const [rows, setRows] = React.useState<QuestionDraftRow[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [statusFilter, setStatusFilter] = React.useState<"all" | QuestionStatus>(
@@ -405,7 +405,7 @@ function EditQuestionDialog({
   row: QuestionDraftRow;
   onSaved: () => void;
 }) {
-  const supabase = React.useMemo(createSupabase, []);
+  const supabase = getSupabase()!;
   const [open, setOpen] = React.useState(false);
   const [question, setQuestion] = React.useState(row.question);
   const [summary, setSummary] = React.useState(row.summary ?? "");
@@ -490,7 +490,7 @@ function StatusButtons({
   onChanged: () => void;
   isPublished: boolean;
 }) {
-  const supabase = React.useMemo(createSupabase, []);
+  const supabase = getSupabase()!;
 
   const updateStatus = async (status: QuestionStatus) => {
     const now = new Date().toISOString();
@@ -551,7 +551,7 @@ function PublishButton({
   onPublished: () => void;
   isPublished: boolean;
 }) {
-  const supabase = React.useMemo(createSupabase, []);
+  const supabase = getSupabase()!;
   const [loading, setLoading] = React.useState(false);
 
   const handleClick = async () => {
@@ -617,7 +617,7 @@ function PullBackLiveQuestionButton({
   visible: boolean;
   onPulledBack: () => void;
 }) {
-  const supabase = React.useMemo(createSupabase, []);
+  const supabase = getSupabase()!;
   const [loading, setLoading] = React.useState(false);
 
   // ✅ only visible after publish
