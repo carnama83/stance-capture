@@ -1,5 +1,5 @@
 import * as React from "react";
-import { createSupabase } from "@/lib/createSupabase";
+import { getSupabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -47,7 +47,7 @@ const STATUS_FILTERS: { value: "all" | DraftStatus; label: string }[] = [
 ];
 
 export default function TopicDraftsPage() {
-  const supabase = createSupabase(); // Call directly instead of useMemo
+  const supabase = getSupabase()!; // Call directly instead of useMemo
   const { toast } = useToast();
 
   const [rows, setRows] = React.useState<TopicDraftRow[]>([]);
@@ -317,7 +317,7 @@ function StatusBadge({ status }: { status: DraftStatus }) {
 }
 
 function EditTopicDialog({ row, onSaved }: { row: TopicDraftRow; onSaved: () => void }) {
-  const supabase = createSupabase(); // Call directly
+  const supabase = getSupabase()!; // Call directly
   const { toast } = useToast();
 
   const [open, setOpen] = React.useState(false);
@@ -417,7 +417,7 @@ function StatusButtons({
   row: TopicDraftRow;
   onChanged: () => void;
 }) {
-  const supabase = createSupabase(); // Call directly
+  const supabase = getSupabase()!; // Call directly
   const { toast } = useToast();
 
   const [loadingStatus, setLoadingStatus] = React.useState<DraftStatus | null>(null);
@@ -564,7 +564,7 @@ function StatusButtons({
 }
 
 function CreateQuestionDraftButton({ row, onCreated }: { row: TopicDraftRow; onCreated: () => void }) {
-  const supabase = createSupabase(); // Call directly
+  const supabase = getSupabase()!; // Call directly
   const { toast } = useToast();
   const [loading, setLoading] = React.useState(false);
 
