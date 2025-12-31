@@ -170,28 +170,78 @@ export default function AdminImpactDashboardPage() {
   const [isBootstrapping, setIsBootstrapping] = React.useState(false);
 
   const handleBootstrap = async () => {
-    setIsBootstrapping(true);
-    try {
-      const { data: result, error } = await supabase.rpc('bootstrap_epic_p_data');
-      
-      if (error) throw error;
-      
+  setIsBootstrapping(true);
+  try {
+    // Get all question IDs
+    const questionIds = data
+      ?.map((row) => row.question_id)
+      .filter((id): id is string => !!id) || [];
+    
+    if (questionIds.length === 0) {
       toast({
-        title: "✅ Epic P Bootstrapped!",
-        description: `Scored ${result.questions_scored} questions, updated ${result.visibility_rules_updated} visibility rules, curated ${result.curated_questions} questions.`,
-      });
-      
-      await refetch();
-    } catch (err: any) {
-      toast({
-        title: "Bootstrap Failed",
-        description: err?.message ?? "Unknown error",
+        title: "No Questions Found",
+        description: "Add questions first, then bootstrap.",
         variant: "destructive",
       });
-    } finally {
-      setIsBootstrapping(false);
+      return;
     }
-  };
+
+    toast({
+      title: "🚀 Bootstrapping with AI...",
+      description: `Scoring ${questionIds.length} questions, please wait...`,
+    });
+
+    // Step 1: Score all with AI
+    let scoredCount = 0;
+    for (const qid of questionIds) {
+      try {
+        await supabase.functions.invoke('ai-score-question', {
+          body: { question_id: qid }
+        });
+        scoredCount++;
+      } catch (err) {
+        console.error(`Failed to score ${qid}:`, err);
+      }
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
+    // Step 2: Apply visibility rules
+    const { data: visibilityResult } = await supabase.rpc('update_visibility_rules');
+    const visibilityCount = visibilityResult?.length || 0;
+
+    // Step 3: Get top 7 and create curated set
+    const { data: topQuestions } = await supabase
+      .from('topic_impact_scores')
+      .select('question_id, composite_score')
+      .order('composite_score', { ascending: false })
+      .limit(7);
+
+    if (topQuestions && topQuestions.length >= 5) {
+      const questionIdsForCurated = topQuestions.map(q => q.question_id);
+      const today = new Date().toISOString().split('T')[0];
+      
+      await supabase.rpc('publish_curated_set', {
+        p_date: today,
+        p_question_ids: questionIdsForCurated,
+      });
+    }
+
+    toast({
+      title: "✅ Bootstrap Complete!",
+      description: `AI scored ${scoredCount} questions, updated ${visibilityCount} visibility rules, created curated set.`,
+    });
+
+    await refetch();
+  } catch (err: any) {
+    toast({
+      title: "Bootstrap Failed",
+      description: err?.message ?? "Unknown error",
+      variant: "destructive",
+    });
+  } finally {
+    setIsBootstrapping(false);
+  }
+};
 
   // =============================
   // UPDATED: Score All Questions (uses new RPC)
