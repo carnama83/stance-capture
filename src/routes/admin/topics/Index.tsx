@@ -1,7 +1,7 @@
 // src/routes/admin/topics/Index.tsx
 
 import * as React from "react";
-import { createSupabase } from "@/lib/createSupabase";
+import { getSupabase } from "@/lib/supabaseClient";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,7 +20,7 @@ type TopicRow = {
 };
 
 export default function AdminTopicsPage() {
-  const supabase = React.useMemo(createSupabase, []);
+  const supabase = getSupabase()!;
   const [rows, setRows] = React.useState<TopicRow[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [search, setSearch] = React.useState("");
