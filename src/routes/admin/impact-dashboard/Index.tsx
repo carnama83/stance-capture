@@ -199,27 +199,65 @@ export default function AdminImpactDashboardPage() {
   const [isRescoring, setIsRescoring] = React.useState(false);
 
   const handleRescoreAllQuestions = async () => {
-    if (!data || data.length === 0) return;
-    setIsRescoring(true);
-    try {
-      // Get all question IDs from the view
-      const questionIds = data
-        .map((row) => row.question_id)
-        .filter((id): id is string => !!id);
+  if (!data || data.length === 0) return;
+  setIsRescoring(true);
+  
+  try {
+    const questionIds = data
+      .map((row) => row.question_id)
+      .filter((id): id is string => !!id);
 
-      if (questionIds.length === 0) {
-        toast({
-          title: "Nothing to re-score",
-          description: "No questions found in current view.",
-        });
-        return;
+    if (questionIds.length === 0) {
+      toast({
+        title: "Nothing to score",
+        description: "No questions found.",
+      });
+      return;
+    }
+
+    let successCount = 0;
+    let errorCount = 0;
+
+    // Score questions one by one (AI calls can't be batched easily)
+    toast({
+      title: "AI Scoring Started",
+      description: `Scoring ${questionIds.length} questions with AI...`,
+    });
+
+    for (const qid of questionIds) {
+      try {
+        const { error } = await supabase.functions.invoke(
+          'ai-score-question',
+          { body: { question_id: qid } }
+        );
+        
+        if (error) throw error;
+        successCount++;
+      } catch (err) {
+        console.error(`Failed to score question ${qid}:`, err);
+        errorCount++;
       }
+      
+      // Small delay to avoid rate limits
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
 
-      // Call NEW batch scoring function
-      const { data: result, error } = await supabase.rpc(
-        'calculate_question_impact_scores_batch',
-        { p_question_ids: questionIds }
-      );
+    toast({
+      title: "✅ AI Scoring Complete!",
+      description: `Scored ${successCount} questions. ${errorCount > 0 ? `${errorCount} failed.` : ''}`,
+    });
+
+    await refetch();
+  } catch (err: any) {
+    toast({
+      title: "Batch Scoring Failed",
+      description: err?.message ?? "Unknown error",
+      variant: "destructive",
+    });
+  } finally {
+    setIsRescoring(false);
+  }
+};
 
       if (error) throw error;
 
