@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { createSupabase } from "@/lib/createSupabase";
+import { getSupabase } from "@/lib/supabaseClient";
 import { ROUTES } from "@/routes/paths";
 
 type SourceKind = "rss" | "api" | "social";
