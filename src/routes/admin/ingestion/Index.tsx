@@ -1,5 +1,5 @@
 import * as React from "react";
-import { createSupabase } from "@/lib/createSupabase";
+import { getSupabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -23,7 +23,7 @@ const STATUS_OPTIONS = [
 ];
 
 export default function AdminIngestionPage() {
-  const supabase = React.useMemo(createSupabase, []);
+  const supabase = getSupabase()!;
   const [rows, setRows] = React.useState<any[]>([]);
   const [count, setCount] = React.useState<number | undefined>();
   const [page, setPage] = React.useState(1);
