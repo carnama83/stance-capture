@@ -14,11 +14,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { createSupabase } from "@/lib/createSupabase";
+import { getSupabase } from "@/lib/supabaseClient";
 
 export default function AdminLayout() {
   const location = useLocation();
-  const supabase = React.useMemo(createSupabase, []);
+  const supabase = getSupabase()!;
   const navigate = useNavigate();
 
   const [userEmail, setUserEmail] = React.useState<string | null>(null);
