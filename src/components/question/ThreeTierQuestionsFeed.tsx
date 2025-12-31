@@ -1,6 +1,7 @@
 // components/question/ThreeTierQuestionsFeed.tsx
-// 3-Tier Regional Curated Feed Component
-// Displays: LOCAL (3-5) + NATIONAL (4-6) + GLOBAL (5-7) = ~15 questions
+// 3-Tier Regional Curated Feed Component with IP Geolocation
+// Anonymous users get questions based on their IP country
+// Logged-in users get questions based on saved location
 
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -28,7 +29,14 @@ interface TierSection {
   questions: ThreeTierQuestion[];
 }
 
-// Session hook (matching your codebase pattern)
+interface IPLocationData {
+  country: string | null;
+  country_code: string | null;
+  city: string | null;
+  region: string | null;
+}
+
+// Session hook
 function useSupabaseSession() {
   const sb = React.useMemo(getSupabase, []);
   const [session, setSession] = React.useState<Session | null>(null);
@@ -45,23 +53,73 @@ function useSupabaseSession() {
   return session;
 }
 
+// IP Geolocation hook (for anonymous users)
+function useIPLocation() {
+  return useQuery<IPLocationData>({
+    queryKey: ['ip-location'],
+    queryFn: async () => {
+      try {
+        // Using ipapi.co (free tier: 30,000 requests/month)
+        const response = await fetch('https://ipapi.co/json/');
+        if (!response.ok) throw new Error('IP lookup failed');
+        
+        const data = await response.json();
+        
+        return {
+          country: data.country_name || null,
+          country_code: data.country_code || null,
+          city: data.city || null,
+          region: data.region || null,
+        };
+      } catch (error) {
+        console.error('IP geolocation failed:', error);
+        return {
+          country: null,
+          country_code: null,
+          city: null,
+          region: null,
+        };
+      }
+    },
+    staleTime: 24 * 60 * 60 * 1000, // Cache for 24 hours
+    cacheTime: 24 * 60 * 60 * 1000,
+    retry: 1,
+  });
+}
+
 export function ThreeTierQuestionsFeed() {
   const session = useSupabaseSession();
   const supabase = React.useMemo(getSupabase, []);
   const userId = session?.user?.id;
+  
+  // Get IP location for anonymous users
+  const { data: ipLocation } = useIPLocation();
 
   const { data, isLoading, error } = useQuery<ThreeTierQuestion[]>({
-    queryKey: ['three-tier-feed', userId],
+    queryKey: ['three-tier-feed', userId, ipLocation?.country],
     queryFn: async () => {
       if (!supabase) throw new Error('Supabase not initialized');
       
-      // Call function with explicit parameters
-      const { data, error } = await supabase.rpc('get_three_tier_curated_feed', 
-        userId ? {
+      // Determine parameters based on auth status
+      let params: any = {};
+      
+      if (userId) {
+        // Logged-in user: Use their saved location
+        params = {
           p_user_id: userId,
           p_date: new Date().toISOString().split('T')[0]
-        } : {}  // Call with no params if no user
-      );
+        };
+      } else if (ipLocation?.country) {
+        // Anonymous user with detected location: Use IP country
+        params = {
+          p_user_id: null,
+          p_date: new Date().toISOString().split('T')[0],
+          p_ip_country: ipLocation.country // We'll add this parameter to SQL
+        };
+      }
+      // else: No params (will return all as global)
+      
+      const { data, error } = await supabase.rpc('get_three_tier_curated_feed_v2', params);
       
       if (error) {
         console.error('Error fetching three-tier feed:', error);
@@ -155,6 +213,9 @@ export function ThreeTierQuestionsFeed() {
   }
 
   const totalQuestions = data.length;
+  
+  // Show location detection notice for anonymous users
+  const showIPNotice = !userId && ipLocation?.country;
 
   return (
     <div className="space-y-6">
@@ -165,7 +226,7 @@ export function ThreeTierQuestionsFeed() {
             Today's Questions
           </h2>
           <p className="text-sm text-slate-600 mt-1">
-            {totalQuestions} curated questions across {sections.length} regions
+            {totalQuestions} curated questions across {sections.length} region{sections.length !== 1 ? 's' : ''}
           </p>
         </div>
         <div className="text-right">
@@ -173,6 +234,23 @@ export function ThreeTierQuestionsFeed() {
           <div className="text-xs text-slate-600">questions</div>
         </div>
       </div>
+
+      {/* IP Location Notice */}
+      {showIPNotice && (
+        <div className="rounded-md bg-blue-50 border border-blue-200 p-3 text-sm">
+          <div className="flex items-start gap-2">
+            <span className="text-blue-600">📍</span>
+            <div className="flex-1">
+              <p className="text-blue-900">
+                Showing questions for <strong>{ipLocation.country}</strong> based on your location.
+              </p>
+              <p className="text-blue-700 text-xs mt-1">
+                <Link to="/signup" className="underline font-medium">Sign up</Link> to customize your feed and track your stances over time.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Tier Sections */}
       {sections.map((section) => (
