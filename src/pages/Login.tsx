@@ -1,11 +1,13 @@
 // src/pages/Login.tsx
+// PRODUCTION VERSION: Clean, simple, reliable auth flow
+
 import * as React from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { getSupabase } from "../lib/supabaseClient";
 
 export default function Login() {
   const sb = React.useMemo(getSupabase, []);
-  const nav = useNavigate();
+  const navigate = useNavigate();
 
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
@@ -16,63 +18,39 @@ export default function Login() {
   const [needsMfa, setNeedsMfa] = React.useState(false);
   const [mfaCode, setMfaCode] = React.useState("");
 
-  // --- navigate once (prevents double redirects) ---
-  const navigatedRef = React.useRef(false);
-  const navigateHomeOnce = React.useCallback(() => {
-    if (navigatedRef.current) return;
-    navigatedRef.current = true;
-
-    // If we stored a return hash (HashRouter), prefer it
-    const back = sessionStorage.getItem("return_to");
-    if (back && back.startsWith("#/")) {
-      window.location.hash = back;
+  // ✅ PRODUCTION FIX: Simple, clean redirect handling
+  const handleSuccessfulLogin = React.useCallback(() => {
+    const returnTo = sessionStorage.getItem("return_to");
+    
+    if (returnTo && returnTo.startsWith("#/")) {
+      // Hash router
       sessionStorage.removeItem("return_to");
-      return;
+      window.location.hash = returnTo;
+    } else if (returnTo && returnTo.startsWith("/")) {
+      // Regular path
+      sessionStorage.removeItem("return_to");
+      navigate(returnTo, { replace: true });
+    } else {
+      // Default: go home
+      navigate("/", { replace: true });
     }
-    nav("/", { replace: true });
-  }, [nav]);
+  }, [navigate]);
 
-  // Helper: wait until getSession() returns non-null (short timeout)
-  const waitForSession = React.useCallback(
-    async (ms = 5000) => { // ✅ INCREASED from 2000 to 5000
-      if (!sb) return false;
-      const start = Date.now();
-      while (Date.now() - start < ms) {
-        const { data } = await sb.auth.getSession();
-        if (data.session) return true;
-        await new Promise((r) => setTimeout(r, 50));
-      }
-      return false;
-    },
-    [sb]
-  );
-
-  // ---- Redirect ONLY after a fresh SIGNED_IN event (not INITIAL_SESSION) ----
+  // ✅ Auth listener - only redirect on SIGNED_IN event
   React.useEffect(() => {
     if (!sb) return;
 
     const { data: { subscription } } = sb.auth.onAuthStateChange(
-      async (event, session) => {
+      (event, session) => {
+        // Only handle fresh sign-ins, not initial page load
         if (event === "SIGNED_IN" && session) {
-          // small defer so guards see the session
-          await new Promise((r) => setTimeout(r, 50));
-          const ok = await waitForSession(5000); // ✅ Pass timeout explicitly
-          if (ok) {
-            navigateHomeOnce();
-          } else {
-            // ✅ FIX: Session wait timed out, but we have session from event - redirect anyway
-            console.warn('Session wait timed out, but session exists - redirecting anyway');
-            navigateHomeOnce();
-          }
+          handleSuccessfulLogin();
         }
       }
     );
 
-    // Prime internals; do not redirect on INITIAL_SESSION
-    sb.auth.getSession().finally(() => { /* no-op */ });
-
     return () => subscription?.unsubscribe();
-  }, [sb, waitForSession, navigateHomeOnce]);
+  }, [sb, handleSuccessfulLogin]);
 
   async function onLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -96,13 +74,11 @@ export default function Login() {
         return;
       }
 
-      // 3) ✅ SIMPLIFIED: Just redirect immediately if we have a session
+      // 3) Success - auth listener will handle redirect
+      // Just show message and keep loading state
       if (data.session) {
-        setMsg("Logged in.");
-        // Small delay to let state propagate
-        setTimeout(() => {
-          navigateHomeOnce();
-        }, 100);
+        setMsg("Logged in. Redirecting...");
+        // Don't set busy to false - let redirect happen
       } else {
         setMsg("If email confirmation is required, please confirm and sign in again.");
         setBusy(false);
@@ -136,15 +112,8 @@ export default function Login() {
       });
       if (vr.error) throw vr.error;
 
-      const ok = await waitForSession(5000); // ✅ Increased timeout
-      if (!ok) {
-        setMsg("Signed in, but session not visible yet. Try reloading.");
-        setBusy(false);
-        return;
-      }
-
-      setMsg("Logged in.");
-      // Navigation handled by the auth listener (navigateHomeOnce)
+      setMsg("Logged in. Redirecting...");
+      // Auth listener will handle redirect
     } catch (err: any) {
       setMsg(err.message || "Invalid code. Try again.");
       setBusy(false);
@@ -153,8 +122,6 @@ export default function Login() {
 
   return (
     <div className="min-h-screen">
-      {/* If you're using the PageLayout/AppTopBar wrapper, you can wrap this content with it.
-          Keeping bare content here to avoid double wrappers if you already do that. */}
       <div className="mx-auto max-w-md p-6 space-y-4">
         <h1 className="text-2xl font-bold">Log in</h1>
 
