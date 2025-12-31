@@ -34,7 +34,7 @@ export default function Login() {
 
   // Helper: wait until getSession() returns non-null (short timeout)
   const waitForSession = React.useCallback(
-    async (ms = 2000) => {
+    async (ms = 5000) => { // ✅ INCREASED from 2000 to 5000
       if (!sb) return false;
       const start = Date.now();
       while (Date.now() - start < ms) {
@@ -56,8 +56,14 @@ export default function Login() {
         if (event === "SIGNED_IN" && session) {
           // small defer so guards see the session
           await new Promise((r) => setTimeout(r, 50));
-          const ok = await waitForSession();
-          if (ok) navigateHomeOnce();
+          const ok = await waitForSession(5000); // ✅ Pass timeout explicitly
+          if (ok) {
+            navigateHomeOnce();
+          } else {
+            // ✅ FIX: Session wait timed out, but we have session from event - redirect anyway
+            console.warn('Session wait timed out, but session exists - redirecting anyway');
+            navigateHomeOnce();
+          }
         }
       }
     );
@@ -86,16 +92,21 @@ export default function Login() {
       if (aal.data.currentLevel === "aal1" && aal.data.nextLevel === "aal2") {
         setNeedsMfa(true);
         setMsg("Enter the code from your authenticator app.");
+        setBusy(false); // ✅ FIX: Stop loading when MFA needed
         return;
       }
 
       // 3) If session is already available, the listener will handle redirect.
-      if (data.session) setMsg("Logged in.");
-      else setMsg("If email confirmation is required, please confirm and sign in again.");
+      if (data.session) {
+        setMsg("Logged in.");
+        // ✅ Don't set busy to false here - let redirect happen
+      } else {
+        setMsg("If email confirmation is required, please confirm and sign in again.");
+        setBusy(false);
+      }
     } catch (err: any) {
       setMsg(err.message || "Login failed.");
-    } finally {
-      setBusy(false);
+      setBusy(false); // ✅ Always stop loading on error
     }
   }
 
@@ -122,9 +133,10 @@ export default function Login() {
       });
       if (vr.error) throw vr.error;
 
-      const ok = await waitForSession();
+      const ok = await waitForSession(5000); // ✅ Increased timeout
       if (!ok) {
         setMsg("Signed in, but session not visible yet. Try reloading.");
+        setBusy(false);
         return;
       }
 
@@ -132,14 +144,13 @@ export default function Login() {
       // Navigation handled by the auth listener (navigateHomeOnce)
     } catch (err: any) {
       setMsg(err.message || "Invalid code. Try again.");
-    } finally {
       setBusy(false);
     }
   }
 
   return (
     <div className="min-h-screen">
-      {/* If you’re using the PageLayout/AppTopBar wrapper, you can wrap this content with it.
+      {/* If you're using the PageLayout/AppTopBar wrapper, you can wrap this content with it.
           Keeping bare content here to avoid double wrappers if you already do that. */}
       <div className="mx-auto max-w-md p-6 space-y-4">
         <h1 className="text-2xl font-bold">Log in</h1>
