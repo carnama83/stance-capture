@@ -276,33 +276,36 @@ export default function AdminImpactDashboardPage() {
   // =============================
   const [rescoringQuestion, setRescoringQuestion] = React.useState<string | null>(null);
 
-  const handleRescoreSingle = async (questionId: string | null) => {
-    if (!questionId) return;
-    setRescoringQuestion(questionId);
-    try {
-      const { data: result, error } = await supabase.rpc(
-        'calculate_question_impact_score',
-        { p_question_id: questionId }
-      );
-      
-      if (error) throw error;
-      
-      toast({
-        title: "Question Re-scored!",
-        description: `New composite score: ${result.composite_score}`,
-      });
-      
-      await refetch();
-    } catch (err: any) {
-      toast({
-        title: "Re-score Failed",
-        description: err?.message ?? "Unknown error",
-        variant: "destructive",
-      });
-    } finally {
-      setRescoringQuestion(null);
-    }
-  };
+const handleRescoreSingle = async (questionId: string | null) => {
+  if (!questionId) return;
+  setRescoringQuestion(questionId);
+  try {
+    // Call Edge Function instead of database RPC
+    const { data: result, error } = await supabase.functions.invoke(
+      'ai-score-question',
+      {
+        body: { question_id: questionId }
+      }
+    );
+    
+    if (error) throw error;
+    
+    toast({
+      title: "✅ Question Scored by AI!",
+      description: `Composite: ${result.composite_score} | ${result.explanation.slice(0, 60)}...`,
+    });
+    
+    await refetch();
+  } catch (err: any) {
+    toast({
+      title: "AI Scoring Failed",
+      description: err?.message ?? "Unknown error",
+      variant: "destructive",
+    });
+  } finally {
+    setRescoringQuestion(null);
+  }
+};
 
   // -----------------------------
   // Render
