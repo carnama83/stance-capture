@@ -55,12 +55,19 @@ export function ThreeTierQuestionsFeed() {
     queryFn: async () => {
       if (!supabase) throw new Error('Supabase not initialized');
       
-      const { data, error } = await supabase.rpc('get_three_tier_curated_feed', {
-        p_user_id: userId || null,
-        p_date: new Date().toISOString().split('T')[0]
-      });
+      // Call function with explicit parameters
+      const { data, error } = await supabase.rpc('get_three_tier_curated_feed', 
+        userId ? {
+          p_user_id: userId,
+          p_date: new Date().toISOString().split('T')[0]
+        } : {}  // Call with no params if no user
+      );
       
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching three-tier feed:', error);
+        throw error;
+      }
+      
       return (data || []) as ThreeTierQuestion[];
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
