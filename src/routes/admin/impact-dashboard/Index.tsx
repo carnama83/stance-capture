@@ -471,7 +471,7 @@ export default function AdminImpactDashboardPage() {
           )}
 
           {!isLoading && !isError && data && data.length > 0 && (
-            <ScrollArea className="max-h-[80vh] border rounded-md">
+            <ScrollArea className="h-[calc(100vh-300px)] border rounded-md">
               <Table>
                 <TableHeader>
                   <TableRow>
