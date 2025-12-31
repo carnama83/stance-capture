@@ -1,5 +1,5 @@
 import * as React from "react";
-import { createSupabase } from "@/lib/createSupabase";
+import { getSupabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 
 type TopicRow = {
@@ -21,7 +21,7 @@ type TrendingRow = {
 };
 
 export function AdminTrendingDebugPanel() {
-  const supabase = React.useMemo(createSupabase, []);
+  const supabase = getSupabase()!;
   const [topics, setTopics] = React.useState<TopicRow[]>([]);
   const [trending, setTrending] = React.useState<TrendingRow[]>([]);
   const [loading, setLoading] = React.useState(false);
