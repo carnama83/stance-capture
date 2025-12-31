@@ -1,4 +1,4 @@
-// src/components/Question/TodayQuestionsFeed.tsx
+// src/components/question/TodayQuestionsFeed.tsx
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getSupabase } from "@/lib/supabaseClient";
@@ -15,16 +15,14 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Link } from "react-router-dom";
 
+// UPDATED: New type to match get_daily_curated_questions() response
 type TodayQuestionRow = {
-  date: string;
   question_id: string;
-  row_index: number;
   question_text: string | null;
   question_summary: string | null;
-  question_tags: string[] | null;
-  question_location: string | null;
-  question_status: string | null;
-  question_published_at: string | null;
+  tags: string[] | null;
+  composite_score: number | null;
+  source: 'curated' | 'fallback';
 };
 
 interface TodayQuestionsFeedProps {
@@ -42,44 +40,45 @@ export function TodayQuestionsFeed({
 }: TodayQuestionsFeedProps) {
   const sb = React.useMemo(getSupabase, []);
 
+  // UPDATED: Use new get_daily_curated_questions function
   const { data, isLoading, isError, error, refetch } =
     useQuery<TodayQuestionRow[]>({
-      queryKey: ["today-questions", { limit }],
+      queryKey: ["daily-curated-questions"],
       queryFn: async () => {
         if (!sb) return [];
-        const { data, error } = await sb.rpc("get_today_questions", {
-          p_limit: limit,
+        
+        // Get today's date in YYYY-MM-DD format
+        const today = new Date().toISOString().split('T')[0];
+        
+        // Call NEW function
+        const { data, error } = await sb.rpc("get_daily_curated_questions", {
+          p_date: today,
         });
 
         if (error) {
-          console.error("get_today_questions error:", error);
+          console.error("get_daily_curated_questions error:", error);
           throw error;
         }
         return (data ?? []) as TodayQuestionRow[];
       },
-      staleTime: 60_000,
+      staleTime: 60_000, // 1 minute
     });
 
-  const todayLabel = React.useMemo(() => {
-    if (!data || data.length === 0) return "Today’s Questions";
-    const d = new Date(data[0].date);
-    return d.toLocaleDateString(undefined, {
-      weekday: "long",
-      month: "short",
-      day: "numeric",
-    });
-  }, [data]);
+  // Check if we have curated or fallback questions
+  const isCurated = data?.[0]?.source === 'curated';
+  const isFallback = data?.[0]?.source === 'fallback';
 
   return (
     <Card className="border border-slate-200 shadow-sm">
       <CardHeader className="flex flex-row items-center justify-between gap-4">
         <div>
           <CardTitle className="text-base sm:text-lg">
-            Today’s {limit} Questions
+            Today's {data?.length || limit} Questions
           </CardTitle>
           <CardDescription className="text-xs sm:text-sm">
-            A curated set of high-impact, stance-worthy questions selected by
-            our AI + editorial engine.
+            {isCurated && "Curated by our editorial team"}
+            {isFallback && "High-impact questions selected by AI"}
+            {!data && "A curated set of stance-worthy questions"}
           </CardDescription>
         </div>
         <Button
@@ -91,6 +90,7 @@ export function TodayQuestionsFeed({
           Refresh
         </Button>
       </CardHeader>
+      
       <CardContent className="space-y-3">
         {isLoading && (
           <div className="space-y-2">
@@ -105,27 +105,37 @@ export function TodayQuestionsFeed({
 
         {isError && (
           <p className="text-xs text-destructive">
-            Error loading Today’s Questions:{" "}
+            Error loading Today's Questions:{" "}
             {(error as any)?.message ?? "Unknown error"}
           </p>
         )}
 
         {!isLoading && !isError && (!data || data.length === 0) && (
           <p className="text-xs text-muted-foreground">
-            No curated questions are available yet for today. The system will
-            fall back to high-impact questions as scoring runs.
+            No curated questions are available yet for today. Run the Bootstrap
+            function in the Impact Dashboard to generate today's questions.
           </p>
         )}
 
         {!isLoading && !isError && data && data.length > 0 && (
           <div className="space-y-3">
-            <div className="text-[11px] text-muted-foreground uppercase tracking-wide">
-              {todayLabel}
+            {/* Source indicator */}
+            <div className="flex items-center gap-2">
+              <div className="text-[11px] text-muted-foreground uppercase tracking-wide">
+                {isCurated && "📰 Curated Set"}
+                {isFallback && "⚡ Auto-Selected"}
+              </div>
+              {data[0]?.composite_score && (
+                <Badge variant="outline" className="text-[10px]">
+                  Impact Score: {data[0].composite_score.toFixed(1)}
+                </Badge>
+              )}
             </div>
-            <ol className="space-y-3 list-none pl-0">
-              {data.map((q) => {
+            
+            {/* Questions list */}
+            <ol className="space-y-3 list-decimal list-inside">
+              {data.map((q, idx) => {
                 const href = buildQuestionLink(q.question_id);
-                const indexLabel = q.row_index ?? 0;
 
                 return (
                   <li
@@ -133,20 +143,7 @@ export function TodayQuestionsFeed({
                     className="flex flex-col gap-1 border border-slate-100 rounded-md px-3 py-2 hover:bg-slate-50 transition-colors"
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <div className="flex flex-col gap-1">
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <span className="inline-flex items-center justify-center h-5 w-5 rounded-full border border-slate-300 text-[10px] font-medium">
-                            {indexLabel}
-                          </span>
-                          <span className="uppercase tracking-wide text-[10px] font-medium text-slate-500">
-                            Today’s Question
-                          </span>
-                          {q.question_location && (
-                            <Badge variant="outline" className="text-[10px]">
-                              {q.question_location}
-                            </Badge>
-                          )}
-                        </div>
+                      <div className="flex flex-col gap-1 flex-1">
                         <Link
                           to={href}
                           className="text-sm font-medium leading-snug line-clamp-2 hover:underline"
@@ -158,11 +155,11 @@ export function TodayQuestionsFeed({
                             {q.question_summary}
                           </p>
                         )}
-                      </div>
-                      <div className="hidden sm:flex flex-col items-end gap-1">
-                        {q.question_tags && q.question_tags.length > 0 && (
-                          <div className="flex flex-wrap gap-1 justify-end">
-                            {q.question_tags.slice(0, 3).map((tag) => (
+                        
+                        {/* Tags */}
+                        {q.tags && q.tags.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {q.tags.slice(0, 3).map((tag) => (
                               <Badge
                                 key={tag}
                                 variant="outline"
@@ -173,17 +170,25 @@ export function TodayQuestionsFeed({
                             ))}
                           </div>
                         )}
-                        {q.question_published_at && (
-                          <span className="text-[10px] text-muted-foreground">
-                            {new Date(
-                              q.question_published_at
-                            ).toLocaleTimeString(undefined, {
-                              hour: "numeric",
-                              minute: "2-digit",
-                            })}
-                          </span>
-                        )}
                       </div>
+                      
+                      {/* Composite score badge */}
+                      {q.composite_score && (
+                        <div className="hidden sm:flex flex-col items-end gap-1">
+                          <Badge
+                            variant={
+                              q.composite_score >= 8
+                                ? "default"
+                                : q.composite_score >= 6
+                                ? "secondary"
+                                : "outline"
+                            }
+                            className="text-[10px]"
+                          >
+                            {q.composite_score.toFixed(1)}
+                          </Badge>
+                        </div>
+                      )}
                     </div>
                   </li>
                 );
