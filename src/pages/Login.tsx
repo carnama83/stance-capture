@@ -92,21 +92,24 @@ export default function Login() {
       if (aal.data.currentLevel === "aal1" && aal.data.nextLevel === "aal2") {
         setNeedsMfa(true);
         setMsg("Enter the code from your authenticator app.");
-        setBusy(false); // ✅ FIX: Stop loading when MFA needed
+        setBusy(false);
         return;
       }
 
-      // 3) If session is already available, the listener will handle redirect.
+      // 3) ✅ SIMPLIFIED: Just redirect immediately if we have a session
       if (data.session) {
         setMsg("Logged in.");
-        // ✅ Don't set busy to false here - let redirect happen
+        // Small delay to let state propagate
+        setTimeout(() => {
+          navigateHomeOnce();
+        }, 100);
       } else {
         setMsg("If email confirmation is required, please confirm and sign in again.");
         setBusy(false);
       }
     } catch (err: any) {
       setMsg(err.message || "Login failed.");
-      setBusy(false); // ✅ Always stop loading on error
+      setBusy(false);
     }
   }
 
