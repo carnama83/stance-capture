@@ -16,7 +16,7 @@ type Topic = {
 };
 
 export default function TopicsIndex() {
-  const supabase = React.useMemo(getSupabase, []);
+  const supabase = getSupabase()!;
   const navigate = useNavigate();
 
   const { data, isLoading } = useQuery({
