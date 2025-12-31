@@ -1,5 +1,5 @@
 import * as React from "react";
-import { createSupabase } from "@/lib/createSupabase";
+import { getSupabase } from "@/lib/supabaseClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, RefreshCw } from "lucide-react";
@@ -24,7 +24,7 @@ type Stats = {
 };
 
 export default function AdminAIDashboardPage() {
-  const supabase = React.useMemo(createSupabase, []);
+  const supabase = getSupabase()!;
   const [stats, setStats] = React.useState<Stats | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
