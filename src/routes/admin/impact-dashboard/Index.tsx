@@ -30,7 +30,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/components/ui/use-toast";
 import { cn } from "@/lib/utils";
-import { Loader2 } from "lucide-react"; // NEW IMPORT
+import { Loader2 } from "lucide-react";
 
 type QuestionVisibilityEnum =
   | "visible"
@@ -165,161 +165,150 @@ export default function AdminImpactDashboardPage() {
   });
 
   // =============================
-  // NEW: Bootstrap Epic P (One-click setup)
+  // Bootstrap Epic P (One-click setup with GPT-4)
   // =============================
   const [isBootstrapping, setIsBootstrapping] = React.useState(false);
 
   const handleBootstrap = async () => {
-  setIsBootstrapping(true);
-  try {
-    // Get all question IDs
-    const questionIds = data
-      ?.map((row) => row.question_id)
-      .filter((id): id is string => !!id) || [];
-    
-    if (questionIds.length === 0) {
-      toast({
-        title: "No Questions Found",
-        description: "Add questions first, then bootstrap.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    toast({
-      title: "🚀 Bootstrapping with AI...",
-      description: `Scoring ${questionIds.length} questions, please wait...`,
-    });
-
-    // Step 1: Score all with AI
-    let scoredCount = 0;
-    for (const qid of questionIds) {
-      try {
-        await supabase.functions.invoke('ai-score-question', {
-          body: { question_id: qid }
+    setIsBootstrapping(true);
+    try {
+      // Get all question IDs
+      const questionIds = data
+        ?.map((row) => row.question_id)
+        .filter((id): id is string => !!id) || [];
+      
+      if (questionIds.length === 0) {
+        toast({
+          title: "No Questions Found",
+          description: "Add questions first, then bootstrap.",
+          variant: "destructive",
         });
-        scoredCount++;
-      } catch (err) {
-        console.error(`Failed to score ${qid}:`, err);
+        return;
       }
-      await new Promise(resolve => setTimeout(resolve, 500));
-    }
 
-    // Step 2: Apply visibility rules
-    const { data: visibilityResult } = await supabase.rpc('update_visibility_rules');
-    const visibilityCount = visibilityResult?.length || 0;
-
-    // Step 3: Get top 7 and create curated set
-    const { data: topQuestions } = await supabase
-      .from('topic_impact_scores')
-      .select('question_id, composite_score')
-      .order('composite_score', { ascending: false })
-      .limit(7);
-
-    if (topQuestions && topQuestions.length >= 5) {
-      const questionIdsForCurated = topQuestions.map(q => q.question_id);
-      const today = new Date().toISOString().split('T')[0];
-      
-      await supabase.rpc('publish_curated_set', {
-        p_date: today,
-        p_question_ids: questionIdsForCurated,
-      });
-    }
-
-    toast({
-      title: "✅ Bootstrap Complete!",
-      description: `AI scored ${scoredCount} questions, updated ${visibilityCount} visibility rules, created curated set.`,
-    });
-
-    await refetch();
-  } catch (err: any) {
-    toast({
-      title: "Bootstrap Failed",
-      description: err?.message ?? "Unknown error",
-      variant: "destructive",
-    });
-  } finally {
-    setIsBootstrapping(false);
-  }
-};
-
-  // =============================
-  // UPDATED: Score All Questions (uses new RPC)
-  // =============================
-  const [isRescoring, setIsRescoring] = React.useState(false);
-
-  const handleRescoreAllQuestions = async () => {
-  if (!data || data.length === 0) return;
-  setIsRescoring(true);
-  
-  try {
-    const questionIds = data
-      .map((row) => row.question_id)
-      .filter((id): id is string => !!id);
-
-    if (questionIds.length === 0) {
       toast({
-        title: "Nothing to score",
-        description: "No questions found.",
+        title: "🚀 Bootstrapping with GPT-4...",
+        description: `Scoring ${questionIds.length} questions, please wait...`,
       });
-      return;
-    }
 
-    let successCount = 0;
-    let errorCount = 0;
+      // Step 1: Score all with AI
+      let scoredCount = 0;
+      for (const qid of questionIds) {
+        try {
+          await supabase.functions.invoke('ai-score-question', {
+            body: { question_id: qid }
+          });
+          scoredCount++;
+        } catch (err) {
+          console.error(`Failed to score ${qid}:`, err);
+        }
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
 
-    // Score questions one by one (AI calls can't be batched easily)
-    toast({
-      title: "AI Scoring Started",
-      description: `Scoring ${questionIds.length} questions with AI...`,
-    });
+      // Step 2: Apply visibility rules
+      const { data: visibilityResult } = await supabase.rpc('update_visibility_rules');
+      const visibilityCount = visibilityResult?.length || 0;
 
-    for (const qid of questionIds) {
-      try {
-        const { error } = await supabase.functions.invoke(
-          'ai-score-question',
-          { body: { question_id: qid } }
-        );
+      // Step 3: Get top 7 and create curated set
+      const { data: topQuestions } = await supabase
+        .from('topic_impact_scores')
+        .select('question_id, composite_score')
+        .order('composite_score', { ascending: false })
+        .limit(7);
+
+      if (topQuestions && topQuestions.length >= 5) {
+        const questionIdsForCurated = topQuestions.map(q => q.question_id);
+        const today = new Date().toISOString().split('T')[0];
         
-        if (error) throw error;
-        successCount++;
-      } catch (err) {
-        console.error(`Failed to score question ${qid}:`, err);
-        errorCount++;
+        await supabase.rpc('publish_curated_set', {
+          p_date: today,
+          p_question_ids: questionIdsForCurated,
+        });
       }
-      
-      // Small delay to avoid rate limits
-      await new Promise(resolve => setTimeout(resolve, 500));
-    }
-
-    toast({
-      title: "✅ AI Scoring Complete!",
-      description: `Scored ${successCount} questions. ${errorCount > 0 ? `${errorCount} failed.` : ''}`,
-    });
-
-    await refetch();
-  } catch (err: any) {
-    toast({
-      title: "Batch Scoring Failed",
-      description: err?.message ?? "Unknown error",
-      variant: "destructive",
-    });
-  } finally {
-    setIsRescoring(false);
-  }
-};
-
-      if (error) throw error;
 
       toast({
-        title: "Re-scoring Complete!",
-        description: `Scored ${result.total_processed} questions successfully.`,
+        title: "✅ Bootstrap Complete!",
+        description: `GPT-4 scored ${scoredCount} questions, updated ${visibilityCount} visibility rules, created curated set.`,
       });
 
       await refetch();
     } catch (err: any) {
       toast({
-        title: "Error re-scoring",
+        title: "Bootstrap Failed",
+        description: err?.message ?? "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setIsBootstrapping(false);
+    }
+  };
+
+  // =============================
+  // Score All Questions with GPT-4
+  // =============================
+  const [isRescoring, setIsRescoring] = React.useState(false);
+
+  const handleRescoreAllQuestions = async () => {
+    if (!data || data.length === 0) return;
+    setIsRescoring(true);
+    
+    try {
+      const questionIds = data
+        .map((row) => row.question_id)
+        .filter((id): id is string => !!id);
+
+      if (questionIds.length === 0) {
+        toast({
+          title: "Nothing to score",
+          description: "No questions found.",
+        });
+        return;
+      }
+
+      toast({
+        title: "🤖 GPT-4 Scoring Started",
+        description: `Analyzing ${questionIds.length} questions with AI...`,
+      });
+
+      let successCount = 0;
+      let errorCount = 0;
+
+      // Score questions sequentially
+      for (const qid of questionIds) {
+        try {
+          const { error } = await supabase.functions.invoke(
+            'ai-score-question',
+            { body: { question_id: qid } }
+          );
+          
+          if (error) throw error;
+          successCount++;
+          
+          // Show progress
+          if (successCount % 3 === 0 || successCount === questionIds.length) {
+            toast({
+              title: `Progress: ${successCount}/${questionIds.length}`,
+              description: `Scored ${successCount} questions so far...`,
+            });
+          }
+        } catch (err) {
+          console.error(`Failed to score question ${qid}:`, err);
+          errorCount++;
+        }
+        
+        // Small delay to avoid rate limits
+        await new Promise(resolve => setTimeout(resolve, 300));
+      }
+
+      toast({
+        title: "✅ GPT-4 Scoring Complete!",
+        description: `Scored ${successCount} questions successfully. ${errorCount > 0 ? `${errorCount} failed.` : ''}`,
+      });
+
+      await refetch();
+    } catch (err: any) {
+      toast({
+        title: "Batch Scoring Failed",
         description: err?.message ?? "Unknown error",
         variant: "destructive",
       });
@@ -329,7 +318,7 @@ export default function AdminImpactDashboardPage() {
   };
 
   // =============================
-  // NEW: Apply Visibility Rules
+  // Apply Visibility Rules
   // =============================
   const [isApplyingVisibility, setIsApplyingVisibility] = React.useState(false);
 
@@ -360,40 +349,39 @@ export default function AdminImpactDashboardPage() {
   };
 
   // =============================
-  // NEW: Re-score Single Question
+  // Re-score Single Question with GPT-4
   // =============================
   const [rescoringQuestion, setRescoringQuestion] = React.useState<string | null>(null);
 
-const handleRescoreSingle = async (questionId: string | null) => {
-  if (!questionId) return;
-  setRescoringQuestion(questionId);
-  try {
-    // Call Edge Function instead of database RPC
-    const { data: result, error } = await supabase.functions.invoke(
-      'ai-score-question',
-      {
-        body: { question_id: questionId }
-      }
-    );
-    
-    if (error) throw error;
-    
-    toast({
-      title: "✅ Question Scored by AI!",
-      description: `Composite: ${result.composite_score} | ${result.explanation.slice(0, 60)}...`,
-    });
-    
-    await refetch();
-  } catch (err: any) {
-    toast({
-      title: "AI Scoring Failed",
-      description: err?.message ?? "Unknown error",
-      variant: "destructive",
-    });
-  } finally {
-    setRescoringQuestion(null);
-  }
-};
+  const handleRescoreSingle = async (questionId: string | null) => {
+    if (!questionId) return;
+    setRescoringQuestion(questionId);
+    try {
+      const { data: result, error } = await supabase.functions.invoke(
+        'ai-score-question',
+        { body: { question_id: questionId } }
+      );
+      
+      if (error) throw error;
+      
+      toast({
+        title: "✅ Question Scored by GPT-4!",
+        description: `New composite score: ${result.composite_score}`,
+      });
+      
+      // Wait a moment for database to update
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      await refetch();
+    } catch (err: any) {
+      toast({
+        title: "Re-score Failed",
+        description: err?.message ?? "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setRescoringQuestion(null);
+    }
+  };
 
   // -----------------------------
   // Render
@@ -410,7 +398,7 @@ const handleRescoreSingle = async (questionId: string | null) => {
             </CardDescription>
           </div>
           
-          {/* UPDATED: Button Group */}
+          {/* Button Group */}
           <div className="flex flex-row items-center gap-2">
             <Button
               variant="outline"
@@ -421,7 +409,7 @@ const handleRescoreSingle = async (questionId: string | null) => {
               Refresh
             </Button>
             
-            {/* NEW: Bootstrap Button (Only show if no data yet) */}
+            {/* Bootstrap Button (Only show if no data yet) */}
             {(!data || data.length === 0) && (
               <Button
                 variant="default"
@@ -441,7 +429,7 @@ const handleRescoreSingle = async (questionId: string | null) => {
               </Button>
             )}
             
-            {/* UPDATED: Score All Questions */}
+            {/* Score All Questions */}
             <Button
               variant="default"
               size="sm"
@@ -451,7 +439,7 @@ const handleRescoreSingle = async (questionId: string | null) => {
               {isRescoring ? "Scoring…" : "Score All Questions"}
             </Button>
             
-            {/* NEW: Apply Visibility Rules */}
+            {/* Apply Visibility Rules */}
             <Button
               variant="outline"
               size="sm"
@@ -660,14 +648,14 @@ const handleRescoreSingle = async (questionId: string | null) => {
                           </div>
                         </TableCell>
 
-                        {/* NEW: Actions Column */}
+                        {/* Actions Column */}
                         <TableCell>
                           <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => handleRescoreSingle(row.question_id)}
                             disabled={rescoringQuestion === row.question_id}
-                            title="Re-score this question"
+                            title="Re-score this question with GPT-4"
                           >
                             {rescoringQuestion === row.question_id ? (
                               <Loader2 className="h-3 w-3 animate-spin" />
