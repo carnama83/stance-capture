@@ -4,7 +4,7 @@ import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
-import { createSupabase } from "@/lib/createSupabase";
+import { getSupabase } from "@/lib/supabaseClient";
 import { getStanceColorHex } from "@/lib/stanceColors";
 
 export type QuestionStanceSliderProps = {
@@ -44,7 +44,7 @@ function useAiStanceTip(
   questionText?: string | null,
   summary?: string | null
 ) {
-  const supabase = React.useMemo(createSupabase, []);
+  const supabase = getSupabase()!;
 
   return useQuery({
     queryKey: ["ai-stance-tip", questionId, stance, questionText, summary],
