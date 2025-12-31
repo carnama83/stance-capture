@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { createSupabase } from "@/lib/createSupabase";
+import { getSupabase } from "@/lib/supabaseClient";
 import { Loader2, Globe2 } from "lucide-react";
 
 export type Region = {
@@ -19,7 +19,7 @@ export const RegionMultiSelect: React.FC<{
   onChange: (ids: string[]) => void;
   placeholder?: string;
 }> = ({ value, onChange, placeholder }) => {
-  const supabase = React.useMemo(createSupabase, []);
+  const supabase = getSupabase()!;
   const [open, setOpen] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [regions, setRegions] = React.useState<Region[]>([]);
