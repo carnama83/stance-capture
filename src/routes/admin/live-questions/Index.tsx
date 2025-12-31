@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Link } from "react-router-dom";
-import { createSupabase } from "@/lib/createSupabase";
+import { getSupabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -43,7 +43,7 @@ const STATUS_FILTERS: { value: "all" | QuestionStatus; label: string }[] = [
 ];
 
 export default function LiveQuestionsPage() {
-  const supabase = React.useMemo(createSupabase, []);
+  const supabase = getSupabase()!;
   const [rows, setRows] = React.useState<QuestionRow[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [statusFilter, setStatusFilter] = React.useState<"all" | QuestionStatus>(
@@ -279,7 +279,7 @@ function EditQuestionDialog({
   row: QuestionRow;
   onSaved: () => void;
 }) {
-  const supabase = React.useMemo(createSupabase, []);
+  const supabase = getSupabase()!;
   const [open, setOpen] = React.useState(false);
   const [question, setQuestion] = React.useState(row.question);
   const [summary, setSummary] = React.useState(row.summary ?? "");
@@ -365,7 +365,7 @@ function StatusButtons({
   row: QuestionRow;
   onChanged: () => void;
 }) {
-  const supabase = React.useMemo(createSupabase, []);
+  const supabase = getSupabase()!;
 
   const updateStatus = async (status: QuestionStatus) => {
     const { error } = await supabase
