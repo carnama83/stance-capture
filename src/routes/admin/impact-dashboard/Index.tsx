@@ -402,7 +402,7 @@ export default function AdminImpactDashboardPage() {
                     <TableHead>Visibility</TableHead>
                     <TableHead className="w-[220px]">Explanation</TableHead>
                     <TableHead className="w-[160px]">Last Updated</TableHead>
-                    <TableHead className="w-[80px]">Actions</TableHead> {/* NEW COLUMN */}
+                    <TableHead className="w-[80px]">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
