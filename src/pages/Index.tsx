@@ -520,9 +520,10 @@ export default function IndexPage() {
   const isAuthed = !!session;
   const sb = React.useMemo(getSupabase, []);
 
-  const [search, setSearch] = React.useState("");
-  const [page, setPage] = React.useState(0);
-  const pageSize = 9;
+  // COMMENTED OUT: Topics grid state (not needed without ExploreTopicsGrid)
+  // const [search, setSearch] = React.useState("");
+  // const [page, setPage] = React.useState(0);
+  // const pageSize = 9;
 
   const requireLogin = React.useCallback(() => {
     const returnTo = window.location.hash || "#/";
@@ -547,6 +548,7 @@ export default function IndexPage() {
     staleTime: 60_000,
   });
 
+  /* COMMENTED OUT: Topics grid query (causing 400 errors)
   const topicsQuery = useQuery({
     queryKey: ["topics-grid", search, page, pageSize],
     queryFn: async () => {
@@ -559,6 +561,7 @@ export default function IndexPage() {
     },
     keepPreviousData: true,
   });
+  */
 
   const userId = session?.user?.id ?? null;
 
@@ -652,6 +655,7 @@ export default function IndexPage() {
         />
       </section>
 
+      {/* COMMENTED OUT: Explore topics section (causing 400 errors)
       <section className="py-4">
         <ExploreTopicsGrid
           search={search}
@@ -666,6 +670,7 @@ export default function IndexPage() {
           isAuthed={isAuthed}
         />
       </section>
+      */}
     </PageLayout>
   );
 }
