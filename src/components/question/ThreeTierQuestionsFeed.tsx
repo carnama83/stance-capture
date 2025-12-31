@@ -6,7 +6,8 @@ import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { getSupabase } from "@/lib/supabaseClient";
-import { useAuth } from "@/contexts/AuthContext";
+
+type Session = import("@supabase/supabase-js").Session;
 
 interface ThreeTierQuestion {
   tier: 'local' | 'national' | 'global';
@@ -27,8 +28,25 @@ interface TierSection {
   questions: ThreeTierQuestion[];
 }
 
+// Session hook (matching your codebase pattern)
+function useSupabaseSession() {
+  const sb = React.useMemo(getSupabase, []);
+  const [session, setSession] = React.useState<Session | null>(null);
+
+  React.useEffect(() => {
+    if (!sb) return;
+    sb.auth.getSession().then(({ data }) => setSession(data.session ?? null));
+    const {
+      data: { subscription },
+    } = sb.auth.onAuthStateChange((_e, s) => setSession(s ?? null));
+    return () => subscription?.unsubscribe();
+  }, [sb]);
+
+  return session;
+}
+
 export function ThreeTierQuestionsFeed() {
-  const { session } = useAuth();
+  const session = useSupabaseSession();
   const supabase = React.useMemo(getSupabase, []);
   const userId = session?.user?.id;
 
