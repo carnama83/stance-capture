@@ -256,27 +256,21 @@ export default function QuestionDraftsPage() {
 }
 
 /**
- * Attempts to determine which question_drafts have already been published
- * by looking for live rows referencing the draft id.
- *
- * Tries common combinations:
- * - questions.draft_id
- * - questions.question_draft_id
- * - live_questions.draft_id
- * - live_questions.question_draft_id
+ * Determines which question_drafts have already been published
+ * by checking if they exist in the live questions table.
+ * 
+ * Checks: questions.question_draft_id
  */
 async function fetchPublishedDraftIds(
-  supabase: ReturnType<typeof createSupabase>,
+  supabase: ReturnType<typeof getSupabase>,
   draftIds: string[],
 ): Promise<Set<string>> {
   const out = new Set<string>();
   if (draftIds.length === 0) return out;
 
+  // Only use columns that actually exist in the schema
   const candidates: Array<{ table: string; col: string }> = [
-    { table: "questions", col: "draft_id" },
     { table: "questions", col: "question_draft_id" },
-    { table: "live_questions", col: "draft_id" },
-    { table: "live_questions", col: "question_draft_id" },
   ];
 
   for (const c of candidates) {
