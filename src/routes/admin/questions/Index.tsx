@@ -60,6 +60,7 @@ export default function QuestionDraftsPage() {
   const supabase = getSupabase()!;
   const [rows, setRows] = React.useState<QuestionDraftRow[]>([]);
   const [loading, setLoading] = React.useState(false);
+  const [generating, setGenerating] = React.useState(false);
   const [statusFilter, setStatusFilter] = React.useState<"all" | QuestionStatus>(
     "all",
   );
@@ -141,6 +142,34 @@ export default function QuestionDraftsPage() {
     setLoading(false);
   }, [supabase, statusFilter, search, dateFrom, dateTo]);
 
+  const handleBulkGenerate = React.useCallback(async () => {
+    if (generating) return;
+    setGenerating(true);
+    
+    try {
+      const { error } = await supabase.rpc('run_generate_http');
+      
+      if (error) {
+        console.error("Bulk generation error:", error);
+        alert(`Bulk generation failed: ${error.message}`);
+        setGenerating(false);
+        return;
+      }
+      
+      alert("Bulk generation started! Generating questions for topics. Refreshing in 3 seconds...");
+      
+      setTimeout(async () => {
+        await load();
+        setGenerating(false);
+      }, 3000);
+      
+    } catch (e: any) {
+      console.error("Bulk generate exception:", e);
+      alert(`Error: ${e?.message ?? String(e)}`);
+      setGenerating(false);
+    }
+  }, [supabase, generating, load]);
+
   React.useEffect(() => {
     load();
   }, [load]);
@@ -191,6 +220,14 @@ export default function QuestionDraftsPage() {
           </select>
           <Button variant="outline" size="icon" onClick={load}>
             <RefreshCw className="h-4 w-4" />
+          </Button>
+          <Button 
+            variant="default" 
+            onClick={handleBulkGenerate} 
+            disabled={generating || loading}
+            className="bg-green-600 hover:bg-green-700 text-white"
+          >
+            {generating ? "Generating..." : "🚀 Run Generate Now"}
           </Button>
         </div>
       </CardHeader>
