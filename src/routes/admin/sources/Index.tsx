@@ -123,7 +123,7 @@ function StatusPill({
 }
 
 export default function AdminSourcesIndex() {
-  const supabase = useMemo(createSupabase, []);
+  const supabase = getSupabase()!;
   const location = useLocation();
 
   const [rows, setRows] = useState<SourceRow[]>([]);
