@@ -1,4 +1,5 @@
 // src/components/question/QuestionStanceSlider.tsx
+// OPTIMIZED: Instant feedback with debounced AI calls
 
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -26,37 +27,47 @@ const STANCE_LABELS: Record<number, string> = {
 
 const STANCE_TIPS_FALLBACK: Record<number, string> = {
   [-2]:
-    "You strongly oppose this and would prefer decisions or policies that stop or reverse it.",
+    "You strongly oppose this approach and would prefer alternatives that avoid these trade-offs entirely.",
   [-1]:
-    "You lean against this. You see more downsides than upsides, but might accept it with strong safeguards.",
+    "You lean against this option. You see more downsides than upsides, but might accept it with strong modifications.",
   [0]:
-    "You’re neutral or unsure. You may see valid points on both sides or don’t feel strongly yet.",
+    "You're neutral or unsure. You may see valid points on multiple sides or need more information to decide.",
   [1]:
-    "You generally support this and see more benefits than costs.",
+    "You generally support this direction and believe the benefits outweigh the costs.",
   [2]:
-    "You strongly support this, even accepting real tradeoffs to move it forward.",
+    "You strongly support this approach, accepting the trade-offs as worthwhile to achieve the outcome.",
 };
 
-// ---- AI tip hook ----
-function useAiStanceTip(
+// ✨ NEW: Debounced AI tip hook - only calls AI after user stops moving slider
+function useDebouncedAiStanceTip(
   questionId: string,
   stance: number,
   questionText?: string | null,
   summary?: string | null
 ) {
   const supabase = getSupabase()!;
+  const [debouncedStance, setDebouncedStance] = React.useState(stance);
+
+  // ✨ Debounce: Wait 500ms after last change before calling AI
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedStance(stance);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [stance]);
 
   return useQuery({
-    queryKey: ["ai-stance-tip", questionId, stance, questionText, summary],
-    enabled: !!questionId && Number.isFinite(stance),
-    staleTime: 10 * 60_000,
+    queryKey: ["ai-stance-tip", questionId, debouncedStance, questionText, summary],
+    enabled: !!questionId && Number.isFinite(debouncedStance),
+    staleTime: 10 * 60_000, // Cache for 10 minutes
     queryFn: async () => {
       const { data, error } = await supabase.functions.invoke(
         "ai-stance-tip",
         {
           body: {
             question_id: questionId,
-            stance,
+            stance: debouncedStance,
             question_text: questionText ?? null,
             summary: summary ?? null,
           },
@@ -85,7 +96,7 @@ function useAiStanceTip(
       const reason = raw?.reason ?? null;
 
       console.info("[QuestionStanceSlider] ai-stance-tip result", {
-        stance,
+        stance: debouncedStance,
         source,
         reason,
         tip: tipText,
@@ -110,7 +121,8 @@ export function QuestionStanceSlider({
   );
   const [submitting, setSubmitting] = React.useState(false);
 
-  const { data: aiData } = useAiStanceTip(
+  // ✨ Use debounced AI hook
+  const { data: aiData, isLoading: aiLoading } = useDebouncedAiStanceTip(
     questionId,
     value,
     questionText,
@@ -119,6 +131,8 @@ export function QuestionStanceSlider({
 
   const label = STANCE_LABELS[value] ?? "Select stance";
   const fallbackTip = STANCE_TIPS_FALLBACK[value] ?? "";
+  
+  // ✨ INSTANT FEEDBACK: Always show fallback immediately, then replace with AI when ready
   const tip = aiData?.tip || fallbackTip;
 
   const handleChange = (vals: number[]) => {
@@ -204,12 +218,24 @@ export function QuestionStanceSlider({
         </div>
       </div>
 
-      {/* Tip box */}
+      {/* Tip box - ✨ Now with loading indicator */}
       <div className="rounded-md border bg-slate-50 px-3 py-2 text-[11px] text-slate-700 min-h-[52px]">
-        <div className="font-semibold mb-0.5">
-          What this stance means
+        <div className="flex items-center justify-between mb-0.5">
+          <div className="font-semibold">
+            What this stance means
+          </div>
+          {aiLoading && (
+            <div className="text-[9px] text-slate-400 animate-pulse">
+              Loading AI tip...
+            </div>
+          )}
         </div>
-        <p>{tip}</p>
+        <p className={cn(
+          "transition-opacity duration-200",
+          aiLoading && "opacity-50"
+        )}>
+          {tip}
+        </p>
       </div>
 
       {submitting && (
