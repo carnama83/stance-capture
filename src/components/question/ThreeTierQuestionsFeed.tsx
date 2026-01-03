@@ -362,6 +362,18 @@ export function ThreeTierQuestionsFeed() {
 function QuestionCard({ question }: { question: ThreeTierQuestion }) {
   const ageDays = question.published_at ? calculateAgeDays(question.published_at) : null;
   
+  // DEBUG: Log engagement data
+  React.useEffect(() => {
+    if (question.question.includes('Ukraine')) {
+      console.log('Ukraine question engagement data:', {
+        responses_total: question.responses_total,
+        response_rate_24h: question.response_rate_24h,
+        has_responses: !!question.responses_total,
+        full_question: question
+      });
+    }
+  }, [question]);
+  
   return (
     <Link
       to={`/q/${question.question_id}`}
@@ -453,21 +465,21 @@ function QuestionCard({ question }: { question: ThreeTierQuestion }) {
           )}
         </div>
 
-        {/* Engagement Stats */}
-        {(question.responses_total !== undefined && question.responses_total > 0) && (
-          <div className="flex items-center gap-3 text-xs text-slate-500">
+        {/* Engagement Stats - Simplified condition */}
+        {question.responses_total && question.responses_total > 0 ? (
+          <div className="flex items-center gap-3 text-xs text-slate-500 shrink-0">
             <div className="flex items-center gap-1">
               <MessageSquare className="w-3 h-3" />
               <span>{question.responses_total}</span>
             </div>
             
-            {question.response_rate_24h !== undefined && question.response_rate_24h > 0 && (
+            {question.response_rate_24h && question.response_rate_24h > 0 ? (
               <div className="text-blue-600 font-medium">
                 +{Math.round(question.response_rate_24h)} today
               </div>
-            )}
+            ) : null}
           </div>
-        )}
+        ) : null}
       </div>
     </Link>
   );
