@@ -152,36 +152,69 @@ export function ThreeTierQuestionsFeed() {
             is_featured,
             is_resolved,
             trending_score,
-            published_at,
-            engagement:question_engagement_metrics(
-              responses_total,
-              response_rate_24h
-            )
+            published_at
           `)
           .in('id', questionIds);
         
+        // Separately fetch engagement metrics (more reliable)
+        const { data: engagementData, error: engagementError } = await supabase
+          .from('question_engagement_metrics')
+          .select('question_id, responses_total, response_rate_24h')
+          .in('question_id', questionIds);
+        
+        // Debug log
+        console.log('Lifecycle data fetched:', lifecycleData?.length, 'questions');
+        console.log('Engagement data fetched:', engagementData?.length, 'metrics');
+        
         if (!lifecycleError && lifecycleData) {
+          // Create engagement map
+          const engagementMap = new Map<string, any>();
+          if (engagementData) {
+            engagementData.forEach((item: any) => {
+              engagementMap.set(item.question_id, {
+                responses_total: item.responses_total || 0,
+                response_rate_24h: item.response_rate_24h || 0,
+              });
+            });
+          }
+          
           // Merge lifecycle data with feed data
           const lifecycleMap = new Map(
-            lifecycleData.map((item: any) => [
-              item.id,
-              {
-                state: item.state,
-                is_trending: item.is_trending,
-                is_featured: item.is_featured,
-                is_resolved: item.is_resolved,
-                trending_score: item.trending_score,
-                published_at: item.published_at,
-                responses_total: item.engagement?.[0]?.responses_total || 0,
-                response_rate_24h: item.engagement?.[0]?.response_rate_24h || 0,
-              }
-            ])
+            lifecycleData.map((item: any) => {
+              const engagement = engagementMap.get(item.id) || { responses_total: 0, response_rate_24h: 0 };
+              
+              return [
+                item.id,
+                {
+                  state: item.state,
+                  is_trending: item.is_trending,
+                  is_featured: item.is_featured,
+                  is_resolved: item.is_resolved,
+                  trending_score: item.trending_score,
+                  published_at: item.published_at,
+                  responses_total: engagement.responses_total,
+                  response_rate_24h: engagement.response_rate_24h,
+                }
+              ];
+            })
           );
           
-          return (data || []).map((q: any) => ({
+          const merged = (data || []).map((q: any) => ({
             ...q,
             ...(lifecycleMap.get(q.question_id) || {})
           })) as ThreeTierQuestion[];
+          
+          // Debug log merged data
+          const ukraineQ = merged.find(q => q.question.includes('Ukraine'));
+          if (ukraineQ) {
+            console.log('Ukraine question after merge:', {
+              question_id: ukraineQ.question_id,
+              responses_total: ukraineQ.responses_total,
+              response_rate_24h: ukraineQ.response_rate_24h,
+            });
+          }
+          
+          return merged;
         }
       }
       
