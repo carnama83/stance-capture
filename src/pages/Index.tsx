@@ -9,6 +9,7 @@ import { useQuery } from "@tanstack/react-query";
 import { getSupabase } from "../lib/supabaseClient";
 import PageLayout from "../components/PageLayout";
 import { ThreeTierQuestionsFeed } from "@/components/question/ThreeTierQuestionsFeed";
+import { ThreeTierTrending } from "@/components/trending/ThreeTierTrending";
 
 // ---------- Types ----------
 type Session = import("@supabase/supabase-js").Session;
@@ -648,11 +649,7 @@ export default function IndexPage() {
       </section>
 
       <section className="py-4">
-        <Trending
-          personalized={isAuthed}
-          loading={trendingQuery.isLoading}
-          items={trendingQuery.data ?? []}
-        />
+        <ThreeTierTrending />
       </section>
 
       {/* COMMENTED OUT: Explore topics section (causing 400 errors)
