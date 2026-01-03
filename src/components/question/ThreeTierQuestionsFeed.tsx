@@ -1,12 +1,16 @@
 // components/question/ThreeTierQuestionsFeed.tsx
-// 3-Tier Regional Curated Feed Component with IP Geolocation
-// Anonymous users get questions based on their IP country
-// Logged-in users get questions based on saved location
+// 3-Tier Regional Curated Feed Component with IP Geolocation + Lifecycle Features
+// Enhanced with state badges, trending indicators, and engagement metrics
 
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { getSupabase } from "@/lib/supabaseClient";
+import { QuestionStateBadge } from "./QuestionStateBadge";
+import { TrendingBadge } from "./TrendingBadge";
+import { MessageSquare } from "lucide-react";
+import { formatAgeDays, calculateAgeDays } from "@/types/questionLifecycleTypes";
+import type { QuestionState } from "@/types/questionLifecycleTypes";
 
 type Session = import("@supabase/supabase-js").Session;
 
@@ -20,6 +24,16 @@ interface ThreeTierQuestion {
   location_label: string | null;
   composite_score: number;
   tier_position: number;
+  // Lifecycle fields
+  state?: QuestionState;
+  is_trending?: boolean;
+  is_featured?: boolean;
+  is_resolved?: boolean;
+  trending_score?: number;
+  published_at?: string;
+  // Engagement metrics
+  responses_total?: number;
+  response_rate_24h?: number;
 }
 
 interface TierSection {
@@ -114,16 +128,61 @@ export function ThreeTierQuestionsFeed() {
         params = {
           p_user_id: null,
           p_date: new Date().toISOString().split('T')[0],
-          p_ip_country: ipLocation.country // We'll add this parameter to SQL
+          p_ip_country: ipLocation.country
         };
       }
-      // else: No params (will return all as global)
       
       const { data, error } = await supabase.rpc('get_three_tier_curated_feed_v2', params);
       
       if (error) {
         console.error('Error fetching three-tier feed:', error);
         throw error;
+      }
+      
+      // Fetch lifecycle data for these questions
+      const questionIds = (data || []).map((q: any) => q.question_id);
+      
+      if (questionIds.length > 0) {
+        const { data: lifecycleData, error: lifecycleError } = await supabase
+          .from('questions')
+          .select(`
+            id,
+            state,
+            is_trending,
+            is_featured,
+            is_resolved,
+            trending_score,
+            published_at,
+            engagement:question_engagement_metrics(
+              responses_total,
+              response_rate_24h
+            )
+          `)
+          .in('id', questionIds);
+        
+        if (!lifecycleError && lifecycleData) {
+          // Merge lifecycle data with feed data
+          const lifecycleMap = new Map(
+            lifecycleData.map((item: any) => [
+              item.id,
+              {
+                state: item.state,
+                is_trending: item.is_trending,
+                is_featured: item.is_featured,
+                is_resolved: item.is_resolved,
+                trending_score: item.trending_score,
+                published_at: item.published_at,
+                responses_total: item.engagement?.[0]?.responses_total || 0,
+                response_rate_24h: item.engagement?.[0]?.response_rate_24h || 0,
+              }
+            ])
+          );
+          
+          return (data || []).map((q: any) => ({
+            ...q,
+            ...(lifecycleMap.get(q.question_id) || {})
+          })) as ThreeTierQuestion[];
+        }
       }
       
       return (data || []) as ThreeTierQuestion[];
@@ -180,6 +239,11 @@ export function ThreeTierQuestionsFeed() {
     return result;
   }, [data]);
 
+  // Count trending questions
+  const trendingCount = React.useMemo(() => {
+    return data?.filter(q => q.is_trending).length || 0;
+  }, [data]);
+
   if (isLoading) {
     return (
       <div className="rounded-lg border p-6 bg-white">
@@ -227,6 +291,11 @@ export function ThreeTierQuestionsFeed() {
           </h2>
           <p className="text-sm text-slate-600 mt-1">
             {totalQuestions} curated questions across {sections.length} region{sections.length !== 1 ? 's' : ''}
+            {trendingCount > 0 && (
+              <span className="ml-2 text-orange-600 font-medium">
+                • {trendingCount} trending 🔥
+              </span>
+            )}
           </p>
         </div>
         <div className="text-right">
@@ -289,44 +358,50 @@ export function ThreeTierQuestionsFeed() {
   );
 }
 
-// Question Card Component
+// Enhanced Question Card Component with Lifecycle Features
 function QuestionCard({ question }: { question: ThreeTierQuestion }) {
+  const ageDays = question.published_at ? calculateAgeDays(question.published_at) : null;
+  
   return (
     <Link
       to={`/q/${question.question_id}`}
       className="block rounded-lg border border-slate-200 bg-white p-4 hover:border-slate-900 hover:shadow-sm transition-all"
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex-1">
-          {/* Question Text */}
-          <div className="font-medium text-slate-900 mb-2">
-            {question.question}
-          </div>
-
-          {/* Summary */}
-          {question.summary && (
-            <p className="text-sm text-slate-600 line-clamp-2 mb-2">
-              {question.summary}
-            </p>
+      {/* Top Row: Badges */}
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div className="flex flex-wrap gap-2">
+          {/* State Badge */}
+          {question.state && (
+            <QuestionStateBadge state={question.state} size="sm" />
           )}
-
-          {/* Tags */}
-          {question.tags && question.tags.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {question.tags.slice(0, 3).map((tag) => (
-                <span
-                  key={tag}
-                  className="inline-flex items-center rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-600"
-                >
-                  #{tag}
-                </span>
-              ))}
-            </div>
+          
+          {/* Trending Badge */}
+          {question.is_trending && (
+            <TrendingBadge trendingScore={question.trending_score} />
+          )}
+          
+          {/* Featured Badge */}
+          {question.is_featured && (
+            <span className="inline-flex items-center rounded-full bg-purple-100 text-purple-700 px-2 py-0.5 text-xs font-medium">
+              ⭐ Featured
+            </span>
+          )}
+          
+          {/* Resolved Badge */}
+          {question.is_resolved && (
+            <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-xs font-medium">
+              ✅ Resolved
+            </span>
           )}
         </div>
 
-        {/* Score Badge */}
+        {/* Age + Score */}
         <div className="flex flex-col items-end gap-1">
+          {ageDays !== null && (
+            <span className="text-xs text-slate-500">
+              {formatAgeDays(ageDays)}
+            </span>
+          )}
           <div
             className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold ${
               question.composite_score >= 8
@@ -338,12 +413,61 @@ function QuestionCard({ question }: { question: ThreeTierQuestion }) {
           >
             {question.composite_score.toFixed(1)}
           </div>
+        </div>
+      </div>
+
+      {/* Question Text */}
+      <div className="font-medium text-slate-900 mb-2">
+        {question.question}
+      </div>
+
+      {/* Summary */}
+      {question.summary && (
+        <p className="text-sm text-slate-600 line-clamp-2 mb-2">
+          {question.summary}
+        </p>
+      )}
+
+      {/* Bottom Row: Tags + Engagement */}
+      <div className="flex items-center justify-between gap-3">
+        {/* Tags */}
+        <div className="flex flex-wrap gap-1.5 flex-1">
+          {question.tags && question.tags.length > 0 && (
+            <>
+              {question.tags.slice(0, 3).map((tag) => (
+                <span
+                  key={tag}
+                  className="inline-flex items-center rounded-full border border-slate-300 px-2 py-0.5 text-xs text-slate-600"
+                >
+                  #{tag}
+                </span>
+              ))}
+            </>
+          )}
+          
+          {/* Location Label */}
           {question.location_label && (
             <span className="text-xs text-slate-500">
-              {question.location_label}
+              📍 {question.location_label}
             </span>
           )}
         </div>
+
+        {/* Engagement Stats */}
+        {(question.responses_total !== undefined && question.responses_total > 0) && (
+          <div className="flex items-center gap-3 text-xs text-slate-500">
+            <div className="flex items-center gap-1">
+              <MessageSquare className="w-3 h-3" />
+              <span>{question.responses_total}</span>
+            </div>
+            
+            {question.response_rate_24h !== undefined && question.response_rate_24h > 0 && (
+              <div className="text-blue-600 font-medium">
+                +{Math.round(question.response_rate_24h)} today
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </Link>
   );
