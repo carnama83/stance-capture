@@ -1,6 +1,8 @@
 // src/pages/MyStancesPage.tsx
 
 import StanceSnapshotCard from "./MyStances/StanceSnapshotCard";
+import YouVsCommunityCard from "./MyStances/YouVsCommunityCard";
+
 import * as React from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -279,9 +281,11 @@ export default function MyStancesPage() {
           </Link>
         </div>
 
-   {/* Epic Q — Q1: Stance Snapshot */}
-      <StanceSnapshotCard />
-        
+  {/* Epic Q cards */}
+<section className="space-y-3">
+  <StanceSnapshotCard />
+  <YouVsCommunityCard />
+</section>  
         {/* Controls */}
         <section className="rounded-lg border p-3 space-y-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
