@@ -279,6 +279,9 @@ export default function MyStancesPage() {
           </Link>
         </div>
 
+   {/* Epic Q — Q1: Stance Snapshot */}
+      <StanceSnapshotCard />
+        
         {/* Controls */}
         <section className="rounded-lg border p-3 space-y-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
