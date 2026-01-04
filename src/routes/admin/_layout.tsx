@@ -109,6 +109,14 @@ export default function AdminLayout() {
             label="Impact Dashboard"
           />
 
+<Link
+  to="/admin/cron-jobs"
+  className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-slate-100"
+>
+  <Clock className="w-4 h-4" />
+  <span>Cron Jobs</span>
+</Link>
+          
           <Separator className="my-2" />
 
           <div className="px-2 text-[10px] font-medium tracking-wide text-muted-foreground uppercase mb-1">
