@@ -44,6 +44,7 @@ import AdminLiveQuestionShowPage from "@/routes/admin/live-questions/Show";
 import AdminAiDraftsPage from "@/routes/admin/ai-drafts/Index";
 import AdminImpactDashboardPage from "@/routes/admin/impact-dashboard/Index";
 import AdminCronJobsPage from "@/routes/admin/cron-jobs/Index";
+
 // My stances
 import MyStancesPage from "./pages/MyStancesPage";
 
@@ -178,18 +179,6 @@ const App: React.FC = () => {
                 }
               />
 
-<Route path="/admin" element={<AdminLayout />}>
-  {/* Existing routes... */}
-  <Route path="sources" element={<AdminSourcesPage />} />
-  <Route path="ingestion" element={<AdminIngestionPage />} />
-  <Route path="drafts" element={<AdminDraftsPage />} />
-  
-  {/* ADD THIS NEW ROUTE */}
-  <Route path="cron-jobs" element={<AdminCronJobsPage />} />
-  
-  {/* Rest of routes... */}
-</Route>
-              
               {/* Admin (protected + admin-only) */}
               <Route
                 path={ROUTES.ADMIN_ROOT}
@@ -213,16 +202,12 @@ const App: React.FC = () => {
                   element={<AdminLiveQuestionShowPage />}
                 />
                 <Route path="news" element={<AdminNewsIndex />} />
-
                 <Route path="topics" element={<AdminTopicsPage />} />
-                <Route
-                  path="impact-dashboard"
-                  element={<AdminImpactDashboardPage />}
-                />
-                <Route
-                  path="stance-metrics"
-                  element={<AdminStanceMetricsPage />}
-                />
+                <Route path="impact-dashboard" element={<AdminImpactDashboardPage />} />
+                <Route path="stance-metrics" element={<AdminStanceMetricsPage />} />
+
+                {/* ✅ ADD: cron-jobs route (real protected admin tree) */}
+                <Route path="cron-jobs" element={<AdminCronJobsPage />} />
               </Route>
 
               {/* Admin special page */}
