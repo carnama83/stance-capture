@@ -3,7 +3,8 @@ import { Outlet, NavLink, Link, useLocation, useNavigate } from "react-router-do
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
-import { Library, Database, FileText, ChevronRight, LogOut, User, BarChart3 } from "lucide-react";
+import { Library, Database, FileText, ChevronRight, LogOut, User, BarChart3, Clock } from "lucide-react";
+
 
 import {
   DropdownMenu,
