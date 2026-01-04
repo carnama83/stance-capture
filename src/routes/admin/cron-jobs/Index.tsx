@@ -140,7 +140,7 @@ export default function AdminCronJobsPage() {
       queryClient.invalidateQueries({ queryKey: ['cron-jobs'] });
       toast({
         title: "Success",
-        description: data[0]?.message || "Job toggled successfully",
+        description: data[0]?.result_message || "Job toggled successfully",
       });
     },
     onError: (error: any) => {
@@ -215,12 +215,12 @@ export default function AdminCronJobsPage() {
       if (error) throw error;
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['cron-jobs'] });
       setShowEditDialog(false);
       toast({
         title: "Success",
-        description: "Schedule updated successfully",
+        description: data[0]?.result_message || "Schedule updated successfully",
       });
     },
     onError: (error: any) => {
@@ -244,12 +244,12 @@ export default function AdminCronJobsPage() {
       if (error) throw error;
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['cron-jobs'] });
       setShowCreateDialog(false);
       toast({
         title: "Success",
-        description: "Job created successfully",
+        description: data[0]?.result_message || "Job created successfully",
       });
     },
     onError: (error: any) => {
