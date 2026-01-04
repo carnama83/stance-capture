@@ -1,9 +1,12 @@
 // src/pages/MyStancesPage.tsx
+
+import StanceSnapshotCard from "./MyStances/StanceSnapshotCard";
 import * as React from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getSupabase } from "../lib/supabaseClient";
 import PageLayout from "../components/PageLayout";
+
 
 type Session = import("@supabase/supabase-js").Session;
 
