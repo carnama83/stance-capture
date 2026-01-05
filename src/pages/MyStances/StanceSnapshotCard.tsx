@@ -12,7 +12,7 @@ import {
 
 type SnapshotTopic = {
   topic_title: string;
-  n: number; // returned by RPC but we intentionally don't display counts
+  n: number;
   avg_score: number | null;
 };
 
@@ -41,21 +41,29 @@ function stancePhrase(avgScore: number | null): string {
 export default function StanceSnapshotCard() {
   const sb = React.useMemo(getSupabase, []);
 
-  const { data, isLoading, isError } = useQuery<StanceSnapshot>({
+  const { data, isLoading, isError, error } = useQuery<StanceSnapshot>({
     queryKey: ["epic-q", "q1", "stance-snapshot"],
     queryFn: async () => {
       const supabase = getSupabase();
       if (!supabase) throw new Error("Supabase client not available");
 
+      console.log("[Q1] Calling RPC...");
+
       const { data, error } = await supabase
         .rpc("get_my_stance_snapshot", { p_limit_topics: 3 })
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error("[Q1] Full Error Object:", JSON.stringify(error, null, 2));
+        throw error;
+      }
+
+      console.log("[Q1] Success:", data);
       return data as StanceSnapshot;
     },
     enabled: !!sb,
     staleTime: 60_000,
+    retry: false, // Don't retry so we see the error immediately
   });
 
   return (
@@ -63,14 +71,21 @@ export default function StanceSnapshotCard() {
       <CardHeader>
         <CardTitle>Your Stance Snapshot</CardTitle>
         <CardDescription>
-          This is a reflection of how you’ve responded so far. It’s not a score — just a snapshot in time.
+          This is a reflection of how you've responded so far. It's not a score — just a snapshot in time.
         </CardDescription>
       </CardHeader>
 
       <CardContent>
         {isLoading ? (
           <div className="text-sm text-slate-600">Loading your snapshot…</div>
-        ) : isError || !data || data.total_answered === 0 ? (
+        ) : isError ? (
+          <div className="rounded-lg border border-red-300 bg-red-50 p-4">
+            <div className="font-medium text-red-900 mb-2">Error loading snapshot</div>
+            <div className="text-sm text-red-800 font-mono whitespace-pre-wrap">
+              {JSON.stringify(error, null, 2)}
+            </div>
+          </div>
+        ) : !data || data.total_answered === 0 ? (
           <div className="text-sm text-slate-600">
             As you answer more questions, patterns will begin to appear here.
           </div>
@@ -96,7 +111,7 @@ export default function StanceSnapshotCard() {
                       On this topic, you {stancePhrase(t.avg_score)}.
                     </div>
                     <div className="text-xs text-slate-500 mt-1">
-                      Based on the questions you’ve answered so far.
+                      Based on the questions you've answered so far.
                     </div>
                   </div>
                 ))}
