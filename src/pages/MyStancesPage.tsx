@@ -5,13 +5,11 @@ import StanceSnapshotCard from "./MyStances/StanceSnapshotCard";
 import YouVsCommunityCard from "./MyStances/YouVsCommunityCard";
 import SinceLastVisitCard from "./MyStances/SinceLastVisitCard";
 
-
 import * as React from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getSupabase } from "../lib/supabaseClient";
 import PageLayout from "../components/PageLayout";
-
 
 type Session = import("@supabase/supabase-js").Session;
 
@@ -43,14 +41,7 @@ type MyStanceRow = {
 };
 
 type SortBy = "recent" | "oldest" | "strongest";
-type FilterBy =
-  | "all"
-  | "sa"
-  | "a"
-  | "n"
-  | "d"
-  | "sd"
-  | "strong"; // strong = ±2
+type FilterBy = "all" | "sa" | "a" | "n" | "d" | "sd" | "strong";
 
 const STANCE_LABELS: Record<
   number,
@@ -126,7 +117,6 @@ async function fetchMyStances(userId: string): Promise<MyStanceRow[]> {
 
   if (questionError) {
     console.error("Failed to load questions for stances", questionError);
-    // Still return stances, just without question details
     return rows.map((r) => ({
       stance_id: r.id,
       question_id: r.question_id,
@@ -216,7 +206,6 @@ export default function MyStancesPage() {
         if (magB !== magA) {
           return magB - magA;
         }
-        // tie-breaker: most recent
         return dateB - dateA;
       }
       return 0;
@@ -229,7 +218,6 @@ export default function MyStancesPage() {
   const visibleCount = filteredAndSorted.length;
 
   if (!isAuthed || !userId) {
-    // /me/stances should already be behind <Protected>, but just in case
     return (
       <PageLayout>
         <div className="max-w-3xl mx-auto py-4">
@@ -276,31 +264,21 @@ export default function MyStancesPage() {
               already answered.
             </p>
           </div>
-          <Link
-            to="/"
-            className="text-xs text-slate-600 hover:underline"
-          >
+          <Link to="/" className="text-xs text-slate-600 hover:underline">
             ← Back to homepage
           </Link>
         </div>
 
-// Add the banner right after the header, before Epic Q cards (around line 283):
-<div className="max-w-4xl mx-auto py-4 space-y-4">
-  {/* Header */}
-  <div className="flex items-center justify-between gap-2">
-    {/* ... existing header code ... */}
-  </div>
+        {/* Contribution acknowledgement */}
+        <ContributionBanner />
 
-  {/* ADD THIS: Contribution acknowledgement */}
-  <ContributionBanner />
-
-        
-{/* Epic Q cards */}
+        {/* Epic Q cards */}
         <section className="space-y-3">
           <StanceSnapshotCard />
           <SinceLastVisitCard />
           <YouVsCommunityCard />
         </section>
+
         {/* Controls */}
         <section className="rounded-lg border p-3 space-y-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -317,9 +295,7 @@ export default function MyStancesPage() {
                 <span>Sort by</span>
                 <select
                   value={sortBy}
-                  onChange={(e) =>
-                    setSortBy(e.target.value as SortBy)
-                  }
+                  onChange={(e) => setSortBy(e.target.value as SortBy)}
                   className="rounded border px-2 py-1 text-[11px]"
                 >
                   <option value="recent">Most recent</option>
@@ -333,9 +309,7 @@ export default function MyStancesPage() {
                 <span>Filter</span>
                 <select
                   value={filterBy}
-                  onChange={(e) =>
-                    setFilterBy(e.target.value as FilterBy)
-                  }
+                  onChange={(e) => setFilterBy(e.target.value as FilterBy)}
                   className="rounded border px-2 py-1 text-[11px]"
                 >
                   <option value="all">All stances</option>
@@ -351,9 +325,7 @@ export default function MyStancesPage() {
           </div>
 
           {isLoading && (
-            <p className="text-xs text-slate-500">
-              Loading your stances…
-            </p>
+            <p className="text-xs text-slate-500">Loading your stances…</p>
           )}
           {isError && !isLoading && (
             <p className="text-xs text-red-600">
@@ -425,9 +397,7 @@ function MyStanceCard({ row }: { row: MyStanceRow }) {
             )}
           </div>
           {q?.summary && (
-            <p className="text-xs text-slate-600 line-clamp-2">
-              {q.summary}
-            </p>
+            <p className="text-xs text-slate-600 line-clamp-2">{q.summary}</p>
           )}
           {q?.tags && q.tags.length > 0 && (
             <div className="mt-1 flex flex-wrap gap-1.5">
