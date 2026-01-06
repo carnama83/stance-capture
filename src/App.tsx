@@ -14,6 +14,9 @@ import AdminTopicsPage from "@/routes/admin/topics/Index";
 
 import TopicDetailPage from "./pages/TopicDetailPage";
 
+import SearchResultsPage from "@/pages/SearchResultsPage";
+import ForYouFeedPage from "@/pages/ForYouFeedPage";
+
 // Public pages
 import Index from "./pages/Index";
 import Signup from "./pages/Signup";
@@ -103,6 +106,9 @@ const App: React.FC = () => {
                 }
               />
 
+<Route path="/search" element={<SearchResultsPage />} />
+<Route path="/for-you" element={<Protected><ForYouFeedPage /></Protected>} />
+              
               <Route
                 path={ROUTES.SIGNUP}
                 element={
