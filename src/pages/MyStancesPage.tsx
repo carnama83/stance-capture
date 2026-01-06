@@ -285,9 +285,11 @@ export default function MyStancesPage() {
 
   {/* Epic Q cards */}
 <section className="space-y-3">
+  
+  <YouVsCommunityCard />
   <StanceSnapshotCard />
   <SinceLastVisitCard />
-  <YouVsCommunityCard />
+  
 </section>  
         {/* Controls */}
         <section className="rounded-lg border p-3 space-y-3">
