@@ -295,15 +295,12 @@ export default function MyStancesPage() {
   <ContributionBanner />
 
         
-  {/* Epic Q cards */}
-<section className="space-y-3">
-  
-  <YouVsCommunityCard />
-  <SinceLastVisitCard />
-  <StanceSnapshotCard />
-  
-  
-</section>  
+{/* Epic Q cards */}
+        <section className="space-y-3">
+          <StanceSnapshotCard />
+          <SinceLastVisitCard />
+          <YouVsCommunityCard />
+        </section>
         {/* Controls */}
         <section className="rounded-lg border p-3 space-y-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
