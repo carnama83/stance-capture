@@ -2,6 +2,8 @@
 
 import StanceSnapshotCard from "./MyStances/StanceSnapshotCard";
 import YouVsCommunityCard from "./MyStances/YouVsCommunityCard";
+import SinceLastVisitCard from "./MyStances/SinceLastVisitCard";
+
 
 import * as React from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -284,6 +286,7 @@ export default function MyStancesPage() {
   {/* Epic Q cards */}
 <section className="space-y-3">
   <StanceSnapshotCard />
+  <SinceLastVisitCard />
   <YouVsCommunityCard />
 </section>  
         {/* Controls */}
