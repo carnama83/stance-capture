@@ -287,8 +287,9 @@ export default function MyStancesPage() {
 <section className="space-y-3">
   
   <YouVsCommunityCard />
-  <StanceSnapshotCard />
   <SinceLastVisitCard />
+  <StanceSnapshotCard />
+  
   
 </section>  
         {/* Controls */}
