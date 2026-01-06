@@ -1,5 +1,6 @@
 // src/pages/MyStancesPage.tsx
 
+import ContributionBanner from "./MyStances/ContributionBanner";
 import StanceSnapshotCard from "./MyStances/StanceSnapshotCard";
 import YouVsCommunityCard from "./MyStances/YouVsCommunityCard";
 import SinceLastVisitCard from "./MyStances/SinceLastVisitCard";
@@ -283,6 +284,17 @@ export default function MyStancesPage() {
           </Link>
         </div>
 
+// Add the banner right after the header, before Epic Q cards (around line 283):
+<div className="max-w-4xl mx-auto py-4 space-y-4">
+  {/* Header */}
+  <div className="flex items-center justify-between gap-2">
+    {/* ... existing header code ... */}
+  </div>
+
+  {/* ADD THIS: Contribution acknowledgement */}
+  <ContributionBanner />
+
+        
   {/* Epic Q cards */}
 <section className="space-y-3">
   
