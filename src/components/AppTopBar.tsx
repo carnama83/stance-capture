@@ -3,6 +3,7 @@ import * as React from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { getSupabase } from "../lib/supabaseClient";
 import { ROUTES } from "@/routes/paths";
+import { SearchBar } from "./search/SearchBar";
 
 // shadcn/ui dropdown
 import {
@@ -28,8 +29,6 @@ export default function AppTopBar({ rightSlot }: { rightSlot?: React.ReactNode }
   const nav = useNavigate();
   const loc = useLocation();
   const [session, setSession] = React.useState<Session | null>(null);
-
-  // ✅ NEW: identity used for display (random_id / username)
   const [identity, setIdentity] = React.useState<ProfileIdentity | null>(null);
 
   React.useEffect(() => {
@@ -41,7 +40,6 @@ export default function AppTopBar({ rightSlot }: { rightSlot?: React.ReactNode }
     return () => subscription?.unsubscribe();
   }, [sb]);
 
-  // ✅ NEW: load profile identity whenever session user changes
   React.useEffect(() => {
     if (!sb) return;
 
@@ -84,7 +82,6 @@ export default function AppTopBar({ rightSlot }: { rightSlot?: React.ReactNode }
     } catch {
       // ignore
     } finally {
-      // Ensure UI reflects logout immediately (no refresh needed)
       setSession(null);
       setIdentity(null);
     }
@@ -92,7 +89,6 @@ export default function AppTopBar({ rightSlot }: { rightSlot?: React.ReactNode }
 
   const isAuthed = !!session;
 
-  // ✅ Primary + secondary (based on chosen display_handle_mode)
   const primaryHandle = (() => {
     if (!identity) return "";
     const mode = identity.display_handle_mode ?? "random_id";
@@ -100,110 +96,130 @@ export default function AppTopBar({ rightSlot }: { rightSlot?: React.ReactNode }
     return identity.random_id || identity.username || "";
   })();
 
-  const secondaryText = (() => {
+  const secondaryHandle = (() => {
     if (!identity) return "";
     const mode = identity.display_handle_mode ?? "random_id";
-    if (mode === "username") {
-      return identity.random_id ? `ID: ${identity.random_id}` : "";
-    }
-    return identity.username ? `Username: ${identity.username}` : "";
+    if (mode === "username" && identity.random_id) return identity.random_id;
+    if (mode === "random_id" && identity.username) return identity.username;
+    return "";
   })();
 
   return (
-    <header className="sticky top-0 z-40 h-14 border-b bg-white/80 backdrop-blur">
-      <div className="mx-auto max-w-6xl h-full px-4 flex items-center justify-between">
-        {/* Left: brand + global nav */}
-        <div className="flex items-center gap-3">
-          <Link to={ROUTES.HOME} className="font-semibold hover:opacity-80">
-            Website
+    <div className="border-b bg-white">
+      <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
+        {/* Left: Logo + Navigation */}
+        <div className="flex items-center gap-6">
+          <Link to={ROUTES.HOME} className="text-lg font-bold text-slate-900 hover:text-slate-700">
+            Stance
           </Link>
-          <nav className="hidden sm:flex items-center gap-3 text-sm text-slate-700">
+
+          {/* Navigation Links */}
+          <nav className="hidden md:flex items-center gap-4">
             <Link
-              to={ROUTES.HOME}
-              className={`hover:underline ${
-                loc.pathname === ROUTES.HOME || loc.pathname === ROUTES.INDEX ? "font-medium" : ""
+              to="/for-you"
+              className={`text-sm ${
+                loc.pathname === "/for-you"
+                  ? "font-medium text-slate-900"
+                  : "text-slate-600 hover:text-slate-900"
               }`}
             >
-              Home
+              For You
             </Link>
             <Link
-              to={ROUTES.TOPICS}
-              className={`hover:underline ${loc.pathname.startsWith(ROUTES.TOPICS) ? "font-medium" : ""}`}
+              to="/topics"
+              className={`text-sm ${
+                loc.pathname === "/topics"
+                  ? "font-medium text-slate-900"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
             >
-              Explore
+              Topics
             </Link>
           </nav>
         </div>
 
-        {/* Right: page actions + auth controls */}
+        {/* Center: Search Bar */}
+        <div className="hidden md:block flex-1 max-w-md mx-6">
+          <SearchBar placeholder="Search..." />
+        </div>
+
+        {/* Right: User menu or Auth buttons */}
         <div className="flex items-center gap-3">
           {rightSlot}
 
-          {!isAuthed ? (
+          {!isAuthed && (
             <>
-              <Link to={ROUTES.LOGIN} className="rounded border px-3 py-1.5 text-sm hover:bg-slate-50">
-                Log in
-              </Link>
-              <Link to={ROUTES.SIGNUP} className="rounded bg-slate-900 text-white px-3 py-1.5 text-sm">
-                Sign up
-              </Link>
-            </>
-          ) : (
-            <div className="flex items-center gap-2">
-              {/* ✅ Replace email-based greeting with handle-based identity (primary + secondary) */}
-              <div className="hidden sm:flex flex-col items-end leading-tight">
-                <Link
-                  to={ROUTES.SETTINGS_PROFILE}
-                  className="text-sm text-slate-700 hover:underline"
-                  title="Profile settings"
-                >
-                  {primaryHandle ? `@${primaryHandle}` : "Profile"}
-                </Link>
-                {secondaryText ? <div className="text-xs text-slate-500">{secondaryText}</div> : null}
-              </div>
-
-              {/* Settings dropdown — unchanged structure */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" className="px-3 py-1.5 h-auto text-sm">
-                    Settings
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
-                  <DropdownMenuLabel className="truncate">Settings</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem asChild>
-                    <Link role="menuitem" to={ROUTES.SETTINGS_PROFILE} className="block w-full px-1.5 py-0.5">
-                      Profile
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link role="menuitem" to={ROUTES.SETTINGS_SECURITY} className="block w-full px-1.5 py-0.5">
-                      Security
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link role="menuitem" to={ROUTES.SETTINGS_SESSIONS} className="block w-full px-1.5 py-0.5">
-                      Sessions
-                    </Link>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-
-              {/* Logout */}
               <Button
-                type="button"
-                onClick={logout}
-                variant="outline"
-                className="px-3 py-1.5 h-auto text-sm"
-                title="Sign out"
+                variant="ghost"
+                size="sm"
+                onClick={() => nav(ROUTES.LOGIN)}
               >
-                Logout
+                Log in
               </Button>
-            </div>
+              <Button
+                variant="default"
+                size="sm"
+                onClick={() => nav(ROUTES.SIGNUP)}
+              >
+                Sign up
+              </Button>
+            </>
+          )}
+
+          {isAuthed && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm">
+                  @{primaryHandle || "user"}
+                </Button>
+              </DropdownMenuTrigger>
+
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel>
+                  <div className="flex flex-col">
+                    <span className="text-sm font-medium">
+                      @{primaryHandle || "user"}
+                    </span>
+                    {secondaryHandle && (
+                      <span className="text-xs text-slate-500">
+                        {secondaryHandle}
+                      </span>
+                    )}
+                  </div>
+                </DropdownMenuLabel>
+
+                <DropdownMenuSeparator />
+
+                <DropdownMenuItem onClick={() => nav(ROUTES.MY_STANCES)}>
+                  My stances
+                </DropdownMenuItem>
+
+                <DropdownMenuItem onClick={() => nav(ROUTES.SETTINGS_PROFILE)}>
+                  Settings
+                </DropdownMenuItem>
+
+                {/* Admin link if needed */}
+                {/* 
+                <DropdownMenuItem onClick={() => nav("/admin")}>
+                  Admin
+                </DropdownMenuItem>
+                */}
+
+                <DropdownMenuSeparator />
+
+                <DropdownMenuItem onClick={logout}>
+                  Log out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
         </div>
       </div>
-    </header>
+
+      {/* Mobile Search Bar */}
+      <div className="md:hidden px-4 pb-3">
+        <SearchBar placeholder="Search..." />
+      </div>
+    </div>
   );
 }
