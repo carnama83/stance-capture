@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getSupabase } from "../lib/supabaseClient";
 import PageLayout from "../components/PageLayout";
-
+import { FollowTopicButton } from "@/components/FollowTopicButton";
 type Session = import("@supabase/supabase-js").Session;
 
 type Topic = {
@@ -450,6 +450,10 @@ export default function TopicDetailPage() {
             <div className="flex-1 min-w-0">
               <h1 className="text-lg sm:text-xl font-semibold text-slate-900">
                 {topic.title}
+                <div className="flex items-center justify-between">
+  <h1>{topic.title}</h1>
+  <FollowTopicButton topicId={topic.id} />
+</div>
               </h1>
 
               {topic.location_label && (
