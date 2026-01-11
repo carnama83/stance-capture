@@ -48,11 +48,9 @@ import AdminAiDraftsPage from "@/routes/admin/ai-drafts/Index";
 import AdminImpactDashboardPage from "@/routes/admin/impact-dashboard/Index";
 import AdminCronJobsPage from "@/routes/admin/cron-jobs/Index";
 
-// Add these imports
+// Cognitive State Pages
 import AdminCognitiveStatesPage from '@/routes/admin/cognitive-states';
 import CognitiveInsightsPage from '@/routes/me/cognitive-insights';
-
-
 
 // My stances
 import MyStancesPage from "./pages/MyStancesPage";
@@ -112,19 +110,8 @@ const App: React.FC = () => {
                 }
               />
 
-// Add these routes
-{
-  path: '/admin/cognitive-states',
-  element: <AdminCognitiveStatesPage />
-}
-
-{
-  path: '/me/cognitive-insights',
-  element: <CognitiveInsightsPage />
-}
-              
-<Route path="/search" element={<SearchResultsPage />} />
-<Route path="/for-you" element={<Protected><ForYouFeedPage /></Protected>} />
+              <Route path="/search" element={<SearchResultsPage />} />
+              <Route path="/for-you" element={<Protected><ForYouFeedPage /></Protected>} />
               
               <Route
                 path={ROUTES.SIGNUP}
@@ -192,6 +179,16 @@ const App: React.FC = () => {
                 }
               />
 
+              {/* ✅ NEW: Cognitive Insights (protected) */}
+              <Route
+                path="/me/cognitive-insights"
+                element={
+                  <Protected>
+                    <CognitiveInsightsPage />
+                  </Protected>
+                }
+              />
+
               {/* ✅ Option A: Profile route redirects to Settings Profile */}
               <Route
                 path={ROUTES.PROFILE}
@@ -228,9 +225,10 @@ const App: React.FC = () => {
                 <Route path="topics" element={<AdminTopicsPage />} />
                 <Route path="impact-dashboard" element={<AdminImpactDashboardPage />} />
                 <Route path="stance-metrics" element={<AdminStanceMetricsPage />} />
-
-                {/* ✅ ADD: cron-jobs route (real protected admin tree) */}
                 <Route path="cron-jobs" element={<AdminCronJobsPage />} />
+                
+                {/* ✅ NEW: Cognitive States Admin */}
+                <Route path="cognitive-states" element={<AdminCognitiveStatesPage />} />
               </Route>
 
               {/* Admin special page */}
