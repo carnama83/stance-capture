@@ -3,8 +3,17 @@ import { Outlet, NavLink, Link, useLocation, useNavigate } from "react-router-do
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
-import { Library, Database, FileText, ChevronRight, LogOut, User, BarChart3, Clock } from "lucide-react";
-
+import { 
+  Library, 
+  Database, 
+  FileText, 
+  ChevronRight, 
+  LogOut, 
+  User, 
+  BarChart3, 
+  Clock,
+  Brain  // ✅ ADDED: Brain icon import
+} from "lucide-react";
 
 import {
   DropdownMenu,
@@ -76,7 +85,6 @@ export default function AdminLayout() {
             icon={<FileText className="h-4 w-4" />}
             label="Drafts"
           />
-          {/* NEW: AI Drafts (topics from AI pipeline) */}
           <AdminLink
             to="/admin/ai-drafts"
             icon={<FileText className="h-4 w-4" />}
@@ -97,17 +105,6 @@ export default function AdminLayout() {
             icon={<FileText className="h-4 w-4" />}
             label="News"
           />
-<AdminLink to="/admin/cognitive-states">
-  <Brain className="h-4 w-4" />
-  Cognitive States
-</AdminLink>
-
-
-          <AdminLink to="/me/cognitive-insights">
-  <Brain className="h-4 w-4" />
-  My Insights
-</AdminLink>
-
           
           <Separator className="my-2" />
 
@@ -120,14 +117,11 @@ export default function AdminLayout() {
             icon={<BarChart3 className="h-4 w-4" />}
             label="Impact Dashboard"
           />
-
-<Link
-  to="/admin/cron-jobs"
-  className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-slate-100"
->
-  <Clock className="w-4 h-4" />
-  <span>Cron Jobs</span>
-</Link>
+          <AdminLink
+            to="/admin/cron-jobs"
+            icon={<Clock className="h-4 w-4" />}
+            label="Cron Jobs"
+          />
           
           <Separator className="my-2" />
 
@@ -139,10 +133,17 @@ export default function AdminLayout() {
             icon={<BarChart3 className="h-4 w-4" />}
             label="Stance Metrics"
           />
+          
+          {/* ✅ NEW: Cognitive States */}
+          <AdminLink
+            to="/admin/cognitive-states"
+            icon={<Brain className="h-4 w-4" />}
+            label="Cognitive States"
+          />
 
           <Separator className="my-2" />
           <div className="px-2 text-xs text-muted-foreground">
-            Epics B, D &amp; P — Admin
+            Epics B, D &amp; P – Admin
           </div>
         </Card>
       </aside>
