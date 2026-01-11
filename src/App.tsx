@@ -48,6 +48,12 @@ import AdminAiDraftsPage from "@/routes/admin/ai-drafts/Index";
 import AdminImpactDashboardPage from "@/routes/admin/impact-dashboard/Index";
 import AdminCronJobsPage from "@/routes/admin/cron-jobs/Index";
 
+// Add these imports
+import AdminCognitiveStatesPage from '@/routes/admin/cognitive-states';
+import CognitiveInsightsPage from '@/routes/me/cognitive-insights';
+
+
+
 // My stances
 import MyStancesPage from "./pages/MyStancesPage";
 
@@ -106,6 +112,17 @@ const App: React.FC = () => {
                 }
               />
 
+// Add these routes
+{
+  path: '/admin/cognitive-states',
+  element: <AdminCognitiveStatesPage />
+}
+
+{
+  path: '/me/cognitive-insights',
+  element: <CognitiveInsightsPage />
+}
+              
 <Route path="/search" element={<SearchResultsPage />} />
 <Route path="/for-you" element={<Protected><ForYouFeedPage /></Protected>} />
               
