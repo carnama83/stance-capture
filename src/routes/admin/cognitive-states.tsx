@@ -1,7 +1,6 @@
 // src/routes/admin/cognitive-states.tsx
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -18,6 +17,7 @@ import {
 } from '@/components/ui/table';
 import { Brain, RefreshCw, Search, Eye } from 'lucide-react';
 import { formatStanceValue, getStanceColor } from '@/hooks/useCognitiveState';
+import { getSupabase } from '@/lib/supabaseClient';  // ← CHANGED: Use your project's supabase import
 
 interface CognitiveStateRow {
   id: string;
@@ -36,12 +36,16 @@ interface CognitiveStateRow {
 export default function AdminCognitiveStatesPage() {
   const [searchEmail, setSearchEmail] = useState('');
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const supabase = getSupabase();  // ← CHANGED: Get supabase instance
 
   // Fetch all cognitive states
   const { data: cognitiveStates, isLoading, error, refetch } = useQuery({
     queryKey: ['admin-cognitive-states', searchEmail],
     queryFn: async () => {
-      let query = supabase
+      if (!supabase) throw new Error('Supabase client not available');
+
+      // Fetch cognitive states
+      const { data: states, error: statesError } = await supabase
         .from('user_cognitive_states')
         .select(`
           id,
@@ -58,22 +62,37 @@ export default function AdminCognitiveStatesPage() {
         .order('created_at', { ascending: false })
         .limit(100);
 
-      const { data, error } = await query;
+      if (statesError) {
+        console.error('Error fetching cognitive states:', statesError);
+        throw statesError;
+      }
 
-      if (error) throw error;
+      console.log('Fetched cognitive states:', states);
+
+      if (!states || states.length === 0) {
+        return [];
+      }
 
       // Get user emails separately
-      const userIds = [...new Set(data?.map(s => s.user_id) || [])];
-      const { data: users } = await supabase
+      const userIds = [...new Set(states.map(s => s.user_id))];
+      
+      const { data: users, error: usersError } = await supabase
         .from('users')
         .select('id, email')
         .in('id', userIds);
 
+      if (usersError) {
+        console.error('Error fetching users:', usersError);
+        // Don't throw - just continue without emails
+      }
+
+      console.log('Fetched users:', users);
+
       const userEmailMap = new Map(users?.map(u => [u.id, u.email]) || []);
 
-      return (data || []).map(state => ({
+      return states.map(state => ({
         ...state,
-        user_email: userEmailMap.get(state.user_id),
+        user_email: userEmailMap.get(state.user_id) || 'Unknown',
       })) as CognitiveStateRow[];
     },
     staleTime: 30 * 1000,
@@ -83,7 +102,7 @@ export default function AdminCognitiveStatesPage() {
   const { data: detailedState } = useQuery({
     queryKey: ['admin-cognitive-state-detail', selectedUserId],
     queryFn: async () => {
-      if (!selectedUserId) return null;
+      if (!selectedUserId || !supabase) return null;
 
       const { data, error } = await supabase
         .from('user_cognitive_states')
@@ -100,8 +119,13 @@ export default function AdminCognitiveStatesPage() {
 
   // Calculate cognitive state for a user
   const handleCalculateState = async (userId: string) => {
+    if (!supabase) {
+      alert('Supabase client not available');
+      return;
+    }
+
     try {
-      const { error } = await supabase.rpc('calculate_cognitive_state', {
+      const { data, error } = await supabase.rpc('calculate_cognitive_state', {
         p_user_id: userId,
       });
 
@@ -110,6 +134,7 @@ export default function AdminCognitiveStatesPage() {
       alert('Cognitive state calculated successfully!');
       refetch();
     } catch (err: any) {
+      console.error('Error calculating state:', err);
       alert(`Error: ${err.message}`);
     }
   };
@@ -117,6 +142,16 @@ export default function AdminCognitiveStatesPage() {
   const filteredStates = cognitiveStates?.filter(state => 
     !searchEmail || state.user_email?.toLowerCase().includes(searchEmail.toLowerCase())
   );
+
+  // Debug logs
+  React.useEffect(() => {
+    console.log('Component state:', {
+      isLoading,
+      error,
+      cognitiveStatesCount: cognitiveStates?.length,
+      filteredStatesCount: filteredStates?.length,
+    });
+  }, [isLoading, error, cognitiveStates, filteredStates]);
 
   return (
     <div className="container mx-auto py-8 space-y-6">
@@ -192,6 +227,17 @@ export default function AdminCognitiveStatesPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Debug Info */}
+      {error && (
+        <Alert variant="destructive">
+          <AlertDescription>
+            Error loading cognitive states: {error.message}
+            <br />
+            <code className="text-xs">{JSON.stringify(error)}</code>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Search */}
       <Card>
