@@ -97,7 +97,18 @@ export default function AdminLayout() {
             icon={<FileText className="h-4 w-4" />}
             label="News"
           />
+<AdminLink to="/admin/cognitive-states">
+  <Brain className="h-4 w-4" />
+  Cognitive States
+</AdminLink>
 
+
+          <AdminLink to="/me/cognitive-insights">
+  <Brain className="h-4 w-4" />
+  My Insights
+</AdminLink>
+
+          
           <Separator className="my-2" />
 
           {/* NEW: Impact & Curation (Epic P) */}
