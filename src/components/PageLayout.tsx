@@ -1,8 +1,6 @@
 //src/components/PageLayout.tsx
 import * as React from "react";
-import { Link } from "react-router-dom";
 import AppTopBar from "./AppTopBar";
-import { SearchBar } from "./search/SearchBar";
 
 export default function PageLayout({
   rightSlot,
@@ -14,7 +12,8 @@ export default function PageLayout({
   return (
     <div className="min-h-screen bg-white">
       <AppTopBar rightSlot={rightSlot} />
-
-    
+      
+      <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
+    </div>
   );
 }
