@@ -21,11 +21,7 @@ export default function PageLayout({
             Stance
           </Link>
           
-          {/* Search bar */}
-          <div className="flex-1 max-w-md">
-            <SearchBar />
-          </div>
-          
+      
           {/* Navigation links */}
           <nav className="flex items-center gap-4">
             <Link to="/for-you" className="text-sm text-slate-700 hover:text-slate-900">
