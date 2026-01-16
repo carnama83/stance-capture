@@ -1,173 +1,179 @@
-// src/components/feed/PersonalizedFeed.tsx
-// FINAL VERSION - Epic C Personalized Feed
-// Uses get_personalized_feed RPC and existing QuestionCard component
-// Compatible with all QuestionCard features
+/**
+ * Epic C - Personalized Feed Component
+ * Shows questions tailored to user's location and followed topics
+ */
 
 import { useQuery } from '@tanstack/react-query';
-import { getSupabase } from '@/lib/supabaseClient';
+import { supabase } from '@/integrations/supabase/client';
+import { Card } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import * as React from 'react';
-import { QuestionCard } from '@/components/question/QuestionCard';
-import type { QuestionWithLifecycle } from '@/types/questionLifecycleTypes';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Link } from 'react-router-dom';
+import { STATE_LABELS, formatTimeAgo, type FeedQuestion } from '@/types/feedTypes';
+import { MessageSquare, TrendingUp } from 'lucide-react';
 
 export function PersonalizedFeed() {
-  const sb = React.useMemo(getSupabase, []);
-  const [session, setSession] = React.useState<any>(null);
-
-  React.useEffect(() => {
-    if (!sb) return;
-    sb.auth.getSession().then(({ data }) => setSession(data.session ?? null));
-  }, [sb]);
-
-  const userId = session?.user?.id;
-
-  const { data: questions, isLoading, error } = useQuery({
+  // Get current user
+  const { data: session } = useQuery({
+    queryKey: ['session'],
+    queryFn: () => supabase.auth.getSession(),
+  });
+  
+  const userId = session?.data.session?.user.id;
+  
+  // Fetch personalized feed
+  const { data: questions, isLoading, error } = useQuery<FeedQuestion[]>({
     queryKey: ['personalized-feed', userId],
     queryFn: async () => {
-      if (!userId || !sb) return [];
+      if (!userId) return [];
       
-      const { data, error } = await sb.rpc('get_personalized_feed', {
+      const { data, error } = await supabase.rpc('get_personalized_feed', {
         p_user_id: userId,
         p_limit: 20,
         p_offset: 0,
       });
-
-      if (error) {
-        console.error('Error fetching personalized feed:', error);
-        throw error;
-      }
       
-      // Transform RPC response to match QuestionWithLifecycle interface
-      const transformedQuestions: QuestionWithLifecycle[] = (data || []).map((item: any) => ({
-        // Core question fields
-        id: item.question_id,
-        question: item.question_text,
-        summary: item.summary || null,
-        published_at: item.published_at,
-        
-        // Lifecycle fields (Epic C)
-        state: item.state || 'active',
-        phase: item.phase || 'initial',
-        
-        // Trending & featured flags
-        is_trending: item.is_trending || false,
-        trending_score: item.trending_score || null,
-        is_featured: item.is_featured || false,
-        is_resolved: item.is_resolved || false,
-        resolution_summary: item.resolution_summary || null,
-        
-        // Location/geography
-        location_label: item.location_label || null,
-        tier: item.tier || null,
-        
-        // Topic information
-        topic_id: item.topic_id,
-        topic_title: item.topic_title || null,
-        topic_tags: item.topic_tags || [],
-        
-        // Engagement data
-        engagement: {
-          responses_total: item.responses_total || 0,
-          response_rate_24h: item.response_rate_24h || 0,
-          response_rate_7d: item.response_rate_7d || 0,
-        },
-        
-        // User interaction (Epic C)
-        user_has_answered: item.user_has_answered || false,
-        
-        // Relevance score (Epic C - for debugging)
-        relevance_score: item.relevance_score || 0,
-      }));
-      
-      return transformedQuestions;
+      if (error) throw error;
+      return data as FeedQuestion[];
     },
-    enabled: !!userId && !!sb,
-    staleTime: 30_000, // Cache for 30 seconds
+    enabled: !!userId,
+    staleTime: 2 * 60 * 1000, // 2 minutes
   });
-
-  // Loading state - skeleton cards
+  
   if (isLoading) {
     return (
-      <div className="space-y-3">
-        {[1, 2, 3, 4, 5].map((i) => (
-          <div 
-            key={i} 
-            className="h-32 bg-slate-100 animate-pulse rounded-lg border"
-          />
+      <div className="space-y-4">
+        {[1, 2, 3].map((i) => (
+          <Card key={i} className="p-6">
+            <Skeleton className="h-6 w-3/4 mb-2" />
+            <Skeleton className="h-4 w-full mb-4" />
+            <Skeleton className="h-4 w-1/2" />
+          </Card>
         ))}
       </div>
     );
   }
-
-  // Error state
+  
   if (error) {
     return (
-      <Alert variant="destructive" className="my-4">
+      <Alert variant="destructive">
         <AlertDescription>
-          Failed to load your personalized feed. Please try refreshing the page.
+          Failed to load your personalized feed. Please try again.
         </AlertDescription>
       </Alert>
     );
   }
-
-  // Empty state
-  if (!questions || questions.length === 0) {
+  
+  if (!userId) {
     return (
-      <div className="text-center py-12 border rounded-lg bg-slate-50">
-        <div className="max-w-md mx-auto px-4">
-          <h3 className="text-lg font-medium text-slate-900 mb-2">
-            No new questions for you right now
-          </h3>
-          <p className="text-sm text-slate-600 mb-4">
-            Check back later or explore topics to follow for more personalized content.
-          </p>
-          <a
-            href="#/topics"
-            className="inline-flex items-center rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 transition"
-          >
-            Explore topics
-          </a>
-        </div>
-      </div>
+      <Card className="p-8 text-center">
+        <p className="text-gray-600 mb-4">
+          Sign in to see your personalized feed
+        </p>
+        <p className="text-sm text-gray-500">
+          Your feed will show questions based on your location and topics you follow
+        </p>
+      </Card>
     );
   }
-
-  // Main feed display
+  
+  if (!questions || questions.length === 0) {
+    return (
+      <Card className="p-8 text-center">
+        <p className="text-gray-600 mb-4">
+          No questions match your preferences yet.
+        </p>
+        <p className="text-sm text-gray-500">
+          Try following some topics or check back later!
+        </p>
+      </Card>
+    );
+  }
+  
   return (
-    <div className="space-y-3">
-      {/* Feed header with count */}
-      <div className="flex items-center justify-between mb-2">
-        <h2 className="text-sm font-semibold text-slate-700">
-          For You
-        </h2>
-        <span className="text-xs text-slate-500">
-          {questions.length} question{questions.length !== 1 ? 's' : ''}
-        </span>
-      </div>
-
-      {/* Render each question using your existing QuestionCard component */}
-      <div className="space-y-3">
-        {questions.map((question) => (
-          <QuestionCard
-            key={question.id}
-            question={question}
-            showEngagement={true}
-          />
-        ))}
-      </div>
-
-      {/* Load more indicator (if showing max results) */}
-      {questions.length >= 20 && (
-        <div className="text-center pt-4 pb-2">
-          <p className="text-sm text-slate-500">
-            Showing your top 20 personalized questions.{' '}
-            <a href="#/topics" className="text-blue-600 hover:underline">
-              Explore topics
-            </a>{' '}
-            to discover more.
-          </p>
-        </div>
-      )}
+    <div className="space-y-4">
+      {questions.map((question) => (
+        <QuestionFeedCard key={question.question_id} question={question} />
+      ))}
     </div>
+  );
+}
+
+function QuestionFeedCard({ question }: { question: FeedQuestion }) {
+  const stateConfig = STATE_LABELS[question.state];
+  
+  return (
+    <Link to={`/q/${question.question_id}`}>
+      <Card className={`p-6 hover:shadow-lg transition-all duration-200 cursor-pointer ${
+        question.user_has_answered ? 'bg-gray-50 border-gray-300' : 'bg-white'
+      }`}>
+        
+        {/* Header with badges */}
+        <div className="flex items-center gap-2 mb-3 flex-wrap">
+          {question.state === 'new' && (
+            <span className={`px-2 py-1 text-xs font-semibold rounded border ${stateConfig.color}`}>
+              {stateConfig.icon} {stateConfig.label}
+            </span>
+          )}
+          
+          {question.is_trending && (
+            <span className="flex items-center gap-1 text-orange-600 text-sm font-medium px-2 py-1 bg-orange-50 rounded border border-orange-200">
+              <TrendingUp className="h-4 w-4" />
+              Trending
+            </span>
+          )}
+          
+          {question.user_has_answered && (
+            <span className="text-xs text-gray-600 bg-green-50 px-2 py-1 rounded border border-green-200">
+              ✓ Answered
+            </span>
+          )}
+          
+          <span className="text-xs text-gray-500 ml-auto">
+            {formatTimeAgo(question.published_at)}
+          </span>
+        </div>
+        
+        {/* Topic */}
+        <div className="text-sm text-gray-600 mb-2">
+          📁 {question.topic_title}
+        </div>
+        
+        {/* Question */}
+        <h3 className="text-lg font-semibold mb-2 text-gray-900 hover:text-blue-600 transition-colors">
+          {question.question}
+        </h3>
+        
+        {/* Summary */}
+        {question.summary && (
+          <p className="text-sm text-gray-700 mb-3 line-clamp-2">
+            {question.summary}
+          </p>
+        )}
+        
+        {/* Footer */}
+        <div className="flex items-center gap-4 text-sm text-gray-600">
+          <span className="flex items-center gap-1">
+            <MessageSquare className="h-4 w-4" />
+            {question.response_count} {question.response_count === 1 ? 'response' : 'responses'}
+          </span>
+          
+          {question.tags && question.tags.length > 0 && (
+            <div className="flex gap-1 ml-auto">
+              {question.tags.slice(0, 3).map((tag) => (
+                <span key={tag} className="bg-gray-100 px-2 py-0.5 rounded text-xs">
+                  {tag}
+                </span>
+              ))}
+              {question.tags.length > 3 && (
+                <span className="text-xs text-gray-500">
+                  +{question.tags.length - 3} more
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      </Card>
+    </Link>
   );
 }
