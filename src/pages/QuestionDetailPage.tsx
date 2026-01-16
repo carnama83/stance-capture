@@ -1,8 +1,11 @@
 // src/pages/QuestionDetailPage.tsx — Question detail with stance capture + regional comparison + related questions
+// EPIC C INTEGRATION: Added view tracking and interaction tracking
+
 import * as React from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import PageLayout from "../components/PageLayout";
 import { QuestionCommentsPanel } from "@/components/question/QuestionCommentsPanel";
+import { useQuestionView } from "@/hooks/useQuestionView";
 
 import {
   useQuery,
@@ -17,6 +20,7 @@ type Session = import("@supabase/supabase-js").Session;
 
 type LiveQuestion = {
   id: string;
+  topic_id?: string; // Added for interaction tracking
   question: string;
   summary?: string | null;
   tags?: string[] | null;
@@ -108,7 +112,7 @@ async function fetchQuestionById(id: string): Promise<LiveQuestion | null> {
   const { data, error } = await sb
     .from("v_live_questions")
     .select(
-      "id, question, summary, tags, location_label, published_at, status"
+      "id, topic_id, question, summary, tags, location_label, published_at, status"
     )
     .eq("id", id)
     .limit(1);
@@ -274,106 +278,79 @@ async function fetchThreadSentiment(
   return data ?? null;
 }
 
-// ---------- Region comparison widget ----------
-function RegionComparison({ stats }: { stats: QuestionStats | null }) {
-  if (!stats || !stats.regions) return null;
+// ---------- EPIC C: Track answered questions ----------
+async function trackQuestionInteraction(
+  userId: string,
+  questionId: string,
+  topicId: string | undefined,
+  answered: boolean
+): Promise<void> {
+  const sb = getSupabase();
+  if (!sb || !topicId) return;
 
-  const tiers: Array<"city" | "county" | "state" | "country" | "global"> = [
-    "city",
-    "county",
-    "state",
-    "country",
-    "global",
-  ];
-
-  const hasAny = tiers.some(
-    (scope) => (stats.regions && stats.regions[scope]) != null
-  );
-  if (!hasAny) {
-    return (
-      <div className="mt-3 border-t pt-3">
-        <h3 className="text-xs font-medium text-slate-900 mb-1">
-          In your region
-        </h3>
-        <p className="text-[11px] text-slate-500">
-          We don&apos;t have enough responses in your region yet.
-        </p>
-      </div>
-    );
+  try {
+    await sb.from('user_topic_interactions').upsert({
+      user_id: userId,
+      topic_id: topicId,
+      question_id: questionId,
+      last_interacted_at: new Date().toISOString(),
+      answered: answered,
+    });
+  } catch (error) {
+    console.error('Failed to track question interaction:', error);
   }
+}
 
-  const loc = stats.location;
+// ---------- Component helpers ----------
+function RegionComparison({ stats }: { stats: QuestionStats | null }) {
+  if (!stats?.regions) return null;
+
+  const { regions, location } = stats;
+  if (!regions) return null;
+
+  const scopeLabels: Array<{
+    scope: "city" | "county" | "state" | "country" | "global";
+    label: string;
+  }> = [];
+
+  if (location?.city && regions.city)
+    scopeLabels.push({ scope: "city", label: location.city });
+  if (location?.county && regions.county)
+    scopeLabels.push({ scope: "county", label: location.county });
+  if (location?.state && regions.state)
+    scopeLabels.push({ scope: "state", label: location.state });
+  if (location?.country && regions.country)
+    scopeLabels.push({ scope: "country", label: location.country });
+  if (regions.global)
+    scopeLabels.push({ scope: "global", label: "Global" });
+
+  if (scopeLabels.length === 0) return null;
 
   return (
-    <div className="mt-3 border-t pt-3">
-      <div className="flex items-center justify-between mb-1">
-        <h3 className="text-xs font-medium text-slate-900">
-          In your region
-        </h3>
-        <span className="text-[10px] text-slate-500">
-          Bar shows % disagree · neutral · agree
-        </span>
-      </div>
+    <div className="mt-4 space-y-2">
+      <h3 className="text-xs font-medium text-slate-700">
+        Compare by region
+      </h3>
       <div className="space-y-1.5">
-        {tiers.map((scope) => {
-          const row = stats.regions?.[scope] ?? null;
-          if (!row || row.total_responses === 0) return null;
-
-          const label = scope === "global" ? "Global" : row.region_label;
-
-          const isMine =
-            (scope === "city" && loc?.city === row.region_label) ||
-            (scope === "county" && loc?.county === row.region_label) ||
-            (scope === "state" && loc?.state === row.region_label) ||
-            (scope === "country" && loc?.country === row.region_label) ||
-            scope === "global";
-
-          const agree = Math.max(0, row.pct_agree ?? 0);
-          const disagree = Math.max(0, row.pct_disagree ?? 0);
-          const neutral = Math.max(0, row.pct_neutral ?? 0);
-
-          const totalPct = agree + disagree + neutral || 1;
-          const agreePct = (agree / totalPct) * 100;
-          const disagreePct = (disagree / totalPct) * 100;
-          const neutralPct = (neutral / totalPct) * 100;
+        {scopeLabels.map(({ scope, label }) => {
+          const r = regions[scope];
+          if (!r) return null;
 
           return (
             <div
               key={scope}
-              className={`flex items-center justify-between gap-2 text-[11px] ${
-                isMine ? "font-medium text-slate-900" : "text-slate-700"
-              }`}
+              className="flex items-center justify-between text-xs border rounded p-2 bg-slate-50"
             >
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="truncate max-w-[120px]">
-                  {label}
-                  {isMine && scope !== "global" && (
-                    <span className="ml-1 text-[10px] text-emerald-600">
-                      (you)
-                    </span>
-                  )}
-                </span>
-                <div className="flex h-1.5 w-32 overflow-hidden rounded-full bg-slate-100">
-                  <div
-                    className="bg-rose-400"
-                    style={{ width: `${disagreePct}%` }}
-                  />
-                  <div
-                    className="bg-slate-400"
-                    style={{ width: `${neutralPct}%` }}
-                  />
-                  <div
-                    className="bg-emerald-500"
-                    style={{ width: `${agreePct}%` }}
-                  />
-                </div>
-              </div>
-              <div className="flex items-center gap-1 shrink-0">
-                <span className="text-slate-500">
-                  {row.total_responses} resp
-                </span>
-                <span className="text-slate-700">
-                  {Math.round(row.pct_agree ?? 0)}% agree
+              <span className="text-slate-700 font-medium">{label}</span>
+              <div className="text-slate-600 space-x-2">
+                {r.pct_agree != null && (
+                  <span>{Math.round(r.pct_agree)}% agree</span>
+                )}
+                {r.pct_disagree != null && (
+                  <span>· {Math.round(r.pct_disagree)}% disagree</span>
+                )}
+                <span className="text-[10px] text-slate-500">
+                  ({r.total_responses})
                 </span>
               </div>
             </div>
@@ -384,16 +361,21 @@ function RegionComparison({ stats }: { stats: QuestionStats | null }) {
   );
 }
 
-// ---------- Page ----------
+// ---------- Main component ----------
 export default function QuestionDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
+  const questionId = id ?? "";
+
   const session = useSupabaseSession();
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-  const isAuthed = !!session;
   const userId = session?.user?.id ?? null;
-  const questionId = id as string;
+  const isAuthed = !!session;
+
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+
+  // EPIC C: Track question view
+  useQuestionView(questionId);
 
   const {
     data: question,
@@ -474,12 +456,23 @@ export default function QuestionDetailPage() {
   const stanceMutation = useMutation({
     mutationKey: ["set-stance", questionId],
     mutationFn: (score: number | null) => setMyStance(questionId, score),
-    onSuccess: (newScore, vars) => {
+    onSuccess: async (newScore, vars) => {
       // Keep local cache fresh
       queryClient.setQueryData(["my-stance", questionId], newScore);
       queryClient.invalidateQueries({
         queryKey: ["question-stats", questionId],
       });
+
+      // EPIC C: Track interaction when user answers
+      if (userId && question?.topic_id) {
+        const answered = newScore !== null;
+        await trackQuestionInteraction(userId, questionId, question.topic_id, answered);
+        
+        // Invalidate personalized feed so this question doesn't reappear
+        if (answered) {
+          queryClient.invalidateQueries({ queryKey: ['personalized-feed'] });
+        }
+      }
 
       const score = typeof vars === "number" || vars === null ? vars : newScore;
       const label =
@@ -498,154 +491,92 @@ export default function QuestionDetailPage() {
       });
     },
     onError: (err: any) => {
-      console.error("Failed to set stance", err);
       toast({
-        title: "Could not save stance",
-        description: err?.message ?? "Please try again.",
+        title: "Error",
+        description:
+          err?.message ?? "Failed to save your stance. Please try again.",
         variant: "destructive",
       });
     },
   });
 
-  const handleBack = () => {
-    if (window.history.length > 1) {
-      navigate(-1);
-    } else {
-      navigate("/");
-    }
-  };
+  const handleSetStance = React.useCallback(
+    (newVal: number) => {
+      stanceMutation.mutate(newVal);
+    },
+    [stanceMutation]
+  );
 
-  const handleRequireLogin = () => {
-    const returnTo = window.location.hash || `#/q/${questionId}`;
+  const handleRequireLogin = React.useCallback(() => {
+    const returnTo = window.location.hash || "#/";
     sessionStorage.setItem("return_to", returnTo);
     navigate("/login");
-  };
+  }, [navigate]);
 
-  // For slider: always set stance to chosen value (no toggle). Use separate "Clear" button to remove stance.
-  const handleSetStance = (value: number) => {
-    if (!isAuthed) {
-      handleRequireLogin();
-      return;
-    }
-    stanceMutation.mutate(value);
-  };
+  const handleBack = React.useCallback(() => {
+    navigate(-1);
+  }, [navigate]);
 
-  const showLocationNudge =
-    isAuthed &&
-    !myRegionLoading &&
-    myRegion &&
-    !myRegion.city_label &&
-    !myRegion.state_label &&
-    !myRegion.country_label &&
-    !myRegion.county_label;
+  const hasStats = !!stats?.regions;
+  const globalStats = stats?.regions?.global ?? null;
+  const hasRelated = !!relatedQuestions && relatedQuestions.length > 0;
 
-  const globalStats: RegionalStat | null = stats?.regions?.global ?? null;
-
-  // ---------- Render ----------
   let content: React.ReactNode;
 
   if (isLoading) {
     content = (
-      <div className="rounded-lg border p-4 animate-pulse space-y-3">
-        <div className="h-5 w-3/4 bg-slate-200 rounded" />
-        <div className="h-4 w-full bg-slate-200 rounded" />
-        <div className="h-4 w-2/3 bg-slate-200 rounded" />
-        <div className="flex gap-2 mt-2">
-          <div className="h-5 w-16 bg-slate-200 rounded-full" />
-          <div className="h-5 w-20 bg-slate-200 rounded-full" />
-        </div>
+      <div className="rounded border bg-white px-4 py-6">
+        <p className="text-sm text-slate-500">Loading question...</p>
       </div>
     );
   } else if (isError) {
     content = (
-      <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-        <div className="font-medium mb-1">Something went wrong</div>
-        <div>
-          {(error as Error)?.message ??
-            "We couldn’t load this question. Please try again."}
-        </div>
+      <div className="rounded border border-red-200 bg-red-50 px-4 py-6">
+        <p className="text-sm text-red-900">
+          Failed to load question:{" "}
+          {error instanceof Error ? error.message : "Unknown error"}
+        </p>
       </div>
     );
   } else if (!question) {
     content = (
-      <div className="rounded-lg border p-4 text-sm text-slate-700">
-        <div className="font-medium mb-1">Question not found</div>
-        <p className="mb-2">
-          This question may have been removed or is no longer live.
+      <div className="rounded border bg-white px-4 py-6">
+        <p className="text-sm text-slate-500">
+          Question not found or no longer active.
         </p>
-        <Link to="/" className="text-slate-900 underline text-sm">
-          ← Back to homepage
-        </Link>
       </div>
     );
   } else {
-    const hasStats =
-      !!globalStats &&
-      globalStats.total_responses > 0 &&
-      (globalStats.pct_agree != null || globalStats.pct_disagree != null);
-
-    const hasRelated = relatedQuestions && relatedQuestions.length > 0;
-
     content = (
-      <article className="rounded-lg border p-4 space-y-4">
-        {/* Header */}
-        <header className="space-y-2">
-          <h1 className="text-lg sm:text-xl font-semibold text-slate-900">
-            {question.question}
-          </h1>
-
-          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
-            {question.location_label && (
-              <span className="inline-flex items-center rounded-full border px-2 py-0.5 bg-slate-50">
-                {question.location_label}
-              </span>
-            )}
-            {question.published_at && (
-              <span>
-                Published{" "}
-                {new Date(question.published_at).toLocaleString(undefined, {
-                  dateStyle: "medium",
-                  timeStyle: "short",
-                })}
-              </span>
-            )}
-            {question.status && (
-              <span className="inline-flex items-center rounded-full border px-2 py-0.5 bg-emerald-50 text-emerald-700">
-                {question.status === "active"
-                  ? "Live"
-                  : question.status}
-              </span>
-            )}
-          </div>
+      <article className="rounded border bg-white px-4 py-6 space-y-3">
+        {/* Meta info */}
+        <header className="space-y-1">
+          {question.published_at && (
+            <time
+              className="block text-[11px] text-slate-500 uppercase tracking-wide"
+              dateTime={question.published_at}
+            >
+              {new Date(question.published_at).toLocaleDateString(undefined, {
+                dateStyle: "long",
+              })}
+            </time>
+          )}
+          {question.location_label && (
+            <div className="text-[11px] text-slate-600">
+              📍 {question.location_label}
+            </div>
+          )}
         </header>
 
-        {/* Location nudge */}
-        {showLocationNudge && (
-          <section className="rounded-md border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-xs flex flex-wrap items-center justify-between gap-2">
-            <span className="text-slate-700">
-              Set your location to see how people in your region think
-              about this question.
-            </span>
-            <Link
-              to="/settings/location"
-              className="inline-flex items-center rounded bg-slate-900 text-white px-2 py-1 text-[11px]"
-            >
-              Set location
-            </Link>
-          </section>
-        )}
-
-        {/* Summary */}
-        {question.summary && (
-          <section>
-            <h2 className="text-sm font-medium text-slate-900 mb-1">
-              Why this matters
-            </h2>
-            <p className="text-sm text-slate-700 leading-relaxed">
-              {question.summary}
-            </p>
-          </section>
-        )}
+        {/* Question text */}
+        <section>
+          <h1 className="text-xl font-bold text-slate-900">
+            {question.question}
+          </h1>
+          {question.summary && (
+            <p className="mt-2 text-sm text-slate-700">{question.summary}</p>
+          )}
+        </section>
 
         {/* Tags */}
         {question.tags && question.tags.length > 0 && (
