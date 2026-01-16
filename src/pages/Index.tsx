@@ -1,7 +1,8 @@
 // src/pages/Index.tsx
 // FINAL VERSION - Epic C Integration Complete
-// - Authenticated users: PersonalizedFeed (smart, relevance-based)
-// - Anonymous users: ThreeTierQuestionsFeed (regional curation)
+// - Tabs: "For You" (PersonalizedFeed) vs "Regional" (ThreeTierQuestionsFeed)
+// - Search navigation added
+// - Anonymous users: ThreeTierQuestionsFeed only
 
 import * as React from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -11,6 +12,8 @@ import PageLayout from "../components/PageLayout";
 import { PersonalizedFeed } from "@/components/feed/PersonalizedFeed";
 import { ThreeTierQuestionsFeed } from "@/components/question/ThreeTierQuestionsFeed";
 import { ThreeTierTrending } from "@/components/trending/ThreeTierTrending";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Search } from "lucide-react";
 
 // ---------- Types ----------
 type Session = import("@supabase/supabase-js").Session;
@@ -278,14 +281,25 @@ export default function IndexPage() {
     !myRegion.country_label &&
     !myRegion.county_label;
 
+  // Actions for header (Explore Topics + Search)
   const actions = (
-    <button
-      className="rounded border px-3 py-1.5 text-sm hover:bg-slate-50"
-      onClick={() => navigate("/topics")}
-      aria-label="Explore topics"
-    >
-      Explore topics
-    </button>
+    <div className="flex items-center gap-2">
+      <button
+        className="rounded border px-3 py-1.5 text-sm hover:bg-slate-50 flex items-center gap-2"
+        onClick={() => navigate("/search")}
+        aria-label="Search questions"
+      >
+        <Search className="h-4 w-4" />
+        <span className="hidden sm:inline">Search</span>
+      </button>
+      <button
+        className="rounded border px-3 py-1.5 text-sm hover:bg-slate-50"
+        onClick={() => navigate("/topics")}
+        aria-label="Explore topics"
+      >
+        Explore topics
+      </button>
+    </div>
   );
 
   return (
@@ -318,12 +332,29 @@ export default function IndexPage() {
         )}
 
         {/* 
-          EPIC C INTEGRATION:
-          - Authenticated users: PersonalizedFeed (smart, relevance-based)
-          - Anonymous users: ThreeTierQuestionsFeed (regional curation)
+          EPIC C INTEGRATION - OPTION B (RECOMMENDED):
+          Tabs for authenticated users: "For You" vs "Regional"
+          Anonymous users: Only ThreeTierQuestionsFeed
         */}
         {isAuthed ? (
-          <PersonalizedFeed />
+          <Tabs defaultValue="for-you" className="w-full">
+            <TabsList className="mb-6 w-full sm:w-auto">
+              <TabsTrigger value="for-you" className="flex-1 sm:flex-initial">
+                For You
+              </TabsTrigger>
+              <TabsTrigger value="regional" className="flex-1 sm:flex-initial">
+                Regional
+              </TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="for-you" className="mt-0">
+              <PersonalizedFeed />
+            </TabsContent>
+            
+            <TabsContent value="regional" className="mt-0">
+              <ThreeTierQuestionsFeed />
+            </TabsContent>
+          </Tabs>
         ) : (
           <ThreeTierQuestionsFeed />
         )}
