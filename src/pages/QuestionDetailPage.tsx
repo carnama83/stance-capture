@@ -105,16 +105,19 @@ function useSupabaseSession() {
 }
 
 // ---------- Data fetchers ----------
+// NEW (CORRECT - get topic_id from questions table instead):
 async function fetchQuestionById(id: string): Promise<LiveQuestion | null> {
   const sb = getSupabase();
   if (!sb) throw new Error("Supabase client not available");
 
+  // Get from questions table directly to get topic_id
   const { data, error } = await sb
-    .from("v_live_questions")
+    .from("questions")  // ✅ Changed from v_live_questions to questions
     .select(
       "id, topic_id, question, summary, tags, location_label, published_at, status"
     )
     .eq("id", id)
+    .eq("status", "active")  // ✅ Add status filter to match v_live_questions behavior
     .limit(1);
 
   if (error) {
