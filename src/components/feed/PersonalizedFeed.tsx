@@ -1,10 +1,10 @@
 /**
- * Epic C - Personalized Feed Component
+ * Epic C - Personalized Feed Component (CORRECTED VERSION)
  * Shows questions tailored to user's location and followed topics
  */
 
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { getSupabase } from '@/lib/supabaseClient'; // Match your project's import
 import { Card } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -13,19 +13,30 @@ import { STATE_LABELS, formatTimeAgo, type FeedQuestion } from '@/types/feedType
 import { MessageSquare, TrendingUp } from 'lucide-react';
 
 export function PersonalizedFeed() {
-  // Get current user
-  const { data: session } = useQuery({
+  // Get current user - using same pattern as QuestionDetailPage
+  const supabase = getSupabase();
+  
+  const { data: sessionData } = useQuery({
     queryKey: ['session'],
-    queryFn: () => supabase.auth.getSession(),
+    queryFn: async () => {
+      if (!supabase) return null;
+      const { data } = await supabase.auth.getSession();
+      return data;
+    },
   });
   
-  const userId = session?.data.session?.user.id;
+  const userId = sessionData?.session?.user?.id;
   
   // Fetch personalized feed
   const { data: questions, isLoading, error } = useQuery<FeedQuestion[]>({
     queryKey: ['personalized-feed', userId],
     queryFn: async () => {
-      if (!userId) return [];
+      if (!userId || !supabase) {
+        console.log('⚠️ No userId or supabase client');
+        return [];
+      }
+      
+      console.log('🔍 Fetching personalized feed for user:', userId);
       
       const { data, error } = await supabase.rpc('get_personalized_feed', {
         p_user_id: userId,
@@ -33,11 +44,23 @@ export function PersonalizedFeed() {
         p_offset: 0,
       });
       
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Personalized feed RPC error:', error);
+        console.error('Error details:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+        });
+        throw error;
+      }
+      
+      console.log('✅ Personalized feed data:', data);
       return data as FeedQuestion[];
     },
-    enabled: !!userId,
+    enabled: !!userId && !!supabase,
     staleTime: 2 * 60 * 1000, // 2 minutes
+    retry: 1, // Only retry once
   });
   
   if (isLoading) {
@@ -55,10 +78,24 @@ export function PersonalizedFeed() {
   }
   
   if (error) {
+    console.error('Error in PersonalizedFeed:', error);
     return (
       <Alert variant="destructive">
         <AlertDescription>
-          Failed to load your personalized feed. Please try again.
+          Failed to load your personalized feed. 
+          {error instanceof Error && (
+            <div className="mt-2 text-xs">
+              Error: {error.message}
+            </div>
+          )}
+          <div className="mt-2">
+            <button 
+              onClick={() => window.location.reload()} 
+              className="text-sm underline"
+            >
+              Try refreshing the page
+            </button>
+          </div>
         </AlertDescription>
       </Alert>
     );
