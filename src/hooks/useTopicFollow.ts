@@ -1,38 +1,47 @@
+/**
+ * Epic C - Topic Following Hook
+ * Handles follow/unfollow operations for topics
+ */
+
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/integrations/supabase/client';
 
-export function useTopicFollow(topicId: string) {
-  const queryClient = useQueryClient();
-
-  const { data: session } = useQuery({
-    queryKey: ['session'],
-    queryFn: () => supabase.auth.getSession(),
-  });
-
-  const userId = session?.data.session?.user.id;
-
-  const { data: isFollowing } = useQuery({
-    queryKey: ['topic-follow', topicId, userId],
+/**
+ * Check if user is following a topic
+ */
+export function useIsFollowing(topicId: string | undefined, userId: string | undefined) {
+  return useQuery({
+    queryKey: ['is-following', topicId, userId],
     queryFn: async () => {
-      if (!userId) return false;
+      if (!topicId || !userId) return false;
       
-      const { data } = await supabase
-        .from('user_follows')
-        .select('id')
-        .eq('user_id', userId)
-        .eq('follow_type', 'topic')
-        .eq('follow_id', topicId)
-        .single();
+      const { data, error } = await supabase
+        .rpc('is_following_topic', {
+          p_user_id: userId,
+          p_topic_id: topicId,
+        });
       
-      return !!data;
+      if (error) throw error;
+      return data as boolean;
     },
-    enabled: !!userId,
+    enabled: !!topicId && !!userId,
   });
+}
 
-  const followMutation = useMutation({
-    mutationFn: async () => {
-      if (!userId) throw new Error('Not authenticated');
-      
+/**
+ * Follow a topic
+ */
+export function useFollowTopic() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async ({ 
+      userId, 
+      topicId 
+    }: { 
+      userId: string; 
+      topicId: string;
+    }) => {
       const { error } = await supabase.rpc('follow_topic', {
         p_user_id: userId,
         p_topic_id: topicId,
@@ -40,16 +49,33 @@ export function useTopicFollow(topicId: string) {
       
       if (error) throw error;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['topic-follow', topicId] });
-      queryClient.invalidateQueries({ queryKey: ['personalized-feed'] });
+    onSuccess: (_, variables) => {
+      // Invalidate follow status
+      queryClient.invalidateQueries({ 
+        queryKey: ['is-following', variables.topicId] 
+      });
+      // Invalidate personalized feed (will show more from this topic)
+      queryClient.invalidateQueries({ 
+        queryKey: ['personalized-feed'] 
+      });
     },
   });
+}
 
-  const unfollowMutation = useMutation({
-    mutationFn: async () => {
-      if (!userId) throw new Error('Not authenticated');
-      
+/**
+ * Unfollow a topic
+ */
+export function useUnfollowTopic() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async ({ 
+      userId, 
+      topicId 
+    }: { 
+      userId: string; 
+      topicId: string;
+    }) => {
       const { error } = await supabase.rpc('unfollow_topic', {
         p_user_id: userId,
         p_topic_id: topicId,
@@ -57,16 +83,40 @@ export function useTopicFollow(topicId: string) {
       
       if (error) throw error;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['topic-follow', topicId] });
-      queryClient.invalidateQueries({ queryKey: ['personalized-feed'] });
+    onSuccess: (_, variables) => {
+      // Invalidate follow status
+      queryClient.invalidateQueries({ 
+        queryKey: ['is-following', variables.topicId] 
+      });
+      // Invalidate personalized feed (will show fewer from this topic)
+      queryClient.invalidateQueries({ 
+        queryKey: ['personalized-feed'] 
+      });
     },
   });
+}
 
+/**
+ * Combined hook for follow/unfollow toggle
+ */
+export function useToggleFollow(topicId: string, userId: string | undefined) {
+  const { data: isFollowing } = useIsFollowing(topicId, userId);
+  const followMutation = useFollowTopic();
+  const unfollowMutation = useUnfollowTopic();
+  
+  const toggle = async () => {
+    if (!userId) return;
+    
+    if (isFollowing) {
+      await unfollowMutation.mutateAsync({ userId, topicId });
+    } else {
+      await followMutation.mutateAsync({ userId, topicId });
+    }
+  };
+  
   return {
-    isFollowing: !!isFollowing,
-    follow: followMutation.mutate,
-    unfollow: unfollowMutation.mutate,
+    isFollowing: isFollowing ?? false,
+    toggle,
     isLoading: followMutation.isPending || unfollowMutation.isPending,
   };
 }
