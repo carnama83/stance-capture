@@ -278,10 +278,9 @@ async function fetchThreadSentiment(
   return data ?? null;
 }
 
-// ---------- EPIC C: Track answered questions ----------
+// ---------- EPIC C: Track answered questions (CORRECTED) ----------
 async function trackQuestionInteraction(
   userId: string,
-  questionId: string,
   topicId: string | undefined,
   answered: boolean
 ): Promise<void> {
@@ -289,12 +288,15 @@ async function trackQuestionInteraction(
   if (!sb || !topicId) return;
 
   try {
+    // Your table only has: user_id, topic_id, answered, last_interacted_at
+    // NO question_id column!
     await sb.from('user_topic_interactions').upsert({
       user_id: userId,
       topic_id: topicId,
-      question_id: questionId,
       last_interacted_at: new Date().toISOString(),
       answered: answered,
+    }, {
+      onConflict: 'user_id,topic_id', // Unique constraint on these two columns
     });
   } catch (error) {
     console.error('Failed to track question interaction:', error);
