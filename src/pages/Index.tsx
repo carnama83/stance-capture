@@ -150,16 +150,29 @@ async function fetchTrendingTopics(
   });
 }
 
-// ---------- Display name helper ----------
-function displayName(session: Session | null): string {
-  if (!session?.user?.email) return "there";
-  const email = session.user.email;
-  const atIdx = email.indexOf("@");
-  if (atIdx > 0) {
-    const local = email.slice(0, atIdx);
-    return local.charAt(0).toUpperCase() + local.slice(1);
+// ---------- Display name helper (FIXED) ----------
+function getDisplayHandle(
+  profile: { random_id: string; username: string | null; display_handle_mode: string } | null | undefined,
+  session: Session | null
+): string {
+  if (!profile) {
+    // Fallback to email local-part if profile not loaded
+    if (!session?.user?.email) return "there";
+    const email = session.user.email;
+    const atIdx = email.indexOf("@");
+    if (atIdx > 0) {
+      const local = email.slice(0, atIdx);
+      return local.charAt(0).toUpperCase() + local.slice(1);
+    }
+    return email;
   }
-  return email;
+
+  // Use profile's chosen display mode
+  if (profile.display_handle_mode === "username" && profile.username) {
+    return profile.username;
+  }
+  
+  return profile.random_id;
 }
 
 // ---------- Hero CTA (anonymous users) ----------
@@ -250,6 +263,29 @@ export default function IndexPage() {
 
   const userId = session?.user?.id ?? null;
 
+  // Fetch user profile to get correct display handle
+  const {
+    data: profile,
+    isLoading: profileLoading,
+  } = useQuery({
+    enabled: !!userId,
+    queryKey: ["profile", userId],
+    queryFn: async () => {
+      if (!sb || !userId) return null;
+      const { data, error } = await sb
+        .from("profiles")
+        .select("random_id, username, display_handle_mode")
+        .eq("id", userId)
+        .maybeSingle();
+      if (error) {
+        console.error("Failed to load profile", error);
+        return null;
+      }
+      return data;
+    },
+    staleTime: 60_000,
+  });
+
   const {
     data: myRegion,
     isLoading: myRegionLoading,
@@ -307,7 +343,7 @@ export default function IndexPage() {
     <PageLayout rightSlot={actions}>
       {/* Hero Section */}
       {isAuthed ? (
-        <HeroWelcome name={displayName(session)} />
+        <HeroWelcome name={getDisplayHandle(profile, session)} />
       ) : (
         <HeroCta
           onLogin={() => navigate("/login")}
