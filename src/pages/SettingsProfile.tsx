@@ -192,7 +192,7 @@ export default function SettingsProfile() {
       setMsg("Username updated.");
 
       // ✅ INVALIDATE CACHE so header updates
-      queryClient.invalidateQueries({ queryKey: ['profile'] });
+      queryClient.invalidateQueries({ queryKey: ['profile', uid] });
 
       if (form.display_handle_mode === "username") {
         setHandle(desired || randomId);
@@ -206,6 +206,7 @@ export default function SettingsProfile() {
   }
 
   async function setDisplay(mode: DisplayHandleMode) {
+    console.log("🔄 setDisplay called with mode:", mode);
     setMsg(null);
     if (!sb) return setMsg("Supabase is OFF (check env).");
 
@@ -216,7 +217,10 @@ export default function SettingsProfile() {
 
     try {
       setBusy(true);
-      const { error } = await sb.rpc("set_my_display_handle", { p_mode: mode });
+      console.log("📡 Calling RPC set_my_display_handle with mode:", mode);
+      const { error, data } = await sb.rpc("set_my_display_handle", { p_mode: mode });
+      console.log("📡 RPC response:", { error, data });
+      
       if (error) throw error;
 
       setForm((f) => ({ ...f, display_handle_mode: mode }));
@@ -224,9 +228,12 @@ export default function SettingsProfile() {
       setMsg("Display handle updated.");
       
       // ✅ INVALIDATE CACHE so header updates immediately
-      queryClient.invalidateQueries({ queryKey: ['profile'] });
+      console.log("🔄 Invalidating profile cache for userId:", uid);
+      queryClient.invalidateQueries({ queryKey: ['profile', uid] });
       
+      console.log("✅ Display mode updated successfully to:", mode);
     } catch (e: any) {
+      console.error("❌ Error updating display mode:", e);
       setMsg(e.message || "Could not update display mode");
     } finally {
       setBusy(false);
