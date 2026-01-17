@@ -218,10 +218,6 @@ export default function AppTopBar({
                     Profile
                   </DropdownMenuItem>
                   
-                  <DropdownMenuItem onClick={() => navigate("/settings/profile")}>
-                    Display Mode
-                  </DropdownMenuItem>
-                  
                   <DropdownMenuItem onClick={() => navigate("/settings/location")}>
                     Location
                   </DropdownMenuItem>
