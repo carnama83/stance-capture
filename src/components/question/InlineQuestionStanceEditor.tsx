@@ -1,4 +1,5 @@
 // src/components/question/InlineQuestionStanceEditor.tsx
+// ✨ EPIC C PHASE-AWARE: Added record_question_answer RPC call for phase tracking
 
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -92,6 +93,19 @@ export function InlineQuestionStanceEditor({
 
       if (error) throw error;
 
+      // ✨ EPIC C: Track phase when user answers
+      if (newScore !== null && session.user.id) {
+        const { error: phaseError } = await sb.rpc('record_question_answer', {
+          p_user_id: session.user.id,
+          p_question_id: questionId,
+        });
+        
+        if (phaseError) {
+          console.error('Failed to record question answer (phase tracking):', phaseError);
+          // Don't throw - stance was saved successfully
+        }
+      }
+
       return (data as number | null) ?? newScore;
     },
     onSuccess: (newScore) => {
@@ -103,6 +117,10 @@ export function InlineQuestionStanceEditor({
       queryClient.invalidateQueries({
         queryKey: ["question-stats", questionId],
       });
+      // ✨ EPIC C: Invalidate personalized feed for phase-aware re-exposure
+      queryClient.invalidateQueries({
+        queryKey: ["personalized-feed"],
+      });
 
       toast({
         title:
@@ -111,14 +129,14 @@ export function InlineQuestionStanceEditor({
             : "Stance updated",
         description:
           newScore === null || newScore === undefined
-            ? "You’ve removed your stance on this question."
+            ? "You've removed your stance on this question."
             : "Your stance has been recorded.",
       });
     },
     onError: (error: any) => {
       toast({
         variant: "destructive",
-        title: "Couldn’t update your stance",
+        title: "Couldn't update your stance",
         description:
           error?.message ??
           "Something went wrong while saving. Please try again.",
