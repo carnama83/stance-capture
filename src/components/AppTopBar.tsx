@@ -113,7 +113,7 @@ export default function AppTopBar({
       const { data, error } = await sb
         .from("profiles")
         .select("random_id, username, display_handle_mode")
-        .eq("id", userId)
+        .eq("user_id", userId)
         .maybeSingle<Profile>();
       if (error) {
         console.error("Failed to load profile", error);
