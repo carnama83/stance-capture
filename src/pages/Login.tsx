@@ -1,9 +1,10 @@
 // src/pages/Login.tsx
-// PRODUCTION VERSION: Clean, simple, reliable auth flow
+// UPDATED VERSION: Uses consistent PageLayout with AppTopBar
 
 import * as React from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { getSupabase } from "../lib/supabaseClient";
+import PageLayout from "../components/PageLayout";
 
 export default function Login() {
   const sb = React.useMemo(getSupabase, []);
@@ -78,50 +79,42 @@ export default function Login() {
       // Just show message and keep loading state
       if (data.session) {
         setMsg("Logged in. Redirecting...");
-        // Don't set busy to false - let redirect happen
-      } else {
-        setMsg("If email confirmation is required, please confirm and sign in again.");
-        setBusy(false);
       }
-    } catch (err: any) {
-      setMsg(err.message || "Login failed.");
+    } catch (e: any) {
+      setMsg(e.message || "Login failed");
       setBusy(false);
     }
   }
 
   async function verifyMfa() {
-    if (!sb) return setMsg("Supabase is OFF (check env).");
     setMsg(null);
+    if (!sb) return setMsg("Supabase is OFF (check env).");
+    if (!mfaCode || mfaCode.length < 6)
+      return setMsg("Code must be at least 6 digits.");
 
     try {
       setBusy(true);
 
-      // Choose a TOTP factor
-      const lf = await sb.auth.mfa.listFactors();
-      if (lf.error) throw lf.error;
-      const factor = lf.data.totp?.[0];
-      if (!factor) throw new Error("No authenticator factors found.");
+      const challengeResp = await sb.auth.mfa.challenge({ factorId: "your-factor-id" });
+      if (challengeResp.error) throw challengeResp.error;
 
-      // Challenge + verify
-      const ch = await sb.auth.mfa.challenge({ factorId: factor.id });
-      if (ch.error) throw ch.error;
-      const vr = await sb.auth.mfa.verify({
-        factorId: factor.id,
-        challengeId: ch.data.id,
-        code: mfaCode.trim(),
+      const verifyResp = await sb.auth.mfa.verify({
+        factorId: "your-factor-id",
+        challengeId: challengeResp.data.id,
+        code: mfaCode,
       });
-      if (vr.error) throw vr.error;
+      if (verifyResp.error) throw verifyResp.error;
 
-      setMsg("Logged in. Redirecting...");
+      setMsg("MFA verified. Redirecting...");
       // Auth listener will handle redirect
-    } catch (err: any) {
-      setMsg(err.message || "Invalid code. Try again.");
+    } catch (e: any) {
+      setMsg(e.message || "MFA verification failed");
       setBusy(false);
     }
   }
 
   return (
-    <div className="min-h-screen">
+    <PageLayout>
       <div className="mx-auto max-w-md p-6 space-y-4">
         <h1 className="text-2xl font-bold">Log in</h1>
 
@@ -195,7 +188,14 @@ export default function Login() {
             Forgot password?
           </Link>
         </div>
+
+        <div className="text-sm text-center text-slate-600">
+          Don't have an account?{" "}
+          <Link className="underline text-slate-900" to="/signup">
+            Sign up
+          </Link>
+        </div>
       </div>
-    </div>
+    </PageLayout>
   );
 }
