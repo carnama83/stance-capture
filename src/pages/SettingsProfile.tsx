@@ -1,6 +1,8 @@
 // src/pages/SettingsProfile.tsx
+// UPDATED: Added cache invalidation so header updates immediately
 import * as React from "react";
 import { getSupabase } from "../lib/supabaseClient";
+import { useQueryClient } from "@tanstack/react-query";
 import UsernameField from "../components/UsernameField";
 import AvatarUploader from "../components/AvatarUploader";
 
@@ -8,6 +10,8 @@ type DisplayHandleMode = "random_id" | "username";
 
 export default function SettingsProfile() {
   const sb = React.useMemo(getSupabase, []);
+  const queryClient = useQueryClient(); // ✅ ADD THIS
+  
   const [uid, setUid] = React.useState<string>("");
 
   // store random_id explicitly so we can display it + use it as fallback
@@ -139,7 +143,7 @@ export default function SettingsProfile() {
       return;
     }
     if (desired === current) {
-      setMsg("That’s already your current username.");
+      setMsg("That's already your current username.");
       return;
     }
 
@@ -160,7 +164,7 @@ export default function SettingsProfile() {
         const raw = String(res.error.message || "").trim();
 
         if (raw.startsWith("ERR_USERNAME_LIMIT")) {
-          setMsg("You’ve hit the username change limit (30 days). Try again later.");
+          setMsg("You've hit the username change limit (30 days). Try again later.");
         } else if (raw.toLowerCase().includes("reserved")) {
           setMsg("That username is reserved. Please choose another.");
         } else if (raw.toLowerCase().includes("taken") || res.error.code === "23505") {
@@ -187,6 +191,9 @@ export default function SettingsProfile() {
       setInitialUsername(desired);
       setMsg("Username updated.");
 
+      // ✅ INVALIDATE CACHE so header updates
+      queryClient.invalidateQueries({ queryKey: ['profile'] });
+
       if (form.display_handle_mode === "username") {
         setHandle(desired || randomId);
       }
@@ -203,7 +210,7 @@ export default function SettingsProfile() {
     if (!sb) return setMsg("Supabase is OFF (check env).");
 
     if (mode === "username" && !form.username) {
-      setMsg('Set a username before choosing “username” display mode.');
+      setMsg('Set a username before choosing "username" display mode.');
       return;
     }
 
@@ -215,6 +222,10 @@ export default function SettingsProfile() {
       setForm((f) => ({ ...f, display_handle_mode: mode }));
       setHandle(mode === "username" ? (form.username || randomId) : randomId);
       setMsg("Display handle updated.");
+      
+      // ✅ INVALIDATE CACHE so header updates immediately
+      queryClient.invalidateQueries({ queryKey: ['profile'] });
+      
     } catch (e: any) {
       setMsg(e.message || "Could not update display mode");
     } finally {
