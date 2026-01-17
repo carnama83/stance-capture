@@ -305,24 +305,32 @@ export default function SettingsProfile() {
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            className="border rounded px-3 py-1"
+            className={`border rounded px-3 py-1 transition-colors ${
+              form.display_handle_mode === "random_id"
+                ? "bg-slate-900 text-white border-slate-900"
+                : "border-slate-300 hover:border-slate-400"
+            }`}
             onClick={() => setDisplay("random_id")}
             disabled={busy}
             aria-pressed={form.display_handle_mode === "random_id"}
             title="Show Random ID across the app"
           >
-            Use Random ID (default)
+            Use Random ID {form.display_handle_mode === "random_id" ? "✓" : ""}
           </button>
 
           <button
             type="button"
-            className="border rounded px-3 py-1"
+            className={`border rounded px-3 py-1 transition-colors ${
+              form.display_handle_mode === "username"
+                ? "bg-slate-900 text-white border-slate-900"
+                : "border-slate-300 hover:border-slate-400"
+            } ${!isUsernameSet ? "opacity-50 cursor-not-allowed" : ""}`}
             onClick={() => setDisplay("username")}
             disabled={busy || !isUsernameSet}
             aria-pressed={form.display_handle_mode === "username"}
             title={!isUsernameSet ? "Set a username first" : "Show Username across the app"}
           >
-            Use Username
+            Use Username {form.display_handle_mode === "username" ? "✓" : ""}
           </button>
         </div>
 
