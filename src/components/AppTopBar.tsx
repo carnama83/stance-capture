@@ -40,14 +40,29 @@ function useSupabaseSession() {
 }
 
 // ---------- Get Display Handle ----------
-function getDisplayHandle(profile: Profile | null | undefined): string {
-  if (!profile) return "...";
-  
-  if (profile.display_handle_mode === "username" && profile.username) {
-    return `@${profile.username}`;
+function getDisplayHandle(
+  profile: Profile | null | undefined, 
+  session: any
+): string {
+  // If profile loaded, use it
+  if (profile) {
+    if (profile.display_handle_mode === "username" && profile.username) {
+      return `@${profile.username}`;
+    }
+    return `#${profile.random_id}`;
   }
   
-  return `#${profile.random_id}`;
+  // Fallback to email local-part while loading
+  if (session?.user?.email) {
+    const email = session.user.email;
+    const atIdx = email.indexOf("@");
+    if (atIdx > 0) {
+      const local = email.slice(0, atIdx);
+      return `@${local}`;
+    }
+  }
+  
+  return "...";
 }
 
 // ---------- Navigation Item Component ----------
@@ -187,14 +202,14 @@ export default function AppTopBar({
               <DropdownMenu>
                 <DropdownMenuTrigger className="flex items-center gap-2 px-3 py-2 rounded-md border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-colors">
                   <span className="text-sm font-medium text-slate-700">
-                    {getDisplayHandle(profile)}
+                    {getDisplayHandle(profile, session)}
                   </span>
                   <ChevronDown className="h-4 w-4 text-slate-500" />
                 </DropdownMenuTrigger>
                 
                 <DropdownMenuContent align="end" className="w-56">
                   <div className="px-2 py-1.5 text-sm font-medium text-slate-900">
-                    {getDisplayHandle(profile)}
+                    {getDisplayHandle(profile, session)}
                   </div>
                   
                   <DropdownMenuSeparator />
