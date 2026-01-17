@@ -284,6 +284,7 @@ async function fetchThreadSentiment(
 // ---------- EPIC C: Track answered questions (CORRECTED) ----------
 async function trackQuestionInteraction(
   userId: string,
+  questionId: string,  // ✨ ADDED for phase tracking
   topicId: string | undefined,
   answered: boolean
 ): Promise<void> {
@@ -291,8 +292,20 @@ async function trackQuestionInteraction(
   if (!sb || !topicId) return;
 
   try {
-    // Your table only has: user_id, topic_id, answered, last_interacted_at
-    // NO question_id column!
+    // ✨ EPIC C PHASE-AWARE: Call RPC to track phase when user answers
+    if (answered) {
+      const { error: rpcError } = await sb.rpc('record_question_answer', {
+        p_user_id: userId,
+        p_question_id: questionId,
+      });
+      
+      if (rpcError) {
+        console.error('Failed to record question answer (phase tracking):', rpcError);
+        // Don't throw - continue with fallback
+      }
+    }
+    
+    // Fallback: Also update user_topic_interactions directly
     await sb.from('user_topic_interactions').upsert({
       user_id: userId,
       topic_id: topicId,
