@@ -8,7 +8,7 @@
 import * as React from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { getSupabase } from "./lib/supabaseClient";
+import { getSupabase } from "@/lib/supabaseClient";
 import PageLayout from "./components/PageLayout";
 import { PersonalizedFeed } from "@/components/feed/PersonalizedFeed";
 import { ThreeTierQuestionsFeed } from "@/components/question/ThreeTierQuestionsFeed";
