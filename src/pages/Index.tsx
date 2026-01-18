@@ -270,6 +270,20 @@ function formatScore(n?: number | null) {
   return `${Math.round(n)}`;
 }
 
+function minutesAgo(iso?: string | null): string | null {
+  if (!iso) return null;
+  const dt = new Date(iso);
+  const t = dt.getTime();
+  if (!Number.isFinite(t)) return null;
+  const ms = Date.now() - t;
+  const mins = Math.max(0, Math.round(ms / 60000));
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 48) return `${hrs}h ago`;
+  const days = Math.round(hrs / 24);
+  return `${days}d ago`;
+}
+
 function TopicCard({
   topic,
   onOpen,
@@ -316,6 +330,141 @@ function TopicCard({
         {topic.location_label ? <span>{topic.location_label}</span> : null}
       </div>
     </button>
+  );
+}
+
+function WireframeTrendingCarousel({
+  topics,
+  onAnswer,
+}: {
+  topics: Topic[];
+  onAnswer: (topicId: string) => void;
+}) {
+  const [page, setPage] = React.useState(0);
+  const totalPages = Math.max(1, Math.ceil((topics?.length ?? 0) / 3));
+
+  React.useEffect(() => {
+    // If topics change and current page is out of range, reset.
+    if (page > totalPages - 1) setPage(0);
+  }, [page, totalPages]);
+
+  const slice = topics.slice(page * 3, page * 3 + 3);
+  const [a, b, c] = slice;
+
+  const Card = ({
+    t,
+    variant,
+  }: {
+    t: Topic;
+    variant: "large" | "small";
+  }) => {
+    const tier = (t.tier ?? "global").toUpperCase();
+    const time = minutesAgo(t.updated_at) ?? "";
+    const sources =
+      typeof t.activity_7d === "number" ? `${formatScore(t.activity_7d)} sources` : null;
+
+    return (
+      <div
+        className={
+          variant === "large"
+            ? "rounded-lg border bg-gradient-to-b from-slate-50 to-white p-4 shadow-sm"
+            : "rounded-lg border bg-gradient-to-b from-slate-50 to-white p-3 shadow-sm"
+        }
+      >
+        <div
+          className={
+            variant === "large"
+              ? "text-lg font-semibold text-slate-900 line-clamp-2"
+              : "text-sm font-semibold text-slate-900 line-clamp-2"
+          }
+        >
+          {t.title}
+        </div>
+
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          <span className="rounded bg-slate-900 px-2 py-0.5 text-[10px] text-white">
+            {tier}
+          </span>
+          {(t.tags ?? []).map((tag) => {
+            const up = tag.toUpperCase();
+            if (up === "BREAKING" || up === "TRENDING" || up === "NATIONAL") {
+              return (
+                <span
+                  key={tag}
+                  className="rounded bg-slate-900/10 px-2 py-0.5 text-[10px] text-slate-900"
+                >
+                  {up}
+                </span>
+              );
+            }
+            return null;
+          })}
+        </div>
+
+        {variant === "large" ? (
+          <div className="mt-3 text-xs text-slate-600">
+            {sources ? <span>{sources}</span> : <span>— sources</span>}
+            {time ? <span> • {time}</span> : null}
+          </div>
+        ) : null}
+
+        <div className={variant === "large" ? "mt-4" : "mt-3"}>
+          <button
+            type="button"
+            className={
+              variant === "large"
+                ? "rounded bg-slate-700 px-5 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+                : "rounded border bg-white px-4 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50"
+            }
+            onClick={() => onAnswer(t.id)}
+          >
+            Answer
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="relative">
+      {/* Cards row */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1.4fr_1fr_1fr]">
+        {a ? <Card t={a} variant="large" /> : <div className="rounded-lg border bg-slate-50 p-4" />}
+        {b ? <Card t={b} variant="small" /> : <div className="rounded-lg border bg-slate-50 p-3" />}
+        {c ? <Card t={c} variant="small" /> : <div className="rounded-lg border bg-slate-50 p-3" />}
+      </div>
+
+      {/* Right chevron */}
+      {totalPages > 1 ? (
+        <button
+          type="button"
+          aria-label="Next"
+          className="absolute -right-2 top-1/2 -translate-y-1/2 rounded-full border bg-white p-2 shadow-sm hover:bg-slate-50"
+          onClick={() => setPage((p) => (p + 1) % totalPages)}
+        >
+          ›
+        </button>
+      ) : null}
+
+      {/* Dots */}
+      {totalPages > 1 ? (
+        <div className="mt-3 flex items-center justify-center gap-1.5">
+          {Array.from({ length: totalPages }).map((_, i) => (
+            <button
+              key={i}
+              type="button"
+              aria-label={`Page ${i + 1}`}
+              onClick={() => setPage(i)}
+              className={
+                i === page
+                  ? "h-2 w-4 rounded-full bg-slate-700"
+                  : "h-2 w-2 rounded-full bg-slate-300"
+              }
+            />
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -716,6 +865,27 @@ export default function IndexPage() {
           </div>
         )}
 
+        {/* Wireframe-style top bar (only when there's a breaking headline) */}
+        {globalBreaking ? (
+          <div className="rounded-md border bg-white px-4 py-2 text-sm flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <span aria-hidden="true">🌍</span>
+              <span className="font-semibold">Global Breaking</span>
+              <span aria-hidden="true">⚠️</span>
+              <span className="text-slate-700 line-clamp-1">
+                {globalBreaking.title}
+              </span>
+            </div>
+            <button
+              type="button"
+              className="rounded border px-3 py-1 text-xs hover:bg-slate-50"
+              onClick={() => openTopic(globalBreaking.id)}
+            >
+              Answer
+            </button>
+          </div>
+        ) : null}
+
         {/* Global Breaking Banner */}
         {globalBreaking ? (
           <GlobalBreakingBanner headline={globalBreaking} onOpen={openTopic} />
@@ -753,23 +923,17 @@ export default function IndexPage() {
               </TabsList>
 
               <TabsContent value="country" className="mt-0">
-                <div className="flex gap-3 overflow-x-auto pb-2">
-                  {(countryTopics.length ? countryTopics : trending)
-                    .slice(0, 8)
-                    .map((t) => (
-                      <TopicCard key={t.id} topic={t} onOpen={openTopic} />
-                    ))}
-                </div>
+                <WireframeTrendingCarousel
+                  topics={(countryTopics.length ? countryTopics : trending).slice(0, 12)}
+                  onAnswer={openTopic}
+                />
               </TabsContent>
 
               <TabsContent value="global" className="mt-0">
-                <div className="flex gap-3 overflow-x-auto pb-2">
-                  {(globalTopics.length ? globalTopics : trending)
-                    .slice(0, 8)
-                    .map((t) => (
-                      <TopicCard key={t.id} topic={t} onOpen={openTopic} />
-                    ))}
-                </div>
+                <WireframeTrendingCarousel
+                  topics={(globalTopics.length ? globalTopics : trending).slice(0, 12)}
+                  onAnswer={openTopic}
+                />
               </TabsContent>
             </Tabs>
           </div>
