@@ -1,7 +1,7 @@
 /**
  * Epic C - Personalized Feed Component (PHASE-AWARE VERSION)
  * Shows questions tailored to user's location and followed topics
- * ✨ NOW WITH: Phase-aware re-exposure tracking
+ * ✨ NOW WITH: Phase-aware re-exposure tracking + QuestionPhaseBadge component
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -13,8 +13,9 @@ import { Link } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
 import { MessageSquare, TrendingUp, Sparkles } from 'lucide-react';
 import { useEffect } from 'react';
+import { QuestionPhaseBadge } from '@/components/question/QuestionPhaseBadge'; // ✨ NEW IMPORT
 
-// ✨ NEW: Extended type with phase information
+// ✨ Extended type with phase information (already has phase and is_new_phase)
 interface FeedQuestion {
   question_id: string;
   topic_id: string;
@@ -30,8 +31,8 @@ interface FeedQuestion {
   topic_tags: string[] | null;
   relevance_score: number;
   response_count: number;
-  phase: string;  // ✨ NEW
-  is_new_phase: boolean;  // ✨ NEW
+  phase: string;  // ✅ Already present
+  is_new_phase: boolean;  // ✅ Already present
 }
 
 export function PersonalizedFeed() {
@@ -49,7 +50,7 @@ export function PersonalizedFeed() {
   
   const userId = sessionData?.session?.user?.id;
   
-  // ✨ NEW: Mutation to record question views
+  // ✨ Mutation to record question views
   const recordViewMutation = useMutation({
     mutationFn: async (questionId: string) => {
       if (!userId || !supabase) return;
@@ -95,7 +96,7 @@ export function PersonalizedFeed() {
     retry: 1,
   });
   
-  // ✨ NEW: Record views for all questions in viewport
+  // ✨ Record views for all questions in viewport
   useEffect(() => {
     if (!questions || questions.length === 0) return;
     
@@ -173,57 +174,72 @@ export function PersonalizedFeed() {
           className="block"
         >
           <Card className="p-6 hover:shadow-lg transition-shadow">
-            {/* Header with badges */}
-            <div className="flex items-start gap-2 mb-3">
-              <div className="flex-1">
+            {/* ✨ UPDATED: Header with badges - New layout */}
+            <div className="flex items-start justify-between gap-3 mb-3">
+              {/* Left: Title and topic */}
+              <div className="flex-1 min-w-0">
                 {/* Topic title */}
                 <div className="text-xs text-slate-500 mb-1">
                   {q.topic_title}
                 </div>
                 
-                {/* Badges */}
-                <div className="flex flex-wrap gap-2 mb-2">
-                  {/* ✨ NEW: New Phase Badge */}
-                  {q.is_new_phase && (
-                    <Badge variant="default" className="bg-blue-600">
-                      <Sparkles className="h-3 w-3 mr-1" />
-                      New {q.phase !== 'initial' ? q.phase.charAt(0).toUpperCase() + q.phase.slice(1) : 'Question'}
-                    </Badge>
-                  )}
-                  
-                  {/* State Badge */}
-                  {q.state === 'new' && (
-                    <Badge variant="secondary">
-                      🆕 New
-                    </Badge>
-                  )}
-                  
-                  {/* Trending Badge */}
-                  {q.is_trending && (
-                    <Badge variant="outline" className="border-orange-300 text-orange-700">
-                      <TrendingUp className="h-3 w-3 mr-1" />
-                      Trending
-                    </Badge>
-                  )}
-                  
-                  {/* ✨ NEW: Phase Badge (if not initial) */}
-                  {q.phase !== 'initial' && (
-                    <PhaseBadge phase={q.phase} />
-                  )}
-                </div>
+                {/* Question */}
+                <h3 className="text-lg font-semibold text-slate-900 mb-2">
+                  {q.question}
+                </h3>
+              </div>
+              
+              {/* ✨ NEW: Right-aligned badges column */}
+              <div className="flex flex-col gap-1.5 items-end shrink-0">
+                {/* ✨ NEW: Phase Badge using QuestionPhaseBadge component */}
+                {q.phase && q.phase !== 'initial' && (
+                  <QuestionPhaseBadge phase={q.phase} size="sm" />
+                )}
+                
+                {/* ✨ NEW: New Phase Badge (special highlight) */}
+                {q.is_new_phase && (
+                  <Badge variant="default" className="bg-blue-600 text-xs">
+                    <Sparkles className="h-3 w-3 mr-1" />
+                    New Update
+                  </Badge>
+                )}
+                
+                {/* State Badge */}
+                {q.state === 'new' && (
+                  <Badge variant="secondary" className="text-xs">
+                    🆕 New
+                  </Badge>
+                )}
+                
+                {/* Trending Badge */}
+                {q.is_trending && (
+                  <Badge variant="outline" className="border-orange-300 text-orange-700 text-xs">
+                    <TrendingUp className="h-3 w-3 mr-1" />
+                    Trending
+                  </Badge>
+                )}
               </div>
             </div>
-            
-            {/* Question */}
-            <h3 className="text-lg font-semibold text-slate-900 mb-2">
-              {q.question}
-            </h3>
             
             {/* Summary */}
             {q.summary && (
               <p className="text-sm text-slate-600 mb-4 line-clamp-2">
                 {q.summary}
               </p>
+            )}
+            
+            {/* Tags */}
+            {q.tags && q.tags.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-3">
+                {q.tags.slice(0, 4).map((tag) => (
+                  <span
+                    key={tag}
+                    className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600"
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
             )}
             
             {/* Footer */}
@@ -245,36 +261,6 @@ export function PersonalizedFeed() {
         </Link>
       ))}
     </div>
-  );
-}
-
-// ✨ NEW: Phase Badge Component
-function PhaseBadge({ phase }: { phase: string }) {
-  const config: Record<string, { label: string; color: string; icon: string }> = {
-    update: { 
-      label: 'Update', 
-      color: 'bg-blue-100 text-blue-800 border-blue-300',
-      icon: '🔄'
-    },
-    resolution: { 
-      label: 'Resolution', 
-      color: 'bg-green-100 text-green-800 border-green-300',
-      icon: '✅'
-    },
-    follow_up: { 
-      label: 'Follow-up', 
-      color: 'bg-purple-100 text-purple-800 border-purple-300',
-      icon: '↩️'
-    },
-  };
-  
-  const badge = config[phase];
-  if (!badge) return null;
-  
-  return (
-    <Badge variant="outline" className={badge.color}>
-      {badge.icon} {badge.label}
-    </Badge>
   );
 }
 
