@@ -8,6 +8,7 @@ import { Link } from "react-router-dom";
 import { getSupabase } from "@/lib/supabaseClient";
 import { QuestionStateBadge } from "./QuestionStateBadge";
 import { TrendingBadge } from "./TrendingBadge";
+import { QuestionPhaseBadge } from "./QuestionPhaseBadge"; // ✨ NEW IMPORT
 import { MessageSquare } from "lucide-react";
 import { formatAgeDays, calculateAgeDays } from "@/types/questionLifecycleTypes";
 import type { QuestionState } from "@/types/questionLifecycleTypes";
@@ -26,6 +27,7 @@ interface ThreeTierQuestion {
   tier_position: number;
   // Lifecycle fields
   state?: QuestionState;
+  phase?: string; // ✨ NEW: Phase field
   is_trending?: boolean;
   is_featured?: boolean;
   is_resolved?: boolean;
@@ -148,6 +150,7 @@ export function ThreeTierQuestionsFeed() {
           .select(`
             id,
             state,
+            phase,
             is_trending,
             is_featured,
             is_resolved,
@@ -187,6 +190,7 @@ export function ThreeTierQuestionsFeed() {
                 item.id,
                 {
                   state: item.state,
+                  phase: item.phase,
                   is_trending: item.is_trending,
                   is_featured: item.is_featured,
                   is_resolved: item.is_resolved,
@@ -415,6 +419,11 @@ function QuestionCard({ question }: { question: ThreeTierQuestion }) {
       {/* Top Row: Badges */}
       <div className="flex items-start justify-between gap-3 mb-3">
         <div className="flex flex-wrap gap-2">
+          {/* ✨ NEW: Phase Badge - Add FIRST for prominence */}
+          {question.phase && question.phase !== 'initial' && (
+            <QuestionPhaseBadge phase={question.phase} size="sm" />
+          )}
+          
           {/* State Badge */}
           {question.state && (
             <QuestionStateBadge state={question.state} size="sm" />
