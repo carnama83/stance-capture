@@ -6,6 +6,7 @@ import YouVsCommunityCard from "./MyStances/YouVsCommunityCard";
 import SinceLastVisitCard from "./MyStances/SinceLastVisitCard";
 
 import * as React from "react";
+import { QuestionPhaseBadge } from "@/components/question/QuestionPhaseBadge"; // ✨ NEW IMPORT
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getSupabase } from "../lib/supabaseClient";
@@ -21,6 +22,7 @@ type LiveQuestion = {
   location_label?: string | null;
   published_at?: string | null;
   status?: string | null;
+  phase?: string; // ✨ NEW: Phase field for question lifecycle
 };
 
 type QuestionStanceRow = {
@@ -111,7 +113,7 @@ async function fetchMyStances(userId: string): Promise<MyStanceRow[]> {
   const { data: questions, error: questionError } = await sb
     .from("v_live_questions")
     .select(
-      "id, question, summary, tags, location_label, published_at, status"
+      "id, question, summary, tags, location_label, published_at, status, phase"
     )
     .in("id", questionIds);
 
@@ -383,6 +385,11 @@ function MyStanceCard({ row }: { row: MyStanceRow }) {
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0 space-y-1">
           <div className="flex items-center gap-2">
+            {/* ✨ NEW: Phase Badge */}
+            {q?.phase && q.phase !== 'initial' && (
+              <QuestionPhaseBadge phase={q.phase} size="sm" />
+            )}
+            
             {q ? (
               <Link
                 to={`/q/${q.id}`}
