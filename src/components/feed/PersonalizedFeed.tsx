@@ -13,6 +13,7 @@ import { Link } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
 import { MessageSquare, TrendingUp, Sparkles } from 'lucide-react';
 import { useEffect } from 'react';
+import { QuestionPhaseBadge } from '@/components/question/QuestionPhaseBadge';
 
 // ✨ NEW: Extended type with phase information
 interface FeedQuestion {
