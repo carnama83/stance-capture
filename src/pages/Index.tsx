@@ -854,76 +854,54 @@ export default function IndexPage() {
             </div>
 
             <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-  {Array.from({ length: 2 }).map((_, i) => {
-    const r = becauseYou[i];
+              {/* Tile 1: Similar topics (intent-driven) */}
+              <div className="rounded-lg border bg-white p-3 shadow-sm">
+                <div className="font-semibold text-slate-900">Explore similar topics</div>
+                <div className="mt-1 text-xs text-slate-600">
+                  Discover topics related to what you’ve been engaging with recently.
+                </div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className="rounded border px-3 py-1.5 text-xs hover:bg-slate-50"
+                    onClick={() => navigate("/topics")}
+                  >
+                    Explore topics
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded border px-3 py-1.5 text-xs hover:bg-slate-50"
+                    onClick={() => navigate("/search")}
+                  >
+                    Search
+                  </button>
+                </div>
+              </div>
 
-    // Real card
-    if (r) {
-      return (
-        <div
-          key={r.question_id}
-          className="rounded-lg border bg-white p-3 shadow-sm"
-        >
-          <div className="font-semibold text-slate-900 line-clamp-2">
-            {r.question}
-          </div>
-          {r.summary ? (
-            <div className="mt-1 text-xs text-slate-600 line-clamp-2">
-              {r.summary}
+              {/* Tile 2: Compare your views (intent-driven) */}
+              <div className="rounded-lg border bg-white p-3 shadow-sm">
+                <div className="font-semibold text-slate-900">How your views compare</div>
+                <div className="mt-1 text-xs text-slate-600">
+                  See how your saved stances align with others across your region and globally.
+                </div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className="rounded border px-3 py-1.5 text-xs hover:bg-slate-50"
+                    onClick={() => navigate("/for-you", { state: { focus: "compare" } })}
+                  >
+                    See comparison
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded border px-3 py-1.5 text-xs hover:bg-slate-50"
+                    onClick={() => navigate("/for-you")}
+                  >
+                    View your feed
+                  </button>
+                </div>
+              </div>
             </div>
-          ) : null}
-          <div className="mt-2 flex gap-2">
-            <button
-              type="button"
-              className="rounded border px-3 py-1.5 text-xs hover:bg-slate-50"
-              onClick={() => goToQuestion(r.question_id)}
-            >
-              See results
-            </button>
-            <button
-              type="button"
-              className="rounded border px-3 py-1.5 text-xs hover:bg-slate-50"
-              onClick={() => goToQuestion(r.question_id)}
-            >
-              Answer
-            </button>
-          </div>
-        </div>
-      );
-    }
-
-    // Empty-state card (Option 1 — no fake content)
-    return (
-      <div
-        key={`because-empty-${i}`}
-        className="rounded-lg border bg-white p-3 shadow-sm"
-      >
-        <div className="font-semibold text-slate-900">
-          No personalized follow-up yet
-        </div>
-        <div className="mt-1 text-xs text-slate-600">
-          Answer a few questions and this section will start surfacing what to revisit next.
-        </div>
-        <div className="mt-2 flex gap-2">
-          <button
-            type="button"
-            className="rounded border px-3 py-1.5 text-xs hover:bg-slate-50"
-            onClick={() => navigate("/topics")}
-          >
-            Explore topics
-          </button>
-          <button
-            type="button"
-            className="rounded border px-3 py-1.5 text-xs hover:bg-slate-50"
-            onClick={() => navigate("/for-you")}
-          >
-            View your feed
-          </button>
-        </div>
-      </div>
-    );
-  })}
-</div>
 
           </div>
         ) : null}
@@ -943,78 +921,45 @@ export default function IndexPage() {
             </div>
 
             <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-  {Array.from({ length: 2 }).map((_, i) => {
-    const r = reopened[i];
+              {/* Tile 1: Reopened questions (intent-driven) */}
+              <div className="rounded-lg border bg-white p-3 shadow-sm">
+                <div className="flex items-center gap-2">
+                  <div className="font-semibold text-slate-900">Reopened questions</div>
+                  <span className="shrink-0 rounded bg-slate-900/10 px-2 py-0.5 text-[10px] text-slate-900">
+                    REOPENED
+                  </span>
+                </div>
+                <div className="mt-1 text-xs text-slate-600">
+                  Review questions you already answered that have re-opened due to new context.
+                </div>
+                <div className="mt-2">
+                  <button
+                    type="button"
+                    className="rounded border px-3 py-1.5 text-xs hover:bg-slate-50"
+                    onClick={() => navigate("/for-you", { state: { focus: "reopened" } })}
+                  >
+                    Review reopened
+                  </button>
+                </div>
+              </div>
 
-    // Real card
-    if (r) {
-      return (
-        <div
-          key={r.question_id}
-          className="rounded-lg border bg-white p-3 shadow-sm"
-        >
-          <div className="flex items-center gap-2">
-            <div className="font-semibold text-slate-900 line-clamp-2">
-              {r.question}
+              {/* Tile 2: New update since you answered (intent-driven) */}
+              <div className="rounded-lg border bg-white p-3 shadow-sm">
+                <div className="font-semibold text-slate-900">New update since you answered</div>
+                <div className="mt-1 text-xs text-slate-600">
+                  See what changed since your last stance and decide if you still agree.
+                </div>
+                <div className="mt-2">
+                  <button
+                    type="button"
+                    className="rounded border px-3 py-1.5 text-xs hover:bg-slate-50"
+                    onClick={() => navigate("/for-you", { state: { focus: "updates" } })}
+                  >
+                    View updates
+                  </button>
+                </div>
+              </div>
             </div>
-            <span className="shrink-0 rounded bg-slate-900/10 px-2 py-0.5 text-[10px] text-slate-900">
-              REOPENED
-            </span>
-          </div>
-
-          {r.summary ? (
-            <div className="mt-1 text-xs text-slate-600 line-clamp-2">
-              {r.summary}
-            </div>
-          ) : (
-            <div className="mt-1 text-xs text-slate-600">
-              New update since you last answered.
-            </div>
-          )}
-
-          <div className="mt-2">
-            <button
-              type="button"
-              className="rounded border px-3 py-1.5 text-xs hover:bg-slate-50"
-              onClick={() => goToQuestion(r.question_id)}
-            >
-              Answer
-            </button>
-          </div>
-        </div>
-      );
-    }
-
-    // Empty-state card (Option 1 — no fake content)
-    return (
-      <div
-        key={`reopened-empty-${i}`}
-        className="rounded-lg border bg-white p-3 shadow-sm"
-      >
-        <div className="flex items-center gap-2">
-          <div className="font-semibold text-slate-900">
-            Nothing reopened right now
-          </div>
-          <span className="shrink-0 rounded bg-slate-900/10 px-2 py-0.5 text-[10px] text-slate-900">
-            REOPENED
-          </span>
-        </div>
-        <div className="mt-1 text-xs text-slate-600">
-          When a topic shifts or a question updates, it will show up here automatically.
-        </div>
-        <div className="mt-2">
-          <button
-            type="button"
-            className="rounded border px-3 py-1.5 text-xs hover:bg-slate-50"
-            onClick={() => navigate("/for-you")}
-          >
-            View your feed
-          </button>
-        </div>
-      </div>
-    );
-  })}
-</div>
 
           </div>
         ) : null}
