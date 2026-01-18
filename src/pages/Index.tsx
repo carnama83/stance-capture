@@ -1,20 +1,27 @@
 // src/pages/Index.tsx
-// NEW HOMEPAGE (Attention-first, Country-first, Global adjacent)
-// - Trending Now: Country tab default + Global tab
-// - Optional "Global Breaking" banner above Trending (does not replace country section)
-// - Today’s Questions: reuses existing PersonalizedFeed / ThreeTierQuestionsFeed (so stance slider + RPCs remain intact)
-// - Close to home: collapsed (geo is a boost, not a gate)
+// HOMEPAGE V2 (section-owned layout)
+// - Trending Now (Country first + Global) + optional Global Breaking banner
+// - Today’s 5 Questions (inline stance slider)
+// - Because you engaged with...
+// - Reopened Questions for You (phase-aware)
+// - Local topics collapsed
+//
+// Reuses existing RPCs:
+// - get_personalized_feed
+// - set_question_stance
+// - record_question_view
+// - get_three_tier_curated_feed_v2
+// - get_personalized_trending_topics (fallback to vw_topics_trending)
 
 import * as React from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import { getSupabase } from "@/lib/supabaseClient";
-import PageLayout from "@/components/PageLayout";
-
-import { PersonalizedFeed } from "@/components/feed/PersonalizedFeed";
-import { ThreeTierQuestionsFeed } from "@/components/question/ThreeTierQuestionsFeed";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Search } from "lucide-react";
+
+import PageLayout from "@/components/PageLayout";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { getSupabase } from "@/lib/supabaseClient";
+import { QuestionStanceSlider } from "@/components/question/QuestionStanceSlider";
 
 // ---------- Types ----------
 type Session = import("@supabase/supabase-js").Session;
@@ -39,6 +46,39 @@ type RegionRow = {
   country_label: string | null;
 };
 
+// Matches all_schemas.sql signature (get_personalized_feed)
+type PersonalizedFeedRow = {
+  question_id: string;
+  topic_id: string;
+  question: string;
+  summary: string | null;
+  tags: string[] | null;
+  state: string;
+  published_at: string | null;
+  is_trending: boolean | null;
+  trending_score: number | null;
+  user_has_answered: boolean;
+  topic_title: string | null;
+  topic_tags: string[] | null;
+  relevance_score: number | null;
+  response_count: number | null;
+  phase: string | null;
+  is_new_phase: boolean;
+};
+
+// Matches all_schemas.sql signature (get_three_tier_curated_feed_v2)
+type ThreeTierFeedRow = {
+  tier: string; // "local" | "country" | "global" (or similar)
+  tier_label: string;
+  question_id: string;
+  question: string;
+  summary: string | null;
+  tags: string[] | null;
+  location_label: string | null;
+  composite_score: number | null;
+  tier_position: number | null;
+};
+
 // ---------- Session hook ----------
 function useSupabaseSession() {
   const sb = React.useMemo(getSupabase, []);
@@ -58,7 +98,6 @@ function useSupabaseSession() {
 
 // ---------- Source aliasing ----------
 const SOURCE_ALIAS: Record<string, string> = {
-  topic_region_trends: "topic_region_trends_v",
   topics_trending: "vw_topics_trending",
 };
 
@@ -74,10 +113,7 @@ async function fetchFromSource<T>(
     limit?: number;
   }
 ): Promise<T[]> {
-  if (!sb) {
-    console.warn("No supabase client; returning empty array.");
-    return [];
-  }
+  if (!sb) return [];
 
   let lastError: any = null;
 
@@ -101,9 +137,7 @@ async function fetchFromSource<T>(
       }
 
       const { data, error } = await query;
-      if (!error && data) {
-        return data as T[];
-      }
+      if (!error && data) return data as T[];
       lastError = error;
     } catch (err) {
       lastError = err;
@@ -117,7 +151,7 @@ async function fetchFromSource<T>(
   return [];
 }
 
-// ---------- Trending topics (reused as-is) ----------
+// ---------- Trending topics ----------
 async function fetchTrendingTopics(
   sb: ReturnType<typeof getSupabase> | null,
   opts: { personalized: boolean; userId: string | null }
@@ -129,13 +163,11 @@ async function fetchTrendingTopics(
     try {
       const { data, error } = await sb.rpc("get_personalized_trending_topics", {
         p_user_id: opts.userId,
-        p_limit: 10, // allow more so tabs have enough items
+        p_limit: 10,
       });
-      if (!error && data) {
-        return data as Topic[];
-      }
+      if (!error && data) return data as Topic[];
     } catch {
-      // Fallback to global
+      // fallback below
     }
   }
 
@@ -160,7 +192,6 @@ function getDisplayHandle(
   session: Session | null
 ): string {
   if (!profile) {
-    // Fallback to email local-part if profile not loaded
     if (!session?.user?.email) return "there";
     const email = session.user.email;
     const atIdx = email.indexOf("@");
@@ -171,15 +202,13 @@ function getDisplayHandle(
     return email;
   }
 
-  // Use profile's chosen display mode
   if (profile.display_handle_mode === "username" && profile.username) {
     return profile.username;
   }
-
   return profile.random_id;
 }
 
-// ---------- Hero CTA (anonymous users) ----------
+// ---------- Hero CTA ----------
 function HeroCta({
   onLogin,
   onSignup,
@@ -194,8 +223,8 @@ function HeroCta({
           Track your stance on what matters
         </h2>
         <p className="mt-2 text-sm text-slate-600">
-          See what’s trending, take a stance, and track how your views evolve
-          over time.
+          Start with what’s trending, take a stance, and track how your views
+          evolve over time.
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
           <button
@@ -218,7 +247,7 @@ function HeroCta({
   );
 }
 
-// ---------- Hero welcome (authenticated users) ----------
+// ---------- Hero Welcome ----------
 function HeroWelcome({ name }: { name: string }) {
   return (
     <section className="overflow-hidden rounded-lg border bg-gradient-to-br from-slate-50 to-white shadow-sm">
@@ -227,17 +256,17 @@ function HeroWelcome({ name }: { name: string }) {
           Welcome back, {name}!
         </h2>
         <p className="mt-2 text-sm text-slate-600">
-          Start with what’s trending, then take a stance on today’s questions.
+          Start with what’s trending, then answer today’s questions.
         </p>
       </div>
     </section>
   );
 }
 
-// ---------- Small UI helpers ----------
+// ---------- UI helpers ----------
 function formatScore(n?: number | null) {
   if (n == null || Number.isNaN(n)) return null;
-  if (n >= 1000) return `${Math.round(n / 100) / 10}k`;
+  if (n >= 1000) return `${Math.round((n / 1000) * 10) / 10}k`;
   return `${Math.round(n)}`;
 }
 
@@ -252,7 +281,7 @@ function TopicCard({
     <button
       type="button"
       onClick={() => onOpen(topic.id)}
-      className="text-left min-w-[260px] max-w-[320px] rounded-lg border bg-white p-3 shadow-sm hover:bg-slate-50 transition"
+      className="text-left min-w-[260px] max-w-[340px] rounded-lg border bg-white p-3 shadow-sm hover:bg-slate-50 transition"
     >
       <div className="flex items-start justify-between gap-2">
         <div className="font-semibold text-slate-900 line-clamp-2">
@@ -276,23 +305,15 @@ function TopicCard({
       )}
 
       <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-slate-500">
-        {topic.tier ? (
-          <span className="rounded border px-1.5 py-0.5">
-            {topic.tier.toUpperCase()}
-          </span>
-        ) : (
-          <span className="rounded border px-1.5 py-0.5">TRENDING</span>
-        )}
-
+        <span className="rounded border px-1.5 py-0.5">
+          {(topic.tier ?? "trending").toUpperCase()}
+        </span>
         {typeof topic.activity_7d === "number" ? (
           <span className="rounded border px-1.5 py-0.5">
             {formatScore(topic.activity_7d)} activity (7d)
           </span>
         ) : null}
-
-        {topic.location_label ? (
-          <span className="truncate">{topic.location_label}</span>
-        ) : null}
+        {topic.location_label ? <span>{topic.location_label}</span> : null}
       </div>
     </button>
   );
@@ -333,16 +354,78 @@ function GlobalBreakingBanner({
   );
 }
 
-// ---------- Main component ----------
+// Question row: left text, right slider
+function QuestionRow({
+  questionId,
+  question,
+  summary,
+  initialStanceValue,
+  onSubmitStance,
+  onAnswer,
+  showNewUpdateBadge,
+}: {
+  questionId: string;
+  question: string;
+  summary?: string | null;
+  initialStanceValue: number | null;
+  onSubmitStance: (value: number) => Promise<void>;
+  onAnswer: () => void;
+  showNewUpdateBadge?: boolean;
+}) {
+  return (
+    <div className="grid grid-cols-1 gap-3 rounded-lg border bg-white p-3 shadow-sm md:grid-cols-[1fr_460px]">
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          <div className="font-semibold text-slate-900 line-clamp-2">
+            {question}
+          </div>
+          {showNewUpdateBadge ? (
+            <span className="shrink-0 rounded bg-slate-900/10 px-2 py-0.5 text-[10px] text-slate-900">
+              New update
+            </span>
+          ) : null}
+        </div>
+
+        {summary ? (
+          <div className="mt-1 text-xs text-slate-600 line-clamp-2">
+            {summary}
+          </div>
+        ) : null}
+
+        <div className="mt-2">
+          <button
+            type="button"
+            onClick={onAnswer}
+            className="rounded border px-3 py-1.5 text-xs hover:bg-slate-50"
+          >
+            Answer
+          </button>
+        </div>
+      </div>
+
+      <div className="min-w-0">
+        <QuestionStanceSlider
+          questionId={questionId}
+          questionText={question}
+          summary={summary ?? null}
+          initialValue={initialStanceValue}
+          onSubmit={onSubmitStance}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ---------- Main ----------
 export default function IndexPage() {
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const session = useSupabaseSession();
   const isAuthed = !!session;
   const sb = React.useMemo(getSupabase, []);
 
   const userId = session?.user?.id ?? null;
 
-  // Top-right actions
   const actions = (
     <div className="flex items-center gap-2">
       <button
@@ -363,7 +446,7 @@ export default function IndexPage() {
     </div>
   );
 
-  // Profile for display handle
+  // Profile (display handle)
   const { data: profile } = useQuery({
     enabled: !!userId,
     queryKey: ["profile", userId],
@@ -383,7 +466,7 @@ export default function IndexPage() {
     staleTime: 60_000,
   });
 
-  // Region dimensions (for label + location nudge)
+  // Region dims (for country label + location nudge)
   const { data: myRegion, isLoading: myRegionLoading } = useQuery({
     enabled: !!userId,
     queryKey: ["my-region", userId],
@@ -403,7 +486,7 @@ export default function IndexPage() {
     staleTime: 60_000,
   });
 
-  const countryLabel = myRegion?.country_label ?? "Your country";
+  const countryLabel = myRegion?.country_label ?? "Country";
 
   const showLocationNudge =
     isAuthed &&
@@ -414,86 +497,195 @@ export default function IndexPage() {
     !myRegion.country_label &&
     !myRegion.county_label;
 
-  // Trending topics data (powers Trending Now + Global Breaking heuristic)
+  // Trending
   const trendingQuery = useQuery({
     queryKey: ["trending", isAuthed ? session?.user?.id : "anon"],
     queryFn: async () => {
       if (!sb)
         return fetchTrendingTopics(null, { personalized: false, userId: null });
-      try {
-        return await fetchTrendingTopics(sb, {
-          personalized: isAuthed,
-          userId: session?.user?.id ?? null,
-        });
-      } catch {
-        return fetchTrendingTopics(null, { personalized: false, userId: null });
-      }
+
+      return fetchTrendingTopics(sb, {
+        personalized: isAuthed,
+        userId: session?.user?.id ?? null,
+      });
     },
     staleTime: 60_000,
   });
 
   const trending = trendingQuery.data ?? [];
 
-  // Split for tabs (best-effort; if tiers are missing we degrade gracefully)
   const countryTopics = React.useMemo(() => {
     const byTier = trending.filter((t) => t.tier === "country");
-    if (byTier.length >= 3) return byTier;
-
-    const byLabel = trending.filter((t) => {
-      const loc = (t.location_label ?? "").toLowerCase();
-      const c = (countryLabel ?? "").toLowerCase();
-      return c && loc.includes(c);
-    });
-    if (byLabel.length >= 3) return byLabel;
-
-    // fallback: show all
-    return trending;
-  }, [trending, countryLabel]);
+    return byTier.length ? byTier : trending;
+  }, [trending]);
 
   const globalTopics = React.useMemo(() => {
     const byTier = trending.filter((t) => t.tier === "global");
-    if (byTier.length >= 2) return byTier;
-
-    const byLabel = trending.filter((t) => {
-      const loc = (t.location_label ?? "").toLowerCase();
-      return loc === "global" || loc.includes("global");
-    });
-    if (byLabel.length >= 2) return byLabel;
-
-    // fallback: best-effort subset
-    return trending;
+    return byTier.length ? byTier : trending;
   }, [trending]);
 
-  // Auto-switch banner heuristic:
-  // If max(global_score) > threshold * max(country_score), show Global Breaking
+  // Global Breaking banner heuristic:
   const globalBreaking = React.useMemo(() => {
     const threshold = 1.4;
 
     const maxCountry = Math.max(
       0,
-      ...countryTopics.map((t) => (typeof t.trending_score === "number" ? t.trending_score : 0))
+      ...countryTopics.map((t) =>
+        typeof t.trending_score === "number" ? t.trending_score : 0
+      )
     );
     const maxGlobal = Math.max(
       0,
-      ...globalTopics.map((t) => (typeof t.trending_score === "number" ? t.trending_score : 0))
+      ...globalTopics.map((t) =>
+        typeof t.trending_score === "number" ? t.trending_score : 0
+      )
     );
 
     if (maxCountry <= 0 || maxGlobal <= 0) return null;
     if (maxGlobal <= threshold * maxCountry) return null;
 
-    // Pick top global topic as banner headline
     const topGlobal = [...globalTopics].sort((a, b) => {
       const sa = typeof a.trending_score === "number" ? a.trending_score : 0;
-      const sb = typeof b.trending_score === "number" ? b.trending_score : 0;
-      return sb - sa;
+      const sb2 = typeof b.trending_score === "number" ? b.trending_score : 0;
+      return sb2 - sa;
     })[0];
 
     return topGlobal ?? null;
   }, [countryTopics, globalTopics]);
 
-  const openTopic = (topicId: string) => {
-    // You currently have /topics and /topics/:id route
-    navigate(`/topics/${topicId}`);
+  const openTopic = (topicId: string) => navigate(`/topics/${topicId}`);
+
+  // Personalized feed (for Today’s 5 + Because + Reopened)
+  const personalizedFeedQuery = useQuery({
+    enabled: !!sb && !!userId,
+    queryKey: ["home-personalized-feed", userId],
+    queryFn: async () => {
+      const { data, error } = await sb!.rpc("get_personalized_feed", {
+        p_user_id: userId,
+        p_limit: 30,
+        p_offset: 0,
+      });
+      if (error) throw error;
+      return (data ?? []) as PersonalizedFeedRow[];
+    },
+    staleTime: 30_000,
+  });
+
+  // Anonymous / Regional feed for local (collapsed) + anon Today’s 5
+  const threeTierFeedQuery = useQuery({
+    enabled: !!sb && (!isAuthed || !userId),
+    queryKey: ["home-three-tier-feed", isAuthed ? "authed" : "anon"],
+    queryFn: async () => {
+      const { data, error } = await sb!.rpc("get_three_tier_curated_feed_v2", {
+        p_user_id: null,
+        p_ip_country: null,
+      });
+      if (error) throw error;
+      return (data ?? []) as ThreeTierFeedRow[];
+    },
+    staleTime: 30_000,
+  });
+
+  // Split personalized sections
+  const personalized = personalizedFeedQuery.data ?? [];
+
+  const todaysFive = React.useMemo(() => {
+    // Prefer unanswered, then fill
+    const unanswered = personalized.filter((r) => !r.user_has_answered);
+    const pool = unanswered.length ? unanswered : personalized;
+    return pool.slice(0, 5);
+  }, [personalized]);
+
+  const reopened = React.useMemo(() => {
+    return personalized.filter((r) => r.is_new_phase).slice(0, 2);
+  }, [personalized]);
+
+  const topEngagedTags = React.useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const r of personalized) {
+      for (const tag of r.topic_tags ?? []) {
+        counts.set(tag, (counts.get(tag) ?? 0) + 1);
+      }
+    }
+    const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+    return sorted.slice(0, 2).map(([t]) => t);
+  }, [personalized]);
+
+  const becauseYou = React.useMemo(() => {
+    // Prefer items that are NOT in todaysFive and not reopened; take 2
+    const exclude = new Set<string>([
+      ...todaysFive.map((x) => x.question_id),
+      ...reopened.map((x) => x.question_id),
+    ]);
+    const pool = personalized.filter((r) => !exclude.has(r.question_id));
+    return pool.slice(0, 2);
+  }, [personalized, todaysFive, reopened]);
+
+  // Fallback Today’s for anonymous users
+  const anonTodaysFive = React.useMemo(() => {
+    const rows = threeTierFeedQuery.data ?? [];
+    // Prefer country/global first
+    const nonLocal = rows.filter((r) => (r.tier ?? "").toLowerCase() !== "local");
+    const pool = nonLocal.length ? nonLocal : rows;
+    return pool.slice(0, 5);
+  }, [threeTierFeedQuery.data]);
+
+  // Submit stance + record view
+  const submitStance = React.useCallback(
+    async (questionId: string, value: number) => {
+      if (!sb) return;
+
+      // If not logged in, redirect to login (preserve return_to behavior)
+      if (!userId) {
+        const returnTo = window.location.hash || "#/";
+        sessionStorage.setItem("return_to", returnTo);
+        navigate("/login");
+        return;
+      }
+
+      const { error } = await sb.rpc("set_question_stance", {
+        p_question_id: questionId,
+        p_score: value,
+      });
+
+      if (error) throw error;
+
+      // Refresh homepage feed sections
+      await qc.invalidateQueries({ queryKey: ["home-personalized-feed", userId] });
+    },
+    [sb, userId, qc, navigate]
+  );
+
+  // Record impressions for the 5 questions (best-effort)
+  React.useEffect(() => {
+    if (!sb || !userId) return;
+    const ids = todaysFive.map((x) => x.question_id).filter(Boolean);
+    if (!ids.length) return;
+
+    let cancelled = false;
+
+    (async () => {
+      for (const qid of ids) {
+        if (cancelled) break;
+        try {
+          await sb.rpc("record_question_view", {
+            p_user_id: userId,
+            p_question_id: qid,
+          });
+        } catch {
+          // non-blocking
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sb, userId, todaysFive]);
+
+  // Answer navigation (adjust route if your app uses a different one)
+  const goToQuestion = (questionId: string) => {
+    navigate(`/questions/${questionId}`);
   };
 
   return (
@@ -502,14 +694,16 @@ export default function IndexPage() {
       {isAuthed ? (
         <HeroWelcome name={getDisplayHandle(profile, session)} />
       ) : (
-        <HeroCta onLogin={() => navigate("/login")} onSignup={() => navigate("/signup")} />
+        <HeroCta
+          onLogin={() => navigate("/login")}
+          onSignup={() => navigate("/signup")}
+        />
       )}
 
-      {/* Main */}
-      <section className="py-4">
-        {/* Location Setup Nudge (kept) */}
+      <section className="py-4 space-y-4">
+        {/* Location Setup Nudge */}
         {showLocationNudge && (
-          <div className="mb-3 rounded-md border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-xs flex flex-wrap items-center justify-between gap-2">
+          <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-xs flex flex-wrap items-center justify-between gap-2">
             <span className="text-slate-700">
               Set your location to compare your stance with people in your region.
             </span>
@@ -522,18 +716,20 @@ export default function IndexPage() {
           </div>
         )}
 
-        {/* Global Breaking Banner (optional enhancement) */}
+        {/* Global Breaking Banner */}
         {globalBreaking ? (
           <GlobalBreakingBanner headline={globalBreaking} onOpen={openTopic} />
         ) : null}
 
-        {/* Trending Now (Country first + Global adjacent) */}
+        {/* Trending Now */}
         <div className="rounded-lg border bg-white p-4 shadow-sm">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h3 className="text-base font-semibold text-slate-900">Trending Now</h3>
+              <h3 className="text-base font-semibold text-slate-900">
+                Trending Now
+              </h3>
               <p className="mt-0.5 text-xs text-slate-600">
-                Start here. These topics are getting the most attention right now.
+                Country-first, with Global alongside.
               </p>
             </div>
             <button
@@ -558,30 +754,36 @@ export default function IndexPage() {
 
               <TabsContent value="country" className="mt-0">
                 <div className="flex gap-3 overflow-x-auto pb-2">
-                  {(countryTopics.length ? countryTopics : trending).slice(0, 8).map((t) => (
-                    <TopicCard key={t.id} topic={t} onOpen={openTopic} />
-                  ))}
+                  {(countryTopics.length ? countryTopics : trending)
+                    .slice(0, 8)
+                    .map((t) => (
+                      <TopicCard key={t.id} topic={t} onOpen={openTopic} />
+                    ))}
                 </div>
               </TabsContent>
 
               <TabsContent value="global" className="mt-0">
                 <div className="flex gap-3 overflow-x-auto pb-2">
-                  {(globalTopics.length ? globalTopics : trending).slice(0, 8).map((t) => (
-                    <TopicCard key={t.id} topic={t} onOpen={openTopic} />
-                  ))}
+                  {(globalTopics.length ? globalTopics : trending)
+                    .slice(0, 8)
+                    .map((t) => (
+                      <TopicCard key={t.id} topic={t} onOpen={openTopic} />
+                    ))}
                 </div>
               </TabsContent>
             </Tabs>
           </div>
         </div>
 
-        {/* Today’s Questions (uses existing feeds; your QuestionStanceSlider remains unchanged inside those flows) */}
-        <div className="mt-4 rounded-lg border bg-white p-4 shadow-sm">
+        {/* Today’s 5 Questions */}
+        <div className="rounded-lg border bg-white p-4 shadow-sm">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h3 className="text-base font-semibold text-slate-900">Today’s Questions</h3>
+              <h3 className="text-base font-semibold text-slate-900">
+                Today’s 5 Questions
+              </h3>
               <p className="mt-0.5 text-xs text-slate-600">
-                Take a stance quickly. Updates and reopened questions appear automatically.
+                Slide to save your stance (AI meaning updates automatically).
               </p>
             </div>
             {!isAuthed ? (
@@ -595,40 +797,209 @@ export default function IndexPage() {
             ) : null}
           </div>
 
-          <div className="mt-3">
+          <div className="mt-3 space-y-3">
             {isAuthed ? (
-              <PersonalizedFeed />
+              (todaysFive.length ? todaysFive : []).map((r) => (
+                <QuestionRow
+                  key={r.question_id}
+                  questionId={r.question_id}
+                  question={r.question}
+                  summary={r.summary}
+                  initialStanceValue={null}
+                  onSubmitStance={(v) => submitStance(r.question_id, v)}
+                  onAnswer={() => goToQuestion(r.question_id)}
+                  showNewUpdateBadge={false}
+                />
+              ))
             ) : (
-              <ThreeTierQuestionsFeed />
+              (anonTodaysFive.length ? anonTodaysFive : []).map((r) => (
+                <QuestionRow
+                  key={r.question_id}
+                  questionId={r.question_id}
+                  question={r.question}
+                  summary={r.summary}
+                  initialStanceValue={null}
+                  onSubmitStance={async () => {
+                    // Anonymous: require login to save stance
+                    const returnTo = window.location.hash || "#/";
+                    sessionStorage.setItem("return_to", returnTo);
+                    navigate("/login");
+                  }}
+                  onAnswer={() => goToQuestion(r.question_id)}
+                />
+              ))
             )}
+
+            {isAuthed && !todaysFive.length ? (
+              <div className="text-sm text-slate-600">
+                No questions found right now.
+              </div>
+            ) : null}
           </div>
         </div>
 
-        {/* Close to home (collapsed; geo is not gating) */}
-        <div className="mt-4">
-          <details className="rounded-lg border bg-white p-4 shadow-sm">
-            <summary className="cursor-pointer select-none list-none">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-sm font-semibold text-slate-900">
-                    Close to home (optional)
+        {/* Because you engaged with... (personalized only) */}
+        {isAuthed ? (
+          <div className="rounded-lg border bg-white p-4 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-base font-semibold text-slate-900">
+                  Because you engaged with:{" "}
+                  {topEngagedTags.length ? topEngagedTags.join(", ") : "your topics"}
+                </h3>
+                <p className="mt-0.5 text-xs text-slate-600">
+                  Personalized follow-ups based on your recent activity.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+              {becauseYou.map((r) => (
+                <div
+                  key={r.question_id}
+                  className="rounded-lg border bg-white p-3 shadow-sm"
+                >
+                  <div className="font-semibold text-slate-900 line-clamp-2">
+                    {r.question}
                   </div>
-                  <div className="mt-0.5 text-xs text-slate-600">
-                    Browse regional questions when you want — not as the default feed.
+                  {r.summary ? (
+                    <div className="mt-1 text-xs text-slate-600 line-clamp-2">
+                      {r.summary}
+                    </div>
+                  ) : null}
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      type="button"
+                      className="rounded border px-3 py-1.5 text-xs hover:bg-slate-50"
+                      onClick={() => goToQuestion(r.question_id)}
+                    >
+                      See results
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded border px-3 py-1.5 text-xs hover:bg-slate-50"
+                      onClick={() => goToQuestion(r.question_id)}
+                    >
+                      Answer
+                    </button>
                   </div>
                 </div>
-                <span className="text-xs text-slate-500">Expand</span>
+              ))}
+
+              {!becauseYou.length ? (
+                <div className="text-sm text-slate-600 md:col-span-2">
+                  As you answer more questions, this section will get sharper.
+                </div>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+
+        {/* Reopened Questions for You (personalized only) */}
+        {isAuthed ? (
+          <div className="rounded-lg border bg-white p-4 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-base font-semibold text-slate-900">
+                  Reopened Questions for You
+                </h3>
+                <p className="mt-0.5 text-xs text-slate-600">
+                  These questions have new updates since you last saw them.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+              {reopened.map((r) => (
+                <div
+                  key={r.question_id}
+                  className="rounded-lg border bg-white p-3 shadow-sm"
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="font-semibold text-slate-900 line-clamp-2">
+                      {r.question}
+                    </div>
+                    <span className="shrink-0 rounded bg-slate-900/10 px-2 py-0.5 text-[10px] text-slate-900">
+                      REOPENED
+                    </span>
+                  </div>
+
+                  <div className="mt-2">
+                    <button
+                      type="button"
+                      className="rounded border px-3 py-1.5 text-xs hover:bg-slate-50"
+                      onClick={() => goToQuestion(r.question_id)}
+                    >
+                      Answer
+                    </button>
+                  </div>
+                </div>
+              ))}
+
+              {!reopened.length ? (
+                <div className="text-sm text-slate-600 md:col-span-2">
+                  Nothing reopened right now.
+                </div>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+
+        {/* Local topics collapsed */}
+        <div className="text-center">
+          <details className="inline-block w-full max-w-3xl rounded-lg border bg-white p-4 shadow-sm">
+            <summary className="cursor-pointer select-none list-none">
+              <div className="flex items-center justify-center gap-2 text-sm text-slate-700">
+                <span>Show Local Topics</span>
+                <span aria-hidden="true">▾</span>
               </div>
             </summary>
 
             <div className="mt-4">
-              <ThreeTierQuestionsFeed />
+              {/* Keep it simple: reuse the existing three-tier feed RPC result if anonymous,
+                  or call get_three_tier_curated_feed_v2 for authed too if you want later.
+                  For now, we render the anon query results when available. */}
+              <div className="space-y-3 text-left">
+                {(threeTierFeedQuery.data ?? [])
+                  .filter((x) => (x.tier ?? "").toLowerCase() === "local")
+                  .slice(0, 8)
+                  .map((r) => (
+                    <div
+                      key={r.question_id}
+                      className="rounded-lg border bg-white p-3 shadow-sm"
+                    >
+                      <div className="font-semibold text-slate-900 line-clamp-2">
+                        {r.question}
+                      </div>
+                      {r.summary ? (
+                        <div className="mt-1 text-xs text-slate-600 line-clamp-2">
+                          {r.summary}
+                        </div>
+                      ) : null}
+                      <div className="mt-2">
+                        <button
+                          type="button"
+                          className="rounded border px-3 py-1.5 text-xs hover:bg-slate-50"
+                          onClick={() => goToQuestion(r.question_id)}
+                        >
+                          Answer
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+
+                {!(threeTierFeedQuery.data ?? []).length ? (
+                  <div className="text-sm text-slate-600">
+                    Local feed not available yet.
+                  </div>
+                ) : null}
+              </div>
             </div>
           </details>
         </div>
 
-        {/* Explore all topics (kept) */}
-        <div className="text-center pt-6">
+        {/* Explore all topics */}
+        <div className="text-center pt-2">
           <Link
             to="/topics"
             className="inline-flex items-center gap-2 text-sm text-slate-600 hover:text-slate-900 transition"
