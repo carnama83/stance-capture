@@ -609,9 +609,13 @@ function QuestionRow({
     <div className="grid grid-cols-1 gap-3 rounded-lg border bg-white p-3 shadow-sm md:grid-cols-[1fr_460px]">
       <div className="min-w-0">
         <div className="flex items-center gap-2">
-          <div className="font-semibold text-slate-900 line-clamp-2">
+          <Link
+            to={`/q/${questionId}`}
+            className="min-w-0 font-semibold text-slate-900 line-clamp-2 hover:underline cursor-pointer"
+            title="Open question details"
+          >
             {question}
-          </div>
+          </Link>
           {stateBadge}
           {phaseBadge}
           {trendingBadge}
