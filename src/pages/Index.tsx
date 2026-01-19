@@ -101,6 +101,36 @@ const SOURCE_ALIAS: Record<string, string> = {
   topics_trending: "vw_topics_trending",
 };
 
+// ---------- Empty state helper (homepage tiles should never collapse) ----------
+function EmptyState({
+  title,
+  message,
+  actionLabel,
+  onAction,
+}: {
+  title: string;
+  message: string;
+  actionLabel?: string;
+  onAction?: () => void;
+}) {
+  return (
+    <div className="text-center py-6 px-4">
+      <p className="text-sm font-medium text-slate-700 mb-1">{title}</p>
+      <p className="text-xs text-slate-500 mb-3">{message}</p>
+      {actionLabel && onAction && (
+        <button
+          type="button"
+          onClick={onAction}
+          className="text-xs text-slate-900 hover:underline font-medium"
+        >
+          {actionLabel} →
+        </button>
+      )}
+    </div>
+  );
+}
+
+
 // ---------- Generic fetch utility ----------
 async function fetchFromSource<T>(
   sb: ReturnType<typeof getSupabase> | null,
@@ -673,31 +703,22 @@ export default function IndexPage() {
     return byTier.length ? byTier : trending;
   }, [trending]);
 
-  // Global Breaking banner heuristic:
+  // Global Breaking banner heuristic (global-only + high threshold)
   const globalBreaking = React.useMemo(() => {
-    const threshold = 1.4;
+    const BREAKING_THRESHOLD = 100;
 
-    const maxCountry = Math.max(
-      0,
-      ...countryTopics.map((t) =>
-        typeof t.trending_score === "number" ? t.trending_score : 0
-      )
-    );
-    const maxGlobal = Math.max(
-      0,
-      ...globalTopics.map((t) =>
-        typeof t.trending_score === "number" ? t.trending_score : 0
-      )
-    );
+    const topGlobal = ([...countryTopics, ...globalTopics])
+      .filter((topic) => {
+        const score = topic.trending_score ?? 0;
+        const tier = topic.tier?.toLowerCase?.() ?? (topic.tier ?? "").toLowerCase();
 
-    if (maxCountry <= 0 || maxGlobal <= 0) return null;
-    if (maxGlobal <= threshold * maxCountry) return null;
-
-    const topGlobal = [...globalTopics].sort((a, b) => {
-      const sa = typeof a.trending_score === "number" ? a.trending_score : 0;
-      const sb2 = typeof b.trending_score === "number" ? b.trending_score : 0;
-      return sb2 - sa;
-    })[0];
+        return score > BREAKING_THRESHOLD && tier === "global";
+      })
+      .sort((a, b) => {
+        const scoreA = a.trending_score ?? 0;
+        const scoreB = b.trending_score ?? 0;
+        return scoreB - scoreA;
+      })[0];
 
     return topGlobal ?? null;
   }, [countryTopics, globalTopics]);
@@ -738,37 +759,40 @@ export default function IndexPage() {
   // Split personalized sections
   const personalized = personalizedFeedQuery.data ?? [];
 
+  // Engagement metrics (intent-driven tiles)
+  const { data: engagementMetrics } = useQuery({
+    enabled: !!userId && !!sb,
+    queryKey: ["user-engagement-metrics", userId],
+    queryFn: async () => {
+      if (!sb || !userId) return null;
+
+      const { data, error } = await sb.rpc("get_user_engagement_metrics");
+
+      if (error) {
+        console.error("Failed to fetch engagement metrics:", error);
+        return null;
+      }
+
+      return data as {
+        authenticated: boolean;
+        topics_followed: number;
+        questions_answered: number;
+        last_activity: string | null;
+        days_since_activity: number | null;
+      };
+    },
+    staleTime: 60_000,
+  });
+
   const todaysFive = React.useMemo(() => {
-    // Prefer unanswered, then fill
-    const unanswered = personalized.filter((r) => !r.user_has_answered);
-    const pool = unanswered.length ? unanswered : personalized;
-    return pool.slice(0, 5);
+    // get_personalized_feed only returns unanswered questions (schema-backed)
+    // So the personalized array is already our pool.
+    return personalized.slice(0, 5);
   }, [personalized]);
 
   const reopened = React.useMemo(() => {
     return personalized.filter((r) => r.is_new_phase).slice(0, 2);
   }, [personalized]);
-
-  const topEngagedTags = React.useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const r of personalized) {
-      for (const tag of r.topic_tags ?? []) {
-        counts.set(tag, (counts.get(tag) ?? 0) + 1);
-      }
-    }
-    const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]);
-    return sorted.slice(0, 2).map(([t]) => t);
-  }, [personalized]);
-
-  const becauseYou = React.useMemo(() => {
-    // Prefer items that are NOT in todaysFive and not reopened; take 2
-    const exclude = new Set<string>([
-      ...todaysFive.map((x) => x.question_id),
-      ...reopened.map((x) => x.question_id),
-    ]);
-    const pool = personalized.filter((r) => !exclude.has(r.question_id));
-    return pool.slice(0, 2);
-  }, [personalized, todaysFive, reopened]);
 
   // Fallback Today’s for anonymous users
   const anonTodaysFive = React.useMemo(() => {
@@ -792,18 +816,37 @@ export default function IndexPage() {
         return;
       }
 
-      const { error } = await sb.rpc("set_question_stance", {
-        p_question_id: questionId,
-        p_score: value,
-      });
+      try {
+        // 1) Save the stance
+        const { error: stanceError } = await sb.rpc("set_question_stance", {
+          p_question_id: questionId,
+          p_score: value,
+        });
 
-      if (error) throw error;
+        if (stanceError) throw stanceError;
 
-      // Refresh homepage feed sections
-      await qc.invalidateQueries({ queryKey: ["home-personalized-feed", userId] });
+        // 2) Record engagement (best-effort, non-blocking)
+        // Function uses auth.uid() on backend; no spoofable user param
+        try {
+          await sb.rpc("record_question_engagement", {
+            p_question_id: questionId,
+            p_engagement_type: "answer",
+          });
+        } catch (engagementError) {
+          console.warn("Failed to record engagement:", engagementError);
+        }
+
+        // 3) Refresh homepage sections
+        await qc.invalidateQueries({ queryKey: ["home-personalized-feed", userId] });
+        await qc.invalidateQueries({ queryKey: ["user-engagement-metrics", userId] });
+      } catch (err) {
+        console.error("Failed to submit stance:", err);
+        throw err;
+      }
     },
     [sb, userId, qc, navigate]
   );
+
 
   // Record impressions for the 5 questions (best-effort)
   React.useEffect(() => {
@@ -994,84 +1037,85 @@ export default function IndexPage() {
               ))
             )}
 
-            {isAuthed && !todaysFive.length ? (
-              <div className="text-sm text-slate-600">
-                No questions found right now.
+            {isAuthed && todaysFive.length > 0 && todaysFive.length < 5 && (
+              <div className="text-center py-3 text-xs text-slate-500">
+                That's all for now! Check back later for more questions.
               </div>
-            ) : null}
+            )}
+
+            {isAuthed && todaysFive.length === 0 && (
+              <EmptyState
+                title="You've answered everything!"
+                message="Great job staying engaged. Check back soon for new questions."
+                actionLabel="Explore other topics"
+                onAction={() => navigate("/topics")}
+              />
+            )}
           </div>
         </div>
 
         {/* Because you engaged with... (personalized only) */}
-        {isAuthed ? (
+        {isAuthed && (
           <div className="rounded-lg border bg-white p-4 shadow-sm">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h3 className="text-base font-semibold text-slate-900">
-                  Because you engaged with:{" "}
-                  {topEngagedTags.length ? topEngagedTags.join(", ") : "your topics"}
+                  Because you engaged with:
+                  {engagementMetrics?.topics_followed
+                    ? ` ${engagementMetrics.topics_followed} topics`
+                    : " your topics"}
                 </h3>
                 <p className="mt-0.5 text-xs text-slate-600">
-                  Personalized follow-ups based on your recent activity.
+                  {engagementMetrics?.questions_answered
+                    ? `${engagementMetrics.questions_answered} questions answered`
+                    : "Personalized follow-ups based on your recent activity"}
+                  {engagementMetrics?.days_since_activity != null &&
+                    ` • Last active ${engagementMetrics.days_since_activity}d ago`}
                 </p>
               </div>
             </div>
 
             <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-              {/* Tile 1: Similar topics (intent-driven) */}
-              <div className="rounded-lg border bg-white p-3 shadow-sm">
+              {/* Tile 1: Explore similar topics */}
+              <div className="rounded-lg border bg-white p-3 shadow-sm hover:shadow-md transition-shadow">
                 <div className="font-semibold text-slate-900">Explore similar topics</div>
                 <div className="mt-1 text-xs text-slate-600">
-                  Discover topics related to what you’ve been engaging with recently.
+                  Discover topics related to what you've been engaging with recently.
                 </div>
-                <div className="mt-2 flex flex-wrap gap-2">
+                <div className="mt-2">
                   <button
                     type="button"
-                    className="rounded border px-3 py-1.5 text-xs hover:bg-slate-50"
+                    className="rounded border px-3 py-1.5 text-xs hover:bg-slate-50 transition-colors"
                     onClick={() => navigate("/topics")}
                   >
-                    Explore topics
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded border px-3 py-1.5 text-xs hover:bg-slate-50"
-                    onClick={() => navigate("/search")}
-                  >
-                    Search
+                    Browse topics →
                   </button>
                 </div>
               </div>
 
-              {/* Tile 2: Compare your views (intent-driven) */}
-              <div className="rounded-lg border bg-white p-3 shadow-sm">
+              {/* Tile 2: How your views compare */}
+              <div className="rounded-lg border bg-white p-3 shadow-sm hover:shadow-md transition-shadow">
                 <div className="font-semibold text-slate-900">How your views compare</div>
                 <div className="mt-1 text-xs text-slate-600">
                   See how your saved stances align with others across your region and globally.
                 </div>
-                <div className="mt-2 flex flex-wrap gap-2">
+                <div className="mt-2">
                   <button
                     type="button"
-                    className="rounded border px-3 py-1.5 text-xs hover:bg-slate-50"
-                    onClick={() => navigate("/for-you", { state: { focus: "compare" } })}
+                    className="rounded border px-3 py-1.5 text-xs hover:bg-slate-50 transition-colors"
+                    onClick={() => navigate("/me/stances")}
                   >
-                    See comparison
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded border px-3 py-1.5 text-xs hover:bg-slate-50"
-                    onClick={() => navigate("/for-you")}
-                  >
-                    View your feed
+                    View comparison →
                   </button>
                 </div>
               </div>
             </div>
-
           </div>
-        ) : null}
+        )}
+
 
         {/* Reopened Questions for You (personalized only) */}
-        {isAuthed ? (
+        {isAuthed && reopened.length > 0 ? (
           <div className="rounded-lg border bg-white p-4 shadow-sm">
             <div className="flex items-start justify-between gap-3">
               <div>
