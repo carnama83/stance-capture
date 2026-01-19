@@ -360,9 +360,11 @@ function TopicCard({
 function WireframeTrendingCarousel({
   topics,
   onAnswer,
+  onOpen,
 }: {
   topics: Topic[];
   onAnswer: (topicId: string) => void;
+  onOpen?: (topicId: string) => void;
 }) {
   const [page, setPage] = React.useState(0);
   const totalPages = Math.max(1, Math.ceil((topics?.length ?? 0) / 3));
@@ -395,15 +397,18 @@ function WireframeTrendingCarousel({
             : "rounded-lg border bg-gradient-to-b from-slate-50 to-white p-3 shadow-sm"
         }
       >
-        <div
+        <button
+          type="button"
           className={
-            variant === "large"
+            (variant === "large"
               ? "text-lg font-semibold text-slate-900 line-clamp-2"
-              : "text-sm font-semibold text-slate-900 line-clamp-2"
+              : "text-sm font-semibold text-slate-900 line-clamp-2") +
+            " text-left hover:underline"
           }
+          onClick={() => (onOpen ?? onAnswer)(t.id)}
         >
           {t.title}
-        </div>
+        </button>
 
         <div className="mt-2 flex flex-wrap gap-1.5">
           <span className="rounded bg-slate-900 px-2 py-0.5 text-[10px] text-white">
@@ -1155,6 +1160,7 @@ export default function IndexPage() {
                 <WireframeTrendingCarousel
                   topics={(countryTopics.length ? countryTopics : trending).slice(0, 12)}
                   onAnswer={openTopic}
+                  onOpen={openTopic}
                 />
               </TabsContent>
 
@@ -1162,6 +1168,7 @@ export default function IndexPage() {
                 <WireframeTrendingCarousel
                   topics={(globalTopics.length ? globalTopics : trending).slice(0, 12)}
                   onAnswer={openTopic}
+                  onOpen={openTopic}
                 />
               </TabsContent>
             </Tabs>
