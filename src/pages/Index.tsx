@@ -1115,7 +1115,7 @@ export default function IndexPage() {
 
 
         {/* Reopened Questions for You (personalized only) */}
-        {isAuthed && reopened.length > 0 ? (
+        {isAuthed ? (
           <div className="rounded-lg border bg-white p-4 shadow-sm">
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -1123,7 +1123,9 @@ export default function IndexPage() {
                   Reopened Questions for You
                 </h3>
                 <p className="mt-0.5 text-xs text-slate-600">
-                  These questions have new updates since you last saw them.
+                  {reopened.length > 0
+                    ? "These questions have new updates since you last saw them."
+                    : "No reopened questions right now — we'll surface them here when something you answered gets new context."}
                 </p>
               </div>
             </div>
