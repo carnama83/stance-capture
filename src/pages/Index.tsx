@@ -1290,131 +1290,175 @@ export default function IndexPage() {
           </div>
         </div>
 
-        {/* Because you engaged with... (personalized only) */}
-        {isAuthed ? (
-          <div className="rounded-lg border bg-white p-4 shadow-sm">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 className="text-base font-semibold text-slate-900">
-                  Because you engaged with:{" "}
-                  {topEngagedTags.length ? topEngagedTags.join(", ") : "your topics"}
-                </h3>
-                <p className="mt-0.5 text-xs text-slate-600">
-                  Personalized follow-ups based on your recent activity.
-                </p>
-              </div>
+        {/* Because you engaged with... (intent tiles; show for anon too) */}
+        <div className="rounded-lg border bg-white p-4 shadow-sm">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-base font-semibold text-slate-900">
+                Because you engaged with:{" "}
+                {topEngagedTags.length ? topEngagedTags.join(", ") : "your topics"}
+              </h3>
+              <p className="mt-0.5 text-xs text-slate-600">
+                {isAuthed
+                  ? "Personalized follow-ups based on your recent activity."
+                  : "Sign in to unlock personalized follow-ups and comparisons."}
+              </p>
             </div>
-
-            <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-              {/* Tile 1: Similar topics (intent-driven) */}
-              <div className="rounded-lg border bg-white p-3 shadow-sm">
-                <div className="font-semibold text-slate-900">Explore similar topics</div>
-                <div className="mt-1 text-xs text-slate-600">
-                  Discover topics related to what you’ve been engaging with recently.
-                </div>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    className="rounded border px-3 py-1.5 text-xs hover:bg-slate-50"
-                    onClick={() => navigate("/topics")}
-                  >
-                    Explore topics
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded border px-3 py-1.5 text-xs hover:bg-slate-50"
-                    onClick={() => navigate("/search")}
-                  >
-                    Search
-                  </button>
-                </div>
-              </div>
-
-              {/* Tile 2: Compare your views (intent-driven) */}
-              <div className="rounded-lg border bg-white p-3 shadow-sm">
-                <div className="font-semibold text-slate-900">How your views compare</div>
-                <div className="mt-1 text-xs text-slate-600">
-                  See how your saved stances align with others across your region and globally.
-                </div>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    className="rounded border px-3 py-1.5 text-xs hover:bg-slate-50"
-                    onClick={() => navigate("/for-you", { state: { focus: "compare" } })}
-                  >
-                    See comparison
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded border px-3 py-1.5 text-xs hover:bg-slate-50"
-                    onClick={() => navigate("/for-you")}
-                  >
-                    View your feed
-                  </button>
-                </div>
-              </div>
-            </div>
-
           </div>
-        ) : null}
 
-        {/* Reopened Questions for You (personalized only) */}
-        {isAuthed ? (
-          <div className="rounded-lg border bg-white p-4 shadow-sm">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 className="text-base font-semibold text-slate-900">
-                  Reopened Questions for You
-                </h3>
-                <p className="mt-0.5 text-xs text-slate-600">
-                  These questions have new updates since you last saw them.
-                </p>
+          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+            {/* Tile 1: Similar topics (intent-driven) */}
+            <div className="rounded-lg border bg-white p-3 shadow-sm">
+              <div className="font-semibold text-slate-900">Explore similar topics</div>
+              <div className="mt-1 text-xs text-slate-600">
+                Discover topics related to what you’ve been engaging with recently.
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="rounded border px-3 py-1.5 text-xs hover:bg-slate-50"
+                  onClick={() => {
+                    if (!isAuthed) {
+                      const returnTo = window.location.hash || "#/";
+                      sessionStorage.setItem("return_to", returnTo);
+                      navigate("/login");
+                      return;
+                    }
+                    navigate("/topics");
+                  }}
+                >
+                  Explore topics
+                </button>
+                <button
+                  type="button"
+                  className="rounded border px-3 py-1.5 text-xs hover:bg-slate-50"
+                  onClick={() => {
+                    if (!isAuthed) {
+                      const returnTo = window.location.hash || "#/";
+                      sessionStorage.setItem("return_to", returnTo);
+                      navigate("/login");
+                      return;
+                    }
+                    navigate("/search");
+                  }}
+                >
+                  Search
+                </button>
               </div>
             </div>
 
-            <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-              {/* Tile 1: Reopened questions (intent-driven) */}
-              <div className="rounded-lg border bg-white p-3 shadow-sm">
-                <div className="flex items-center gap-2">
-                  <div className="font-semibold text-slate-900">Reopened questions</div>
-                  <span className="shrink-0 rounded bg-slate-900/10 px-2 py-0.5 text-[10px] text-slate-900">
-                    REOPENED
-                  </span>
-                </div>
-                <div className="mt-1 text-xs text-slate-600">
-                  Review questions you already answered that have re-opened due to new context.
-                </div>
-                <div className="mt-2">
-                  <button
-                    type="button"
-                    className="rounded border px-3 py-1.5 text-xs hover:bg-slate-50"
-                    onClick={() => navigate("/for-you", { state: { focus: "reopened" } })}
-                  >
-                    Review reopened
-                  </button>
-                </div>
+            {/* Tile 2: Compare your views (intent-driven) */}
+            <div className="rounded-lg border bg-white p-3 shadow-sm">
+              <div className="font-semibold text-slate-900">How your views compare</div>
+              <div className="mt-1 text-xs text-slate-600">
+                See how your saved stances align with others across your region and globally.
               </div>
-
-              {/* Tile 2: New update since you answered (intent-driven) */}
-              <div className="rounded-lg border bg-white p-3 shadow-sm">
-                <div className="font-semibold text-slate-900">New update since you answered</div>
-                <div className="mt-1 text-xs text-slate-600">
-                  See what changed since your last stance and decide if you still agree.
-                </div>
-                <div className="mt-2">
-                  <button
-                    type="button"
-                    className="rounded border px-3 py-1.5 text-xs hover:bg-slate-50"
-                    onClick={() => navigate("/for-you", { state: { focus: "updates" } })}
-                  >
-                    View updates
-                  </button>
-                </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="rounded border px-3 py-1.5 text-xs hover:bg-slate-50"
+                  onClick={() => {
+                    if (!isAuthed) {
+                      const returnTo = window.location.hash || "#/";
+                      sessionStorage.setItem("return_to", returnTo);
+                      navigate("/login");
+                      return;
+                    }
+                    navigate("/for-you", { state: { focus: "compare" } });
+                  }}
+                >
+                  See comparison
+                </button>
+                <button
+                  type="button"
+                  className="rounded border px-3 py-1.5 text-xs hover:bg-slate-50"
+                  onClick={() => {
+                    if (!isAuthed) {
+                      const returnTo = window.location.hash || "#/";
+                      sessionStorage.setItem("return_to", returnTo);
+                      navigate("/login");
+                      return;
+                    }
+                    navigate("/for-you");
+                  }}
+                >
+                  View your feed
+                </button>
               </div>
             </div>
-
           </div>
-        ) : null}
+        </div>
+
+        {/* Reopened Questions for You (intent tiles; show for anon too) */}
+        <div className="rounded-lg border bg-white p-4 shadow-sm">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-base font-semibold text-slate-900">Reopened Questions for You</h3>
+              <p className="mt-0.5 text-xs text-slate-600">
+                {isAuthed
+                  ? "These questions have new updates since you last saw them."
+                  : "Sign in to review reopened questions and new updates."}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+            {/* Tile 1: Reopened questions (intent-driven) */}
+            <div className="rounded-lg border bg-white p-3 shadow-sm">
+              <div className="flex items-center gap-2">
+                <div className="font-semibold text-slate-900">Reopened questions</div>
+                <span className="shrink-0 rounded bg-slate-900/10 px-2 py-0.5 text-[10px] text-slate-900">
+                  REOPENED
+                </span>
+              </div>
+              <div className="mt-1 text-xs text-slate-600">
+                Review questions you already answered that have re-opened due to new context.
+              </div>
+              <div className="mt-2">
+                <button
+                  type="button"
+                  className="rounded border px-3 py-1.5 text-xs hover:bg-slate-50"
+                  onClick={() => {
+                    if (!isAuthed) {
+                      const returnTo = window.location.hash || "#/";
+                      sessionStorage.setItem("return_to", returnTo);
+                      navigate("/login");
+                      return;
+                    }
+                    navigate("/for-you", { state: { focus: "reopened" } });
+                  }}
+                >
+                  Review reopened
+                </button>
+              </div>
+            </div>
+
+            {/* Tile 2: New update since you answered (intent-driven) */}
+            <div className="rounded-lg border bg-white p-3 shadow-sm">
+              <div className="font-semibold text-slate-900">New update since you answered</div>
+              <div className="mt-1 text-xs text-slate-600">
+                See what changed since your last stance and decide if you still agree.
+              </div>
+              <div className="mt-2">
+                <button
+                  type="button"
+                  className="rounded border px-3 py-1.5 text-xs hover:bg-slate-50"
+                  onClick={() => {
+                    if (!isAuthed) {
+                      const returnTo = window.location.hash || "#/";
+                      sessionStorage.setItem("return_to", returnTo);
+                      navigate("/login");
+                      return;
+                    }
+                    navigate("/for-you", { state: { focus: "updates" } });
+                  }}
+                >
+                  View updates
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
 
         {/* Local topics collapsed */}
         <div className="text-center">
