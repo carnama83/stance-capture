@@ -180,8 +180,11 @@ async function fetchTrendingTopics(
   sb: ReturnType<typeof getSupabase> | null,
   opts: { personalized: boolean; userId: string | null }
 ): Promise<Topic[]> {
+  // NOTE: Some environments may not expose `updated_at` on vw_topics_trending/topics_trending.
+  // Selecting or ordering by a missing column causes PostgREST 400s (and the UI falls back to skeletons).
+  // We still *display* relative time when available (e.g., from personalized RPC), but we don't require it.
   const baseSelect =
-    "id, title, summary, tags, updated_at, tier, location_label, trending_score, activity_7d";
+    "id, title, summary, tags, tier, location_label, trending_score, activity_7d";
 
   if (opts.personalized && opts.userId && sb) {
     try {
@@ -201,7 +204,7 @@ async function fetchTrendingTopics(
     select: baseSelect,
     order: [
       { column: "trending_score", ascending: false },
-      { column: "updated_at", ascending: false },
+      { column: "activity_7d", ascending: false },
     ],
     limit: 10,
   });
