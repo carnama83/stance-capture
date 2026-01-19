@@ -1058,7 +1058,8 @@ export default function IndexPage() {
 
   // Answer navigation (adjust route if your app uses a different one)
   const goToQuestion = (questionId: string) => {
-    navigate(`/questions/${questionId}`);
+    // Question detail route
+    navigate(`/q/${questionId}`);
   };
 
   return (
@@ -1483,9 +1484,12 @@ export default function IndexPage() {
                       key={r.question_id}
                       className="rounded-lg border bg-white p-3 shadow-sm"
                     >
-                      <div className="font-semibold text-slate-900 line-clamp-2">
+                      <Link
+                        to={`/q/${r.question_id}`}
+                        className="block font-semibold text-slate-900 line-clamp-2 hover:underline"
+                      >
                         {r.question}
-                      </div>
+                      </Link>
                       {r.summary ? (
                         <div className="mt-1 text-xs text-slate-600 line-clamp-2">
                           {r.summary}
