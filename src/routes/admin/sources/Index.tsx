@@ -364,28 +364,19 @@ export default function AdminSourcesIndex() {
         console.warn("Edge ingest failed; falling back to RPC admin_ingest_source", edgeErr);
       }
 
-      // Attempt B: RPC admin_ingest_source(uuid)
-      // Parameter name can vary; try a few common ones.
-      const paramCandidates = [
-        { source_id: row.id },
-        { p_source_id: row.id },
-        { p_source: row.id },
-        { id: row.id },
-      ];
+// Attempt B: RPC admin_ingest_source(p_source_id uuid)
+const { data: rpcData, error: rpcError } = await withTimeout(
+  supabase.rpc("admin_ingest_source", { p_source_id: row.id }),
+  15000
+);
 
-      let lastRpcError: any = null;
-      for (const args of paramCandidates) {
-        const { error } = await withTimeout(
-          supabase.rpc("admin_ingest_source", args as any),
-          15000
-        );
-        if (!error) {
-          alert(`Triggered ingest for "${row.name}" via admin_ingest_source().`);
-          void fetchRows();
-          return;
-        }
-        lastRpcError = error;
-      }
+if (rpcError) {
+  throw rpcError;
+}
+
+alert(`Triggered ingest for "${row.name}" via admin_ingest_source().`);
+void fetchRows();
+return;
 
       throw lastRpcError ?? new Error("RPC admin_ingest_source failed (unknown error)");
     } catch (e: any) {
