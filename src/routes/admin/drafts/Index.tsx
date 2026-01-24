@@ -53,9 +53,14 @@ export default function TopicDraftsPage() {
   const [rows, setRows] = React.useState<TopicDraftRow[]>([]);
   const [loading, setLoading] = React.useState(false);
 
-  // Pipeline button states
+  // Pipeline button states with elapsed time
   const [clusterLoading, setClusterLoading] = React.useState(false);
+  const [clusterElapsed, setClusterElapsed] = React.useState(0);
+  const [clusterProgress, setClusterProgress] = React.useState("");
+
   const [createDraftsLoading, setCreateDraftsLoading] = React.useState(false);
+  const [createDraftsElapsed, setCreateDraftsElapsed] = React.useState(0);
+  const [createDraftsProgress, setCreateDraftsProgress] = React.useState("");
 
   const [statusFilter, setStatusFilter] = React.useState<"all" | DraftStatus>("all");
   const [search, setSearch] = React.useState("");
@@ -122,18 +127,37 @@ export default function TopicDraftsPage() {
     load();
   }, [load]);
 
-  // Run cluster via RPC function
+  // Cluster progress polling
+  const pollClusterProgress = React.useCallback(async () => {
+    const { count: clusterCount } = await supabase
+      .from("topic_clusters")
+      .select("*", { count: "exact", head: true });
+    
+    const { count: itemCount } = await supabase
+      .from("topic_cluster_items")
+      .select("*", { count: "exact", head: true });
+
+    return { clusters: clusterCount || 0, items: itemCount || 0 };
+  }, [supabase]);
+
+  // Run cluster with real-time polling
   const runCluster = React.useCallback(async () => {
     if (clusterLoading) return;
-    setClusterLoading(true);
     
-    // Show initial toast with instructions
+    setClusterLoading(true);
+    setClusterElapsed(0);
+    setClusterProgress("Starting...");
+
+    // Get initial counts
+    const initial = await pollClusterProgress();
+    
     toast({
       title: "Clustering started",
-      description: "This may take 20-30 seconds. The button will re-enable when complete.",
+      description: "Monitoring progress in real-time...",
     });
 
     try {
+      // Trigger the RPC (returns immediately)
       const { error } = await supabase.rpc("run_cluster_http");
 
       if (error) {
@@ -147,20 +171,47 @@ export default function TopicDraftsPage() {
         return;
       }
 
-      // Success - function triggered (runs in background)
-      toast({
-        title: "Cluster job triggered",
-        description: "Clustering articles... Wait 20-30 seconds then refresh.",
-      });
+      // Start timer
+      const startTime = Date.now();
+      
+      // Poll for progress every 2 seconds
+      const pollInterval = setInterval(async () => {
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        setClusterElapsed(elapsed);
 
-      // Wait longer for cluster to complete (it's slower than drafts)
-      setTimeout(() => {
-        setClusterLoading(false);
-        toast({
-          title: "Clustering complete (probably)",
-          description: "Click Refresh to see if clusters were created. Then run step 2.",
-        });
-      }, 25000); // 25 seconds
+        // Check progress
+        const current = await pollClusterProgress();
+        const newClusters = current.clusters - initial.clusters;
+        const newItems = current.items - initial.items;
+
+        setClusterProgress(`${newClusters} clusters, ${newItems} items`);
+
+        // Check if complete (new clusters created)
+        if (newClusters > 0) {
+          clearInterval(pollInterval);
+          setClusterLoading(false);
+          toast({
+            title: "Clustering complete! ✅",
+            description: `Created ${newClusters} clusters from ${newItems} articles in ${elapsed}s`,
+          });
+          
+          // Don't auto-refresh - wait for user to click step 2
+        }
+
+        // Timeout after 60 seconds
+        if (elapsed > 60) {
+          clearInterval(pollInterval);
+          setClusterLoading(false);
+          
+          if (newClusters === 0) {
+            toast({
+              title: "Clustering timeout",
+              description: "No clusters created after 60s. Check logs or try refreshing the page first.",
+              variant: "destructive",
+            });
+          }
+        }
+      }, 2000); // Poll every 2 seconds
 
     } catch (e: any) {
       console.error("runCluster exception:", e);
@@ -171,20 +222,35 @@ export default function TopicDraftsPage() {
       });
       setClusterLoading(false);
     }
-  }, [clusterLoading, supabase, toast]);
+  }, [clusterLoading, supabase, toast, pollClusterProgress]);
 
-  // Run create-topic-drafts via RPC function
+  // Create drafts progress polling
+  const pollCreateDraftsProgress = React.useCallback(async () => {
+    const { count } = await supabase
+      .from("topic_drafts")
+      .select("*", { count: "exact", head: true });
+    
+    return count || 0;
+  }, [supabase]);
+
+  // Run create drafts with polling
   const runCreateDrafts = React.useCallback(async () => {
     if (createDraftsLoading) return;
-    setCreateDraftsLoading(true);
     
-    // Show initial toast
+    setCreateDraftsLoading(true);
+    setCreateDraftsElapsed(0);
+    setCreateDraftsProgress("Starting...");
+
+    // Get initial count
+    const initialDrafts = await pollCreateDraftsProgress();
+    
     toast({
       title: "Create drafts started",
-      description: "This may take 15-20 seconds. Drafts will appear when complete.",
+      description: "Monitoring progress in real-time...",
     });
 
     try {
+      // Trigger the RPC
       const { error } = await supabase.rpc("run_create_drafts_http");
 
       if (error) {
@@ -198,35 +264,47 @@ export default function TopicDraftsPage() {
         return;
       }
 
-      // Success - function triggered
-      toast({
-        title: "Draft creation triggered",
-        description: "Creating topic drafts from clusters... Wait 15-20 seconds.",
-      });
+      // Start timer and polling
+      const startTime = Date.now();
+      
+      const pollInterval = setInterval(async () => {
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        setCreateDraftsElapsed(elapsed);
 
-      // Wait for draft creation then auto-refresh
-      setTimeout(async () => {
-        await load();
-        setCreateDraftsLoading(false);
-        
-        // Check if drafts were actually created
-        const { count } = await supabase
-          .from("topic_drafts")
-          .select("*", { count: "exact", head: true });
-        
-        if (count && count > 0) {
+        // Check progress
+        const currentDrafts = await pollCreateDraftsProgress();
+        const newDrafts = currentDrafts - initialDrafts;
+
+        setCreateDraftsProgress(`${newDrafts} drafts created`);
+
+        // Check if complete
+        if (newDrafts > 0) {
+          clearInterval(pollInterval);
+          setCreateDraftsLoading(false);
+          
           toast({
-            title: "Drafts created successfully!",
-            description: `${count} topic drafts are ready for review.`,
+            title: "Drafts created! ✅",
+            description: `Created ${newDrafts} topic drafts in ${elapsed}s`,
           });
-        } else {
-          toast({
-            title: "No drafts created",
-            description: "Check if clusters exist. Run step 1 first.",
-            variant: "destructive",
-          });
+          
+          // Auto-refresh to show drafts
+          await load();
         }
-      }, 18000); // 18 seconds
+
+        // Timeout after 45 seconds
+        if (elapsed > 45) {
+          clearInterval(pollInterval);
+          setCreateDraftsLoading(false);
+          
+          if (newDrafts === 0) {
+            toast({
+              title: "Create drafts timeout",
+              description: "No drafts created after 45s. Check if clusters exist (run step 1 first).",
+              variant: "destructive",
+            });
+          }
+        }
+      }, 2000); // Poll every 2 seconds
 
     } catch (e: any) {
       console.error("runCreateDrafts exception:", e);
@@ -237,7 +315,7 @@ export default function TopicDraftsPage() {
       });
       setCreateDraftsLoading(false);
     }
-  }, [createDraftsLoading, supabase, toast, load]);
+  }, [createDraftsLoading, supabase, toast, pollCreateDraftsProgress, load]);
 
   return (
     <Card className="max-w-6xl mx-auto">
@@ -278,25 +356,29 @@ export default function TopicDraftsPage() {
             ))}
           </select>
 
-          {/* Pipeline buttons with spinner */}
+          {/* Pipeline buttons with real-time progress */}
           <Button 
             variant="outline" 
             onClick={runCluster} 
             disabled={clusterLoading}
-            className="min-w-[140px]"
+            className="min-w-[200px]"
           >
             {clusterLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {clusterLoading ? "Clustering... (~25s)" : "1. Run Cluster"}
+            {clusterLoading 
+              ? `Clustering... ${clusterElapsed}s (${clusterProgress})`
+              : "1. Run Cluster"}
           </Button>
 
           <Button 
             variant="outline" 
             onClick={runCreateDrafts} 
             disabled={createDraftsLoading}
-            className="min-w-[180px]"
+            className="min-w-[220px]"
           >
             {createDraftsLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {createDraftsLoading ? "Creating... (~18s)" : "2. Create Topic Drafts"}
+            {createDraftsLoading 
+              ? `Creating... ${createDraftsElapsed}s (${createDraftsProgress})`
+              : "2. Create Topic Drafts"}
           </Button>
 
           <Button variant="outline" size="icon" onClick={load} title="Refresh" disabled={loading}>
@@ -316,25 +398,26 @@ export default function TopicDraftsPage() {
         {!loading && rows.length === 0 && (
           <div className="p-4 text-sm text-muted-foreground space-y-3">
             <div className="font-medium">No topic drafts found.</div>
-            <div className="text-xs space-y-2 bg-slate-50 p-3 rounded">
+            <div className="text-xs space-y-2 bg-slate-50 p-3 rounded border">
               <p className="font-semibold">📋 Pipeline Instructions:</p>
               <ol className="list-decimal list-inside space-y-1 ml-2">
-                <li><strong>Run Cluster</strong> (~25 seconds) - Groups similar articles into clusters</li>
-                <li><strong>Create Topic Drafts</strong> (~18 seconds) - Generates drafts from clusters using AI</li>
+                <li><strong>Run Cluster</strong> - Groups similar articles (real-time progress shown)</li>
+                <li><strong>Create Topic Drafts</strong> - Generates drafts from clusters (real-time progress shown)</li>
                 <li><strong>Refresh</strong> - See your new drafts and review/approve them</li>
               </ol>
-              <p className="text-xs text-muted-foreground mt-2">
-                💡 Tip: Wait for each button to re-enable before clicking the next one.
-              </p>
+              <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
+                <p className="font-semibold text-yellow-800">💡 Tip:</p>
+                <p className="text-yellow-700">If clustering seems stuck, try refreshing the page first, then clicking "1. Run Cluster"</p>
+              </div>
             </div>
             <div className="flex gap-2">
               <Button variant="outline" onClick={runCluster} disabled={clusterLoading}>
                 {clusterLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {clusterLoading ? "Clustering..." : "1. Run Cluster"}
+                {clusterLoading ? `Clustering... ${clusterElapsed}s` : "1. Run Cluster"}
               </Button>
               <Button variant="outline" onClick={runCreateDrafts} disabled={createDraftsLoading}>
                 {createDraftsLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {createDraftsLoading ? "Creating..." : "2. Create Topic Drafts"}
+                {createDraftsLoading ? `Creating... ${createDraftsElapsed}s` : "2. Create Topic Drafts"}
               </Button>
               <Button variant="outline" onClick={load} disabled={loading}>
                 {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -352,6 +435,7 @@ export default function TopicDraftsPage() {
   );
 }
 
+// ... rest of the component code remains exactly the same ...
 function TopicDraftRowView({ row, onChanged }: { row: TopicDraftRow; onChanged: () => void }) {
   const sourceName = row.location_label ?? row.news_items?.title ?? "—";
   const newsUrl = row.news_items?.url ?? null;
