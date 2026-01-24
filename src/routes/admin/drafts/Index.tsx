@@ -53,8 +53,9 @@ export default function TopicDraftsPage() {
   const [rows, setRows] = React.useState<TopicDraftRow[]>([]);
   const [loading, setLoading] = React.useState(false);
 
-  // NEW: cluster button state
+  // Cluster and create-drafts button states
   const [clusterLoading, setClusterLoading] = React.useState(false);
+  const [createDraftsLoading, setCreateDraftsLoading] = React.useState(false);
 
   const [statusFilter, setStatusFilter] = React.useState<"all" | DraftStatus>("all");
   const [search, setSearch] = React.useState("");
@@ -121,12 +122,11 @@ export default function TopicDraftsPage() {
     load();
   }, [load]);
 
-    // Run cluster via RPC function
+  // Run cluster via RPC function
   const runCluster = React.useCallback(async () => {
     if (clusterLoading) return;
     setClusterLoading(true);
     try {
-      // ✅ run_cluster_http returns void, so we only check for errors
       const { error } = await supabase.rpc("run_cluster_http");
 
       if (error) {
@@ -139,16 +139,15 @@ export default function TopicDraftsPage() {
         return;
       }
 
-      // ✅ Success - cluster job triggered (no response data)
       toast({
         title: "Cluster started",
-        description: "Cluster job has been triggered. Refreshing drafts in a moment...",
+        description: "Clustering articles... This will create topic_clusters from ingestion_queue.",
       });
 
-      // Wait a bit for cluster to process, then refresh
+      // Wait for cluster to process
       setTimeout(async () => {
         await load();
-      }, 2000); // 2 second delay to let cluster create some drafts
+      }, 3000);
 
     } catch (e: any) {
       console.error("runCluster exception:", e);
@@ -161,6 +160,45 @@ export default function TopicDraftsPage() {
       setClusterLoading(false);
     }
   }, [clusterLoading, supabase, toast, load]);
+
+  // NEW: Run create-topic-drafts via RPC function
+  const runCreateDrafts = React.useCallback(async () => {
+    if (createDraftsLoading) return;
+    setCreateDraftsLoading(true);
+    try {
+      const { error } = await supabase.rpc("run_create_drafts_http");
+
+      if (error) {
+        console.error("run_create_drafts_http error:", error);
+        toast({
+          title: "Create drafts failed",
+          description: error.message ?? "Failed to trigger create drafts job.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      toast({
+        title: "Create drafts started",
+        description: "Creating topic drafts from clusters... Refresh in a moment to see new drafts.",
+      });
+
+      // Wait for draft creation to process
+      setTimeout(async () => {
+        await load();
+      }, 3000);
+
+    } catch (e: any) {
+      console.error("runCreateDrafts exception:", e);
+      toast({
+        title: "Create drafts failed",
+        description: e?.message ?? String(e),
+        variant: "destructive",
+      });
+    } finally {
+      setCreateDraftsLoading(false);
+    }
+  }, [createDraftsLoading, supabase, toast, load]);
 
   return (
     <Card className="max-w-6xl mx-auto">
@@ -201,9 +239,13 @@ export default function TopicDraftsPage() {
             ))}
           </select>
 
-          {/* NEW: cluster button */}
+          {/* Pipeline buttons */}
           <Button variant="outline" onClick={runCluster} disabled={clusterLoading}>
-            {clusterLoading ? "Running Cluster…" : "Run Cluster Now"}
+            {clusterLoading ? "Clustering…" : "1. Run Cluster"}
+          </Button>
+
+          <Button variant="outline" onClick={runCreateDrafts} disabled={createDraftsLoading}>
+            {createDraftsLoading ? "Creating Drafts…" : "2. Create Topic Drafts"}
           </Button>
 
           <Button variant="outline" size="icon" onClick={load} title="Refresh">
@@ -216,11 +258,22 @@ export default function TopicDraftsPage() {
         {loading && <div className="p-4 text-sm text-muted-foreground">Loading…</div>}
 
         {!loading && rows.length === 0 && (
-          <div className="p-4 text-sm text-muted-foreground space-y-2">
+          <div className="p-4 text-sm text-muted-foreground space-y-3">
             <div>No topic drafts found.</div>
+            <div className="text-xs space-y-1">
+              <p><strong>Pipeline:</strong></p>
+              <ol className="list-decimal list-inside space-y-1">
+                <li>Click "1. Run Cluster" to group similar articles into clusters</li>
+                <li>Click "2. Create Topic Drafts" to generate drafts from clusters using AI</li>
+                <li>Review and approve drafts below</li>
+              </ol>
+            </div>
             <div className="flex gap-2">
               <Button variant="outline" onClick={runCluster} disabled={clusterLoading}>
-                {clusterLoading ? "Running Cluster…" : "Run Cluster Now"}
+                {clusterLoading ? "Clustering…" : "1. Run Cluster"}
+              </Button>
+              <Button variant="outline" onClick={runCreateDrafts} disabled={createDraftsLoading}>
+                {createDraftsLoading ? "Creating Drafts…" : "2. Create Topic Drafts"}
               </Button>
               <Button variant="outline" onClick={load}>
                 Refresh
@@ -331,38 +384,29 @@ function EditTopicDialog({ row, onSaved }: { row: TopicDraftRow; onSaved: () => 
     if (saving) return;
     setSaving(true);
 
-    const tagsArray = tags
-      .split(",")
-      .map((t) => t.trim())
-      .filter(Boolean);
+    const patch: any = { title, summary };
+    if (tags.trim()) patch.tags = tags.split(",").map((t) => t.trim());
+    if (location.trim()) patch.location_label = location.trim();
 
-    const { error } = await supabase
-      .from("topic_drafts")
-      .update({
-        title,
-        summary,
-        tags: tagsArray,
-        location_label: location || null,
-      })
-      .eq("id", row.id);
-
-    setSaving(false);
+    const { error } = await supabase.from("topic_drafts").update(patch).eq("id", row.id);
 
     if (error) {
-      console.error("Failed to update topic draft:", error);
       toast({
-        title: "Failed to update topic draft",
+        title: "Failed to update draft",
         description: error.message,
         variant: "destructive",
       });
+      setSaving(false);
       return;
     }
 
     toast({
-      title: "Topic draft updated",
-      description: "Title, summary, tags and location were saved.",
+      title: "Draft updated",
+      description: "Topic draft saved successfully.",
     });
+
     setOpen(false);
+    setSaving(false);
     onSaved();
   };
 
