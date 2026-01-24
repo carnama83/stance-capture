@@ -43,10 +43,6 @@ function withTimeout<T>(p: Promise<T>, ms = 15000): Promise<T> {
   });
 }
 
-/**
- * UI polish: show appropriate icon/color for status instead of always warning triangle.
- * Does not affect any existing functionality (pure render helper).
- */
 function StatusPill({
   status,
   error,
@@ -56,7 +52,6 @@ function StatusPill({
 }) {
   const raw = (status ?? "").toLowerCase().trim();
 
-  // Normalize common aliases
   const norm =
     raw === "ok" || raw === "success"
       ? "done"
@@ -138,8 +133,14 @@ export default function AdminSourcesIndex() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [saving, setSaving] = useState<boolean>(false);
 
+  // NEW: Multi-select state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [runningAll, setRunningAll] = useState<boolean>(false);
+  const [runProgress, setRunProgress] = useState<string>("");
+
   const headers = useMemo(
     () => [
+      "", // Checkbox column
       "Name",
       "Kind",
       "Country",
@@ -262,6 +263,112 @@ export default function AdminSourcesIndex() {
     });
   }, [rows, kind, enabled, q]);
 
+  // NEW: Toggle individual checkbox
+  function toggleSelection(id: string) {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
+  // NEW: Toggle all checkboxes
+  function toggleSelectAll() {
+    if (selectedIds.size === filtered.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filtered.map(r => r.id)));
+    }
+  }
+
+  // NEW: Run all selected sources
+  async function runAllSelected() {
+    if (selectedIds.size === 0) {
+      alert("No sources selected");
+      return;
+    }
+
+    if (!confirm(`Run ${selectedIds.size} selected source(s)?`)) {
+      return;
+    }
+
+    setRunningAll(true);
+    setRunProgress("");
+
+    const selectedSources = filtered.filter(r => selectedIds.has(r.id));
+    let completed = 0;
+    const results: { name: string; success: boolean; error?: string }[] = [];
+
+    for (const source of selectedSources) {
+      completed++;
+      setRunProgress(`Running ${completed}/${selectedSources.length}: ${source.name}...`);
+
+      try {
+        // Try Edge Function first
+        try {
+          const { data, error } = await withTimeout(
+            supabase.functions.invoke("ingest", {
+              body: { source_id: source.id },
+            }),
+            15000
+          );
+
+          if (error) throw error;
+          results.push({ name: source.name, success: true });
+          continue;
+        } catch (edgeErr: any) {
+          console.warn(`Edge ingest failed for ${source.name}, trying RPC`, edgeErr);
+        }
+
+        // Fallback to RPC
+        const { error: rpcError } = await withTimeout(
+          supabase.rpc("admin_ingest_source", { p_source_id: source.id }),
+          15000
+        );
+
+        if (rpcError) {
+          throw rpcError;
+        }
+
+        results.push({ name: source.name, success: true });
+      } catch (e: any) {
+        results.push({ 
+          name: source.name, 
+          success: false, 
+          error: e?.message || String(e) 
+        });
+      }
+    }
+
+    setRunningAll(false);
+    setRunProgress("");
+
+    // Show results
+    const successCount = results.filter(r => r.success).length;
+    const failCount = results.filter(r => !r.success).length;
+    
+    let message = `Completed: ${successCount} succeeded, ${failCount} failed\n\n`;
+    
+    if (failCount > 0) {
+      message += "Failed sources:\n";
+      results
+        .filter(r => !r.success)
+        .forEach(r => {
+          message += `- ${r.name}: ${r.error}\n`;
+        });
+    }
+
+    alert(message);
+    
+    // Clear selection and refresh
+    setSelectedIds(new Set());
+    fetchRows();
+  }
+
   async function openEdit(row: SourceRow) {
     setErr(null);
     setBusyId(row.id);
@@ -307,36 +414,26 @@ export default function AdminSourcesIndex() {
     }
   }
 
-  async function onToggle(row: SourceRow, nextEnabled: boolean) {
+  async function onToggle(row: SourceRow, checked: boolean) {
     setBusyId(row.id);
-    const prev = rows;
-    setRows((rs) =>
-      rs.map((x) => (x.id === row.id ? { ...x, is_enabled: nextEnabled } : x))
-    );
-
     const { error } = await supabase
       .from("topic_sources")
-      .update({ is_enabled: nextEnabled })
-      .eq("id", row.id)
-      .select()
-      .single();
-
+      .update({ is_enabled: checked })
+      .eq("id", row.id);
     setBusyId(null);
-
     if (error) {
-      alert(`Failed to toggle: ${error.message}`);
-      setRows(prev);
-    } else {
-      fetchRows();
+      alert(`Toggle failed: ${error.message}`);
+      return;
     }
+    void fetchRows();
   }
 
-  // ✅ FIXED: Run ingestion with Edge Function first, then fallback to RPC admin_ingest_source
   async function onRun(row: SourceRow) {
     setBusyId(row.id);
+    setErr(null);
 
     try {
-      // Attempt A: Edge Function (if it exists in your project)
+      // Try Edge Function first
       try {
         const { data, error } = await withTimeout(
           supabase.functions.invoke("ingest", {
@@ -360,25 +457,22 @@ export default function AdminSourcesIndex() {
         void fetchRows();
         return;
       } catch (edgeErr: any) {
-        // fall through to RPC
         console.warn("Edge ingest failed; falling back to RPC admin_ingest_source", edgeErr);
       }
 
-// Attempt B: RPC admin_ingest_source(p_source_id uuid)
-const { data: rpcData, error: rpcError } = await withTimeout(
-  supabase.rpc("admin_ingest_source", { p_source_id: row.id }),
-  15000
-);
+      // Attempt B: RPC admin_ingest_source(p_source_id uuid)
+      const { data: rpcData, error: rpcError } = await withTimeout(
+        supabase.rpc("admin_ingest_source", { p_source_id: row.id }),
+        15000
+      );
 
-if (rpcError) {
-  throw rpcError;
-}
+      if (rpcError) {
+        throw rpcError;
+      }
 
-alert(`Triggered ingest for "${row.name}" via admin_ingest_source().`);
-void fetchRows();
-return;
-
-      throw lastRpcError ?? new Error("RPC admin_ingest_source failed (unknown error)");
+      alert(`Triggered ingest for "${row.name}" via admin_ingest_source().`);
+      void fetchRows();
+      return;
     } catch (e: any) {
       alert(`Run failed: ${e?.message || e}`);
     } finally {
@@ -452,6 +546,9 @@ return;
     fetchRows();
   }
 
+  const allChecked = filtered.length > 0 && selectedIds.size === filtered.length;
+  const someChecked = selectedIds.size > 0 && selectedIds.size < filtered.length;
+
   return (
     <div style={{ padding: 16 }}>
       <div
@@ -496,7 +593,29 @@ return;
         }}
       >
         <h1 style={{ margin: 0 }}>Sources</h1>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          {/* NEW: Run All Selected button */}
+          {selectedIds.size > 0 && (
+            <button
+              onClick={runAllSelected}
+              disabled={runningAll}
+              style={{
+                padding: "8px 16px",
+                background: "#1d4ed8",
+                color: "white",
+                border: "none",
+                borderRadius: 6,
+                fontWeight: 600,
+                cursor: runningAll ? "not-allowed" : "pointer",
+                opacity: runningAll ? 0.6 : 1,
+              }}
+            >
+              {runningAll 
+                ? `⏳ ${runProgress}` 
+                : `▶️ Run ${selectedIds.size} Selected`}
+            </button>
+          )}
+          
           <select value={kind} onChange={(e) => setKind(e.target.value as any)}>
             <option value="all">All kinds</option>
             <option value="rss">rss</option>
@@ -537,19 +656,41 @@ return;
           <table width="100%" cellPadding={8} style={{ borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ textAlign: "left", borderBottom: "1px solid #ddd" }}>
-                {headers.map((h) => (
+                {headers.map((h, idx) => (
                   <th
-                    key={h}
+                    key={idx === 0 ? "checkbox" : h}
                     style={h === "Actions" ? { textAlign: "right" } : undefined}
                   >
-                    {h}
+                    {idx === 0 ? (
+                      <input
+                        type="checkbox"
+                        checked={allChecked}
+                        ref={input => {
+                          if (input) {
+                            input.indeterminate = someChecked;
+                          }
+                        }}
+                        onChange={toggleSelectAll}
+                        title="Select all"
+                      />
+                    ) : h}
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {filtered.map((r) => {
+                const isSelected = selectedIds.has(r.id);
+                
                 const cells: React.ReactNode[] = [
+                  <td key="checkbox">
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleSelection(r.id)}
+                      disabled={busyId === r.id || runningAll}
+                    />
+                  </td>,
                   <td
                     key="name"
                     style={{
@@ -580,7 +721,7 @@ return;
                       <input
                         type="checkbox"
                         checked={!!r.is_enabled}
-                        disabled={busyId === r.id}
+                        disabled={busyId === r.id || runningAll}
                         onChange={(e) => onToggle(r, e.target.checked)}
                       />
                       {r.is_enabled ? "On" : "Off"}
@@ -588,25 +729,28 @@ return;
                   </td>,
                   <td key="success">{r.success_count ?? 0}</td>,
                   <td key="failure">{r.failure_count ?? 0}</td>,
-
-                  // ✅ Polished status UI (no more always-yellow)
                   <td key="status">
                     <StatusPill status={r.last_status} error={r.last_error} />
                   </td>,
-
                   <td key="lastrun">
                     {r.last_polled_at ? new Date(r.last_polled_at).toLocaleString() : "—"}
                   </td>,
                   <td key="actions" style={{ textAlign: "right" }}>
                     <div style={{ display: "inline-flex", gap: 8 }}>
-                      <button disabled={busyId === r.id} onClick={() => openEdit(r)}>
+                      <button 
+                        disabled={busyId === r.id || runningAll} 
+                        onClick={() => openEdit(r)}
+                      >
                         Edit
                       </button>
-                      <button disabled={busyId === r.id} onClick={() => onRun(r)}>
+                      <button 
+                        disabled={busyId === r.id || runningAll} 
+                        onClick={() => onRun(r)}
+                      >
                         Run
                       </button>
                       <button
-                        disabled={busyId === r.id}
+                        disabled={busyId === r.id || runningAll}
                         onClick={() => onDelete(r)}
                         style={{ color: "#b00" }}
                       >
@@ -617,7 +761,13 @@ return;
                 ];
 
                 return (
-                  <tr key={r.id} style={{ borderBottom: "1px solid #eee" }}>
+                  <tr 
+                    key={r.id} 
+                    style={{ 
+                      borderBottom: "1px solid #eee",
+                      background: isSelected ? "#eff6ff" : "transparent"
+                    }}
+                  >
                     {cells}
                   </tr>
                 );
@@ -626,7 +776,7 @@ return;
               {!filtered.length ? (
                 <tr>
                   <td
-                    colSpan={10}
+                    colSpan={11}
                     style={{ padding: 24, textAlign: "center", color: "#666" }}
                   >
                     No sources found.
@@ -699,51 +849,55 @@ return;
                   onChange={(e) =>
                     setEditing({ ...editing, country_name: e.target.value })
                   }
-                  placeholder="e.g., Australia"
+                  placeholder="e.g., United States"
                   style={{ width: "100%" }}
                   disabled={saving}
                 />
               </label>
 
               <label>
-                <div>Endpoint (URL)</div>
+                <div>Endpoint (URL or identifier)</div>
                 <input
                   value={editing.endpoint ?? ""}
-                  onChange={(e) => setEditing({ ...editing, endpoint: e.target.value })}
-                  placeholder="https://example.com/feed.xml"
+                  onChange={(e) =>
+                    setEditing({ ...editing, endpoint: e.target.value })
+                  }
+                  placeholder="https://..."
                   style={{ width: "100%" }}
                   disabled={saving}
                 />
               </label>
 
-              <label style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                 <input
                   type="checkbox"
-                  checked={editing.is_enabled ?? true}
+                  checked={!!editing.is_enabled}
                   onChange={(e) =>
                     setEditing({ ...editing, is_enabled: e.target.checked })
                   }
                   disabled={saving}
                 />
-                Enabled
+                <span>Enabled</span>
               </label>
             </div>
 
             <div
               style={{
+                marginTop: 16,
                 display: "flex",
                 gap: 8,
                 justifyContent: "flex-end",
-                marginTop: 16,
               }}
             >
-              <button onClick={() => setEditing(null)}>Cancel</button>
+              <button onClick={() => setEditing(null)} disabled={saving}>
+                Cancel
+              </button>
               <button
-                disabled={saving}
                 onClick={() => onSave(editing)}
+                disabled={saving}
                 style={{ fontWeight: 600 }}
               >
-                {saving ? "Saving..." : editing.id ? "Save changes" : "Create"}
+                {saving ? "Saving…" : editing.id ? "Update" : "Create"}
               </button>
             </div>
           </div>
