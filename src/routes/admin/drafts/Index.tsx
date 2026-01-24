@@ -14,7 +14,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { ExternalLink, Edit2, RefreshCw } from "lucide-react";
+import { ExternalLink, Edit2, RefreshCw, Loader2 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 
 type DraftStatus = "draft" | "approved" | "rejected";
@@ -47,13 +47,13 @@ const STATUS_FILTERS: { value: "all" | DraftStatus; label: string }[] = [
 ];
 
 export default function TopicDraftsPage() {
-  const supabase = getSupabase()!; // Call directly instead of useMemo
+  const supabase = getSupabase()!;
   const { toast } = useToast();
 
   const [rows, setRows] = React.useState<TopicDraftRow[]>([]);
   const [loading, setLoading] = React.useState(false);
 
-  // Cluster and create-drafts button states
+  // Pipeline button states
   const [clusterLoading, setClusterLoading] = React.useState(false);
   const [createDraftsLoading, setCreateDraftsLoading] = React.useState(false);
 
@@ -126,6 +126,13 @@ export default function TopicDraftsPage() {
   const runCluster = React.useCallback(async () => {
     if (clusterLoading) return;
     setClusterLoading(true);
+    
+    // Show initial toast with instructions
+    toast({
+      title: "Clustering started",
+      description: "This may take 20-30 seconds. The button will re-enable when complete.",
+    });
+
     try {
       const { error } = await supabase.rpc("run_cluster_http");
 
@@ -136,18 +143,24 @@ export default function TopicDraftsPage() {
           description: error.message ?? "Failed to trigger cluster job.",
           variant: "destructive",
         });
+        setClusterLoading(false);
         return;
       }
 
+      // Success - function triggered (runs in background)
       toast({
-        title: "Cluster started",
-        description: "Clustering articles... This will create topic_clusters from ingestion_queue.",
+        title: "Cluster job triggered",
+        description: "Clustering articles... Wait 20-30 seconds then refresh.",
       });
 
-      // Wait for cluster to process
-      setTimeout(async () => {
-        await load();
-      }, 3000);
+      // Wait longer for cluster to complete (it's slower than drafts)
+      setTimeout(() => {
+        setClusterLoading(false);
+        toast({
+          title: "Clustering complete (probably)",
+          description: "Click Refresh to see if clusters were created. Then run step 2.",
+        });
+      }, 25000); // 25 seconds
 
     } catch (e: any) {
       console.error("runCluster exception:", e);
@@ -156,15 +169,21 @@ export default function TopicDraftsPage() {
         description: e?.message ?? String(e),
         variant: "destructive",
       });
-    } finally {
       setClusterLoading(false);
     }
-  }, [clusterLoading, supabase, toast, load]);
+  }, [clusterLoading, supabase, toast]);
 
-  // NEW: Run create-topic-drafts via RPC function
+  // Run create-topic-drafts via RPC function
   const runCreateDrafts = React.useCallback(async () => {
     if (createDraftsLoading) return;
     setCreateDraftsLoading(true);
+    
+    // Show initial toast
+    toast({
+      title: "Create drafts started",
+      description: "This may take 15-20 seconds. Drafts will appear when complete.",
+    });
+
     try {
       const { error } = await supabase.rpc("run_create_drafts_http");
 
@@ -175,18 +194,39 @@ export default function TopicDraftsPage() {
           description: error.message ?? "Failed to trigger create drafts job.",
           variant: "destructive",
         });
+        setCreateDraftsLoading(false);
         return;
       }
 
+      // Success - function triggered
       toast({
-        title: "Create drafts started",
-        description: "Creating topic drafts from clusters... Refresh in a moment to see new drafts.",
+        title: "Draft creation triggered",
+        description: "Creating topic drafts from clusters... Wait 15-20 seconds.",
       });
 
-      // Wait for draft creation to process
+      // Wait for draft creation then auto-refresh
       setTimeout(async () => {
         await load();
-      }, 3000);
+        setCreateDraftsLoading(false);
+        
+        // Check if drafts were actually created
+        const { count } = await supabase
+          .from("topic_drafts")
+          .select("*", { count: "exact", head: true });
+        
+        if (count && count > 0) {
+          toast({
+            title: "Drafts created successfully!",
+            description: `${count} topic drafts are ready for review.`,
+          });
+        } else {
+          toast({
+            title: "No drafts created",
+            description: "Check if clusters exist. Run step 1 first.",
+            variant: "destructive",
+          });
+        }
+      }, 18000); // 18 seconds
 
     } catch (e: any) {
       console.error("runCreateDrafts exception:", e);
@@ -195,7 +235,6 @@ export default function TopicDraftsPage() {
         description: e?.message ?? String(e),
         variant: "destructive",
       });
-    } finally {
       setCreateDraftsLoading(false);
     }
   }, [createDraftsLoading, supabase, toast, load]);
@@ -239,43 +278,66 @@ export default function TopicDraftsPage() {
             ))}
           </select>
 
-          {/* Pipeline buttons */}
-          <Button variant="outline" onClick={runCluster} disabled={clusterLoading}>
-            {clusterLoading ? "Clustering…" : "1. Run Cluster"}
+          {/* Pipeline buttons with spinner */}
+          <Button 
+            variant="outline" 
+            onClick={runCluster} 
+            disabled={clusterLoading}
+            className="min-w-[140px]"
+          >
+            {clusterLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {clusterLoading ? "Clustering... (~25s)" : "1. Run Cluster"}
           </Button>
 
-          <Button variant="outline" onClick={runCreateDrafts} disabled={createDraftsLoading}>
-            {createDraftsLoading ? "Creating Drafts…" : "2. Create Topic Drafts"}
+          <Button 
+            variant="outline" 
+            onClick={runCreateDrafts} 
+            disabled={createDraftsLoading}
+            className="min-w-[180px]"
+          >
+            {createDraftsLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {createDraftsLoading ? "Creating... (~18s)" : "2. Create Topic Drafts"}
           </Button>
 
-          <Button variant="outline" size="icon" onClick={load} title="Refresh">
-            <RefreshCw className="h-4 w-4" />
+          <Button variant="outline" size="icon" onClick={load} title="Refresh" disabled={loading}>
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
           </Button>
         </div>
       </CardHeader>
 
       <CardContent className="space-y-3">
-        {loading && <div className="p-4 text-sm text-muted-foreground">Loading…</div>}
+        {loading && (
+          <div className="p-4 text-sm text-muted-foreground flex items-center gap-2">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Loading…
+          </div>
+        )}
 
         {!loading && rows.length === 0 && (
           <div className="p-4 text-sm text-muted-foreground space-y-3">
-            <div>No topic drafts found.</div>
-            <div className="text-xs space-y-1">
-              <p><strong>Pipeline:</strong></p>
-              <ol className="list-decimal list-inside space-y-1">
-                <li>Click "1. Run Cluster" to group similar articles into clusters</li>
-                <li>Click "2. Create Topic Drafts" to generate drafts from clusters using AI</li>
-                <li>Review and approve drafts below</li>
+            <div className="font-medium">No topic drafts found.</div>
+            <div className="text-xs space-y-2 bg-slate-50 p-3 rounded">
+              <p className="font-semibold">📋 Pipeline Instructions:</p>
+              <ol className="list-decimal list-inside space-y-1 ml-2">
+                <li><strong>Run Cluster</strong> (~25 seconds) - Groups similar articles into clusters</li>
+                <li><strong>Create Topic Drafts</strong> (~18 seconds) - Generates drafts from clusters using AI</li>
+                <li><strong>Refresh</strong> - See your new drafts and review/approve them</li>
               </ol>
+              <p className="text-xs text-muted-foreground mt-2">
+                💡 Tip: Wait for each button to re-enable before clicking the next one.
+              </p>
             </div>
             <div className="flex gap-2">
               <Button variant="outline" onClick={runCluster} disabled={clusterLoading}>
-                {clusterLoading ? "Clustering…" : "1. Run Cluster"}
+                {clusterLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {clusterLoading ? "Clustering..." : "1. Run Cluster"}
               </Button>
               <Button variant="outline" onClick={runCreateDrafts} disabled={createDraftsLoading}>
-                {createDraftsLoading ? "Creating Drafts…" : "2. Create Topic Drafts"}
+                {createDraftsLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {createDraftsLoading ? "Creating..." : "2. Create Topic Drafts"}
               </Button>
-              <Button variant="outline" onClick={load}>
+              <Button variant="outline" onClick={load} disabled={loading}>
+                {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Refresh
               </Button>
             </div>
@@ -370,7 +432,7 @@ function StatusBadge({ status }: { status: DraftStatus }) {
 }
 
 function EditTopicDialog({ row, onSaved }: { row: TopicDraftRow; onSaved: () => void }) {
-  const supabase = getSupabase()!; // Call directly
+  const supabase = getSupabase()!;
   const { toast } = useToast();
 
   const [open, setOpen] = React.useState(false);
@@ -461,43 +523,19 @@ function StatusButtons({
   row: TopicDraftRow;
   onChanged: () => void;
 }) {
-  const supabase = getSupabase()!; // Call directly
+  const supabase = getSupabase()!;
   const { toast } = useToast();
 
   const [loadingStatus, setLoadingStatus] = React.useState<DraftStatus | null>(null);
-
-  // Local optimistic status so the UI doesn't "snap back" while refresh is happening
   const [optimisticStatus, setOptimisticStatus] = React.useState<DraftStatus>(row.status);
 
   React.useEffect(() => {
     setOptimisticStatus(row.status);
   }, [row.status]);
 
-  const withTimeout = async <T,>(
-    promise: Promise<T>,
-    ms: number,
-  ): Promise<T> => {
-    let timeoutId: NodeJS.Timeout;
-    
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      timeoutId = setTimeout(() => {
-        reject(new Error(`Request timed out after ${ms}ms`));
-      }, ms);
-    });
-
-    try {
-      return await Promise.race([promise, timeoutPromise]);
-    } finally {
-      clearTimeout(timeoutId!);
-    }
-  };
-
   const updateStatus = async (status: DraftStatus) => {
     if (loadingStatus) return;
 
-    console.log("🔵 Starting status update", { status, rowId: row.id });
-
-    // optimistic UI
     setOptimisticStatus(status);
     setLoadingStatus(status);
 
@@ -511,14 +549,7 @@ function StatusButtons({
       patch.rejected_at = now;
     }
 
-    console.log("📦 Patch payload:", patch);
-
     try {
-      console.log("⏱️ Starting withTimeout wrapper...");
-      
-      // Try using the REST API directly instead of the query builder
-      console.log("🔧 Attempting direct fetch to Supabase REST API...");
-      
       const supabaseUrl = 'https://yzxzpnomcarnxixhjlba.supabase.co';
       const response = await fetch(`${supabaseUrl}/rest/v1/topic_drafts?id=eq.${row.id}`, {
         method: 'PATCH',
@@ -531,53 +562,25 @@ function StatusButtons({
         body: JSON.stringify(patch)
       });
 
-      console.log("📡 Fetch response status:", response.status);
-      
       if (!response.ok) {
         const errorText = await response.text();
-        console.error("❌ Fetch error:", errorText);
         throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
-      
-      const result = await response.json();
-      console.log("✅ Direct fetch succeeded:", result);
 
-      // Only reach here if no error - success!
       toast({
         title: "Status updated",
         description: `Topic draft marked as ${status}.`,
       });
 
-      // ✅ refresh list without holding the button spinner
-      console.log("🔄 Calling onChanged to refresh list...");
       void onChanged();
     } catch (e: any) {
-      console.error("💥 Exception caught:", e);
-      console.error("Exception name:", e?.name);
-      console.error("Exception message:", e?.message);
-      
-      // Revert optimistic UI on exception
       setOptimisticStatus(row.status);
-
-      const isAbortError = e?.name === "AbortError" || e?.message?.includes("timed out");
-      
-      if (isAbortError) {
-        console.log("⏱️ Timeout exception caught");
-        toast({
-          title: "Status update timed out",
-          description: "The request took too long. Please try again.",
-          variant: "destructive",
-        });
-      } else {
-        console.error("💥 Non-timeout exception");
-        toast({
-          title: "Status update failed",
-          description: e?.message ?? String(e),
-          variant: "destructive",
-        });
-      }
+      toast({
+        title: "Status update failed",
+        description: e?.message ?? String(e),
+        variant: "destructive",
+      });
     } finally {
-      console.log("🏁 Finally block - clearing loading status");
       setLoadingStatus(null);
     }
   };
@@ -608,7 +611,7 @@ function StatusButtons({
 }
 
 function CreateQuestionDraftButton({ row, onCreated }: { row: TopicDraftRow; onCreated: () => void }) {
-  const supabase = getSupabase()!; // Call directly
+  const supabase = getSupabase()!;
   const { toast } = useToast();
   const [loading, setLoading] = React.useState(false);
 
@@ -658,6 +661,7 @@ function CreateQuestionDraftButton({ row, onCreated }: { row: TopicDraftRow; onC
 
   return (
     <Button size="sm" variant="outline" onClick={handleClick} disabled={loading}>
+      {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
       {loading ? "Creating…" : "Create Question Draft"}
     </Button>
   );
