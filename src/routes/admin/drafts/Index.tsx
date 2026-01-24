@@ -1,752 +1,908 @@
-import * as React from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { getSupabase } from "@/lib/supabaseClient";
-import { Button } from "@/components/ui/button";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { ExternalLink, Edit2, RefreshCw, Loader2 } from "lucide-react";
-import { useToast } from "@/components/ui/use-toast";
+import { ROUTES } from "@/routes/paths";
 
-type DraftStatus = "draft" | "approved" | "rejected";
+type SourceKind = "rss" | "api" | "social";
 
-type TopicDraftRow = {
+type SourceRow = {
   id: string;
-  news_item_id: string;
-  title: string;
-  summary: string | null;
-  tags: string[] | null;
-  location_label: string | null;
-  status: DraftStatus;
-  created_at: string;
-  updated_at: string;
-  approved_at: string | null;
-  rejected_at: string | null;
-  news_items?: {
-    id: string;
-    title: string;
-    url: string | null;
-    published_at: string | null;
-  } | null;
+  name: string;
+  kind: SourceKind;
+  endpoint: string;
+  country_name: string | null;
+  is_enabled: boolean;
+  last_polled_at: string | null;
+  last_status: string | null;
+  last_error: string | null;
+  success_count: number | null;
+  failure_count: number | null;
 };
 
-const STATUS_FILTERS: { value: "all" | DraftStatus; label: string }[] = [
-  { value: "all", label: "Any" },
-  { value: "draft", label: "Draft" },
-  { value: "approved", label: "Approved" },
-  { value: "rejected", label: "Rejected" },
+const adminNavItems = [
+  { label: "Sources", to: ROUTES.ADMIN_SOURCES },
+  { label: "Ingestion", to: ROUTES.ADMIN_INGESTION },
+  { label: "Drafts", to: ROUTES.ADMIN_DRAFTS },
+  { label: "Questions", to: ROUTES.ADMIN_QUESTIONS },
+  { label: "News", to: ROUTES.ADMIN_NEWS },
 ];
 
-export default function TopicDraftsPage() {
-  const supabase = getSupabase()!;
-  const { toast } = useToast();
-
-  const [rows, setRows] = React.useState<TopicDraftRow[]>([]);
-  const [loading, setLoading] = React.useState(false);
-
-  // Pipeline button states with elapsed time
-  const [clusterLoading, setClusterLoading] = React.useState(false);
-  const [clusterElapsed, setClusterElapsed] = React.useState(0);
-  const [clusterProgress, setClusterProgress] = React.useState("");
-
-  const [createDraftsLoading, setCreateDraftsLoading] = React.useState(false);
-  const [createDraftsElapsed, setCreateDraftsElapsed] = React.useState(0);
-  const [createDraftsProgress, setCreateDraftsProgress] = React.useState("");
-
-  const [statusFilter, setStatusFilter] = React.useState<"all" | DraftStatus>("all");
-  const [search, setSearch] = React.useState("");
-  const [dateFrom, setDateFrom] = React.useState("");
-  const [dateTo, setDateTo] = React.useState("");
-
-  const load = React.useCallback(async () => {
-    setLoading(true);
-
-    let q = supabase
-      .from("topic_drafts")
-      .select(
-        `
-        id,
-        news_item_id,
-        title,
-        summary,
-        tags,
-        location_label,
-        status,
-        created_at,
-        updated_at,
-        approved_at,
-        rejected_at,
-        news_items (
-          id,
-          title,
-          url,
-          published_at
-        )
-      `,
-      )
-      .order("created_at", { ascending: false })
-      .limit(200);
-
-    if (statusFilter !== "all") q = q.eq("status", statusFilter);
-    if (dateFrom) q = q.gte("created_at", dateFrom);
-    if (dateTo) q = q.lte("created_at", dateTo);
-
-    const { data, error } = await q;
-    if (error) {
-      console.error("Failed to load topic_drafts:", error);
-      toast({
-        title: "Failed to load topic drafts",
-        description: error.message,
-        variant: "destructive",
-      });
-      setRows([]);
-      setLoading(false);
-      return;
-    }
-
-    let items = (data ?? []) as TopicDraftRow[];
-    if (search.trim()) {
-      const needle = search.trim().toLowerCase();
-      items = items.filter((r) => (r.title ?? "").toLowerCase().includes(needle));
-    }
-
-    setRows(items);
-    setLoading(false);
-  }, [supabase, statusFilter, search, dateFrom, dateTo, toast]);
-
-  React.useEffect(() => {
-    load();
-  }, [load]);
-
-  // Cluster progress polling
-  const pollClusterProgress = React.useCallback(async () => {
-    const { count: clusterCount } = await supabase
-      .from("topic_clusters")
-      .select("*", { count: "exact", head: true });
-    
-    const { count: itemCount } = await supabase
-      .from("topic_cluster_items")
-      .select("*", { count: "exact", head: true });
-
-    return { clusters: clusterCount || 0, items: itemCount || 0 };
-  }, [supabase]);
-
-  // Run cluster with real-time polling
-  const runCluster = React.useCallback(async () => {
-    if (clusterLoading) return;
-    
-    setClusterLoading(true);
-    setClusterElapsed(0);
-    setClusterProgress("Starting...");
-
-    // Get initial counts
-    const initial = await pollClusterProgress();
-    
-    toast({
-      title: "Clustering started",
-      description: "Monitoring progress in real-time...",
-    });
-
-    try {
-      // Trigger the RPC (returns immediately)
-      const { error } = await supabase.rpc("run_cluster_http");
-
-      if (error) {
-        console.error("run_cluster_http error:", error);
-        toast({
-          title: "Cluster failed",
-          description: error.message ?? "Failed to trigger cluster job.",
-          variant: "destructive",
-        });
-        setClusterLoading(false);
-        return;
+function withTimeout<T>(p: Promise<T>, ms = 15000): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`Timed out after ${ms}ms`)), ms);
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
       }
-
-      // Start timer
-      const startTime = Date.now();
-      
-      // Poll for progress every 2 seconds
-      const pollInterval = setInterval(async () => {
-        const elapsed = Math.floor((Date.now() - startTime) / 1000);
-        setClusterElapsed(elapsed);
-
-        // Check progress
-        const current = await pollClusterProgress();
-        const newClusters = current.clusters - initial.clusters;
-        const newItems = current.items - initial.items;
-
-        setClusterProgress(`${newClusters} clusters, ${newItems} items`);
-
-        // Check if complete (new clusters created)
-        if (newClusters > 0) {
-          clearInterval(pollInterval);
-          setClusterLoading(false);
-          toast({
-            title: "Clustering complete! ✅",
-            description: `Created ${newClusters} clusters from ${newItems} articles in ${elapsed}s`,
-          });
-          
-          // Don't auto-refresh - wait for user to click step 2
-        }
-
-        // Timeout after 60 seconds
-        if (elapsed > 60) {
-          clearInterval(pollInterval);
-          setClusterLoading(false);
-          
-          if (newClusters === 0) {
-            toast({
-              title: "Clustering timeout",
-              description: "No clusters created after 60s. Check logs or try refreshing the page first.",
-              variant: "destructive",
-            });
-          }
-        }
-      }, 2000); // Poll every 2 seconds
-
-    } catch (e: any) {
-      console.error("runCluster exception:", e);
-      toast({
-        title: "Cluster failed",
-        description: e?.message ?? String(e),
-        variant: "destructive",
-      });
-      setClusterLoading(false);
-    }
-  }, [clusterLoading, supabase, toast, pollClusterProgress]);
-
-  // Create drafts progress polling
-  const pollCreateDraftsProgress = React.useCallback(async () => {
-    const { count } = await supabase
-      .from("topic_drafts")
-      .select("*", { count: "exact", head: true });
-    
-    return count || 0;
-  }, [supabase]);
-
-  // Run create drafts with polling
-  const runCreateDrafts = React.useCallback(async () => {
-    if (createDraftsLoading) return;
-    
-    setCreateDraftsLoading(true);
-    setCreateDraftsElapsed(0);
-    setCreateDraftsProgress("Starting...");
-
-    // Get initial count
-    const initialDrafts = await pollCreateDraftsProgress();
-    
-    toast({
-      title: "Create drafts started",
-      description: "Monitoring progress in real-time...",
-    });
-
-    try {
-      // Trigger the RPC
-      const { error } = await supabase.rpc("run_create_drafts_http");
-
-      if (error) {
-        console.error("run_create_drafts_http error:", error);
-        toast({
-          title: "Create drafts failed",
-          description: error.message ?? "Failed to trigger create drafts job.",
-          variant: "destructive",
-        });
-        setCreateDraftsLoading(false);
-        return;
-      }
-
-      // Start timer and polling
-      const startTime = Date.now();
-      
-      const pollInterval = setInterval(async () => {
-        const elapsed = Math.floor((Date.now() - startTime) / 1000);
-        setCreateDraftsElapsed(elapsed);
-
-        // Check progress
-        const currentDrafts = await pollCreateDraftsProgress();
-        const newDrafts = currentDrafts - initialDrafts;
-
-        setCreateDraftsProgress(`${newDrafts} drafts created`);
-
-        // Check if complete
-        if (newDrafts > 0) {
-          clearInterval(pollInterval);
-          setCreateDraftsLoading(false);
-          
-          toast({
-            title: "Drafts created! ✅",
-            description: `Created ${newDrafts} topic drafts in ${elapsed}s`,
-          });
-          
-          // Auto-refresh to show drafts
-          await load();
-        }
-
-        // Timeout after 45 seconds
-        if (elapsed > 45) {
-          clearInterval(pollInterval);
-          setCreateDraftsLoading(false);
-          
-          if (newDrafts === 0) {
-            toast({
-              title: "Create drafts timeout",
-              description: "No drafts created after 45s. Check if clusters exist (run step 1 first).",
-              variant: "destructive",
-            });
-          }
-        }
-      }, 2000); // Poll every 2 seconds
-
-    } catch (e: any) {
-      console.error("runCreateDrafts exception:", e);
-      toast({
-        title: "Create drafts failed",
-        description: e?.message ?? String(e),
-        variant: "destructive",
-      });
-      setCreateDraftsLoading(false);
-    }
-  }, [createDraftsLoading, supabase, toast, pollCreateDraftsProgress, load]);
-
-  return (
-    <Card className="max-w-6xl mx-auto">
-      <CardHeader className="flex items-center justify-between gap-3">
-        <CardTitle>Topic Drafts</CardTitle>
-        <div className="flex flex-wrap items-center gap-2">
-          <Input
-            placeholder="Search draft title…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-56"
-          />
-          <Input
-            type="datetime-local"
-            value={dateFrom}
-            onChange={(e) =>
-              setDateFrom(e.target.value ? new Date(e.target.value).toISOString() : "")
-            }
-            className="w-48"
-          />
-          <Input
-            type="datetime-local"
-            value={dateTo}
-            onChange={(e) =>
-              setDateTo(e.target.value ? new Date(e.target.value).toISOString() : "")
-            }
-            className="w-48"
-          />
-          <select
-            className="border rounded px-2 py-1 text-sm"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as "all" | DraftStatus)}
-          >
-            {STATUS_FILTERS.map((s) => (
-              <option key={s.value} value={s.value}>
-                {s.label}
-              </option>
-            ))}
-          </select>
-
-          {/* Pipeline buttons with real-time progress */}
-          <Button 
-            variant="outline" 
-            onClick={runCluster} 
-            disabled={clusterLoading}
-            className="min-w-[200px]"
-          >
-            {clusterLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {clusterLoading 
-              ? `Clustering... ${clusterElapsed}s (${clusterProgress})`
-              : "1. Run Cluster"}
-          </Button>
-
-          <Button 
-            variant="outline" 
-            onClick={runCreateDrafts} 
-            disabled={createDraftsLoading}
-            className="min-w-[220px]"
-          >
-            {createDraftsLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {createDraftsLoading 
-              ? `Creating... ${createDraftsElapsed}s (${createDraftsProgress})`
-              : "2. Create Topic Drafts"}
-          </Button>
-
-          <Button variant="outline" size="icon" onClick={load} title="Refresh" disabled={loading}>
-            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-          </Button>
-        </div>
-      </CardHeader>
-
-      <CardContent className="space-y-3">
-        {loading && (
-          <div className="p-4 text-sm text-muted-foreground flex items-center gap-2">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Loading…
-          </div>
-        )}
-
-        {!loading && rows.length === 0 && (
-          <div className="p-4 text-sm text-muted-foreground space-y-3">
-            <div className="font-medium">No topic drafts found.</div>
-            <div className="text-xs space-y-2 bg-slate-50 p-3 rounded border">
-              <p className="font-semibold">📋 Pipeline Instructions:</p>
-              <ol className="list-decimal list-inside space-y-1 ml-2">
-                <li><strong>Run Cluster</strong> - Groups similar articles (real-time progress shown)</li>
-                <li><strong>Create Topic Drafts</strong> - Generates drafts from clusters (real-time progress shown)</li>
-                <li><strong>Refresh</strong> - See your new drafts and review/approve them</li>
-              </ol>
-              <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
-                <p className="font-semibold text-yellow-800">💡 Tip:</p>
-                <p className="text-yellow-700">If clustering seems stuck, try refreshing the page first, then clicking "1. Run Cluster"</p>
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={runCluster} disabled={clusterLoading}>
-                {clusterLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {clusterLoading ? `Clustering... ${clusterElapsed}s` : "1. Run Cluster"}
-              </Button>
-              <Button variant="outline" onClick={runCreateDrafts} disabled={createDraftsLoading}>
-                {createDraftsLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {createDraftsLoading ? `Creating... ${createDraftsElapsed}s` : "2. Create Topic Drafts"}
-              </Button>
-              <Button variant="outline" onClick={load} disabled={loading}>
-                {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Refresh
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {rows.map((row) => (
-          <TopicDraftRowView key={row.id} row={row} onChanged={load} />
-        ))}
-      </CardContent>
-    </Card>
-  );
+    );
+  });
 }
 
-// ... rest of the component code remains exactly the same ...
-function TopicDraftRowView({ row, onChanged }: { row: TopicDraftRow; onChanged: () => void }) {
-  const sourceName = row.location_label ?? row.news_items?.title ?? "—";
-  const newsUrl = row.news_items?.url ?? null;
-  const newsTitle = row.news_items?.title ?? null;
+function StatusPill({
+  status,
+  error,
+}: {
+  status: string | null;
+  error: string | null;
+}) {
+  const raw = (status ?? "").toLowerCase().trim();
+
+  const norm =
+    raw === "ok" || raw === "success"
+      ? "done"
+      : raw === "fail" || raw === "failed"
+      ? "error"
+      : raw;
+
+  const meta = (() => {
+    switch (norm) {
+      case "":
+        return { icon: "—", text: "—", bg: "transparent", fg: "inherit" };
+
+      case "queued":
+      case "pending":
+      case "new":
+        return { icon: "🕒", text: norm, bg: "#f1f5f9", fg: "#334155" };
+
+      case "running":
+        return { icon: "🔄", text: "running", bg: "#e0f2fe", fg: "#075985" };
+
+      case "done":
+        return { icon: "✅", text: "done", bg: "#dcfce7", fg: "#166534" };
+
+      case "error":
+        return { icon: "❌", text: "error", bg: "#fee2e2", fg: "#991b1b" };
+
+      default:
+        return { icon: "⚠️", text: norm || "unknown", bg: "#fef3c7", fg: "#92400e" };
+    }
+  })();
 
   return (
-    <div className="border rounded p-4 space-y-3">
-      <div className="flex items-start justify-between gap-3">
-        <div className="space-y-1 min-w-0">
-          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            <span className="font-medium">{sourceName}</span>
-            <StatusBadge status={row.status} />
-            <span>{row.created_at ? new Date(row.created_at).toLocaleString() : "—"}</span>
-          </div>
-          <h3 className="text-lg font-semibold break-words">{row.title}</h3>
-          {row.tags && row.tags.length > 0 && (
-            <div className="flex flex-wrap gap-2 mt-1">
-              {row.tags.map((t) => (
-                <Badge key={t} variant="secondary">
-                  {t}
-                </Badge>
-              ))}
-            </div>
-          )}
-        </div>
-        <div className="flex flex-col gap-2 items-end">
-          <EditTopicDialog row={row} onSaved={onChanged} />
-          <div className="flex gap-2">
-            <CreateQuestionDraftButton row={row} onCreated={onChanged} />
-            <StatusButtons row={row} onChanged={onChanged} />
-          </div>
-        </div>
-      </div>
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+      <span
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          padding: "2px 8px",
+          borderRadius: 999,
+          background: meta.bg,
+          color: meta.fg,
+          fontSize: 12,
+          fontWeight: 600,
+          lineHeight: 1.6,
+          whiteSpace: "nowrap",
+        }}
+        title={error ? `Error: ${error}` : meta.text}
+      >
+        <span>{meta.icon}</span>
+        <span>{meta.text}</span>
+      </span>
 
-      {row.summary && <p className="text-sm whitespace-pre-wrap">{row.summary}</p>}
-
-      {newsUrl && (
-        <a
-          href={newsUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center gap-1 text-sm text-blue-600 underline"
+      {error ? (
+        <span
+          title={error}
+          style={{ marginLeft: 2, color: "#b00", cursor: "help" }}
         >
-          View article <ExternalLink className="h-3 w-3" />
-        </a>
-      )}
-      {newsTitle && (
-        <div className="text-xs text-muted-foreground mt-1 line-clamp-2">Article: {newsTitle}</div>
-      )}
-    </div>
-  );
-}
-
-function StatusBadge({ status }: { status: DraftStatus }) {
-  let cls = "";
-  let label = "";
-
-  switch (status) {
-    case "draft":
-      cls = "bg-slate-100 text-slate-700";
-      label = "Draft";
-      break;
-    case "approved":
-      cls = "bg-emerald-100 text-emerald-700";
-      label = "Approved";
-      break;
-    case "rejected":
-      cls = "bg-rose-100 text-rose-700";
-      label = "Rejected";
-      break;
-  }
-
-  return (
-    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${cls}`}>
-      {label}
+          ⓘ
+        </span>
+      ) : null}
     </span>
   );
 }
 
-function EditTopicDialog({ row, onSaved }: { row: TopicDraftRow; onSaved: () => void }) {
+export default function AdminSourcesIndex() {
   const supabase = getSupabase()!;
-  const { toast } = useToast();
+  const location = useLocation();
 
-  const [open, setOpen] = React.useState(false);
-  const [title, setTitle] = React.useState(row.title);
-  const [summary, setSummary] = React.useState(row.summary ?? "");
-  const [tags, setTags] = React.useState((row.tags ?? []).join(", "));
-  const [location, setLocation] = React.useState(row.location_label ?? "");
-  const [saving, setSaving] = React.useState(false);
+  const [rows, setRows] = useState<SourceRow[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [err, setErr] = useState<string | null>(null);
 
-  const save = async () => {
-    if (saving) return;
-    setSaving(true);
+  const [kind, setKind] = useState<"all" | SourceKind>("all");
+  const [enabled, setEnabled] = useState<"all" | "on" | "off">("all");
+  const [q, setQ] = useState<string>("");
 
-    const patch: any = { title, summary };
-    if (tags.trim()) patch.tags = tags.split(",").map((t) => t.trim());
-    if (location.trim()) patch.location_label = location.trim();
+  const [editing, setEditing] = useState<Partial<SourceRow> | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [saving, setSaving] = useState<boolean>(false);
 
-    const { error } = await supabase.from("topic_drafts").update(patch).eq("id", row.id);
+  // NEW: Multi-select state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [runningAll, setRunningAll] = useState<boolean>(false);
+  const [runProgress, setRunProgress] = useState<string>("");
 
-    if (error) {
-      toast({
-        title: "Failed to update draft",
-        description: error.message,
-        variant: "destructive",
-      });
-      setSaving(false);
-      return;
-    }
-
-    toast({
-      title: "Draft updated",
-      description: "Topic draft saved successfully.",
-    });
-
-    setOpen(false);
-    setSaving(false);
-    onSaved();
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="outline" size="sm">
-          <Edit2 className="h-4 w-4 mr-1" /> Edit
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="max-w-xl">
-        <DialogHeader>
-          <DialogTitle>Edit Topic Draft</DialogTitle>
-        </DialogHeader>
-        <div className="grid gap-3">
-          <div>
-            <Label>Title</Label>
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Topic title" />
-          </div>
-          <div>
-            <Label>Summary</Label>
-            <Textarea
-              rows={4}
-              value={summary}
-              onChange={(e) => setSummary(e.target.value)}
-              placeholder="Short topic summary used to generate questions."
-            />
-          </div>
-          <div>
-            <Label>Tags (comma-separated)</Label>
-            <Input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="politics, local, zoning" />
-          </div>
-          <div>
-            <Label>Location label</Label>
-            <Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="e.g., New Jersey" />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button onClick={save} disabled={saving}>
-            {saving ? "Saving…" : "Save"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+  const headers = useMemo(
+    () => [
+      "", // Checkbox column
+      "Name",
+      "Kind",
+      "Country",
+      "Endpoint",
+      "Enabled",
+      "Success",
+      "Failure",
+      "Last Status",
+      "Last Run",
+      "Actions",
+    ],
+    []
   );
-}
 
-function StatusButtons({
-  row,
-  onChanged,
-}: {
-  row: TopicDraftRow;
-  onChanged: () => void;
-}) {
-  const supabase = getSupabase()!;
-  const { toast } = useToast();
+  function mapHealthToRow(r: any): SourceRow {
+    return {
+      id: r.id,
+      name: r.name ?? "",
+      kind: (r.kind ?? "rss") as SourceKind,
+      endpoint: r.endpoint ?? "",
+      country_name: r.country_name ?? null,
+      is_enabled: !!r.is_enabled,
+      last_polled_at: r.last_polled_at ?? r.last_run_at ?? null,
+      last_status: r.last_status ?? null,
+      last_error: r.last_error ?? null,
+      success_count: r.success_count ?? null,
+      failure_count: r.failure_count ?? null,
+    };
+  }
 
-  const [loadingStatus, setLoadingStatus] = React.useState<DraftStatus | null>(null);
-  const [optimisticStatus, setOptimisticStatus] = React.useState<DraftStatus>(row.status);
+  function mapTopicSourcesToRow(r: any): SourceRow {
+    return {
+      id: r.id,
+      name: r.name ?? "",
+      kind: (r.kind as SourceKind) ?? "rss",
+      endpoint: r.endpoint ?? r.url ?? "",
+      country_name: r.country_name ?? null,
+      is_enabled: !!(r.is_enabled ?? r.enabled ?? true),
+      last_polled_at: r.last_polled_at ?? r.last_run_at ?? null,
+      last_status: r.last_status ?? null,
+      last_error: r.last_error ?? null,
+      success_count: r.success_count ?? null,
+      failure_count: r.failure_count ?? null,
+    };
+  }
 
-  React.useEffect(() => {
-    setOptimisticStatus(row.status);
-  }, [row.status]);
-
-  const updateStatus = async (status: DraftStatus) => {
-    if (loadingStatus) return;
-
-    setOptimisticStatus(status);
-    setLoadingStatus(status);
-
-    const now = new Date().toISOString();
-    
-    const patch: any = { status };
-    if (status === "approved") {
-      patch.approved_at = now;
-      patch.rejected_at = null;
-    } else if (status === "rejected") {
-      patch.rejected_at = now;
-    }
-
-    try {
-      const supabaseUrl = 'https://yzxzpnomcarnxixhjlba.supabase.co';
-      const response = await fetch(`${supabaseUrl}/rest/v1/topic_drafts?id=eq.${row.id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': supabase['supabaseKey'] || '',
-          'Authorization': `Bearer ${supabase['supabaseKey'] || ''}`,
-          'Prefer': 'return=representation'
-        },
-        body: JSON.stringify(patch)
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
-      }
-
-      toast({
-        title: "Status updated",
-        description: `Topic draft marked as ${status}.`,
-      });
-
-      void onChanged();
-    } catch (e: any) {
-      setOptimisticStatus(row.status);
-      toast({
-        title: "Status update failed",
-        description: e?.message ?? String(e),
-        variant: "destructive",
-      });
-    } finally {
-      setLoadingStatus(null);
-    }
-  };
-
-  const effectiveStatus = optimisticStatus;
-
-  return (
-    <div className="flex gap-2">
-      <Button
-        size="sm"
-        variant="outline"
-        onClick={() => updateStatus("approved")}
-        disabled={effectiveStatus === "approved" || loadingStatus === "approved"}
-      >
-        {loadingStatus === "approved" ? "Approving…" : effectiveStatus === "approved" ? "Approved" : "Approve"}
-      </Button>
-
-      <Button
-        size="sm"
-        variant="outline"
-        onClick={() => updateStatus("rejected")}
-        disabled={effectiveStatus === "rejected" || loadingStatus === "rejected"}
-      >
-        {loadingStatus === "rejected" ? "Rejecting…" : effectiveStatus === "rejected" ? "Rejected" : "Reject"}
-      </Button>
-    </div>
-  );
-}
-
-function CreateQuestionDraftButton({ row, onCreated }: { row: TopicDraftRow; onCreated: () => void }) {
-  const supabase = getSupabase()!;
-  const { toast } = useToast();
-  const [loading, setLoading] = React.useState(false);
-
-  const handleClick = async () => {
-    if (loading) return;
+  async function fetchRows() {
     setLoading(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("admin-create-question-draft", {
-        body: { topic_draft_id: row.id },
-      });
+    setErr(null);
 
-      if (error) {
-        console.error("admin-create-question-draft error:", error);
-        toast({
-          title: "Failed to create question draft",
-          description: error.message ?? "Edge function returned an error.",
-          variant: "destructive",
+    try {
+      const [healthRes, srcRes] = await Promise.all([
+        supabase
+          .from("v_source_health")
+          .select("*")
+          .order("is_enabled", { ascending: false })
+          .order("last_polled_at", { ascending: false }),
+        supabase
+          .from("topic_sources")
+          .select("id,name,kind,endpoint,country_name,is_enabled")
+          .order("name", { ascending: true }),
+      ]);
+
+      const { data: healthData, error: healthError } = healthRes;
+      const { data: srcData, error: srcError } = srcRes;
+
+      if (srcError) throw srcError;
+
+      const srcById = new Map<string, any>();
+      (srcData ?? []).forEach((s: any) => srcById.set(s.id, s));
+
+      if (!healthError && healthData) {
+        const merged: SourceRow[] = (healthData as any[]).map((h) => {
+          const s = srcById.get(h.id);
+          const base = mapHealthToRow(h);
+
+          return {
+            ...base,
+            name: base.name || (s?.name ?? ""),
+            kind: (base.kind || s?.kind || "rss") as SourceKind,
+            endpoint: base.endpoint || (s?.endpoint ?? ""),
+            country_name: base.country_name ?? (s?.country_name ?? null),
+            is_enabled:
+              typeof h.is_enabled === "boolean" ? h.is_enabled : !!s?.is_enabled,
+          };
         });
+
+        setRows(merged);
         return;
       }
 
-      const payload: any = data ?? {};
-      if (!payload?.ok) {
-        toast({
-          title: "Question draft not created",
-          description: "The function completed but did not return ok=true. Check logs.",
-          variant: "destructive",
-        });
-      } else {
-        toast({
-          title: "Question draft created",
-          description: "A question draft was generated from this topic.",
-        });
-        onCreated();
-      }
+      setRows((srcData ?? []).map(mapTopicSourcesToRow));
     } catch (e: any) {
-      console.error("admin-create-question-draft exception:", e);
-      toast({
-        title: "Question draft creation failed",
-        description: e?.message ?? String(e),
-        variant: "destructive",
-      });
+      setErr(e?.message ?? "Failed to load sources");
     } finally {
       setLoading(false);
     }
-  };
+  }
+
+  useEffect(() => {
+    fetchRows();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (editing) setSaving(false);
+  }, [editing]);
+
+  const filtered = useMemo(() => {
+    return rows.filter((r) => {
+      if (kind !== "all" && r.kind !== kind) return false;
+      if (enabled === "on" && !r.is_enabled) return false;
+      if (enabled === "off" && r.is_enabled) return false;
+      if (q) {
+        const qq = q.toLowerCase();
+        const hay = `${r.name} ${r.endpoint} ${r.country_name ?? ""}`.toLowerCase();
+        if (!hay.includes(qq)) return false;
+      }
+      return true;
+    });
+  }, [rows, kind, enabled, q]);
+
+  // NEW: Toggle individual checkbox
+  function toggleSelection(id: string) {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
+  // NEW: Toggle all checkboxes
+  function toggleSelectAll() {
+    if (selectedIds.size === filtered.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filtered.map(r => r.id)));
+    }
+  }
+
+  // NEW: Run all selected sources
+  async function runAllSelected() {
+    if (selectedIds.size === 0) {
+      alert("No sources selected");
+      return;
+    }
+
+    if (!confirm(`Run ${selectedIds.size} selected source(s)?`)) {
+      return;
+    }
+
+    setRunningAll(true);
+    setRunProgress("");
+
+    const selectedSources = filtered.filter(r => selectedIds.has(r.id));
+    let completed = 0;
+    const results: { name: string; success: boolean; error?: string }[] = [];
+
+    for (const source of selectedSources) {
+      completed++;
+      setRunProgress(`Running ${completed}/${selectedSources.length}: ${source.name}...`);
+
+      try {
+        // Try Edge Function first
+        try {
+          const { data, error } = await withTimeout(
+            supabase.functions.invoke("ingest", {
+              body: { source_id: source.id },
+            }),
+            15000
+          );
+
+          if (error) throw error;
+          results.push({ name: source.name, success: true });
+          continue;
+        } catch (edgeErr: any) {
+          console.warn(`Edge ingest failed for ${source.name}, trying RPC`, edgeErr);
+        }
+
+        // Fallback to RPC
+        const { error: rpcError } = await withTimeout(
+          supabase.rpc("admin_ingest_source", { p_source_id: source.id }),
+          15000
+        );
+
+        if (rpcError) {
+          throw rpcError;
+        }
+
+        results.push({ name: source.name, success: true });
+      } catch (e: any) {
+        results.push({ 
+          name: source.name, 
+          success: false, 
+          error: e?.message || String(e) 
+        });
+      }
+    }
+
+    setRunningAll(false);
+    setRunProgress("");
+
+    // Show results
+    const successCount = results.filter(r => r.success).length;
+    const failCount = results.filter(r => !r.success).length;
+    
+    let message = `Completed: ${successCount} succeeded, ${failCount} failed\n\n`;
+    
+    if (failCount > 0) {
+      message += "Failed sources:\n";
+      results
+        .filter(r => !r.success)
+        .forEach(r => {
+          message += `- ${r.name}: ${r.error}\n`;
+        });
+    }
+
+    alert(message);
+    
+    // Clear selection and refresh
+    setSelectedIds(new Set());
+    fetchRows();
+  }
+
+  async function openEdit(row: SourceRow) {
+    setErr(null);
+    setBusyId(row.id);
+
+    try {
+      const { data, error } = await supabase
+        .from("topic_sources")
+        .select("id,name,kind,endpoint,country_name,is_enabled")
+        .eq("id", row.id)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      const canonical = data ?? {
+        id: row.id,
+        name: row.name,
+        kind: row.kind,
+        endpoint: row.endpoint,
+        country_name: row.country_name,
+        is_enabled: row.is_enabled,
+      };
+
+      setEditing({
+        id: canonical.id,
+        name: canonical.name ?? "",
+        kind: (canonical.kind as SourceKind) ?? "rss",
+        endpoint: canonical.endpoint ?? "",
+        country_name: canonical.country_name ?? "",
+        is_enabled: canonical.is_enabled ?? true,
+      });
+    } catch (e: any) {
+      alert(`Failed to open edit: ${e?.message ?? e}`);
+      setEditing({
+        id: row.id,
+        name: row.name ?? "",
+        kind: row.kind ?? "rss",
+        endpoint: row.endpoint ?? "",
+        country_name: row.country_name ?? "",
+        is_enabled: row.is_enabled ?? true,
+      });
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function onToggle(row: SourceRow, checked: boolean) {
+    setBusyId(row.id);
+    const { error } = await supabase
+      .from("topic_sources")
+      .update({ is_enabled: checked })
+      .eq("id", row.id);
+    setBusyId(null);
+    if (error) {
+      alert(`Toggle failed: ${error.message}`);
+      return;
+    }
+    void fetchRows();
+  }
+
+  async function onRun(row: SourceRow) {
+    setBusyId(row.id);
+    setErr(null);
+
+    try {
+      // Try Edge Function first
+      try {
+        const { data, error } = await withTimeout(
+          supabase.functions.invoke("ingest", {
+            body: { source_id: row.id },
+          }),
+          15000
+        );
+
+        if (error) throw error;
+
+        const statusLine =
+          typeof (data as any)?.status !== "undefined" ? `Status: ${(data as any).status}` : "";
+        const traceLine = (data as any)?.traceId ? `Trace: ${(data as any).traceId}` : "";
+
+        alert(
+          `Triggered ingest for "${row.name}".\n${[statusLine, traceLine]
+            .filter(Boolean)
+            .join("\n")}`
+        );
+
+        void fetchRows();
+        return;
+      } catch (edgeErr: any) {
+        console.warn("Edge ingest failed; falling back to RPC admin_ingest_source", edgeErr);
+      }
+
+      // Attempt B: RPC admin_ingest_source(p_source_id uuid)
+      const { data: rpcData, error: rpcError } = await withTimeout(
+        supabase.rpc("admin_ingest_source", { p_source_id: row.id }),
+        15000
+      );
+
+      if (rpcError) {
+        throw rpcError;
+      }
+
+      alert(`Triggered ingest for "${row.name}" via admin_ingest_source().`);
+      void fetchRows();
+      return;
+    } catch (e: any) {
+      alert(`Run failed: ${e?.message || e}`);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function onSave(draft: Partial<SourceRow>) {
+    if (saving) return;
+
+    const missing: string[] = [];
+    if (!draft.name?.trim()) missing.push("name");
+    if (!draft.kind) missing.push("kind");
+    if (!draft.endpoint?.trim()) missing.push("endpoint");
+    if (missing.length) {
+      alert(`Please provide: ${missing.join(", ")}`);
+      return;
+    }
+
+    setSaving(true);
+    setErr(null);
+
+    const countryName =
+      draft.country_name && draft.country_name.trim().length > 0
+        ? draft.country_name.trim()
+        : null;
+
+    try {
+      if (draft.id) {
+        const p = supabase
+          .from("topic_sources")
+          .update({
+            name: draft.name!.trim(),
+            endpoint: draft.endpoint!.trim(),
+            kind: draft.kind,
+            country_name: countryName,
+            is_enabled: draft.is_enabled ?? true,
+          })
+          .eq("id", draft.id);
+
+        const { error } = await withTimeout(p, 15000);
+        if (error) throw error;
+      } else {
+        const p = supabase.from("topic_sources").insert({
+          name: draft.name!.trim(),
+          endpoint: draft.endpoint!.trim(),
+          kind: draft.kind,
+          country_name: countryName,
+          is_enabled: draft.is_enabled ?? true,
+        });
+
+        const { error } = await withTimeout(p, 15000);
+        if (error) throw error;
+      }
+
+      setEditing(null);
+      void fetchRows();
+    } catch (e: any) {
+      alert(`Save failed: ${e?.message ?? e}`);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onDelete(row: SourceRow) {
+    if (!confirm(`Delete source "${row.name}"?`)) return;
+    setBusyId(row.id);
+    const { error } = await supabase.from("topic_sources").delete().eq("id", row.id);
+    setBusyId(null);
+    if (error) return alert(`Delete failed: ${error.message}`);
+    fetchRows();
+  }
+
+  const allChecked = filtered.length > 0 && selectedIds.size === filtered.length;
+  const someChecked = selectedIds.size > 0 && selectedIds.size < filtered.length;
 
   return (
-    <Button size="sm" variant="outline" onClick={handleClick} disabled={loading}>
-      {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-      {loading ? "Creating…" : "Create Question Draft"}
-    </Button>
+    <div style={{ padding: 16 }}>
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 8,
+          marginBottom: 12,
+          borderBottom: "1px solid #e2e8f0",
+          paddingBottom: 8,
+        }}
+      >
+        {adminNavItems.map((item, idx) => {
+          const active = location.pathname === item.to;
+          return (
+            <Link
+              key={`${item.to}-${idx}`}
+              to={item.to}
+              style={{
+                padding: "6px 10px",
+                borderRadius: 999,
+                fontSize: 13,
+                textDecoration: "none",
+                border: active ? "1px solid #1d4ed8" : "1px solid transparent",
+                backgroundColor: active ? "#e0edff" : "transparent",
+                color: active ? "#1d4ed8" : "#334155",
+              }}
+            >
+              {item.label}
+            </Link>
+          );
+        })}
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          justifyContent: "space-between",
+          flexWrap: "wrap",
+        }}
+      >
+        <h1 style={{ margin: 0 }}>Sources</h1>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          {/* NEW: Run All Selected button */}
+          {selectedIds.size > 0 && (
+            <button
+              onClick={runAllSelected}
+              disabled={runningAll}
+              style={{
+                padding: "8px 16px",
+                background: "#1d4ed8",
+                color: "white",
+                border: "none",
+                borderRadius: 6,
+                fontWeight: 600,
+                cursor: runningAll ? "not-allowed" : "pointer",
+                opacity: runningAll ? 0.6 : 1,
+              }}
+            >
+              {runningAll 
+                ? `⏳ ${runProgress}` 
+                : `▶️ Run ${selectedIds.size} Selected`}
+            </button>
+          )}
+          
+          <select value={kind} onChange={(e) => setKind(e.target.value as any)}>
+            <option value="all">All kinds</option>
+            <option value="rss">rss</option>
+            <option value="api">api</option>
+            <option value="social">social</option>
+          </select>
+          <select value={enabled} onChange={(e) => setEnabled(e.target.value as any)}>
+            <option value="all">All</option>
+            <option value="on">Enabled</option>
+            <option value="off">Disabled</option>
+          </select>
+          <input
+            placeholder="Search name, endpoint, or country…"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            style={{ minWidth: 240 }}
+          />
+          <button
+            onClick={() =>
+              setEditing({
+                kind: "rss",
+                is_enabled: true,
+                country_name: "",
+              } as Partial<SourceRow>)
+            }
+          >
+            + New
+          </button>
+        </div>
+      </div>
+
+      {err && <p style={{ color: "crimson", marginTop: 8 }}>Error: {err}</p>}
+
+      {loading ? (
+        <p style={{ marginTop: 12 }}>Loading…</p>
+      ) : (
+        <div style={{ marginTop: 12, overflowX: "auto" }}>
+          <table width="100%" cellPadding={8} style={{ borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ textAlign: "left", borderBottom: "1px solid #ddd" }}>
+                {headers.map((h, idx) => (
+                  <th
+                    key={idx === 0 ? "checkbox" : h}
+                    style={h === "Actions" ? { textAlign: "right" } : undefined}
+                  >
+                    {idx === 0 ? (
+                      <input
+                        type="checkbox"
+                        checked={allChecked}
+                        ref={input => {
+                          if (input) {
+                            input.indeterminate = someChecked;
+                          }
+                        }}
+                        onChange={toggleSelectAll}
+                        title="Select all"
+                      />
+                    ) : h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((r) => {
+                const isSelected = selectedIds.has(r.id);
+                
+                const cells: React.ReactNode[] = [
+                  <td key="checkbox">
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleSelection(r.id)}
+                      disabled={busyId === r.id || runningAll}
+                    />
+                  </td>,
+                  <td
+                    key="name"
+                    style={{
+                      maxWidth: 260,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {r.name}
+                  </td>,
+                  <td key="kind">{r.kind}</td>,
+                  <td key="country">{r.country_name ?? "—"}</td>,
+                  <td
+                    key="endpoint"
+                    style={{
+                      maxWidth: 420,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                    title={r.endpoint}
+                  >
+                    {r.endpoint}
+                  </td>,
+                  <td key="enabled">
+                    <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                      <input
+                        type="checkbox"
+                        checked={!!r.is_enabled}
+                        disabled={busyId === r.id || runningAll}
+                        onChange={(e) => onToggle(r, e.target.checked)}
+                      />
+                      {r.is_enabled ? "On" : "Off"}
+                    </label>
+                  </td>,
+                  <td key="success">{r.success_count ?? 0}</td>,
+                  <td key="failure">{r.failure_count ?? 0}</td>,
+                  <td key="status">
+                    <StatusPill status={r.last_status} error={r.last_error} />
+                  </td>,
+                  <td key="lastrun">
+                    {r.last_polled_at ? new Date(r.last_polled_at).toLocaleString() : "—"}
+                  </td>,
+                  <td key="actions" style={{ textAlign: "right" }}>
+                    <div style={{ display: "inline-flex", gap: 8 }}>
+                      <button 
+                        disabled={busyId === r.id || runningAll} 
+                        onClick={() => openEdit(r)}
+                      >
+                        Edit
+                      </button>
+                      <button 
+                        disabled={busyId === r.id || runningAll} 
+                        onClick={() => onRun(r)}
+                      >
+                        Run
+                      </button>
+                      <button
+                        disabled={busyId === r.id || runningAll}
+                        onClick={() => onDelete(r)}
+                        style={{ color: "#b00" }}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </td>,
+                ];
+
+                return (
+                  <tr 
+                    key={r.id} 
+                    style={{ 
+                      borderBottom: "1px solid #eee",
+                      background: isSelected ? "#eff6ff" : "transparent"
+                    }}
+                  >
+                    {cells}
+                  </tr>
+                );
+              })}
+
+              {!filtered.length ? (
+                <tr>
+                  <td
+                    colSpan={11}
+                    style={{ padding: 24, textAlign: "center", color: "#666" }}
+                  >
+                    No sources found.
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {editing ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,.35)",
+            display: "grid",
+            placeItems: "center",
+            padding: 16,
+          }}
+          onClick={() => setEditing(null)}
+        >
+          <div
+            style={{
+              background: "white",
+              minWidth: 420,
+              maxWidth: 640,
+              padding: 16,
+              borderRadius: 12,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 style={{ marginTop: 0 }}>{editing.id ? "Edit source" : "New source"}</h3>
+
+            <div style={{ display: "grid", gap: 12 }}>
+              <label>
+                <div>Name</div>
+                <input
+                  value={editing.name ?? ""}
+                  onChange={(e) => setEditing({ ...editing, name: e.target.value })}
+                  placeholder="e.g., BBC World RSS"
+                  style={{ width: "100%" }}
+                  disabled={saving}
+                />
+              </label>
+
+              <label>
+                <div>Kind</div>
+                <select
+                  value={(editing.kind as SourceKind) ?? "rss"}
+                  onChange={(e) =>
+                    setEditing({ ...editing, kind: e.target.value as SourceKind })
+                  }
+                  style={{ width: "100%" }}
+                  disabled={saving}
+                >
+                  <option value="rss">rss</option>
+                  <option value="api">api</option>
+                  <option value="social">social</option>
+                </select>
+              </label>
+
+              <label>
+                <div>Country Name</div>
+                <input
+                  value={editing.country_name ?? ""}
+                  onChange={(e) =>
+                    setEditing({ ...editing, country_name: e.target.value })
+                  }
+                  placeholder="e.g., United States"
+                  style={{ width: "100%" }}
+                  disabled={saving}
+                />
+              </label>
+
+              <label>
+                <div>Endpoint (URL or identifier)</div>
+                <input
+                  value={editing.endpoint ?? ""}
+                  onChange={(e) =>
+                    setEditing({ ...editing, endpoint: e.target.value })
+                  }
+                  placeholder="https://..."
+                  style={{ width: "100%" }}
+                  disabled={saving}
+                />
+              </label>
+
+              <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <input
+                  type="checkbox"
+                  checked={!!editing.is_enabled}
+                  onChange={(e) =>
+                    setEditing({ ...editing, is_enabled: e.target.checked })
+                  }
+                  disabled={saving}
+                />
+                <span>Enabled</span>
+              </label>
+            </div>
+
+            <div
+              style={{
+                marginTop: 16,
+                display: "flex",
+                gap: 8,
+                justifyContent: "flex-end",
+              }}
+            >
+              <button onClick={() => setEditing(null)} disabled={saving}>
+                Cancel
+              </button>
+              <button
+                onClick={() => onSave(editing)}
+                disabled={saving}
+                style={{ fontWeight: 600 }}
+              >
+                {saving ? "Saving…" : editing.id ? "Update" : "Create"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }
