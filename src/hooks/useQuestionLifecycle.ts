@@ -92,10 +92,11 @@ export function useTrendingQuestions(limit = 10) {
     queryKey: ['questions', 'trending', limit],
     queryFn: async () => {
       const { data, error } = await supabase
-        .rpc('get_trending_questions', {
-          p_limit: limit,
-          p_state_filter: ['new', 'active'],
-        });
+        .rpc('get_trending_questions_v3', {  // ✅ NEW
+  p_user_id: null,
+  p_location_tier: 'global',
+  p_limit: limit,
+});
       
       if (error) throw error;
       return data as TrendingQuestion[];
