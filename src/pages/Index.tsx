@@ -1,6 +1,6 @@
 // src/pages/Index.tsx
 // HOMEPAGE V2 (section-owned layout)
-// - Trending Now (Country first + Global) + optional Global Breaking banner
+// - Trending Topics (Country first + Global) + optional Global Breaking banner
 // - Today’s 5 Questions (inline stance slider)
 // - Because you engaged with...
 // - Reopened Questions for You (phase-aware)
@@ -44,6 +44,7 @@ type RegionRow = {
   county_label: string | null;
   state_label: string | null;
   country_label: string | null;
+  global_label?: string | null;
 };
 
 // Matches all_schemas.sql signature (get_personalized_feed)
@@ -77,6 +78,27 @@ type ThreeTierFeedRow = {
   location_label: string | null;
   composite_score: number | null;
   tier_position: number | null;
+};
+
+// Matches get_trending_questions_homepage signature (homepage trending questions)
+type TrendingHomepageQuestionRow = {
+  question_id: string;
+  question_text: string;
+  topic_id: string;
+  topic_title: string | null;
+
+  region_scope: string;
+  region_key: string;
+
+  stance_momentum: number | null;
+  topic_momentum: number | null;
+  lifecycle_modifier: number | null;
+  trend_score: number | null;
+
+  trend_micro_signal: "breaking" | "gaining" | "stable" | string;
+
+  user_has_answered: boolean | null;
+  user_stance_value: number | null;
 };
 
 type QuestionMetaRow = {
@@ -360,6 +382,50 @@ function TopicCard({
   );
 }
 
+
+// ---------- Location id resolution (for topic_region_trends.location_id) ----------
+// Your topic_region_trends is keyed by location_id (uuid). Homepage Trending Questions RPC needs it.
+// We resolve a location id from a human label using a best-effort lookup, with env fallbacks.
+const NIL_UUID = "00000000-0000-0000-0000-000000000000";
+
+async function resolveLocationIdByLabel(
+  sb: ReturnType<typeof getSupabase> | null,
+  label: string | null | undefined,
+  fallbackEnvKey?: string
+): Promise<string | null> {
+  if (!label) return (fallbackEnvKey ? (import.meta as any).env?.[fallbackEnvKey] ?? null : null);
+
+  const envFallback =
+    fallbackEnvKey && (import.meta as any).env?.[fallbackEnvKey]
+      ? ((import.meta as any).env[fallbackEnvKey] as string)
+      : null;
+
+  if (!sb) return envFallback;
+
+  // Try common table/view names in your project. We only need "id" by matching a label/name field.
+  const candidates = [
+    { table: "locations", fields: ["label", "name", "title"] },
+    { table: "location_dimensions", fields: ["label", "name", "title"] },
+    { table: "locations_dim", fields: ["label", "name", "title"] },
+  ];
+
+  for (const c of candidates) {
+    for (const f of c.fields) {
+      try {
+        const { data, error } = await sb
+          .from(c.table)
+          .select("id")
+          .eq(f, label)
+          .maybeSingle<{ id: string }>();
+        if (!error && data?.id) return data.id;
+      } catch {
+        // keep trying
+      }
+    }
+  }
+
+  return envFallback;
+}
 function WireframeTrendingCarousel({
   topics,
   onAnswer,
@@ -536,6 +602,60 @@ function GlobalBreakingBanner({
 }
 
 // Question row: left text, right slider
+
+function TrendingQuestionCard({
+  row,
+  onOpen,
+}: {
+  row: TrendingHomepageQuestionRow;
+  onOpen: (questionId: string) => void;
+}) {
+  const answered = !!row.user_has_answered;
+  const signal = (row.trend_micro_signal || "").toString();
+  const signalLabel =
+    signal === "breaking" ? "Breaking" : signal === "stable" ? "Stable" : "Gaining";
+
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(row.question_id)}
+      className={[
+        "w-full text-left rounded-lg border bg-white p-3 hover:bg-slate-50 transition",
+        answered ? "opacity-80" : "",
+      ].join(" ")}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-sm font-medium text-slate-900 line-clamp-2">
+            {row.question_text}
+          </div>
+          <div className="mt-1 text-[11px] text-slate-600 line-clamp-1">
+            {row.topic_title ? row.topic_title : "Topic"}
+          </div>
+        </div>
+
+        <div className="flex flex-col items-end gap-1 shrink-0">
+          <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] text-slate-700">
+            {signalLabel}
+          </span>
+          <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] text-slate-700">
+            {row.region_scope === "national"
+              ? row.region_key
+              : row.region_scope === "global"
+              ? "Global"
+              : row.region_key}
+          </span>
+          {answered ? (
+            <span className="inline-flex items-center rounded-full bg-slate-900 px-2 py-0.5 text-[10px] text-white">
+              Answered
+            </span>
+          ) : null}
+        </div>
+      </div>
+    </button>
+  );
+}
+
 function QuestionRow({
   questionId,
   question,
@@ -766,7 +886,7 @@ export default function IndexPage() {
       if (!sb || !userId) return null;
       const { data, error } = await sb
         .from("user_region_dimensions")
-        .select("user_id, city_label, county_label, state_label, country_label")
+        .select("user_id, city_label, county_label, state_label, country_label, global_label")
         .eq("user_id", userId)
         .maybeSingle<RegionRow>();
       if (error) {
@@ -779,6 +899,65 @@ export default function IndexPage() {
   });
 
   const countryLabel = myRegion?.country_label ?? "Country";
+  const globalLabel = (myRegion as any)?.global_label ?? "Global";
+
+  // Resolve location_id needed by get_trending_questions_homepage (topic_region_trends.location_id)
+  const { data: countryLocationId } = useQuery({
+    enabled: !!sb && !!countryLabel,
+    queryKey: ["location-id", "country", countryLabel],
+    queryFn: async () =>
+      resolveLocationIdByLabel(sb, countryLabel, "VITE_COUNTRY_LOCATION_ID"),
+    staleTime: 60_000,
+  });
+
+  const { data: globalLocationId } = useQuery({
+    enabled: !!sb,
+    queryKey: ["location-id", "global", globalLabel],
+    queryFn: async () =>
+      resolveLocationIdByLabel(sb, globalLabel, "VITE_GLOBAL_LOCATION_ID"),
+    staleTime: 60_000,
+  });
+
+  // Trending Questions (new composite RPC)
+  const effectiveUserId = userId ?? NIL_UUID;
+
+  const trendingQuestionsCountryQuery = useQuery({
+    enabled: !!sb && !!userId && !!countryLocationId,
+    queryKey: ["trending-questions", "country", userId, countryLabel, countryLocationId],
+    queryFn: async () => {
+      const { data, error } = await sb!.rpc("get_trending_questions_homepage", {
+        p_user_id: effectiveUserId,
+        p_region_scope: "national",
+        p_region_key: countryLabel,
+        p_location_id: countryLocationId,
+        p_limit: 10,
+      });
+      if (error) throw error;
+      return (data ?? []) as TrendingHomepageQuestionRow[];
+    },
+    staleTime: 30_000,
+  });
+
+  const trendingQuestionsGlobalQuery = useQuery({
+    enabled: !!sb && !!userId && !!globalLocationId,
+    queryKey: ["trending-questions", "global", userId, globalLabel, globalLocationId],
+    queryFn: async () => {
+      const { data, error } = await sb!.rpc("get_trending_questions_homepage", {
+        p_user_id: effectiveUserId,
+        p_region_scope: "global",
+        p_region_key: globalLabel,
+        p_location_id: globalLocationId,
+        p_limit: 10,
+      });
+      if (error) throw error;
+      return (data ?? []) as TrendingHomepageQuestionRow[];
+    },
+    staleTime: 30_000,
+  });
+
+  const countryTrendingQuestions = trendingQuestionsCountryQuery.data ?? [];
+  const globalTrendingQuestions = trendingQuestionsGlobalQuery.data ?? [];
+
 
   const showLocationNudge =
     isAuthed &&
@@ -1128,7 +1307,86 @@ export default function IndexPage() {
           <GlobalBreakingBanner headline={globalBreaking} onOpen={openTopic} />
         ) : null}
 
-        {/* Trending Now */}
+        
+        {/* Trending Questions */}
+        <div className="rounded-lg border bg-white p-4 shadow-sm">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-base font-semibold text-slate-900">
+                Trending Questions
+              </h3>
+              <p className="mt-0.5 text-xs text-slate-600">
+                A balanced blend of what’s happening in your region and in the
+                world — with answered status preserved.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="text-xs text-slate-600 hover:text-slate-900"
+              onClick={() => navigate("/feed/trending")}
+            >
+              See all →
+            </button>
+          </div>
+
+          {!isAuthed ? (
+            <div className="mt-3 rounded-md border bg-slate-50 p-3 text-sm text-slate-700">
+              Sign in to see your Trending Questions and keep “answered”
+              continuity across the app.
+            </div>
+          ) : (
+            <div className="mt-3">
+              <Tabs defaultValue="country" className="w-full">
+                <TabsList className="mb-3 w-full sm:w-auto">
+                  <TabsTrigger value="country" className="flex-1 sm:flex-initial">
+                    {countryLabel}
+                  </TabsTrigger>
+                  <TabsTrigger value="global" className="flex-1 sm:flex-initial">
+                    Global
+                  </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="country" className="mt-0">
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {(countryTrendingQuestions.length ? countryTrendingQuestions : []).slice(0, 9).map((r) => (
+                      <TrendingQuestionCard
+                        key={r.question_id}
+                        row={r}
+                        onOpen={goToQuestion}
+                      />
+                    ))}
+                  </div>
+
+                  {!trendingQuestionsCountryQuery.isLoading && countryTrendingQuestions.length === 0 ? (
+                    <div className="mt-3 text-sm text-slate-600">
+                      No trending questions found right now.
+                    </div>
+                  ) : null}
+                </TabsContent>
+
+                <TabsContent value="global" className="mt-0">
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {(globalTrendingQuestions.length ? globalTrendingQuestions : []).slice(0, 9).map((r) => (
+                      <TrendingQuestionCard
+                        key={r.question_id}
+                        row={r}
+                        onOpen={goToQuestion}
+                      />
+                    ))}
+                  </div>
+
+                  {!trendingQuestionsGlobalQuery.isLoading && globalTrendingQuestions.length === 0 ? (
+                    <div className="mt-3 text-sm text-slate-600">
+                      No trending questions found right now.
+                    </div>
+                  ) : null}
+                </TabsContent>
+              </Tabs>
+            </div>
+          )}
+        </div>
+
+{/* Trending Topics */}
         <div className="rounded-lg border bg-white p-4 shadow-sm">
           <div className="flex items-start justify-between gap-3">
             <div>
@@ -1136,7 +1394,7 @@ export default function IndexPage() {
                 Trending Now
               </h3>
               <p className="mt-0.5 text-xs text-slate-600">
-                Country-first, with Global alongside.
+                Discover trending topics (Country-first, with Global alongside).
               </p>
             </div>
             <button
