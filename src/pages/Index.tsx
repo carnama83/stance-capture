@@ -901,63 +901,64 @@ export default function IndexPage() {
   // ========== Trending Questions Section (Database-Driven Location IDs) ==========
   // Get location IDs from the database using the hook
   const {
-  globalId: GLOBAL_LOCATION_ID,
-  countryId: COUNTRY_LOCATION_ID,
-  isLoading: locationIdsLoading,
-  isError: locationIdsError,
-} = useGlobalAndCountryIds(countryLabel);
+    globalId: GLOBAL_LOCATION_ID,
+    countryId: COUNTRY_LOCATION_ID,
+    isLoading: locationIdsLoading,
+    isError: locationIdsError,
+  } = useGlobalAndCountryIds(countryLabel);
 
-// Check if we can fetch trending questions
-const canTrendingNational = 
-  !!sb && 
-  !!userId && 
-  !!countryLabel && 
-  !!COUNTRY_LOCATION_ID && 
-  !locationIdsLoading;
+  // Check if we can fetch trending questions
+  const canTrendingNational = 
+    !!sb && 
+    !!userId && 
+    !!countryLabel && 
+    !!COUNTRY_LOCATION_ID && 
+    !locationIdsLoading;
 
-const canTrendingGlobal = 
-  !!sb && 
-  !!userId && 
-  !!GLOBAL_LOCATION_ID && 
-  !locationIdsLoading;
+  const canTrendingGlobal = 
+    !!sb && 
+    !!userId && 
+    !!GLOBAL_LOCATION_ID && 
+    !locationIdsLoading;
 
-const trendingQuestionsNationalQuery = useQuery({
-  enabled: canTrendingNational,
-  queryKey: ["home-trending-questions", "national", userId, countryLabel, COUNTRY_LOCATION_ID],
-  queryFn: async () => {
-    const { data, error } = await sb!.rpc("get_trending_questions_homepage", {
-      p_user_id: userId,
-      p_region_scope: "national",
-      p_region_key: countryLabel,
-      p_location_id: COUNTRY_LOCATION_ID,
-      p_limit: 10,
-    });
-    if (error) throw error;
-    return (data ?? []) as TrendingHomepageQuestionRow[];
-  },
-  staleTime: 30_000,
-});
+  const trendingQuestionsNationalQuery = useQuery({
+    enabled: canTrendingNational,
+    queryKey: ["home-trending-questions", "national", userId, countryLabel, COUNTRY_LOCATION_ID],
+    queryFn: async () => {
+      const { data, error } = await sb!.rpc("get_trending_questions_homepage", {
+        p_user_id: userId,
+        p_region_scope: "national",
+        p_region_key: countryLabel,
+        p_location_id: COUNTRY_LOCATION_ID,
+        p_limit: 10,
+      });
+      if (error) throw error;
+      return (data ?? []) as TrendingHomepageQuestionRow[];
+    },
+    staleTime: 30_000,
+  });
 
-const trendingQuestionsGlobalQuery = useQuery({
-  enabled: canTrendingGlobal,
-  queryKey: ["home-trending-questions", "global", userId, GLOBAL_LOCATION_ID],
-  queryFn: async () => {
-    const { data, error } = await sb!.rpc("get_trending_questions_homepage", {
-      p_user_id: userId,
-      p_region_scope: "global",
-      p_region_key: globalLabel,
-      p_location_id: GLOBAL_LOCATION_ID,
-      p_limit: 10,
-    });
-    if (error) throw error;
-    return (data ?? []) as TrendingHomepageQuestionRow[];
-  },
-  staleTime: 30_000,
-});
+  const trendingQuestionsGlobalQuery = useQuery({
+    enabled: canTrendingGlobal,
+    queryKey: ["home-trending-questions", "global", userId, GLOBAL_LOCATION_ID],
+    queryFn: async () => {
+      const { data, error } = await sb!.rpc("get_trending_questions_homepage", {
+        p_user_id: userId,
+        p_region_scope: "global",
+        p_region_key: globalLabel,
+        p_location_id: GLOBAL_LOCATION_ID,
+        p_limit: 10,
+      });
+      if (error) throw error;
+      return (data ?? []) as TrendingHomepageQuestionRow[];
+    },
+    staleTime: 30_000,
+  });
 
   const trendingQuestionsNational = trendingQuestionsNationalQuery.data ?? [];
   const trendingQuestionsGlobal = trendingQuestionsGlobalQuery.data ?? [];
   // ========== END Trending Questions Section ==========
+
 
   // Trending
   const trendingQuery = useQuery({
