@@ -1299,178 +1299,174 @@ export default function IndexPage() {
           <GlobalBreakingBanner headline={globalBreaking} onOpen={openTopic} />
         ) : null}
 
-        
-// src/pages/Index.tsx - REFACTORED JSX SECTION
-// Replace lines 1267-1370 with this improved version
+        {/* Trending Questions Section */}
+        <section className="mt-6">
+          <div className="flex items-end justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900">
+                Trending Questions
+              </h2>
+              <div className="text-xs text-slate-600">
+                Questions gaining momentum in your region and globally.
+              </div>
+            </div>
+            {!isAuthed ? (
+              <button
+                type="button"
+                className="rounded border px-3 py-1.5 text-sm hover:bg-slate-50"
+                onClick={() => navigate("/login")}
+              >
+                Log in to personalize
+              </button>
+            ) : null}
+          </div>
 
-{/* Trending Questions Section - REFACTORED */}
-<section className="mt-6">
-  <div className="flex items-end justify-between gap-3">
-    <div>
-      <h2 className="text-lg font-semibold text-slate-900">
-        Trending Questions
-      </h2>
-      <div className="text-xs text-slate-600">
-        Questions gaining momentum in your region and globally.
-      </div>
-    </div>
-    {!isAuthed ? (
-      <button
-        type="button"
-        className="rounded border px-3 py-1.5 text-sm hover:bg-slate-50"
-        onClick={() => navigate("/login")}
-      >
-        Log in to personalize
-      </button>
-    ) : null}
-  </div>
+          {/* Loading State */}
+          {isAuthed && locationIdsLoading ? (
+            <div className="mt-3 rounded-lg border bg-slate-50 px-4 py-3">
+              <div className="flex items-center gap-2">
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600"></div>
+                <span className="text-sm text-slate-600">Loading trending questions...</span>
+              </div>
+            </div>
+          ) : null}
 
-  {/* Loading State */}
-  {isAuthed && locationIdsLoading ? (
-    <div className="mt-3 rounded-lg border bg-slate-50 px-4 py-3">
-      <div className="flex items-center gap-2">
-        <div className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600"></div>
-        <span className="text-sm text-slate-600">Loading trending questions...</span>
-      </div>
-    </div>
-  ) : null}
+          {/* Error State - Location Service Error */}
+          {isAuthed && locationIdsError && !locationIdsLoading ? (
+            <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3">
+              <p className="text-sm font-medium text-rose-900">Unable to load location data</p>
+              <p className="mt-1 text-xs text-rose-700">
+                We're having trouble connecting to the location service. Please try refreshing the page.
+              </p>
+            </div>
+          ) : null}
 
-  {/* Error State - Location Service Error */}
-  {isAuthed && locationIdsError && !locationIdsLoading ? (
-    <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3">
-      <p className="text-sm font-medium text-rose-900">Unable to load location data</p>
-      <p className="mt-1 text-xs text-rose-700">
-        We're having trouble connecting to the location service. Please try refreshing the page.
-      </p>
-    </div>
-  ) : null}
+          {/* Warning - Missing Location Configuration */}
+          {isAuthed && !locationIdsLoading && !locationIdsError && (!COUNTRY_LOCATION_ID || !GLOBAL_LOCATION_ID) ? (
+            <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+              <p className="text-sm font-medium text-amber-900">Location configuration needed</p>
+              <p className="mt-1 text-xs text-amber-700">
+                {!countryLabel 
+                  ? "Please set your location in your profile to see regional trending questions."
+                  : "We're still setting up location data. Global trending will be available soon."
+                }
+              </p>
+              {!countryLabel && (
+                <button
+                  type="button"
+                  onClick={() => navigate("/settings/location")}
+                  className="mt-2 rounded border border-amber-600 bg-amber-600 px-3 py-1.5 text-xs text-white hover:bg-amber-700"
+                >
+                  Update Location Settings
+                </button>
+              )}
+            </div>
+          ) : null}
 
-  {/* Warning - Missing Location Configuration */}
-  {isAuthed && !locationIdsLoading && !locationIdsError && (!COUNTRY_LOCATION_ID || !GLOBAL_LOCATION_ID) ? (
-    <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-      <p className="text-sm font-medium text-amber-900">Location configuration needed</p>
-      <p className="mt-1 text-xs text-amber-700">
-        {!countryLabel 
-          ? "Please set your location in your profile to see regional trending questions."
-          : "We're still setting up location data. Global trending will be available soon."
-        }
-      </p>
-      {!countryLabel && (
-        <button
-          type="button"
-          onClick={() => navigate("/settings/location")}
-          className="mt-2 rounded border border-amber-600 bg-amber-600 px-3 py-1.5 text-xs text-white hover:bg-amber-700"
-        >
-          Update Location Settings
-        </button>
-      )}
-    </div>
-  ) : null}
+          {/* Tabs - Only show when data is ready */}
+          {isAuthed && !locationIdsLoading && (COUNTRY_LOCATION_ID || GLOBAL_LOCATION_ID) ? (
+            <div className="mt-3">
+              <Tabs defaultValue={COUNTRY_LOCATION_ID ? "national" : "global"}>
+                <TabsList>
+                  {COUNTRY_LOCATION_ID && (
+                    <TabsTrigger value="national">
+                      {countryLabel ?? "National"}
+                    </TabsTrigger>
+                  )}
+                  {GLOBAL_LOCATION_ID && (
+                    <TabsTrigger value="global">Global</TabsTrigger>
+                  )}
+                </TabsList>
 
-  {/* Tabs - Only show when data is ready */}
-  {isAuthed && !locationIdsLoading && (COUNTRY_LOCATION_ID || GLOBAL_LOCATION_ID) ? (
-    <div className="mt-3">
-      <Tabs defaultValue={COUNTRY_LOCATION_ID ? "national" : "global"}>
-        <TabsList>
-          {COUNTRY_LOCATION_ID && (
-            <TabsTrigger value="national">
-              {countryLabel ?? "National"}
-            </TabsTrigger>
-          )}
-          {GLOBAL_LOCATION_ID && (
-            <TabsTrigger value="global">Global</TabsTrigger>
-          )}
-        </TabsList>
+                {/* National Tab */}
+                {COUNTRY_LOCATION_ID && (
+                  <TabsContent value="national" className="mt-3">
+                    {trendingQuestionsNationalQuery.isLoading ? (
+                      <div className="space-y-3">
+                        {[1, 2, 3].map((i) => (
+                          <div key={i} className="animate-pulse rounded-lg border bg-slate-50 p-4">
+                            <div className="h-4 bg-slate-200 rounded w-3/4 mb-2"></div>
+                            <div className="h-3 bg-slate-200 rounded w-1/2"></div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : trendingQuestionsNationalQuery.isError ? (
+                      <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3">
+                        <p className="text-sm text-rose-700">
+                          Failed to load national trending questions. Please try again later.
+                        </p>
+                      </div>
+                    ) : trendingQuestionsNational.length ? (
+                      <div className="grid grid-cols-1 gap-3">
+                        {trendingQuestionsNational.map((row) => (
+                          <TrendingQuestionCard
+                            key={row.question_id}
+                            row={row}
+                            onAnswer={(qid) => {
+                              window.location.hash = `#/q/${qid}`;
+                            }}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="rounded-lg border border-dashed bg-slate-50 px-4 py-8 text-center">
+                        <p className="text-sm text-slate-600">
+                          No trending questions in {countryLabel} right now.
+                        </p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          Check back soon or explore global trending topics.
+                        </p>
+                      </div>
+                    )}
+                  </TabsContent>
+                )}
 
-        {/* National Tab */}
-        {COUNTRY_LOCATION_ID && (
-          <TabsContent value="national" className="mt-3">
-            {trendingQuestionsNationalQuery.isLoading ? (
-              <div className="space-y-3">
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="animate-pulse rounded-lg border bg-slate-50 p-4">
-                    <div className="h-4 bg-slate-200 rounded w-3/4 mb-2"></div>
-                    <div className="h-3 bg-slate-200 rounded w-1/2"></div>
-                  </div>
-                ))}
-              </div>
-            ) : trendingQuestionsNationalQuery.isError ? (
-              <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3">
-                <p className="text-sm text-rose-700">
-                  Failed to load national trending questions. Please try again later.
-                </p>
-              </div>
-            ) : trendingQuestionsNational.length ? (
-              <div className="grid grid-cols-1 gap-3">
-                {trendingQuestionsNational.map((row) => (
-                  <TrendingQuestionCard
-                    key={row.question_id}
-                    row={row}
-                    onAnswer={(qid) => {
-                      window.location.hash = `#/q/${qid}`;
-                    }}
-                  />
-                ))}
-              </div>
-            ) : (
-              <div className="rounded-lg border border-dashed bg-slate-50 px-4 py-8 text-center">
-                <p className="text-sm text-slate-600">
-                  No trending questions in {countryLabel} right now.
-                </p>
-                <p className="mt-1 text-xs text-slate-500">
-                  Check back soon or explore global trending topics.
-                </p>
-              </div>
-            )}
-          </TabsContent>
-        )}
-
-        {/* Global Tab */}
-        {GLOBAL_LOCATION_ID && (
-          <TabsContent value="global" className="mt-3">
-            {trendingQuestionsGlobalQuery.isLoading ? (
-              <div className="space-y-3">
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="animate-pulse rounded-lg border bg-slate-50 p-4">
-                    <div className="h-4 bg-slate-200 rounded w-3/4 mb-2"></div>
-                    <div className="h-3 bg-slate-200 rounded w-1/2"></div>
-                  </div>
-                ))}
-              </div>
-            ) : trendingQuestionsGlobalQuery.isError ? (
-              <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3">
-                <p className="text-sm text-rose-700">
-                  Failed to load global trending questions. Please try again later.
-                </p>
-              </div>
-            ) : trendingQuestionsGlobal.length ? (
-              <div className="grid grid-cols-1 gap-3">
-                {trendingQuestionsGlobal.map((row) => (
-                  <TrendingQuestionCard
-                    key={row.question_id}
-                    row={row}
-                    onAnswer={(qid) => {
-                      window.location.hash = `#/q/${qid}`;
-                    }}
-                  />
-                ))}
-              </div>
-            ) : (
-              <div className="rounded-lg border border-dashed bg-slate-50 px-4 py-8 text-center">
-                <p className="text-sm text-slate-600">
-                  No globally trending questions right now.
-                </p>
-                <p className="mt-1 text-xs text-slate-500">
-                  Check back soon for breaking topics.
-                </p>
-              </div>
-            )}
-          </TabsContent>
-        )}
-      </Tabs>
-    </div>
-  ) : null}
-</section>
+                {/* Global Tab */}
+                {GLOBAL_LOCATION_ID && (
+                  <TabsContent value="global" className="mt-3">
+                    {trendingQuestionsGlobalQuery.isLoading ? (
+                      <div className="space-y-3">
+                        {[1, 2, 3].map((i) => (
+                          <div key={i} className="animate-pulse rounded-lg border bg-slate-50 p-4">
+                            <div className="h-4 bg-slate-200 rounded w-3/4 mb-2"></div>
+                            <div className="h-3 bg-slate-200 rounded w-1/2"></div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : trendingQuestionsGlobalQuery.isError ? (
+                      <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3">
+                        <p className="text-sm text-rose-700">
+                          Failed to load global trending questions. Please try again later.
+                        </p>
+                      </div>
+                    ) : trendingQuestionsGlobal.length ? (
+                      <div className="grid grid-cols-1 gap-3">
+                        {trendingQuestionsGlobal.map((row) => (
+                          <TrendingQuestionCard
+                            key={row.question_id}
+                            row={row}
+                            onAnswer={(qid) => {
+                              window.location.hash = `#/q/${qid}`;
+                            }}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="rounded-lg border border-dashed bg-slate-50 px-4 py-8 text-center">
+                        <p className="text-sm text-slate-600">
+                          No globally trending questions right now.
+                        </p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          Check back soon for breaking topics.
+                        </p>
+                      </div>
+                    )}
+                  </TabsContent>
+                )}
+              </Tabs>
+            </div>
+          ) : null}
+        </section>
 
 
 {/* Trending Now */}
