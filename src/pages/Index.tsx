@@ -11,7 +11,7 @@
 // - set_question_stance
 // - record_question_view
 // - get_three_tier_curated_feed_v2
-// - get_personalized_trending_topics (fallback to vw_topics_trending)
+// - get_personalized_trending_topics (fallback to topic_region_trends_v)
 
 import * as React from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -122,7 +122,10 @@ function useSupabaseSession() {
 
 // ---------- Source aliasing ----------
 const SOURCE_ALIAS: Record<string, string> = {
-  topics_trending: "vw_topics_trending",
+  // Legacy aliases kept for safety across environments.
+  // The canonical public view for homepage trending topics is now:
+  //   public.topic_region_trends_v
+  topics_trending: "topic_region_trends_v",
 };
 
 // ---------- Generic fetch utility ----------
@@ -199,8 +202,13 @@ async function fetchTrendingTopics(
   }
 
   return fetchFromSource<Topic>(sb, {
-    sourceCandidates: ["vw_topics_trending", "topics_trending"],
-    defaultSource: "vw_topics_trending",
+    // Canonical view first; keep old names as fallbacks for older DB snapshots.
+    sourceCandidates: [
+      "topic_region_trends_v",
+      "vw_topics_trending",
+      "topics_trending",
+    ],
+    defaultSource: "topic_region_trends_v",
     select: baseSelect,
     order: [
       { column: "trending_score", ascending: false },
