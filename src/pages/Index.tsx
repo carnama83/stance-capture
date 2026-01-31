@@ -105,6 +105,28 @@ type RelatedQuestionRow = {
   state: string;
 };
 
+// Matches get_trending_questions_homepage RPC output
+type TrendingHomepageQuestionRow = {
+  question_id: string;
+  question_text: string;
+  question: string;
+  summary: string | null;
+  tags: string[] | null;
+  topic_id: string | null;
+  topic_title: string | null;
+  composite_score: number | null;
+  response_count: number | null;
+  trending_score: number | null;
+  tier: string | null;
+  location_label: string | null;
+  is_trending: boolean | null;
+  user_has_answered: boolean | null;
+  trend_score: number | null;
+  stance_momentum: number | null;
+  topic_momentum: number | null;
+  trend_micro_signal: string | null;
+};
+
 // ---------- Session hook ----------
 function useSupabaseSession() {
   const sb = React.useMemo(getSupabase, []);
@@ -876,18 +898,9 @@ export default function IndexPage() {
     !myRegion.country_label &&
     !myRegion.county_label;
 
-// src/pages/Index.tsx - REFACTORED SECTION
-// Replace lines 877-924 with this code
-
-import { useGlobalAndCountryIds } from '@/hooks/useLocationIds';
-
-// ... (keep all existing code above) ...
-
-// ========== REFACTORED: Trending Questions Section ==========
-// Remove the old environment variable approach and use the hook instead
-
-// Get location IDs from the database using the hook
-const {
+  // ========== Trending Questions Section (Database-Driven Location IDs) ==========
+  // Get location IDs from the database using the hook
+  const {
   globalId: GLOBAL_LOCATION_ID,
   countryId: COUNTRY_LOCATION_ID,
   isLoading: locationIdsLoading,
@@ -942,10 +955,9 @@ const trendingQuestionsGlobalQuery = useQuery({
   staleTime: 30_000,
 });
 
-const trendingQuestionsNational = trendingQuestionsNationalQuery.data ?? [];
-const trendingQuestionsGlobal = trendingQuestionsGlobalQuery.data ?? [];
-
-// ========== END REFACTORED SECTION ==========
+  const trendingQuestionsNational = trendingQuestionsNationalQuery.data ?? [];
+  const trendingQuestionsGlobal = trendingQuestionsGlobalQuery.data ?? [];
+  // ========== END Trending Questions Section ==========
 
   // Trending
   const trendingQuery = useQuery({
