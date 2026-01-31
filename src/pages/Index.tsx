@@ -23,6 +23,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getSupabase } from "@/lib/supabaseClient";
 import { QuestionStanceSlider } from "@/components/question/QuestionStanceSlider";
 
+import { useGlobalAndCountryIds } from '@/hooks/useLocationIds';
+
 // ---------- Types ----------
 type Session = import("@supabase/supabase-js").Session;
 
