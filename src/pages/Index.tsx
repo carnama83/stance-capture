@@ -874,20 +874,41 @@ export default function IndexPage() {
     !myRegion.country_label &&
     !myRegion.county_label;
 
-// Trending Questions (new homepage RPC)
-const COUNTRY_LOCATION_ID = (import.meta as any).env?.VITE_COUNTRY_LOCATION_ID as
-  | string
-  | undefined;
-const GLOBAL_LOCATION_ID = (import.meta as any).env?.VITE_GLOBAL_LOCATION_ID as
-  | string
-  | undefined;
+// src/pages/Index.tsx - REFACTORED SECTION
+// Replace lines 877-924 with this code
 
-const canTrendingNational = !!sb && !!userId && !!countryLabel && !!COUNTRY_LOCATION_ID;
-const canTrendingGlobal = !!sb && !!userId && !!GLOBAL_LOCATION_ID;
+import { useGlobalAndCountryIds } from '@/hooks/useLocationIds';
+
+// ... (keep all existing code above) ...
+
+// ========== REFACTORED: Trending Questions Section ==========
+// Remove the old environment variable approach and use the hook instead
+
+// Get location IDs from the database using the hook
+const {
+  globalId: GLOBAL_LOCATION_ID,
+  countryId: COUNTRY_LOCATION_ID,
+  isLoading: locationIdsLoading,
+  isError: locationIdsError,
+} = useGlobalAndCountryIds(countryLabel);
+
+// Check if we can fetch trending questions
+const canTrendingNational = 
+  !!sb && 
+  !!userId && 
+  !!countryLabel && 
+  !!COUNTRY_LOCATION_ID && 
+  !locationIdsLoading;
+
+const canTrendingGlobal = 
+  !!sb && 
+  !!userId && 
+  !!GLOBAL_LOCATION_ID && 
+  !locationIdsLoading;
 
 const trendingQuestionsNationalQuery = useQuery({
   enabled: canTrendingNational,
-  queryKey: ["home-trending-questions", "national", userId, countryLabel],
+  queryKey: ["home-trending-questions", "national", userId, countryLabel, COUNTRY_LOCATION_ID],
   queryFn: async () => {
     const { data, error } = await sb!.rpc("get_trending_questions_homepage", {
       p_user_id: userId,
@@ -904,7 +925,7 @@ const trendingQuestionsNationalQuery = useQuery({
 
 const trendingQuestionsGlobalQuery = useQuery({
   enabled: canTrendingGlobal,
-  queryKey: ["home-trending-questions", "global", userId],
+  queryKey: ["home-trending-questions", "global", userId, GLOBAL_LOCATION_ID],
   queryFn: async () => {
     const { data, error } = await sb!.rpc("get_trending_questions_homepage", {
       p_user_id: userId,
@@ -922,6 +943,7 @@ const trendingQuestionsGlobalQuery = useQuery({
 const trendingQuestionsNational = trendingQuestionsNationalQuery.data ?? [];
 const trendingQuestionsGlobal = trendingQuestionsGlobalQuery.data ?? [];
 
+// ========== END REFACTORED SECTION ==========
 
   // Trending
   const trendingQuery = useQuery({
