@@ -29,6 +29,7 @@ export default function AdminNewsIndex() {
   const [to, setTo] = useState<string>("");
 
   const [processing, setProcessing] = useState(false);
+  const [populating, setPopulating] = useState(false);
   const [creatingDraftId, setCreatingDraftId] = useState<string | null>(null);
 
   // load sources (id + name) for dropdown
@@ -116,7 +117,6 @@ export default function AdminNewsIndex() {
         window.alert(
           `Worker processed ${wb.done ?? 0} jobs (${wb.failed ?? 0} failed).`
         );
-        // Refresh the table so new news_items show up
         await load();
       }
     } catch (err) {
@@ -127,79 +127,86 @@ export default function AdminNewsIndex() {
     }
   }
 
-  // NEW: create topic draft for a news item
-  // async function handleCreateTopicDraft(newsItemId: string) {
-  //   setCreatingDraftId(newsItemId);
-  //   try {
-  //     const { data, error } = await sb.functions.invoke(
-  //       "admin-create-topic-draft",
-  //       {
-  //         body: { news_item_id: newsItemId },
-  //       }
-  //     );
+  // NEW: populate news_items from ingestion_queue via RPC
+  async function handlePopulateNewsItems() {
+    setPopulating(true);
+    try {
+      const { data, error } = await sb.rpc(
+        "populate_news_items_from_ingestion_queue",
+        { p_days: 7, p_limit: 500 }
+      );
 
-  //     if (error) {
-  //       console.error("admin-create-topic-draft error:", error);
-  //       window.alert("Failed to create topic draft.");
-  //       return;
-  //     }
+      if (error) {
+        console.error("populate_news_items_from_ingestion_queue error:", error);
+        window.alert(`Populate failed: ${error.message}`);
+        return;
+      }
 
-  //     const draft = (data as any)?.draft;
-  //     if (!draft) {
-  //       window.alert("No draft returned from server.");
-  //       return;
-  //     }
-
-  //     window.alert(`Created topic draft:\n${draft.title}`);
-  //     // You could also navigate to /admin/drafts or just leave it as is
-  //   } catch (err) {
-  //     console.error("Unexpected error calling admin-create-topic-draft:", err);
-  //     window.alert("Unexpected error while creating topic draft.");
-  //   } finally {
-  //     setCreatingDraftId(null);
-  //   }
-  // }
-async function handleCreateTopicDraft(newsItemId: string) {
-  setCreatingDraftId(newsItemId);
-  try {
-    const { data, error } = await sb.functions.invoke(
-      "admin-create-topic-draft",
-      { body: { news_item_id: newsItemId } }
-    );
-
-    if (error) {
-      console.error("admin-create-topic-draft error:", error);
-      alert(`Function error: ${error.message}`);
-      return;
+      const inserted = (data as any)?.inserted ?? 0;
+      window.alert(`Populate complete. Inserted: ${inserted}`);
+      await load();
+    } catch (err) {
+      console.error("Unexpected error populating news_items:", err);
+      window.alert("Unexpected error while populating news items.");
+    } finally {
+      setPopulating(false);
     }
-
-    const draft = (data as any)?.draft;
-    if (!draft) {
-      alert("No draft returned from server.");
-      return;
-    }
-
-    alert(`Created topic draft:\n${draft.title}`);
-  } catch (err) {
-    console.error("Unexpected error calling admin-create-topic-draft:", err);
-    alert("Unexpected error while creating topic draft.");
-  } finally {
-    setCreatingDraftId(null);
   }
-}
+
+  async function handleCreateTopicDraft(newsItemId: string) {
+    setCreatingDraftId(newsItemId);
+    try {
+      const { data, error } = await sb.functions.invoke(
+        "admin-create-topic-draft",
+        { body: { news_item_id: newsItemId } }
+      );
+
+      if (error) {
+        console.error("admin-create-topic-draft error:", error);
+        alert(`Function error: ${error.message}`);
+        return;
+      }
+
+      const draft = (data as any)?.draft;
+      if (!draft) {
+        alert("No draft returned from server.");
+        return;
+      }
+
+      alert(`Created topic draft:\n${draft.title}`);
+    } catch (err) {
+      console.error("Unexpected error calling admin-create-topic-draft:", err);
+      alert("Unexpected error while creating topic draft.");
+    } finally {
+      setCreatingDraftId(null);
+    }
+  }
 
   return (
     <div className="p-4 space-y-4">
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-xl font-semibold">News Items</h1>
-        <button
-          type="button"
-          onClick={handleProcessNow}
-          className="inline-flex items-center rounded-lg border px-3 py-2 text-sm font-medium shadow-sm disabled:opacity-60"
-          disabled={processing}
-        >
-          {processing ? "Processing…" : "Process now"}
-        </button>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handlePopulateNewsItems}
+            className="inline-flex items-center rounded-lg border px-3 py-2 text-sm font-medium shadow-sm disabled:opacity-60"
+            disabled={populating}
+            title="Copies recent ingestion_queue rows into news_items (deduped by url)"
+          >
+            {populating ? "Populating…" : "Populate news items"}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleProcessNow}
+            className="inline-flex items-center rounded-lg border px-3 py-2 text-sm font-medium shadow-sm disabled:opacity-60"
+            disabled={processing}
+          >
+            {processing ? "Processing…" : "Process now"}
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
