@@ -233,89 +233,104 @@ export default function TopicDraftsPage() {
     return count || 0;
   }, [supabase]);
 
-  // Run create drafts with polling
-  const runCreateDrafts = React.useCallback(async () => {
-    if (createDraftsLoading) return;
-    
-    setCreateDraftsLoading(true);
-    setCreateDraftsElapsed(0);
-    setCreateDraftsProgress("Starting...");
+ 
+// Run create drafts with polling (FIXED: timer starts immediately, not after RPC returns)
+const runCreateDrafts = React.useCallback(async () => {
+  if (createDraftsLoading) return;
 
-    // Get initial count
-    const initialDrafts = await pollCreateDraftsProgress();
-    
-    toast({
-      title: "Create drafts started",
-      description: "Monitoring progress in real-time...",
-    });
+  setCreateDraftsLoading(true);
+  setCreateDraftsElapsed(0);
+  setCreateDraftsProgress("Starting...");
 
-    try {
-      // Trigger the RPC
-      const { error } = await supabase.rpc("run_create_drafts_http");
+  // Get initial count (safe even if job takes long)
+  const initialDrafts = await pollCreateDraftsProgress();
 
-      if (error) {
-        console.error("run_create_drafts_http error:", error);
-        toast({
-          title: "Create drafts failed",
-          description: error.message ?? "Failed to trigger create drafts job.",
-          variant: "destructive",
-        });
+  toast({
+    title: "Create drafts started",
+    description: "Monitoring progress in real-time...",
+  });
+
+  const startTime = Date.now();
+  let pollInterval: number | undefined;
+
+  try {
+    // ✅ Start polling immediately (so UI never sits at 0s)
+    pollInterval = window.setInterval(async () => {
+      const elapsed = Math.floor((Date.now() - startTime) / 1000);
+      setCreateDraftsElapsed(elapsed);
+
+      const currentDrafts = await pollCreateDraftsProgress();
+      const newDrafts = currentDrafts - initialDrafts;
+
+      setCreateDraftsProgress(`${newDrafts} drafts created`);
+
+      // If we see new drafts, consider the run successful and stop polling
+      if (newDrafts > 0) {
+        if (pollInterval) window.clearInterval(pollInterval);
+        pollInterval = undefined;
+
         setCreateDraftsLoading(false);
-        return;
+
+        toast({
+          title: "Drafts created! ✅",
+          description: `Created ${newDrafts} topic drafts in ${elapsed}s`,
+        });
+
+        await load();
       }
 
-      // Start timer and polling
-      const startTime = Date.now();
-      
-      const pollInterval = setInterval(async () => {
-        const elapsed = Math.floor((Date.now() - startTime) / 1000);
-        setCreateDraftsElapsed(elapsed);
+      // Timeout after 45 seconds (same behavior as you had)
+      if (elapsed > 45) {
+        if (pollInterval) window.clearInterval(pollInterval);
+        pollInterval = undefined;
 
-        // Check progress
-        const currentDrafts = await pollCreateDraftsProgress();
-        const newDrafts = currentDrafts - initialDrafts;
+        setCreateDraftsLoading(false);
 
-        setCreateDraftsProgress(`${newDrafts} drafts created`);
-
-        // Check if complete
-        if (newDrafts > 0) {
-          clearInterval(pollInterval);
-          setCreateDraftsLoading(false);
-          
+        if (newDrafts === 0) {
           toast({
-            title: "Drafts created! ✅",
-            description: `Created ${newDrafts} topic drafts in ${elapsed}s`,
+            title: "Create drafts timeout",
+            description:
+              "No drafts created after 45s. The job may still be running. Try Refresh, or check logs.",
+            variant: "destructive",
           });
-          
-          // Auto-refresh to show drafts
-          await load();
         }
+      }
+    }, 2000);
 
-        // Timeout after 45 seconds
-        if (elapsed > 45) {
-          clearInterval(pollInterval);
-          setCreateDraftsLoading(false);
-          
-          if (newDrafts === 0) {
-            toast({
-              title: "Create drafts timeout",
-              description: "No drafts created after 45s. Check if clusters exist (run step 1 first).",
-              variant: "destructive",
-            });
-          }
-        }
-      }, 2000); // Poll every 2 seconds
+    // ✅ Trigger RPC AFTER polling starts
+    const { error } = await supabase.rpc("run_create_drafts_http");
 
-    } catch (e: any) {
-      console.error("runCreateDrafts exception:", e);
+    if (error) {
+      console.error("run_create_drafts_http error:", error);
+
+      // stop polling on trigger failure
+      if (pollInterval) window.clearInterval(pollInterval);
+      pollInterval = undefined;
+
       toast({
         title: "Create drafts failed",
-        description: e?.message ?? String(e),
+        description: error.message ?? "Failed to trigger create drafts job.",
         variant: "destructive",
       });
+
       setCreateDraftsLoading(false);
+      return;
     }
-  }, [createDraftsLoading, supabase, toast, pollCreateDraftsProgress, load]);
+  } catch (e: any) {
+    console.error("runCreateDrafts exception:", e);
+
+    if (pollInterval) window.clearInterval(pollInterval);
+    pollInterval = undefined;
+
+    toast({
+      title: "Create drafts failed",
+      description: e?.message ?? String(e),
+      variant: "destructive",
+    });
+
+    setCreateDraftsLoading(false);
+  }
+}, [createDraftsLoading, supabase, toast, pollCreateDraftsProgress, load]);
 
   return (
     <Card className="max-w-6xl mx-auto">
