@@ -234,7 +234,6 @@ export default function TopicDraftsPage() {
   }, [supabase]);
 
  
-// Run create drafts with polling (FIXED: timer starts immediately, not after RPC returns)
 const runCreateDrafts = React.useCallback(async () => {
   if (createDraftsLoading) return;
 
@@ -242,8 +241,13 @@ const runCreateDrafts = React.useCallback(async () => {
   setCreateDraftsElapsed(0);
   setCreateDraftsProgress("Starting...");
 
-  // Get initial count (safe even if job takes long)
-  const initialDrafts = await pollCreateDraftsProgress();
+  // Get initial count (doesn't block the timer)
+  let initialDrafts = 0;
+  try {
+    initialDrafts = await pollCreateDraftsProgress();
+  } catch (e) {
+    console.warn("pollCreateDraftsProgress initial failed:", e);
+  }
 
   toast({
     title: "Create drafts started",
@@ -253,84 +257,90 @@ const runCreateDrafts = React.useCallback(async () => {
   const startTime = Date.now();
   let pollInterval: number | undefined;
 
-  try {
-    // ✅ Start polling immediately (so UI never sits at 0s)
-    pollInterval = window.setInterval(async () => {
-      const elapsed = Math.floor((Date.now() - startTime) / 1000);
-      setCreateDraftsElapsed(elapsed);
+  // ✅ Start polling immediately so elapsed updates even if RPC hangs
+  pollInterval = window.setInterval(async () => {
+    const elapsed = Math.floor((Date.now() - startTime) / 1000);
+    setCreateDraftsElapsed(elapsed);
 
+    try {
       const currentDrafts = await pollCreateDraftsProgress();
       const newDrafts = currentDrafts - initialDrafts;
 
       setCreateDraftsProgress(`${newDrafts} drafts created`);
 
-      // If we see new drafts, consider the run successful and stop polling
+      // Stop early if drafts appear
       if (newDrafts > 0) {
         if (pollInterval) window.clearInterval(pollInterval);
         pollInterval = undefined;
 
-        setCreateDraftsLoading(false);
-
         toast({
-          title: "Drafts created! ✅",
+          title: "Drafts created ✅",
           description: `Created ${newDrafts} topic drafts in ${elapsed}s`,
         });
 
+        setCreateDraftsLoading(false);
         await load();
       }
 
-      // Timeout after 45 seconds (same behavior as you had)
+      // Timeout guard (keep your existing 45s logic)
       if (elapsed > 45) {
         if (pollInterval) window.clearInterval(pollInterval);
         pollInterval = undefined;
 
         setCreateDraftsLoading(false);
 
-        if (newDrafts === 0) {
-          toast({
-            title: "Create drafts timeout",
-            description:
-              "No drafts created after 45s. The job may still be running. Try Refresh, or check logs.",
-            variant: "destructive",
-          });
-        }
+        toast({
+          title: "Create drafts timed out",
+          description:
+            "No visible progress after 45s. The job may still be running. Try Refresh or check logs.",
+          variant: "destructive",
+        });
       }
-    }, 2000);
+    } catch (err) {
+      console.warn("pollCreateDraftsProgress failed:", err);
+      // don’t stop polling just because one poll fails
+    }
+  }, 2000);
 
-    // ✅ Trigger RPC AFTER polling starts
-    const { error } = await supabase.rpc("run_create_drafts_http");
+  try {
+    // ✅ Trigger RPC, but add a client timeout so we never hang forever
+    const rpcPromise = supabase.rpc("run_create_drafts_http");
+    const timeoutPromise = new Promise<{ error: any }>((resolve) =>
+      setTimeout(() => resolve({ error: new Error("RPC timeout") }), 60000)
+    );
+
+    const { error } = await Promise.race([rpcPromise as any, timeoutPromise]);
 
     if (error) {
       console.error("run_create_drafts_http error:", error);
-
-      // stop polling on trigger failure
-      if (pollInterval) window.clearInterval(pollInterval);
-      pollInterval = undefined;
 
       toast({
         title: "Create drafts failed",
         description: error.message ?? "Failed to trigger create drafts job.",
         variant: "destructive",
       });
-
-      setCreateDraftsLoading(false);
-      return;
     }
   } catch (e: any) {
     console.error("runCreateDrafts exception:", e);
-
-    if (pollInterval) window.clearInterval(pollInterval);
-    pollInterval = undefined;
 
     toast({
       title: "Create drafts failed",
       description: e?.message ?? String(e),
       variant: "destructive",
     });
-
+  } finally {
+    // ✅ Always cleanup — prevents “stuck creating” forever
+    if (pollInterval) window.clearInterval(pollInterval);
     setCreateDraftsLoading(false);
   }
-}, [createDraftsLoading, supabase, toast, pollCreateDraftsProgress, load]);
+}, [
+  createDraftsLoading,
+  supabase,
+  toast,
+  pollCreateDraftsProgress,
+  load,
+]);
+
 
   return (
     <Card className="max-w-6xl mx-auto">
