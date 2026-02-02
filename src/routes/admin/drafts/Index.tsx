@@ -288,102 +288,127 @@ export default function TopicDraftsPage() {
     return count || 0;
   }, [supabase]);
 
-  // ✅ Run create drafts (FIXED: timer starts immediately; no blocking awaits before interval begins)
   const runCreateDrafts = React.useCallback(async () => {
-    if (createDraftsLoading) return;
+  if (createDraftsLoading) return;
 
-    clearDraftsInterval();
+  clearDraftsInterval();
 
-    setCreateDraftsLoading(true);
-    setCreateDraftsElapsed(0);
-    setCreateDraftsProgress("Starting...");
+  setCreateDraftsLoading(true);
+  setCreateDraftsElapsed(0);
+  setCreateDraftsProgress("Starting...");
 
-    // Force auth hydration (helps “works only after refresh”)
-    supabase.auth.getSession().catch(() => {});
+  // Force auth hydration (helps “works only after refresh”)
+  supabase.auth.getSession().catch(() => {});
 
-    toast({
-      title: "Create drafts started",
-      description: "Monitoring progress in real-time...",
-    });
+  toast({
+    title: "Create drafts started",
+    description: "Monitoring progress in real-time...",
+  });
 
-    const startTime = Date.now();
-    let initialDrafts: number | null = null;
+  const startTime = Date.now();
+  let initialDrafts: number | null = null;
 
-    // Start polling IMMEDIATELY (no awaits before this)
-    draftsIntervalRef.current = window.setInterval(async () => {
-      const elapsed = Math.floor((Date.now() - startTime) / 1000);
-      setCreateDraftsElapsed(elapsed);
+  // NEW: track whether RPC finished
+  let rpcFinished = false;
+  let rpcFailed: string | null = null;
 
-      try {
-        const currentDrafts = await pollCreateDraftsProgress();
+  // Start polling immediately
+  draftsIntervalRef.current = window.setInterval(async () => {
+    const elapsed = Math.floor((Date.now() - startTime) / 1000);
+    setCreateDraftsElapsed(elapsed);
 
-        if (initialDrafts == null) {
-          initialDrafts = currentDrafts;
-        }
-
-        const newDrafts = currentDrafts - initialDrafts;
-        setCreateDraftsProgress(`${newDrafts} drafts created`);
-
-        if (newDrafts > 0) {
-          clearDraftsInterval();
-          setCreateDraftsLoading(false);
-
-          toast({
-            title: "Drafts created ✅",
-            description: `Created ${newDrafts} topic drafts in ${elapsed}s`,
-          });
-
-          await load();
-          return;
-        }
-
-        if (elapsed > 45) {
-          clearDraftsInterval();
-          setCreateDraftsLoading(false);
-
-          toast({
-            title: "Create drafts timed out",
-            description:
-              "No visible progress after 45s. The job may still be running. Try Refresh or check logs.",
-            variant: "destructive",
-          });
-        }
-      } catch (err) {
-        console.warn("pollCreateDraftsProgress failed:", err);
-        // Keep polling; don’t freeze the UI
-      }
-    }, 2000);
-
-    try {
-      // Trigger RPC but don’t block UI updates
-      const rpcPromise = supabase.rpc("run_create_drafts_http");
-      await withTimeout(rpcPromise as any, 60000, "run_create_drafts_http");
-    } catch (e: any) {
-      console.error("run_create_drafts_http error/timeout:", e);
+    // IMPORTANT: timeout must run even if polling fails
+    const hardTimeoutSec = 60; // slightly higher than 45 so we can handle slow DB/cache
+    if (elapsed > hardTimeoutSec) {
+      clearDraftsInterval();
+      setCreateDraftsLoading(false);
 
       toast({
-        title: "Create drafts trigger issue",
+        title: "Create drafts timed out",
         description:
-          e?.message ??
-          "Failed to trigger create drafts job. The job may still run if it was triggered server-side.",
+          "No visible progress after 60s. The job may still be running. Try Refresh or check logs.",
         variant: "destructive",
       });
+      return;
+    }
 
-      // Let polling continue briefly (sometimes trigger succeeded even if client errored),
-      // but don’t allow infinite spinner.
-      setTimeout(() => {
+    try {
+      const currentDrafts = await pollCreateDraftsProgress();
+
+      if (initialDrafts == null) {
+        initialDrafts = currentDrafts;
+      }
+
+      const newDrafts = currentDrafts - initialDrafts;
+      setCreateDraftsProgress(`${newDrafts} drafts created`);
+
+      // Success path
+      if (newDrafts > 0) {
         clearDraftsInterval();
         setCreateDraftsLoading(false);
-      }, 8000);
+
+        toast({
+          title: "Drafts created ✅",
+          description: `Created ${newDrafts} topic drafts in ${elapsed}s`,
+        });
+
+        await load();
+        return;
+      }
+
+      // NEW: if RPC already finished and we still have 0 after a few seconds, stop
+      if (rpcFinished && elapsed >= 6 && newDrafts === 0) {
+        clearDraftsInterval();
+        setCreateDraftsLoading(false);
+
+        toast({
+          title: "No drafts created",
+          description:
+            rpcFailed
+              ? `Trigger error: ${rpcFailed}`
+              : "No eligible clusters found (most recent clusters already have drafts). Run Cluster again after ingesting new items, or expand backend search window.",
+          variant: rpcFailed ? "destructive" : "default",
+        });
+
+        return;
+      }
+    } catch (err) {
+      // Keep polling; but we no longer skip timeout because timeout is above
+      console.warn("pollCreateDraftsProgress failed:", err);
+      setCreateDraftsProgress("Polling failed… retrying");
     }
-  }, [
-    createDraftsLoading,
-    supabase,
-    toast,
-    pollCreateDraftsProgress,
-    load,
-    clearDraftsInterval,
-  ]);
+  }, 2000);
+
+  try {
+    // Trigger RPC but don’t block UI updates
+    const rpcPromise = supabase.rpc("run_create_drafts_http");
+
+    // client timeout so the awaited call can't hang forever
+    await withTimeout(rpcPromise as any, 60000, "run_create_drafts_http");
+
+    rpcFinished = true;
+  } catch (e: any) {
+    console.error("run_create_drafts_http error/timeout:", e);
+    rpcFinished = true;
+    rpcFailed = e?.message ?? String(e);
+
+    toast({
+      title: "Create drafts trigger issue",
+      description:
+        rpcFailed ??
+        "Failed to trigger create drafts job. The job may still run if it was triggered server-side.",
+      variant: "destructive",
+    });
+  }
+}, [
+  createDraftsLoading,
+  supabase,
+  toast,
+  pollCreateDraftsProgress,
+  load,
+  clearDraftsInterval,
+]);
+
 
   return (
     <Card className="max-w-6xl mx-auto">
