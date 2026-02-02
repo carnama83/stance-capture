@@ -46,8 +46,24 @@ const STATUS_FILTERS: { value: "all" | DraftStatus; label: string }[] = [
   { value: "rejected", label: "Rejected" },
 ];
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return (await Promise.race([
+    p,
+    (async () => {
+      await sleep(ms);
+      throw new Error(`${label} timeout after ${ms}ms`);
+    })(),
+  ])) as T;
+}
+
 export default function TopicDraftsPage() {
-  const supabase = getSupabase()!;
+  // ✅ IMPORTANT: Memoize the client so this page doesn't create multiple instances across re-renders.
+  // This is a frequent cause of “works after refresh” + GoTrue warnings.
+  const supabase = React.useMemo(() => getSupabase()!, []);
   const { toast } = useToast();
 
   const [rows, setRows] = React.useState<TopicDraftRow[]>([]);
@@ -66,6 +82,37 @@ export default function TopicDraftsPage() {
   const [search, setSearch] = React.useState("");
   const [dateFrom, setDateFrom] = React.useState("");
   const [dateTo, setDateTo] = React.useState("");
+
+  // Keep interval ids so we can always cleanup (prevents stuck UI)
+  const clusterIntervalRef = React.useRef<number | null>(null);
+  const draftsIntervalRef = React.useRef<number | null>(null);
+
+  const clearClusterInterval = React.useCallback(() => {
+    if (clusterIntervalRef.current != null) {
+      window.clearInterval(clusterIntervalRef.current);
+      clusterIntervalRef.current = null;
+    }
+  }, []);
+
+  const clearDraftsInterval = React.useCallback(() => {
+    if (draftsIntervalRef.current != null) {
+      window.clearInterval(draftsIntervalRef.current);
+      draftsIntervalRef.current = null;
+    }
+  }, []);
+
+  React.useEffect(() => {
+    // ✅ Auth/session hydration (helps “works only after refresh”)
+    supabase.auth.getSession().catch(() => {});
+  }, [supabase]);
+
+  React.useEffect(() => {
+    // Cleanup timers on unmount (prevents ghost stuck states)
+    return () => {
+      clearClusterInterval();
+      clearDraftsInterval();
+    };
+  }, [clearClusterInterval, clearDraftsInterval]);
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -129,218 +176,214 @@ export default function TopicDraftsPage() {
 
   // Cluster progress polling
   const pollClusterProgress = React.useCallback(async () => {
-    const { count: clusterCount } = await supabase
+    const { count: clusterCount, error: e1 } = await supabase
       .from("topic_clusters")
       .select("*", { count: "exact", head: true });
-    
-    const { count: itemCount } = await supabase
+
+    if (e1) throw e1;
+
+    const { count: itemCount, error: e2 } = await supabase
       .from("topic_cluster_items")
       .select("*", { count: "exact", head: true });
+
+    if (e2) throw e2;
 
     return { clusters: clusterCount || 0, items: itemCount || 0 };
   }, [supabase]);
 
-  // Run cluster with real-time polling
+  // ✅ Run cluster with real-time polling (FIXED: timer starts immediately, not after awaiting anything)
   const runCluster = React.useCallback(async () => {
     if (clusterLoading) return;
-    
+
+    clearClusterInterval();
+
     setClusterLoading(true);
     setClusterElapsed(0);
     setClusterProgress("Starting...");
 
-    // Get initial counts
-    const initial = await pollClusterProgress();
-    
     toast({
       title: "Clustering started",
       description: "Monitoring progress in real-time...",
     });
 
-    try {
-      // Trigger the RPC (returns immediately)
-      const { error } = await supabase.rpc("run_cluster_http");
+    const startTime = Date.now();
+    let initial: { clusters: number; items: number } | null = null;
 
-      if (error) {
-        console.error("run_cluster_http error:", error);
-        toast({
-          title: "Cluster failed",
-          description: error.message ?? "Failed to trigger cluster job.",
-          variant: "destructive",
-        });
-        setClusterLoading(false);
-        return;
-      }
+    // Start polling IMMEDIATELY
+    clusterIntervalRef.current = window.setInterval(async () => {
+      const elapsed = Math.floor((Date.now() - startTime) / 1000);
+      setClusterElapsed(elapsed);
 
-      // Start timer
-      const startTime = Date.now();
-      
-      // Poll for progress every 2 seconds
-      const pollInterval = setInterval(async () => {
-        const elapsed = Math.floor((Date.now() - startTime) / 1000);
-        setClusterElapsed(elapsed);
-
-        // Check progress
+      try {
         const current = await pollClusterProgress();
+        if (!initial) initial = current;
+
         const newClusters = current.clusters - initial.clusters;
         const newItems = current.items - initial.items;
 
         setClusterProgress(`${newClusters} clusters, ${newItems} items`);
 
-        // Check if complete (new clusters created)
         if (newClusters > 0) {
-          clearInterval(pollInterval);
+          clearClusterInterval();
           setClusterLoading(false);
+
           toast({
             title: "Clustering complete! ✅",
             description: `Created ${newClusters} clusters from ${newItems} articles in ${elapsed}s`,
           });
-          
-          // Don't auto-refresh - wait for user to click step 2
+
+          // Don’t auto-refresh drafts here (matches your existing behavior)
         }
 
-        // Timeout after 60 seconds
         if (elapsed > 60) {
-          clearInterval(pollInterval);
+          clearClusterInterval();
           setClusterLoading(false);
-          
+
           if (newClusters === 0) {
             toast({
               title: "Clustering timeout",
-              description: "No clusters created after 60s. Check logs or try refreshing the page first.",
+              description:
+                "No clusters created after 60s. Check logs or try refreshing the page first.",
               variant: "destructive",
             });
           }
         }
-      }, 2000); // Poll every 2 seconds
+      } catch (err) {
+        console.warn("pollClusterProgress failed:", err);
+        // Don’t stop polling due to one failure
+      }
+    }, 2000);
 
+    try {
+      // Trigger the RPC, but NEVER block the UI timer
+      const rpcPromise = supabase.rpc("run_cluster_http");
+      // Client timeout so we don’t hang forever waiting for the rpc call
+      await withTimeout(rpcPromise as any, 60000, "run_cluster_http");
     } catch (e: any) {
-      console.error("runCluster exception:", e);
+      console.error("run_cluster_http error/timeout:", e);
+
       toast({
-        title: "Cluster failed",
-        description: e?.message ?? String(e),
+        title: "Cluster trigger issue",
+        description:
+          e?.message ??
+          "Failed to trigger cluster job. The job may still run if it was triggered server-side.",
         variant: "destructive",
       });
-      setClusterLoading(false);
+
+      // Let polling continue briefly, but ensure UI doesn’t hang forever
+      setTimeout(() => {
+        clearClusterInterval();
+        setClusterLoading(false);
+      }, 8000);
     }
-  }, [clusterLoading, supabase, toast, pollClusterProgress]);
+  }, [clusterLoading, supabase, toast, pollClusterProgress, clearClusterInterval]);
 
   // Create drafts progress polling
   const pollCreateDraftsProgress = React.useCallback(async () => {
-    const { count } = await supabase
+    const { count, error } = await supabase
       .from("topic_drafts")
       .select("*", { count: "exact", head: true });
-    
+
+    if (error) throw error;
     return count || 0;
   }, [supabase]);
 
- 
-const runCreateDrafts = React.useCallback(async () => {
-  if (createDraftsLoading) return;
+  // ✅ Run create drafts (FIXED: timer starts immediately; no blocking awaits before interval begins)
+  const runCreateDrafts = React.useCallback(async () => {
+    if (createDraftsLoading) return;
 
-  setCreateDraftsLoading(true);
-  setCreateDraftsElapsed(0);
-  setCreateDraftsProgress("Starting...");
+    clearDraftsInterval();
 
-  // Get initial count (doesn't block the timer)
-  let initialDrafts = 0;
-  try {
-    initialDrafts = await pollCreateDraftsProgress();
-  } catch (e) {
-    console.warn("pollCreateDraftsProgress initial failed:", e);
-  }
+    setCreateDraftsLoading(true);
+    setCreateDraftsElapsed(0);
+    setCreateDraftsProgress("Starting...");
 
-  toast({
-    title: "Create drafts started",
-    description: "Monitoring progress in real-time...",
-  });
-
-  const startTime = Date.now();
-  let pollInterval: number | undefined;
-
-  // ✅ Start polling immediately so elapsed updates even if RPC hangs
-  pollInterval = window.setInterval(async () => {
-    const elapsed = Math.floor((Date.now() - startTime) / 1000);
-    setCreateDraftsElapsed(elapsed);
-
-    try {
-      const currentDrafts = await pollCreateDraftsProgress();
-      const newDrafts = currentDrafts - initialDrafts;
-
-      setCreateDraftsProgress(`${newDrafts} drafts created`);
-
-      // Stop early if drafts appear
-      if (newDrafts > 0) {
-        if (pollInterval) window.clearInterval(pollInterval);
-        pollInterval = undefined;
-
-        toast({
-          title: "Drafts created ✅",
-          description: `Created ${newDrafts} topic drafts in ${elapsed}s`,
-        });
-
-        setCreateDraftsLoading(false);
-        await load();
-      }
-
-      // Timeout guard (keep your existing 45s logic)
-      if (elapsed > 45) {
-        if (pollInterval) window.clearInterval(pollInterval);
-        pollInterval = undefined;
-
-        setCreateDraftsLoading(false);
-
-        toast({
-          title: "Create drafts timed out",
-          description:
-            "No visible progress after 45s. The job may still be running. Try Refresh or check logs.",
-          variant: "destructive",
-        });
-      }
-    } catch (err) {
-      console.warn("pollCreateDraftsProgress failed:", err);
-      // don’t stop polling just because one poll fails
-    }
-  }, 2000);
-
-  try {
-    // ✅ Trigger RPC, but add a client timeout so we never hang forever
-    const rpcPromise = supabase.rpc("run_create_drafts_http");
-    const timeoutPromise = new Promise<{ error: any }>((resolve) =>
-      setTimeout(() => resolve({ error: new Error("RPC timeout") }), 60000)
-    );
-
-    const { error } = await Promise.race([rpcPromise as any, timeoutPromise]);
-
-    if (error) {
-      console.error("run_create_drafts_http error:", error);
-
-      toast({
-        title: "Create drafts failed",
-        description: error.message ?? "Failed to trigger create drafts job.",
-        variant: "destructive",
-      });
-    }
-  } catch (e: any) {
-    console.error("runCreateDrafts exception:", e);
+    // Force auth hydration (helps “works only after refresh”)
+    supabase.auth.getSession().catch(() => {});
 
     toast({
-      title: "Create drafts failed",
-      description: e?.message ?? String(e),
-      variant: "destructive",
+      title: "Create drafts started",
+      description: "Monitoring progress in real-time...",
     });
-  } finally {
-    // ✅ Always cleanup — prevents “stuck creating” forever
-    if (pollInterval) window.clearInterval(pollInterval);
-    setCreateDraftsLoading(false);
-  }
-}, [
-  createDraftsLoading,
-  supabase,
-  toast,
-  pollCreateDraftsProgress,
-  load,
-]);
 
+    const startTime = Date.now();
+    let initialDrafts: number | null = null;
+
+    // Start polling IMMEDIATELY (no awaits before this)
+    draftsIntervalRef.current = window.setInterval(async () => {
+      const elapsed = Math.floor((Date.now() - startTime) / 1000);
+      setCreateDraftsElapsed(elapsed);
+
+      try {
+        const currentDrafts = await pollCreateDraftsProgress();
+
+        if (initialDrafts == null) {
+          initialDrafts = currentDrafts;
+        }
+
+        const newDrafts = currentDrafts - initialDrafts;
+        setCreateDraftsProgress(`${newDrafts} drafts created`);
+
+        if (newDrafts > 0) {
+          clearDraftsInterval();
+          setCreateDraftsLoading(false);
+
+          toast({
+            title: "Drafts created ✅",
+            description: `Created ${newDrafts} topic drafts in ${elapsed}s`,
+          });
+
+          await load();
+          return;
+        }
+
+        if (elapsed > 45) {
+          clearDraftsInterval();
+          setCreateDraftsLoading(false);
+
+          toast({
+            title: "Create drafts timed out",
+            description:
+              "No visible progress after 45s. The job may still be running. Try Refresh or check logs.",
+            variant: "destructive",
+          });
+        }
+      } catch (err) {
+        console.warn("pollCreateDraftsProgress failed:", err);
+        // Keep polling; don’t freeze the UI
+      }
+    }, 2000);
+
+    try {
+      // Trigger RPC but don’t block UI updates
+      const rpcPromise = supabase.rpc("run_create_drafts_http");
+      await withTimeout(rpcPromise as any, 60000, "run_create_drafts_http");
+    } catch (e: any) {
+      console.error("run_create_drafts_http error/timeout:", e);
+
+      toast({
+        title: "Create drafts trigger issue",
+        description:
+          e?.message ??
+          "Failed to trigger create drafts job. The job may still run if it was triggered server-side.",
+        variant: "destructive",
+      });
+
+      // Let polling continue briefly (sometimes trigger succeeded even if client errored),
+      // but don’t allow infinite spinner.
+      setTimeout(() => {
+        clearDraftsInterval();
+        setCreateDraftsLoading(false);
+      }, 8000);
+    }
+  }, [
+    createDraftsLoading,
+    supabase,
+    toast,
+    pollCreateDraftsProgress,
+    load,
+    clearDraftsInterval,
+  ]);
 
   return (
     <Card className="max-w-6xl mx-auto">
@@ -382,32 +425,32 @@ const runCreateDrafts = React.useCallback(async () => {
           </select>
 
           {/* Pipeline buttons with real-time progress */}
-          <Button 
-            variant="outline" 
-            onClick={runCluster} 
+          <Button
+            variant="outline"
+            onClick={runCluster}
             disabled={clusterLoading}
             className="min-w-[200px]"
           >
             {clusterLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {clusterLoading 
+            {clusterLoading
               ? `Clustering... ${clusterElapsed}s (${clusterProgress})`
               : "1. Run Cluster"}
           </Button>
 
-          <Button 
-            variant="outline" 
-            onClick={runCreateDrafts} 
+          <Button
+            variant="outline"
+            onClick={runCreateDrafts}
             disabled={createDraftsLoading}
             className="min-w-[220px]"
           >
             {createDraftsLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {createDraftsLoading 
+            {createDraftsLoading
               ? `Creating... ${createDraftsElapsed}s (${createDraftsProgress})`
               : "2. Create Topic Drafts"}
           </Button>
 
           <Button variant="outline" size="icon" onClick={load} title="Refresh" disabled={loading}>
-            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
           </Button>
         </div>
       </CardHeader>
@@ -426,13 +469,23 @@ const runCreateDrafts = React.useCallback(async () => {
             <div className="text-xs space-y-2 bg-slate-50 p-3 rounded border">
               <p className="font-semibold">📋 Pipeline Instructions:</p>
               <ol className="list-decimal list-inside space-y-1 ml-2">
-                <li><strong>Run Cluster</strong> - Groups similar articles (real-time progress shown)</li>
-                <li><strong>Create Topic Drafts</strong> - Generates drafts from clusters (real-time progress shown)</li>
-                <li><strong>Refresh</strong> - See your new drafts and review/approve them</li>
+                <li>
+                  <strong>Run Cluster</strong> - Groups similar articles (real-time progress shown)
+                </li>
+                <li>
+                  <strong>Create Topic Drafts</strong> - Generates drafts from clusters (real-time
+                  progress shown)
+                </li>
+                <li>
+                  <strong>Refresh</strong> - See your new drafts and review/approve them
+                </li>
               </ol>
               <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
                 <p className="font-semibold text-yellow-800">💡 Tip:</p>
-                <p className="text-yellow-700">If clustering seems stuck, try refreshing the page first, then clicking "1. Run Cluster"</p>
+                <p className="text-yellow-700">
+                  If clustering seems stuck, try refreshing the page first, then clicking "1. Run
+                  Cluster"
+                </p>
               </div>
             </div>
             <div className="flex gap-2">
@@ -649,7 +702,7 @@ function StatusButtons({
     setLoadingStatus(status);
 
     const now = new Date().toISOString();
-    
+
     const patch: any = { status };
     if (status === "approved") {
       patch.approved_at = now;
@@ -659,16 +712,16 @@ function StatusButtons({
     }
 
     try {
-      const supabaseUrl = 'https://yzxzpnomcarnxixhjlba.supabase.co';
+      const supabaseUrl = "https://yzxzpnomcarnxixhjlba.supabase.co";
       const response = await fetch(`${supabaseUrl}/rest/v1/topic_drafts?id=eq.${row.id}`, {
-        method: 'PATCH',
+        method: "PATCH",
         headers: {
-          'Content-Type': 'application/json',
-          'apikey': supabase['supabaseKey'] || '',
-          'Authorization': `Bearer ${supabase['supabaseKey'] || ''}`,
-          'Prefer': 'return=representation'
+          "Content-Type": "application/json",
+          apikey: (supabase as any)["supabaseKey"] || "",
+          Authorization: `Bearer ${(supabase as any)["supabaseKey"] || ""}`,
+          Prefer: "return=representation",
         },
-        body: JSON.stringify(patch)
+        body: JSON.stringify(patch),
       });
 
       if (!response.ok) {
