@@ -1,6 +1,6 @@
 // src/components/FollowTopicButton.tsx
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { getSupabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/use-toast";
 
@@ -16,15 +16,16 @@ export function FollowTopicButton({
   const [isFollowing, setIsFollowing] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // --- Load initial follow state
   useEffect(() => {
     let isMounted = true;
 
     async function load() {
-      const { data, error } = await supabase.rpc(
-        "topic_is_following",
-        { p_topic_id: topicId }
-      );
+      const sb = getSupabase();
+      if (!sb) return;
+
+      const { data, error } = await sb.rpc("topic_is_following", {
+        p_topic_id: topicId,
+      });
 
       if (!isMounted) return;
 
@@ -48,10 +49,15 @@ export function FollowTopicButton({
     if (isFollowing === null) return;
 
     setLoading(true);
+    const sb = getSupabase();
+    if (!sb) {
+      setLoading(false);
+      return;
+    }
 
     const rpcName = isFollowing ? "topic_unfollow" : "topic_follow";
 
-    const { error } = await supabase.rpc(rpcName, {
+    const { error } = await sb.rpc(rpcName, {
       p_topic_id: topicId,
     });
 
@@ -70,7 +76,6 @@ export function FollowTopicButton({
     setLoading(false);
   }
 
-  // --- While loading initial state, render nothing (avoids flicker)
   if (isFollowing === null) return null;
 
   return (
