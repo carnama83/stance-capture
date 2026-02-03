@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { getSupabase } from "../lib/supabaseClient";
 import PageLayout from "../components/PageLayout";
 import { FollowTopicButton } from "@/components/FollowTopicButton";
+
 type Session = import("@supabase/supabase-js").Session;
 
 type Topic = {
@@ -192,18 +193,9 @@ function QuestionStancePill({
       {regionRow && (
         <div className="flex items-center gap-1 text-[10px] text-slate-600">
           <div className="flex h-1 w-16 overflow-hidden rounded-full bg-slate-100">
-            <div
-              className="bg-rose-400"
-              style={{ width: `${disagreePct}%` }}
-            />
-            <div
-              className="bg-slate-400"
-              style={{ width: `${neutralPct}%` }}
-            />
-            <div
-              className="bg-emerald-500"
-              style={{ width: `${agreePct}%` }}
-            />
+            <div className="bg-rose-400" style={{ width: `${disagreePct}%` }} />
+            <div className="bg-slate-400" style={{ width: `${neutralPct}%` }} />
+            <div className="bg-emerald-500" style={{ width: `${agreePct}%` }} />
           </div>
           <span>{Math.round(regionRow.pct_agree ?? 0)}% agree</span>
         </div>
@@ -232,7 +224,6 @@ async function fetchCanonicalTopicId(id: string): Promise<string> {
       return id;
     }
 
-    // For scalar-returning RPCs, Supabase gives the scalar directly as data
     const canonicalId = (data as string | null) ?? id;
     return canonicalId;
   } catch (e) {
@@ -244,24 +235,59 @@ async function fetchCanonicalTopicId(id: string): Promise<string> {
   }
 }
 
+/**
+ * Fetch topic:
+ * 1) Try view topic_region_trends_v (preferred, includes trending fields)
+ * 2) If view returns null (or errors), fall back to public.topics (canonical)
+ *
+ * This prevents "Topic not found" when the base topic exists but the view has no row.
+ */
 async function fetchTopicById(id: string): Promise<Topic | null> {
   const sb = getSupabase();
   if (!sb) throw new Error("Supabase client not available");
 
-  const { data, error } = await sb
-    .from("topic_region_trends_v")
-    .select(
-      "id, title, summary, tags, location_label, tier, updated_at, trending_score, activity_7d"
-    )
-    .eq("id", id)
-    .maybeSingle<Topic>();
+  // 1) Preferred: topic_region_trends_v
+  try {
+    const { data, error } = await sb
+      .from("topic_region_trends_v")
+      .select(
+        "id, title, summary, tags, location_label, tier, updated_at, trending_score, activity_7d"
+      )
+      .eq("id", id)
+      .maybeSingle<Topic>();
 
-  if (error) {
-    console.error("Failed to load topic", error);
-    throw error;
+    if (error) {
+      // Don't hard-fail. The view might not cover all topics.
+      console.warn("topic_region_trends_v failed; falling back to topics", error);
+    } else if (data) {
+      return data;
+    }
+  } catch (e) {
+    console.warn("topic_region_trends_v query threw; falling back to topics", e);
   }
 
-  return data ?? null;
+  // 2) Fallback: public.topics
+  const { data: tData, error: tErr } = await sb
+    .from("topics")
+    .select("id, title, summary, tags, updated_at")
+    .eq("id", id)
+    .maybeSingle<Pick<Topic, "id" | "title" | "summary" | "tags" | "updated_at">>();
+
+  if (tErr) {
+    console.error("Failed to load topic from topics", tErr);
+    throw tErr;
+  }
+
+  if (!tData) return null;
+
+  return {
+    ...tData,
+    // Fields only present in the view:
+    location_label: null,
+    tier: null,
+    trending_score: null,
+    activity_7d: null,
+  };
 }
 
 async function fetchQuestionsForTopic(
@@ -287,9 +313,7 @@ async function fetchQuestionsForTopic(
   if (linked.length === 0 && topic.tags && topic.tags.length > 0) {
     const { data: tagData, error: tagError } = await sb
       .from("v_live_questions")
-      .select(
-        "id, question, summary, tags, location_label, published_at, status"
-      )
+      .select("id, question, summary, tags, location_label, published_at, status")
       .eq("status", "active")
       .overlaps("tags", topic.tags as string[])
       .order("published_at", { ascending: false });
@@ -327,15 +351,14 @@ export default function TopicDetailPage() {
   const isAuthed = !!session;
 
   // First, resolve the canonical topic id (merge-aware)
-  const {
-    data: canonicalTopicId,
-    isLoading: canonicalLoading,
-  } = useQuery<string>({
-    enabled: !!id,
-    queryKey: ["topic-canonical-id", id],
-    queryFn: () => fetchCanonicalTopicId(id as string),
-    staleTime: 5 * 60_000,
-  });
+  const { data: canonicalTopicId, isLoading: canonicalLoading } = useQuery<string>(
+    {
+      enabled: !!id,
+      queryKey: ["topic-canonical-id", id],
+      queryFn: () => fetchCanonicalTopicId(id as string),
+      staleTime: 5 * 60_000,
+    }
+  );
 
   const {
     data: topic,
@@ -368,8 +391,7 @@ export default function TopicDetailPage() {
     }
   };
 
-  const isMerged =
-    !!id && !!canonicalTopicId && id !== canonicalTopicId;
+  const isMerged = !!id && !!canonicalTopicId && id !== canonicalTopicId;
 
   let content: React.ReactNode;
 
@@ -434,9 +456,9 @@ export default function TopicDetailPage() {
             <div className="font-semibold mb-1">Merged topic</div>
             <div>
               This topic was merged into{" "}
-              <span className="font-medium">{topic.title}</span>. You’re
-              viewing the canonical version, which combines activity and
-              questions across similar topics.
+              <span className="font-medium">{topic.title}</span>. You’re viewing
+              the canonical version, which combines activity and questions across
+              similar topics.
             </div>
             <div className="mt-1 text-[10px] text-amber-900/80">
               Original topic id: <code>{id}</code>
@@ -448,13 +470,15 @@ export default function TopicDetailPage() {
         <section className="rounded-lg border p-4 space-y-3">
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1 min-w-0">
-              <h1 className="text-lg sm:text-xl font-semibold text-slate-900">
-                {topic.title}
-                <div className="flex items-center justify-between">
-  <h1>{topic.title}</h1>
-  <FollowTopicButton topicId={topic.id} />
-</div>
-              </h1>
+              {/* Title row + Follow button */}
+              <div className="flex items-start justify-between gap-3">
+                <h1 className="text-lg sm:text-xl font-semibold text-slate-900 leading-snug">
+                  {topic.title}
+                </h1>
+                <div className="shrink-0">
+                  <FollowTopicButton topicId={topic.id} />
+                </div>
+              </div>
 
               {topic.location_label && (
                 <div className="mt-1 text-xs text-slate-600 flex flex-wrap gap-1.5 items-center">
@@ -517,9 +541,7 @@ export default function TopicDetailPage() {
             {/* Topic Trends widget */}
             <div className="w-44 shrink-0 rounded-lg border bg-slate-50 px-3 py-2 text-[11px] text-slate-700 flex flex-col gap-1.5">
               <div className="flex items-center justify-between gap-1">
-                <span className="font-semibold text-slate-900">
-                  Topic trends
-                </span>
+                <span className="font-semibold text-slate-900">Topic trends</span>
                 <button
                   type="button"
                   onClick={handleBack}
@@ -533,26 +555,17 @@ export default function TopicDetailPage() {
                 {topic.location_label && (
                   <>
                     {" "}
-                    in{" "}
-                    <span className="font-medium">
-                      {topic.location_label}
-                    </span>
+                    in <span className="font-medium">{topic.location_label}</span>
                   </>
                 )}
               </div>
               <div className="flex items-center justify-between gap-2">
                 <div className="flex flex-col">
-                  <span className="text-[10px] text-slate-500">
-                    Trend index
-                  </span>
-                  <span className="text-xs font-semibold">
-                    {score.toFixed(0)}
-                  </span>
+                  <span className="text-[10px] text-slate-500">Trend index</span>
+                  <span className="text-xs font-semibold">{score.toFixed(0)}</span>
                 </div>
                 <div className="flex flex-col items-end">
-                  <span className="text-[10px] text-slate-500">
-                    7-day activity
-                  </span>
+                  <span className="text-[10px] text-slate-500">7-day activity</span>
                   <span className="text-xs font-semibold">
                     {activity} response{activity === 1 ? "" : "s"}
                   </span>
@@ -592,14 +605,14 @@ export default function TopicDetailPage() {
             </p>
           )}
 
-          {!questionsLoading && !questionsError && !hasQuestions && (
+          {!questionsLoading && !questionsError && (!questions || questions.length === 0) && (
             <p className="text-xs text-slate-500">
-              No live questions yet for this topic. Once questions are
-              published from the admin area, they&apos;ll appear here.
+              No live questions yet for this topic. Once questions are published
+              from the admin area, they&apos;ll appear here.
             </p>
           )}
 
-          {hasQuestions && questions && (
+          {questions && questions.length > 0 && (
             <div className="space-y-3 mt-2">
               {questions.map((q) => (
                 <div
@@ -639,16 +652,12 @@ export default function TopicDetailPage() {
                       )}
                       {q.published_at && (
                         <span className="text-[10px] text-slate-500">
-                          {new Date(q.published_at).toLocaleDateString(
-                            undefined,
-                            { dateStyle: "medium" }
-                          )}
+                          {new Date(q.published_at).toLocaleDateString(undefined, {
+                            dateStyle: "medium",
+                          })}
                         </span>
                       )}
-                      <QuestionStancePill
-                        questionId={q.id}
-                        isAuthed={isAuthed}
-                      />
+                      <QuestionStancePill questionId={q.id} isAuthed={isAuthed} />
                     </div>
                   </div>
                 </div>
