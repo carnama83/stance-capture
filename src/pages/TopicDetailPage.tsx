@@ -267,11 +267,12 @@ async function fetchTopicById(id: string): Promise<Topic | null> {
   }
 
   // 2) Fallback: public.topics
-  const { data: tData, error: tErr } = await sb
-    .from("topics")
-    .select("id, title, summary, tags, updated_at")
-    .eq("id", id)
-    .maybeSingle<Pick<Topic, "id" | "title" | "summary" | "tags" | "updated_at">>();
+const { data: tData, error: tErr } = await sb
+  .from("topics")
+  .select("id, title, summary, tags, created_at")
+  .eq("id", id)
+  .maybeSingle<Pick<Topic, "id" | "title" | "summary" | "tags"> & { created_at?: string | null }>();
+
 
   if (tErr) {
     console.error("Failed to load topic from topics", tErr);
@@ -282,6 +283,7 @@ async function fetchTopicById(id: string): Promise<Topic | null> {
 
   return {
     ...tData,
+     updated_at: (tData as any).created_at ?? null, // 👈 key fix
     // Fields only present in the view:
     location_label: null,
     tier: null,
