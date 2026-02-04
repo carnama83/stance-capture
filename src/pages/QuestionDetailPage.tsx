@@ -7,15 +7,14 @@ import PageLayout from "../components/PageLayout";
 import { QuestionCommentsPanel } from "@/components/question/QuestionCommentsPanel";
 import { useQuestionView } from "@/hooks/useQuestionView";
 
-import {
-  useQuery,
-  useMutation,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getSupabase } from "../lib/supabaseClient";
 import { QuestionStanceSlider } from "@/components/question/QuestionStanceSlider";
 import { QuestionPhaseBadge } from "@/components/question/QuestionPhaseBadge"; // ✨ NEW IMPORT
 import { useToast } from "@/components/ui/use-toast";
+
+// ✅ Inline Topic follow affordance
+import { FollowTopicButton } from "@/components/FollowTopicButton";
 
 type Session = import("@supabase/supabase-js").Session;
 
@@ -142,7 +141,6 @@ async function fetchQuestionById(id: string): Promise<LiveQuestion | null> {
   return row;
 }
 
-/** NEW: fetch topic title for Topic link chip */
 async function fetchTopicLite(topicId: string): Promise<TopicLite | null> {
   const sb = getSupabase();
   if (!sb) throw new Error("Supabase client not available");
@@ -157,6 +155,7 @@ async function fetchTopicLite(topicId: string): Promise<TopicLite | null> {
     console.error("Failed to load topic title", error);
     return null;
   }
+
   return data ?? null;
 }
 
@@ -261,9 +260,7 @@ async function fetchRelatedQuestions(
 
   let q = sb
     .from("v_live_questions")
-    .select(
-      "id, question, summary, tags, location_label, published_at, status"
-    )
+    .select("id, question, summary, tags, location_label, published_at, status")
     .neq("id", questionId)
     .eq("status", "active")
     .overlaps("tags", tags);
@@ -325,7 +322,10 @@ async function trackQuestionInteraction(
       });
 
       if (rpcError) {
-        console.error("Failed to record question answer (phase tracking):", rpcError);
+        console.error(
+          "Failed to record question answer (phase tracking):",
+          rpcError
+        );
         // Don't throw - continue with fallback
       }
     }
@@ -435,7 +435,6 @@ export default function QuestionDetailPage() {
     staleTime: 60_000,
   });
 
-  // NEW: fetch topic title for Topic chip (lightweight, safe)
   const { data: topicLite } = useQuery({
     enabled: !!question?.topic_id,
     queryKey: ["question-topic-lite", question?.topic_id ?? ""],
@@ -520,7 +519,12 @@ export default function QuestionDetailPage() {
       // EPIC C: Track interaction when user answers
       if (userId && question?.topic_id) {
         const answered = newScore !== null;
-        await trackQuestionInteraction(userId, questionId, question.topic_id, answered);
+        await trackQuestionInteraction(
+          userId,
+          questionId,
+          question.topic_id,
+          answered
+        );
 
         // Invalidate personalized feed so this question doesn't reappear
         if (answered) {
@@ -621,9 +625,9 @@ export default function QuestionDetailPage() {
             </div>
           )}
 
-          {/* NEW: Topic link chip (only if topic_id exists) */}
+          {/* Topic link + small inline Follow affordance */}
           {question.topic_id && (
-            <div className="text-[11px] text-slate-600">
+            <div className="flex items-center gap-2 pt-1">
               <Link
                 to={`/topics/${question.topic_id}`}
                 className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 bg-slate-50 text-slate-700 hover:border-slate-900/60 hover:bg-white transition"
@@ -636,6 +640,10 @@ export default function QuestionDetailPage() {
                   {topicLite?.title ?? "View topic"}
                 </span>
               </Link>
+
+              <div className="scale-90 origin-left">
+                <FollowTopicButton topicId={question.topic_id} />
+              </div>
             </div>
           )}
         </header>
@@ -709,8 +717,8 @@ export default function QuestionDetailPage() {
               </div>
               {globalStats.avg_score != null && (
                 <div className="text-[11px] text-slate-500">
-                  Average stance: {globalStats.avg_score.toFixed(2)} (scale
-                  -2 to +2)
+                  Average stance: {globalStats.avg_score.toFixed(2)} (scale -2
+                  to +2)
                 </div>
               )}
             </div>
@@ -758,8 +766,8 @@ export default function QuestionDetailPage() {
           {!isAuthed && (
             <div className="space-y-2">
               <p className="text-xs text-slate-600">
-                Log in to record your stance and compare with your city,
-                state, country, and globally.
+                Log in to record your stance and compare with your city, state,
+                country, and globally.
               </p>
               <button
                 type="button"
@@ -796,25 +804,18 @@ export default function QuestionDetailPage() {
                 ) : (
                   <span>
                     Saved as{" "}
-                    {
-                      STANCE_SCALE.find(
-                        (s) => s.value === myStance
-                      )?.label
-                    }
-                    .
+                    {STANCE_SCALE.find((s) => s.value === myStance)?.label}.
                   </span>
                 )}
-                {isAuthed &&
-                  myStance != null &&
-                  !stanceMutation.isPending && (
-                    <button
-                      type="button"
-                      className="underline"
-                      onClick={() => stanceMutation.mutate(null)}
-                    >
-                      Clear
-                    </button>
-                  )}
+                {isAuthed && myStance != null && !stanceMutation.isPending && (
+                  <button
+                    type="button"
+                    className="underline"
+                    onClick={() => stanceMutation.mutate(null)}
+                  >
+                    Clear
+                  </button>
+                )}
               </div>
             </>
           )}
@@ -868,11 +869,10 @@ export default function QuestionDetailPage() {
                     )}
                     {rq.published_at && (
                       <span className="text-[10px] text-slate-500">
-                        {new Date(
-                          rq.published_at
-                        ).toLocaleDateString(undefined, {
-                          dateStyle: "medium",
-                        })}
+                        {new Date(rq.published_at).toLocaleDateString(
+                          undefined,
+                          { dateStyle: "medium" }
+                        )}
                       </span>
                     )}
                   </div>
