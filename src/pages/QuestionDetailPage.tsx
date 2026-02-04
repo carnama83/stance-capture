@@ -31,6 +31,11 @@ type LiveQuestion = {
   phase?: string; // ✨ NEW: Phase field for question lifecycle
 };
 
+type TopicLite = {
+  id: string;
+  title: string;
+};
+
 type QuestionStance = {
   id: string;
   question_id: string;
@@ -114,12 +119,12 @@ async function fetchQuestionById(id: string): Promise<LiveQuestion | null> {
 
   // Get from questions table directly to get topic_id
   const { data, error } = await sb
-    .from("questions")  // ✅ Changed from v_live_questions to questions
+    .from("questions") // ✅ Changed from v_live_questions to questions
     .select(
       "id, topic_id, question, summary, tags, location_label, published_at, status, phase"
     )
     .eq("id", id)
-    .eq("status", "active")  // ✅ Add status filter to match v_live_questions behavior
+    .eq("status", "active") // ✅ Add status filter to match v_live_questions behavior
     .limit(1);
 
   if (error) {
@@ -135,6 +140,24 @@ async function fetchQuestionById(id: string): Promise<LiveQuestion | null> {
   }
 
   return row;
+}
+
+/** NEW: fetch topic title for Topic link chip */
+async function fetchTopicLite(topicId: string): Promise<TopicLite | null> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("Supabase client not available");
+
+  const { data, error } = await sb
+    .from("topics")
+    .select("id, title")
+    .eq("id", topicId)
+    .maybeSingle<TopicLite>();
+
+  if (error) {
+    console.error("Failed to load topic title", error);
+    return null;
+  }
+  return data ?? null;
 }
 
 async function fetchMyStance(questionId: string): Promise<number | null> {
@@ -286,7 +309,7 @@ async function fetchThreadSentiment(
 // ---------- EPIC C: Track answered questions (CORRECTED) ----------
 async function trackQuestionInteraction(
   userId: string,
-  questionId: string,  // ✨ ADDED for phase tracking
+  questionId: string, // ✨ ADDED for phase tracking
   topicId: string | undefined,
   answered: boolean
 ): Promise<void> {
@@ -296,28 +319,31 @@ async function trackQuestionInteraction(
   try {
     // ✨ EPIC C PHASE-AWARE: Call RPC to track phase when user answers
     if (answered) {
-      const { error: rpcError } = await sb.rpc('record_question_answer', {
+      const { error: rpcError } = await sb.rpc("record_question_answer", {
         p_user_id: userId,
         p_question_id: questionId,
       });
-      
+
       if (rpcError) {
-        console.error('Failed to record question answer (phase tracking):', rpcError);
+        console.error("Failed to record question answer (phase tracking):", rpcError);
         // Don't throw - continue with fallback
       }
     }
-    
+
     // Fallback: Also update user_topic_interactions directly
-    await sb.from('user_topic_interactions').upsert({
-      user_id: userId,
-      topic_id: topicId,
-      last_interacted_at: new Date().toISOString(),
-      answered: answered,
-    }, {
-      onConflict: 'user_id,topic_id', // Unique constraint on these two columns
-    });
+    await sb.from("user_topic_interactions").upsert(
+      {
+        user_id: userId,
+        topic_id: topicId,
+        last_interacted_at: new Date().toISOString(),
+        answered: answered,
+      },
+      {
+        onConflict: "user_id,topic_id", // Unique constraint on these two columns
+      }
+    );
   } catch (error) {
-    console.error('Failed to track question interaction:', error);
+    console.error("Failed to track question interaction:", error);
   }
 }
 
@@ -409,6 +435,14 @@ export default function QuestionDetailPage() {
     staleTime: 60_000,
   });
 
+  // NEW: fetch topic title for Topic chip (lightweight, safe)
+  const { data: topicLite } = useQuery({
+    enabled: !!question?.topic_id,
+    queryKey: ["question-topic-lite", question?.topic_id ?? ""],
+    queryFn: () => fetchTopicLite(question?.topic_id as string),
+    staleTime: 5 * 60_000,
+  });
+
   const {
     data: myStance,
     isLoading: stanceLoading,
@@ -487,10 +521,10 @@ export default function QuestionDetailPage() {
       if (userId && question?.topic_id) {
         const answered = newScore !== null;
         await trackQuestionInteraction(userId, questionId, question.topic_id, answered);
-        
+
         // Invalidate personalized feed so this question doesn't reappear
         if (answered) {
-          queryClient.invalidateQueries({ queryKey: ['personalized-feed'] });
+          queryClient.invalidateQueries({ queryKey: ["personalized-feed"] });
         }
       }
 
@@ -586,17 +620,35 @@ export default function QuestionDetailPage() {
               📍 {question.location_label}
             </div>
           )}
+
+          {/* NEW: Topic link chip (only if topic_id exists) */}
+          {question.topic_id && (
+            <div className="text-[11px] text-slate-600">
+              <Link
+                to={`/topics/${question.topic_id}`}
+                className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 bg-slate-50 text-slate-700 hover:border-slate-900/60 hover:bg-white transition"
+                title="View topic"
+              >
+                <span className="text-[10px] uppercase tracking-wide text-slate-500">
+                  Topic
+                </span>
+                <span className="font-medium">
+                  {topicLite?.title ?? "View topic"}
+                </span>
+              </Link>
+            </div>
+          )}
         </header>
 
         {/* Question text */}
         <section className="space-y-3">
           {/* ✨ NEW: Phase Badge */}
-          {question.phase && question.phase !== 'initial' && (
+          {question.phase && question.phase !== "initial" && (
             <div>
               <QuestionPhaseBadge phase={question.phase} size="md" />
             </div>
           )}
-          
+
           <h1 className="text-xl font-bold text-slate-900">
             {question.question}
           </h1>
