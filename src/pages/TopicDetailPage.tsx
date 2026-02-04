@@ -57,6 +57,22 @@ type QuestionStatsCard = {
   } | null;
 };
 
+/** Rows from vw_topic_questions_with_impact_v1 */
+type TopicQuestionImpactRow = {
+  canonical_topic_id: string;
+  topic_id: string;
+  question_id: string;
+  question: string;
+  summary?: string | null;
+  tags?: string[] | null;
+  location_label?: string | null;
+  published_at?: string | null;
+  status?: string | null;
+  latest_question_score?: number | null;
+  score_updated_at?: string | null;
+  response_count?: number | null;
+};
+
 // ----- shared helpers -----
 function useSupabaseSession() {
   const sb = React.useMemo(getSupabase, []);
@@ -239,8 +255,6 @@ async function fetchCanonicalTopicId(id: string): Promise<string> {
  * Fetch topic:
  * 1) Try view topic_region_trends_v (preferred, includes trending fields)
  * 2) If view returns null (or errors), fall back to public.topics (canonical)
- *
- * This prevents "Topic not found" when the base topic exists but the view has no row.
  */
 async function fetchTopicById(id: string): Promise<Topic | null> {
   const sb = getSupabase();
@@ -257,7 +271,6 @@ async function fetchTopicById(id: string): Promise<Topic | null> {
       .maybeSingle<Topic>();
 
     if (error) {
-      // Don't hard-fail. The view might not cover all topics.
       console.warn("topic_region_trends_v failed; falling back to topics", error);
     } else if (data) {
       return data;
@@ -266,13 +279,14 @@ async function fetchTopicById(id: string): Promise<Topic | null> {
     console.warn("topic_region_trends_v query threw; falling back to topics", e);
   }
 
-  // 2) Fallback: public.topics
-const { data: tData, error: tErr } = await sb
-  .from("topics")
-  .select("id, title, summary, tags, created_at")
-  .eq("id", id)
-  .maybeSingle<Pick<Topic, "id" | "title" | "summary" | "tags"> & { created_at?: string | null }>();
-
+  // 2) Fallback: public.topics (NOTE: topics has created_at, not updated_at)
+  const { data: tData, error: tErr } = await sb
+    .from("topics")
+    .select("id, title, summary, tags, created_at")
+    .eq("id", id)
+    .maybeSingle<
+      Pick<Topic, "id" | "title" | "summary" | "tags"> & { created_at?: string | null }
+    >();
 
   if (tErr) {
     console.error("Failed to load topic from topics", tErr);
@@ -283,8 +297,7 @@ const { data: tData, error: tErr } = await sb
 
   return {
     ...tData,
-     updated_at: (tData as any).created_at ?? null, // 👈 key fix
-    // Fields only present in the view:
+    updated_at: (tData as any).created_at ?? null, // key fix
     location_label: null,
     tier: null,
     trending_score: null,
@@ -299,7 +312,7 @@ async function fetchQuestionsForTopic(
   if (!sb) throw new Error("Supabase client not available");
   if (!topic) return [];
 
-  // 1) Prefer explicit linkage via questions.topic_draft_id -> topics.draft_id
+  // 1) Prefer explicit linkage via RPC
   const { data, error } = await sb.rpc("get_questions_for_topic", {
     p_topic_id: topic.id,
   });
@@ -311,7 +324,7 @@ async function fetchQuestionsForTopic(
 
   const linked = (data ?? []) as LiveQuestion[];
 
-  // 2) Fallback: tag-based match for older questions that may not have topic_draft_id set
+  // 2) Fallback: tag-based match
   if (linked.length === 0 && topic.tags && topic.tags.length > 0) {
     const { data: tagData, error: tagError } = await sb
       .from("v_live_questions")
@@ -331,6 +344,28 @@ async function fetchQuestionsForTopic(
   return linked;
 }
 
+/** NEW: overlay fetch to get per-question impact + response_count for this canonical topic */
+async function fetchTopicQuestionImpactRows(
+  canonicalTopicId: string
+): Promise<TopicQuestionImpactRow[]> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("Supabase client not available");
+
+  const { data, error } = await sb
+    .from("vw_topic_questions_with_impact_v1")
+    .select(
+      "canonical_topic_id, topic_id, question_id, question, summary, tags, location_label, published_at, status, latest_question_score, score_updated_at, response_count"
+    )
+    .eq("canonical_topic_id", canonicalTopicId);
+
+  if (error) {
+    console.error("Failed to load vw_topic_questions_with_impact_v1", error);
+    throw error;
+  }
+
+  return (data ?? []) as TopicQuestionImpactRow[];
+}
+
 // Small helper to classify trending heat from score + activity
 function getTrendLabel(
   score: number | null | undefined,
@@ -343,6 +378,12 @@ function getTrendLabel(
   if (a >= 10 || s >= 50) return "Heating up";
   if (a >= 3 || s >= 20) return "Some activity";
   return "Quiet right now";
+}
+
+function formatCompactNumber(n: number) {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return `${n}`;
 }
 
 // ----- Page -----
@@ -385,6 +426,18 @@ export default function TopicDetailPage() {
     staleTime: 60_000,
   });
 
+  // NEW: impact rows for scoring + badges (does NOT replace existing question source)
+  const {
+    data: impactRows,
+    isLoading: impactLoading,
+    isError: impactError,
+  } = useQuery({
+    enabled: !!canonicalTopicId,
+    queryKey: ["topic-impact-rows", canonicalTopicId],
+    queryFn: () => fetchTopicQuestionImpactRows(canonicalTopicId as string),
+    staleTime: 60_000,
+  });
+
   const handleBack = () => {
     if (window.history.length > 1) {
       navigate(-1);
@@ -394,6 +447,36 @@ export default function TopicDetailPage() {
   };
 
   const isMerged = !!id && !!canonicalTopicId && id !== canonicalTopicId;
+
+  // Build fast lookup maps for score + responses
+  const impactByQuestionId = React.useMemo(() => {
+    const m = new Map<string, TopicQuestionImpactRow>();
+    (impactRows ?? []).forEach((r) => m.set(r.question_id, r));
+    return m;
+  }, [impactRows]);
+
+  // Compute Topic Score = sum of Top-5 question scores (same definition you approved)
+  const { topicScoreTop5, top5Contributors } = React.useMemo(() => {
+    const rows = (impactRows ?? [])
+      .filter((r) => typeof r.latest_question_score === "number")
+      .sort((a, b) => {
+        const sa = a.latest_question_score ?? -Infinity;
+        const sb = b.latest_question_score ?? -Infinity;
+        if (sb !== sa) return sb - sa;
+        const pa = a.published_at ? new Date(a.published_at).getTime() : 0;
+        const pb = b.published_at ? new Date(b.published_at).getTime() : 0;
+        if (pb !== pa) return pb - pa;
+        return (b.question_id ?? "").localeCompare(a.question_id ?? "");
+      });
+
+    const top5 = rows.slice(0, 5);
+    const sum = top5.reduce((acc, r) => acc + (r.latest_question_score ?? 0), 0);
+
+    return {
+      topicScoreTop5: sum,
+      top5Contributors: top5,
+    };
+  }, [impactRows]);
 
   let content: React.ReactNode;
 
@@ -445,14 +528,12 @@ export default function TopicDetailPage() {
       </div>
     );
   } else {
-    const hasQuestions = !!questions && questions.length > 0;
     const trendLabel = getTrendLabel(topic.trending_score, topic.activity_7d);
     const score = topic.trending_score ?? 0;
     const activity = topic.activity_7d ?? 0;
 
     content = (
       <div className="space-y-4">
-        {/* Merge banner (when URL id != canonical id) */}
         {isMerged && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
             <div className="font-semibold mb-1">Merged topic</div>
@@ -468,11 +549,9 @@ export default function TopicDetailPage() {
           </div>
         )}
 
-        {/* Header + Topic Trends widget */}
         <section className="rounded-lg border p-4 space-y-3">
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1 min-w-0">
-              {/* Title row + Follow button */}
               <div className="flex items-start justify-between gap-3">
                 <h1 className="text-lg sm:text-xl font-semibold text-slate-900 leading-snug">
                   {topic.title}
@@ -540,7 +619,6 @@ export default function TopicDetailPage() {
               )}
             </div>
 
-            {/* Topic Trends widget */}
             <div className="w-44 shrink-0 rounded-lg border bg-slate-50 px-3 py-2 text-[11px] text-slate-700 flex flex-col gap-1.5">
               <div className="flex items-center justify-between gap-1">
                 <span className="font-semibold text-slate-900">Topic trends</span>
@@ -583,9 +661,59 @@ export default function TopicDetailPage() {
               </div>
             </div>
           </div>
+
+          {/* NEW: Topic Score (Top-5 sum) */}
+          <div className="rounded-lg border bg-white p-3 text-xs">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-[11px] text-slate-600">Topic score</div>
+                <div className="text-lg font-semibold text-slate-900 leading-tight">
+                  {topicScoreTop5.toFixed(2)}
+                </div>
+                <div className="text-[11px] text-slate-500">
+                  Sum of top 5 question impact scores
+                </div>
+              </div>
+
+              <div className="text-right text-[11px] text-slate-600">
+                {impactLoading ? (
+                  <span>Loading impact…</span>
+                ) : impactError ? (
+                  <span className="text-amber-700">Impact unavailable</span>
+                ) : (
+                  <span>
+                    {formatCompactNumber((impactRows ?? []).length)} scored question
+                    {(impactRows ?? []).length === 1 ? "" : "s"}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {top5Contributors.length > 0 && (
+              <div className="mt-2 border-t pt-2">
+                <div className="text-[11px] font-medium text-slate-700 mb-1">
+                  Top contributors
+                </div>
+                <div className="space-y-1">
+                  {top5Contributors.map((r) => (
+                    <div key={r.question_id} className="flex items-center justify-between gap-2">
+                      <Link
+                        to={`/q/${r.question_id}`}
+                        className="text-[11px] text-slate-700 hover:underline truncate"
+                      >
+                        {r.question}
+                      </Link>
+                      <span className="text-[11px] font-semibold text-slate-900 tabular-nums">
+                        {(r.latest_question_score ?? 0).toFixed(2)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </section>
 
-        {/* Questions under this topic */}
         <section className="rounded-lg border p-4">
           <div className="flex items-center justify-between mb-2">
             <h2 className="text-sm font-medium text-slate-900">
@@ -616,54 +744,83 @@ export default function TopicDetailPage() {
 
           {questions && questions.length > 0 && (
             <div className="space-y-3 mt-2">
-              {questions.map((q) => (
-                <div
-                  key={q.id}
-                  className="rounded-lg border px-3 py-2 hover:border-slate-900/70 transition"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-semibold text-slate-900">
-                        <Link to={`/q/${q.id}`} className="hover:underline">
-                          {q.question}
-                        </Link>
-                      </div>
-                      {q.summary && (
-                        <p className="text-xs text-slate-600 mt-1 line-clamp-2">
-                          {q.summary}
-                        </p>
-                      )}
-                      {q.tags && q.tags.length > 0 && (
-                        <div className="mt-1 flex flex-wrap gap-1.5">
-                          {q.tags.map((tag) => (
-                            <span
-                              key={tag}
-                              className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-700"
-                            >
-                              {tag}
-                            </span>
-                          ))}
+              {questions.map((q) => {
+                const impact = impactByQuestionId.get(q.id);
+                const qScore =
+                  typeof impact?.latest_question_score === "number"
+                    ? impact.latest_question_score
+                    : null;
+                const respCount =
+                  typeof impact?.response_count === "number"
+                    ? impact.response_count
+                    : null;
+
+                return (
+                  <div
+                    key={q.id}
+                    className="rounded-lg border px-3 py-2 hover:border-slate-900/70 transition"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-semibold text-slate-900">
+                          <Link to={`/q/${q.id}`} className="hover:underline">
+                            {q.question}
+                          </Link>
                         </div>
-                      )}
-                    </div>
-                    <div className="flex flex-col items-end gap-1 shrink-0">
-                      {q.location_label && (
-                        <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-600">
-                          {q.location_label}
-                        </span>
-                      )}
-                      {q.published_at && (
-                        <span className="text-[10px] text-slate-500">
-                          {new Date(q.published_at).toLocaleDateString(undefined, {
-                            dateStyle: "medium",
-                          })}
-                        </span>
-                      )}
-                      <QuestionStancePill questionId={q.id} isAuthed={isAuthed} />
+
+                        {q.summary && (
+                          <p className="text-xs text-slate-600 mt-1 line-clamp-2">
+                            {q.summary}
+                          </p>
+                        )}
+
+                        {/* NEW: score + responses badges */}
+                        <div className="mt-1 flex flex-wrap gap-1.5 items-center">
+                          {qScore != null && (
+                            <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] text-slate-700 bg-slate-50">
+                              Impact {qScore.toFixed(2)}
+                            </span>
+                          )}
+                          {respCount != null && (
+                            <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] text-slate-700 bg-slate-50">
+                              {formatCompactNumber(respCount)} responses
+                            </span>
+                          )}
+                        </div>
+
+                        {q.tags && q.tags.length > 0 && (
+                          <div className="mt-1 flex flex-wrap gap-1.5">
+                            {q.tags.map((tag) => (
+                              <span
+                                key={tag}
+                                className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-700"
+                              >
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        {q.location_label && (
+                          <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-600">
+                            {q.location_label}
+                          </span>
+                        )}
+                        {q.published_at && (
+                          <span className="text-[10px] text-slate-500">
+                            {new Date(q.published_at).toLocaleDateString(undefined, {
+                              dateStyle: "medium",
+                            })}
+                          </span>
+                        )}
+                        <QuestionStancePill questionId={q.id} isAuthed={isAuthed} />
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </section>
