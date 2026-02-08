@@ -213,45 +213,49 @@ export default function QuestionDraftsPage() {
   }, [supabase, statusFilter, search, dateFrom, dateTo, toast]);
 
   const handleBulkGenerate = React.useCallback(async () => {
-    if (generating || generateCooldown > 0) return;
+  if (generating || generateCooldown > 0) return;
 
-    setGenerating(true);
-    try {
-      const { error } = await supabase.rpc("run_generate_http");
+  setGenerating(true);
+  try {
+    const { error } = await supabase.rpc("run_generate_http");
 
-      if (error) {
-        console.error("Bulk generation error:", error);
-        toast({
-          title: "Generate failed",
-          description: error.message,
-          variant: "destructive",
-        });
-        setGenerating(false);
-        return;
-      }
-
-      // ✅ Better UX: don’t pretend it's complete in 3s; trigger + encourage refresh soon.
+    if (error) {
+      console.error("Bulk generation error:", error);
       toast({
-        title: "Generation triggered ✅",
-        description:
-          "Question generation has started. New drafts may take 30–60 seconds to appear depending on workload.",
-      });
-
-      // ✅ Cooldown to prevent rapid re-triggers
-      startGenerateCooldown(30);
-
-      // optional: refresh once after a short delay (non-blocking)
-      setTimeout(() => {
-        void load();
-      }, 2000);
-    } catch (e: any) {
-      console.error("Bulk generate exception:", e);
-      toast({
-        title: "Generate error",
-        description: e?.message ?? String(e),
+        title: "Generate failed",
+        description: error.message,
         variant: "destructive",
-      })
-  const chunk = <T,>(arr: T[], size: number): T[][] => {
+      });
+      return;
+    }
+
+    // ✅ Better UX: don’t pretend it's complete in 3s; trigger + encourage refresh soon.
+    toast({
+      title: "Generation triggered ✅",
+      description:
+        "Question generation has started. New drafts may take 30–60 seconds to appear depending on workload.",
+    });
+
+    // ✅ Cooldown to prevent rapid re-triggers
+    startGenerateCooldown(30);
+
+    // optional: refresh once after a short delay (non-blocking)
+    setTimeout(() => {
+      void load();
+    }, 2000);
+  } catch (e: any) {
+    console.error("Bulk generate exception:", e);
+    toast({
+      title: "Generate error",
+      description: e?.message ?? String(e),
+      variant: "destructive",
+    });
+  } finally {
+    setGenerating(false);
+  }
+}, [generating, generateCooldown, supabase, toast, load, startGenerateCooldown]);
+
+const chunk = <T,>(arr: T[], size: number): T[][] => {
     const out: T[][] = [];
     for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
     return out;
