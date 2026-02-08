@@ -46,6 +46,7 @@ type RegionRow = {
   county_label: string | null;
   state_label: string | null;
   country_label: string | null;
+  global_label: string | null;
 };
 
 // Matches all_schemas.sql signature (get_personalized_feed)
@@ -207,26 +208,13 @@ async function fetchTrendingTopics(
   sb: ReturnType<typeof getSupabase> | null,
   opts: { personalized: boolean; userId: string | null }
 ): Promise<Topic[]> {
-  // NOTE: Some environments may not expose `updated_at` on vw_topics_trending/topics_trending.
-  // Selecting or ordering by a missing column causes PostgREST 400s (and the UI falls back to skeletons).
-  // We still *display* relative time when available (e.g., from personalized RPC), but we don't require it.
   const baseSelect =
     "id, title, summary, tags, tier, location_label, trending_score, activity_7d";
 
-  if (opts.personalized && opts.userId && sb) {
-    try {
-      const { data, error } = await sb.rpc("get_personalized_trending_topics", {
-        p_user_id: opts.userId,
-        p_limit: 10,
-      });
-      if (!error && data) return data as Topic[];
-    } catch {
-      // fallback below
-    }
-  }
+  if (!sb) return [];
 
-  return fetchFromSource<Topic>(sb, {
-    // Canonical view first; keep old names as fallbacks for older DB snapshots.
+  // 1) Always try the canonical trending view first (real pipeline data)
+  let canonical = await fetchFromSource<Topic>(sb, {
     sourceCandidates: [
       "topic_region_trends_v",
       "vw_topics_trending",
@@ -238,8 +226,61 @@ async function fetchTrendingTopics(
       { column: "trending_score", ascending: false },
       { column: "activity_7d", ascending: false },
     ],
-    limit: 10,
+    limit: 20,
   });
+
+  // 2) If canonical view is empty, fall back to topics table directly
+  if (!canonical.length) {
+    try {
+      const { data, error } = await sb
+        .from("topics")
+        .select(baseSelect)
+        .is("parent_topic_id", null)
+        .order("trending_score", { ascending: false })
+        .order("created_at", { ascending: false })
+        .limit(20);
+
+      if (!error && data) canonical = data as Topic[];
+    } catch {
+      // continue with empty
+    }
+  }
+
+  // 3) If logged in, use personalized RPC to re-rank the canonical set
+  //    (boosts followed topics + region matches), but only keep topics
+  //    that actually exist in the canonical set or have real engagement.
+  if (opts.personalized && opts.userId && canonical.length) {
+    try {
+      const { data, error } = await sb.rpc("get_personalized_trending_topics", {
+        p_user_id: opts.userId,
+        p_limit: 20,
+      });
+
+      if (!error && data && (data as Topic[]).length > 0) {
+        const personalizedTopics = data as Topic[];
+
+        // Build a set of canonical topic IDs (the "real" pipeline data)
+        const canonicalIds = new Set(canonical.map((t) => t.id));
+
+        // Keep only personalized results that are in the canonical set
+        // OR that have nonzero activity (not stale seeds)
+        const filtered = personalizedTopics.filter(
+          (t) =>
+            canonicalIds.has(t.id) ||
+            (typeof t.activity_7d === "number" && t.activity_7d > 0) ||
+            (typeof t.trending_score === "number" && t.trending_score > 0)
+        );
+
+        if (filtered.length > 0) {
+          return filtered.slice(0, 10);
+        }
+      }
+    } catch {
+      // fall through to canonical
+    }
+  }
+
+  return canonical.slice(0, 10);
 }
 
 // ---------- Display name helper ----------
@@ -957,6 +998,32 @@ export default function IndexPage() {
 
   const trendingQuestionsNational = trendingQuestionsNationalQuery.data ?? [];
   const trendingQuestionsGlobal = trendingQuestionsGlobalQuery.data ?? [];
+
+  // Anonymous trending questions fallback: show recent active questions
+  const anonTrendingQuery = useQuery({
+    enabled: !!sb && !isAuthed,
+    queryKey: ["home-trending-questions-anon"],
+    queryFn: async () => {
+      const { data, error } = await sb!
+        .from("v_live_questions")
+        .select("id, question, summary, tags, location_label, published_at, status")
+        .order("published_at", { ascending: false })
+        .limit(10);
+      if (error) throw error;
+      return (data ?? []) as Array<{
+        id: string;
+        question: string;
+        summary: string | null;
+        tags: string[] | null;
+        location_label: string | null;
+        published_at: string;
+        status: string;
+      }>;
+    },
+    staleTime: 60_000,
+  });
+
+  const anonTrendingQuestions = anonTrendingQuery.data ?? [];
   // ========== END Trending Questions Section ==========
 
 
@@ -1466,6 +1533,69 @@ export default function IndexPage() {
               </Tabs>
             </div>
           ) : null}
+
+          {/* Anonymous fallback: show recent active questions */}
+          {!isAuthed ? (
+            <div className="mt-3">
+              {anonTrendingQuery.isLoading ? (
+                <div className="space-y-3">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="animate-pulse rounded-lg border bg-slate-50 p-4">
+                      <div className="h-4 bg-slate-200 rounded w-3/4 mb-2" />
+                      <div className="h-3 bg-slate-200 rounded w-1/2" />
+                    </div>
+                  ))}
+                </div>
+              ) : anonTrendingQuestions.length ? (
+                <div className="grid grid-cols-1 gap-3">
+                  {anonTrendingQuestions.map((row) => (
+                    <div key={row.id} className="rounded-lg border bg-white p-3 shadow-sm">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <Link
+                            to={`/q/${row.id}`}
+                            className="font-semibold text-slate-900 line-clamp-2 hover:underline"
+                          >
+                            {row.question}
+                          </Link>
+                          {row.summary ? (
+                            <div className="mt-1 text-xs text-slate-600 line-clamp-2">
+                              {row.summary}
+                            </div>
+                          ) : null}
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {row.location_label ? (
+                              <span className="rounded bg-slate-900 px-2 py-0.5 text-[10px] text-white">
+                                {row.location_label.toUpperCase()}
+                              </span>
+                            ) : null}
+                            {(row.tags ?? []).slice(0, 2).map((tag) => (
+                              <span key={tag} className="rounded bg-slate-900/10 px-2 py-0.5 text-[10px] text-slate-900">
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          className="shrink-0 rounded border px-3 py-1.5 text-xs hover:bg-slate-50"
+                          onClick={() => goToQuestion(row.id)}
+                        >
+                          Answer
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-lg border border-dashed bg-slate-50 px-4 py-8 text-center">
+                  <p className="text-sm text-slate-600">
+                    No questions yet. Check back soon!
+                  </p>
+                </div>
+              )}
+            </div>
+          ) : null}
         </section>
 
 
@@ -1477,7 +1607,9 @@ export default function IndexPage() {
                 Trending Now
               </h3>
               <p className="mt-0.5 text-xs text-slate-600">
-                Country-first, with Global alongside.
+                {countryLabel
+                  ? "Country-first, with Global alongside."
+                  : "See what topics are trending globally."}
               </p>
             </div>
             <button
@@ -1490,32 +1622,67 @@ export default function IndexPage() {
           </div>
 
           <div className="mt-3">
-            <Tabs defaultValue="country" className="w-full">
-              <TabsList className="mb-3 w-full sm:w-auto">
-                <TabsTrigger value="country" className="flex-1 sm:flex-initial">
-                  {countryLabel}
-                </TabsTrigger>
-                <TabsTrigger value="global" className="flex-1 sm:flex-initial">
-                  Global
-                </TabsTrigger>
-              </TabsList>
+            {trendingQuery.isLoading ? (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="animate-pulse rounded-lg border bg-slate-50 p-4">
+                    <div className="h-4 bg-slate-200 rounded w-3/4 mb-2" />
+                    <div className="h-3 bg-slate-200 rounded w-1/2" />
+                  </div>
+                ))}
+              </div>
+            ) : trending.length === 0 ? (
+              <div className="rounded-lg border border-dashed bg-slate-50 px-4 py-8 text-center">
+                <p className="text-sm text-slate-600">
+                  No trending topics right now.
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Check back soon or{" "}
+                  <button
+                    type="button"
+                    className="underline hover:text-slate-900"
+                    onClick={() => navigate("/topics")}
+                  >
+                    browse all topics
+                  </button>
+                  .
+                </p>
+              </div>
+            ) : countryLabel ? (
+              <Tabs defaultValue="country" className="w-full">
+                <TabsList className="mb-3 w-full sm:w-auto">
+                  <TabsTrigger value="country" className="flex-1 sm:flex-initial">
+                    {countryLabel}
+                  </TabsTrigger>
+                  <TabsTrigger value="global" className="flex-1 sm:flex-initial">
+                    Global
+                  </TabsTrigger>
+                </TabsList>
 
-              <TabsContent value="country" className="mt-0">
-                <WireframeTrendingCarousel
-                  topics={(countryTopics.length ? countryTopics : trending).slice(0, 12)}
-                  onAnswer={openTopic}
-                  onOpen={openTopic}
-                />
-              </TabsContent>
+                <TabsContent value="country" className="mt-0">
+                  <WireframeTrendingCarousel
+                    topics={(countryTopics.length ? countryTopics : trending).slice(0, 12)}
+                    onAnswer={openTopic}
+                    onOpen={openTopic}
+                  />
+                </TabsContent>
 
-              <TabsContent value="global" className="mt-0">
-                <WireframeTrendingCarousel
-                  topics={(globalTopics.length ? globalTopics : trending).slice(0, 12)}
-                  onAnswer={openTopic}
-                  onOpen={openTopic}
-                />
-              </TabsContent>
-            </Tabs>
+                <TabsContent value="global" className="mt-0">
+                  <WireframeTrendingCarousel
+                    topics={(globalTopics.length ? globalTopics : trending).slice(0, 12)}
+                    onAnswer={openTopic}
+                    onOpen={openTopic}
+                  />
+                </TabsContent>
+              </Tabs>
+            ) : (
+              /* No country label (anonymous or no location set) — show all topics without tabs */
+              <WireframeTrendingCarousel
+                topics={trending.slice(0, 12)}
+                onAnswer={openTopic}
+                onOpen={openTopic}
+              />
+            )}
           </div>
         </div>
 
