@@ -413,11 +413,6 @@ const chunk = <T,>(arr: T[], size: number): T[][] => {
     toast,
     load,
   ]);
-;
-    } finally {
-      setGenerating(false);
-    }
-  }, [supabase, generating, generateCooldown, toast, load, startGenerateCooldown]);
 
   React.useEffect(() => {
     load();
