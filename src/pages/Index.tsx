@@ -1044,15 +1044,23 @@ export default function IndexPage() {
 
   const trending = trendingQuery.data ?? [];
 
-  const countryTopics = React.useMemo(() => {
-    const byTier = trending.filter((t) => t.tier === "country");
-    return byTier.length ? byTier : trending;
-  }, [trending]);
+// Country vs Global eligibility (match Trending Questions logic shape)
+// - Country tab: show {countryLabel, Global, NULL}
+// - Global tab: show everything
+const countryTopics = React.useMemo(() => {
+  if (!countryLabel) return trending;
 
-  const globalTopics = React.useMemo(() => {
-    const byTier = trending.filter((t) => t.tier === "global");
-    return byTier.length ? byTier : trending;
-  }, [trending]);
+  const eligible = trending.filter((t) => {
+    const lbl = t.location_label ?? null;
+    return lbl === countryLabel || lbl === "Global" || lbl === null;
+  });
+
+  // If everything got filtered out, fall back so UI doesn't look broken
+  return eligible.length ? eligible : trending;
+}, [trending, countryLabel]);
+
+const globalTopics = React.useMemo(() => trending, [trending]);
+
 
   // Global Breaking banner heuristic:
   const globalBreaking = React.useMemo(() => {
