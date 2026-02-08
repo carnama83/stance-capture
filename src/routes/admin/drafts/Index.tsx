@@ -90,21 +90,29 @@ export default function TopicDraftsPage() {
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
 
   const selectedCount = selectedIds.size;
+
   const allVisibleSelected = React.useMemo(() => {
     if (rows.length === 0) return false;
     return rows.every((r) => selectedIds.has(r.id));
   }, [rows, selectedIds]);
 
+  // (Optional) used for indeterminate checkbox UI if you want it later.
+  const someVisibleSelected = React.useMemo(() => {
+    if (rows.length === 0) return false;
+    return rows.some((r) => selectedIds.has(r.id)) && !allVisibleSelected;
+  }, [rows, selectedIds, allVisibleSelected]);
+
   const toggleSelectAllVisible = React.useCallback(() => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
       if (rows.length === 0) return next;
-      const everythingSelected = rows.every((r) => next.has(r.id));
-      if (everythingSelected) {
-        rows.forEach((r) => next.delete(r.id));
-      } else {
-        rows.forEach((r) => next.add(r.id));
-      }
+
+      const shouldSelectAll = !rows.every((r) => next.has(r.id));
+      rows.forEach((r) => {
+        if (shouldSelectAll) next.add(r.id);
+        else next.delete(r.id);
+      });
+
       return next;
     });
   }, [rows]);
@@ -118,51 +126,8 @@ export default function TopicDraftsPage() {
     });
   }, []);
 
-  const toggleSelectOne = React.useCallback((id: string) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
-
-  // Bulk selection (for currently loaded/visible rows)
-  const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
-
-  const allVisibleSelected = React.useMemo(() => {
-    if (rows.length === 0) return false;
-    return rows.every((r) => selectedIds.has(r.id));
-  }, [rows, selectedIds]);
-
-  const someVisibleSelected = React.useMemo(() => {
-    return rows.some((r) => selectedIds.has(r.id)) && !allVisibleSelected;
-  }, [rows, selectedIds, allVisibleSelected]);
-
-  const toggleSelectAllVisible = React.useCallback(() => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (rows.length === 0) return next;
-      const shouldSelectAll = !rows.every((r) => next.has(r.id));
-      if (shouldSelectAll) {
-        rows.forEach((r) => next.add(r.id));
-      } else {
-        rows.forEach((r) => next.delete(r.id));
-      }
-      return next;
-    });
-  }, [rows]);
-
-  const toggleSelectOne = React.useCallback((id: string) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
-
   const clearSelection = React.useCallback(() => setSelectedIds(new Set()), []);
+
 
   // Keep interval ids so we can always cleanup (prevents stuck UI)
   const clusterIntervalRef = React.useRef<number | null>(null);
