@@ -109,26 +109,27 @@ export default function AdminImpactDashboardPage() {
   // -----------------------------
   // Data: Questions + Impact + Visibility
   // -----------------------------
-  const { data, isLoading, isError, error, refetch } =
-    useQuery<QuestionImpactRow[]>({
-      queryKey: ["impact-dashboard", "v_question_impact_admin"],
-      queryFn: async () => {
-        const { data, error } = await supabase
-          .from("v_question_impact_admin")
-          .select("*")
-          .order("composite_score", { ascending: false })
-          .limit(100);
+const { data, isLoading, isError, error, refetch } = useQuery<QuestionImpactRow[]>({
+  queryKey: ["impact-dashboard", "v_question_impact_admin"],
+  queryFn: async () => {
+    const { data, error } = await supabase
+      .from("v_question_impact_admin")
+      .select("*")
+      .order("composite_score", { ascending: false, nullsFirst: false })  // ← ADD nullsFirst: false
+      .order("question_published_at", { ascending: false })  // ← ADD secondary sort
+      .limit(100);
 
-        if (error) {
-          console.error("Error loading v_question_impact_admin:", error);
-          throw error;
-        }
-        return (data ?? []) as QuestionImpactRow[];
-      },
-      // FIX 1: Disable caching to always get fresh data
-      staleTime: 0,
-      gcTime: 0,
-    });
+    if (error) {
+      console.error("Error loading v_question_impact_admin:", error);
+      throw error;
+    }
+    return (data ?? []) as QuestionImpactRow[];
+  },
+  staleTime: 0,
+  gcTime: 0,
+  refetchOnMount: true,  // ← ADD THIS
+  refetchOnWindowFocus: false,  // ← ADD THIS (prevent unnecessary refetches)
+});
 
   // -----------------------------
   // Mutation: Set question visibility
@@ -239,21 +240,16 @@ export default function AdminImpactDashboardPage() {
 
 // DEBUG VERSION - Use this to see exactly what's happening
 // Replace handleRescoreSingle with this temporarily:
-
 const handleRescoreSingle = async (questionId: string | null) => {
   if (!questionId) return;
   
   setRescoringQuestion(questionId);
   try {
-    console.log('1. Calling Edge Function for question:', questionId);
-    
     const { data: result, error } = await supabase.functions.invoke('ai-score-question', {
       body: { question_id: questionId }
     });
 
     if (error) throw error;
-
-    console.log('2. Edge Function returned:', result);
 
     const compositeScore = result?.composite_score || result?.new_composite_score || 'N/A';
     
@@ -262,39 +258,17 @@ const handleRescoreSingle = async (questionId: string | null) => {
       description: `New composite score: ${compositeScore}`,
     });
 
-    console.log('3. Current cache data BEFORE refetch:');
-    const currentData = queryClient.getQueryData(["impact-dashboard", "v_question_impact_admin"]);
-    console.log(currentData);
+    // Wait for database to commit
+    await new Promise(resolve => setTimeout(resolve, 500));
 
-    // Wait for database
-    await new Promise(resolve => setTimeout(resolve, 2000));
-
-    console.log('4. Manually fetching from database...');
-    const { data: freshData, error: fetchError } = await supabase
-      .from("v_question_impact_admin")
-      .select("*")
-      .eq("question_id", questionId)
-      .single();
-
-    console.log('5. Fresh data from database:', freshData);
-
-    if (freshData) {
-      console.log('6. Database HAS the scores:', {
-        composite: freshData.composite_score,
-        impact: freshData.impact_score,
-        stance: freshData.stance_potential_score
-      });
-    }
-
-    // Force cache reset
+    // CRITICAL FIX: Reset the entire query cache and force refetch
     await queryClient.resetQueries({ 
-      queryKey: ["impact-dashboard", "v_question_impact_admin"]
+      queryKey: ["impact-dashboard", "v_question_impact_admin"],
+      exact: true
     });
 
-    console.log('7. Cache reset complete, data should update now');
-
   } catch (err: any) {
-    console.error("Full error:", err);
+    console.error("Scoring error:", err);
     toast({
       title: "Scoring Failed",
       description: err?.message || "Unknown error",
@@ -305,18 +279,22 @@ const handleRescoreSingle = async (questionId: string | null) => {
   }
 };
 
-// INSTRUCTIONS:
-// 1. Replace your handleRescoreSingle with this
-// 2. Open browser DevTools Console (F12)
-// 3. Click the ↻ button
-// 4. Watch the console logs
-// 5. Send me screenshot of ALL the console output
+// EXPLANATION OF THE FIX:
+// 
+// Problem 1: ORDER BY composite_score DESC puts NULL values last
+//   - When you first load the page, questions without scores are at the end
+//   - When you score a question, it moves to the top, but the cache doesn't know this
+//   - Solution: Add nullsFirst: false explicitly + secondary sort by published_at
 //
-// This will show us:
-// - What the Edge Function returns
-// - What's in the cache before refetch  
-// - What the database actually has
-// - Whether the cache reset works
+// Problem 2: React Query cache wasn't invalidating properly
+//   - refetch() doesn't always force a fresh query
+//   - Solution: Use resetQueries() which completely clears the cache
+//
+// After this fix:
+// 1. Questions will be sorted: high scores first, then by date
+// 2. After scoring, the cache is completely cleared and refetched
+// 3. The newly-scored question will appear at the top with its scores visible
+
 
 
   // =============================
