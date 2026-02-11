@@ -237,86 +237,86 @@ export default function AdminImpactDashboardPage() {
   // =============================
   const [rescoringQuestion, setRescoringQuestion] = React.useState<string | null>(null);
 
-// ALTERNATIVE FIX: Optimistic Update Approach
-// This updates the UI immediately while the database syncs in the background
+// DEBUG VERSION - Use this to see exactly what's happening
+// Replace handleRescoreSingle with this temporarily:
 
 const handleRescoreSingle = async (questionId: string | null) => {
   if (!questionId) return;
   
   setRescoringQuestion(questionId);
   try {
-    // Call the Edge Function
+    console.log('1. Calling Edge Function for question:', questionId);
+    
     const { data: result, error } = await supabase.functions.invoke('ai-score-question', {
       body: { question_id: questionId }
     });
 
-    if (error) {
-      console.error('Edge Function error:', error);
-      throw error;
-    }
+    if (error) throw error;
 
-    console.log('Edge Function response:', result);
-    
-    const compositeScore = result?.composite_score || 'N/A';
+    console.log('2. Edge Function returned:', result);
+
+    const compositeScore = result?.composite_score || result?.new_composite_score || 'N/A';
     
     toast({
       title: "✅ Question Scored by GPT-4!",
       description: `New composite score: ${compositeScore}`,
     });
 
-    // OPTIMISTIC UPDATE: Update the cache immediately with the new scores
-    queryClient.setQueryData<QuestionImpactRow[]>(
-      ["impact-dashboard", "v_question_impact_admin"], 
-      (oldData) => {
-        if (!oldData) return oldData;
-        
-        return oldData.map(row => {
-          if (row.question_id === questionId) {
-            // Update this specific row with the new scores
-            return {
-              ...row,
-              composite_score: result.composite_score,
-              impact_score: result.impact_score,
-              stance_potential_score: result.stance_potential_score,
-              cluster_density_score: result.cluster_density_score,
-              region_relevance_score: result.region_relevance_score,
-              engagement_prediction_score: result.engagement_prediction_score,
-              impact_explanation: result.explanation,
-              scores_updated_at: new Date().toISOString()
-            };
-          }
-          return row;
-        });
-      }
-    );
+    console.log('3. Current cache data BEFORE refetch:');
+    const currentData = queryClient.getQueryData(["impact-dashboard", "v_question_impact_admin"]);
+    console.log(currentData);
 
-    // Then invalidate and refetch in the background to confirm
-    setTimeout(async () => {
-      await queryClient.invalidateQueries({ 
-        queryKey: ["impact-dashboard", "v_question_impact_admin"] 
+    // Wait for database
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    console.log('4. Manually fetching from database...');
+    const { data: freshData, error: fetchError } = await supabase
+      .from("v_question_impact_admin")
+      .select("*")
+      .eq("question_id", questionId)
+      .single();
+
+    console.log('5. Fresh data from database:', freshData);
+
+    if (freshData) {
+      console.log('6. Database HAS the scores:', {
+        composite: freshData.composite_score,
+        impact: freshData.impact_score,
+        stance: freshData.stance_potential_score
       });
-    }, 1000);
+    }
+
+    // Force cache reset
+    await queryClient.resetQueries({ 
+      queryKey: ["impact-dashboard", "v_question_impact_admin"]
+    });
+
+    console.log('7. Cache reset complete, data should update now');
 
   } catch (err: any) {
-    console.error("Scoring error:", err);
+    console.error("Full error:", err);
     toast({
       title: "Scoring Failed",
       description: err?.message || "Unknown error",
       variant: "destructive",
-    });
-    
-    // Rollback the optimistic update on error
-    await queryClient.invalidateQueries({ 
-      queryKey: ["impact-dashboard", "v_question_impact_admin"] 
     });
   } finally {
     setRescoringQuestion(null);
   }
 };
 
-// BENEFIT: User sees the scores update INSTANTLY
-// Then we verify with the database 1 second later
-// This feels much more responsive!
+// INSTRUCTIONS:
+// 1. Replace your handleRescoreSingle with this
+// 2. Open browser DevTools Console (F12)
+// 3. Click the ↻ button
+// 4. Watch the console logs
+// 5. Send me screenshot of ALL the console output
+//
+// This will show us:
+// - What the Edge Function returns
+// - What's in the cache before refetch  
+// - What the database actually has
+// - Whether the cache reset works
 
 
   // =============================
