@@ -237,48 +237,87 @@ export default function AdminImpactDashboardPage() {
   // =============================
   const [rescoringQuestion, setRescoringQuestion] = React.useState<string | null>(null);
 
-  const handleRescoreSingle = async (questionId: string | null) => {
-    if (!questionId) return;
+// ALTERNATIVE FIX: Optimistic Update Approach
+// This updates the UI immediately while the database syncs in the background
+
+const handleRescoreSingle = async (questionId: string | null) => {
+  if (!questionId) return;
+  
+  setRescoringQuestion(questionId);
+  try {
+    // Call the Edge Function
+    const { data: result, error } = await supabase.functions.invoke('ai-score-question', {
+      body: { question_id: questionId }
+    });
+
+    if (error) {
+      console.error('Edge Function error:', error);
+      throw error;
+    }
+
+    console.log('Edge Function response:', result);
     
-    setRescoringQuestion(questionId);
-    try {
-      const { data: result, error } = await supabase.functions.invoke('ai-score-question', {
-        body: { question_id: questionId }
-      });
+    const compositeScore = result?.composite_score || 'N/A';
+    
+    toast({
+      title: "✅ Question Scored by GPT-4!",
+      description: `New composite score: ${compositeScore}`,
+    });
 
-      if (error) throw error;
+    // OPTIMISTIC UPDATE: Update the cache immediately with the new scores
+    queryClient.setQueryData<QuestionImpactRow[]>(
+      ["impact-dashboard", "v_question_impact_admin"], 
+      (oldData) => {
+        if (!oldData) return oldData;
+        
+        return oldData.map(row => {
+          if (row.question_id === questionId) {
+            // Update this specific row with the new scores
+            return {
+              ...row,
+              composite_score: result.composite_score,
+              impact_score: result.impact_score,
+              stance_potential_score: result.stance_potential_score,
+              cluster_density_score: result.cluster_density_score,
+              region_relevance_score: result.region_relevance_score,
+              engagement_prediction_score: result.engagement_prediction_score,
+              impact_explanation: result.explanation,
+              scores_updated_at: new Date().toISOString()
+            };
+          }
+          return row;
+        });
+      }
+    );
 
-      // Extract scores from the response
-      const scores = result?.scores || result;
-      const compositeScore = scores?.composite_score || 'N/A';
-      
-      toast({
-        title: "✅ Question Scored by GPT-4!",
-        description: `New composite score: ${compositeScore}`,
-      });
-
-      // FIX: Wait for database to commit, then invalidate and refetch
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Invalidate the query cache first
+    // Then invalidate and refetch in the background to confirm
+    setTimeout(async () => {
       await queryClient.invalidateQueries({ 
         queryKey: ["impact-dashboard", "v_question_impact_admin"] 
       });
-      
-      // Then force refetch
-      await refetch();
+    }, 1000);
 
-    } catch (err: any) {
-      console.error("Scoring error:", err);
-      toast({
-        title: "Scoring Failed",
-        description: err?.message || "Unknown error",
-        variant: "destructive",
-      });
-    } finally {
-      setRescoringQuestion(null);
-    }
-  };
+  } catch (err: any) {
+    console.error("Scoring error:", err);
+    toast({
+      title: "Scoring Failed",
+      description: err?.message || "Unknown error",
+      variant: "destructive",
+    });
+    
+    // Rollback the optimistic update on error
+    await queryClient.invalidateQueries({ 
+      queryKey: ["impact-dashboard", "v_question_impact_admin"] 
+    });
+  } finally {
+    setRescoringQuestion(null);
+  }
+};
+
+// BENEFIT: User sees the scores update INSTANTLY
+// Then we verify with the database 1 second later
+// This feels much more responsive!
+
 
   // =============================
   // Apply Visibility Rules
