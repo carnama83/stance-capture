@@ -317,28 +317,25 @@ function HeroCta({
   onSignup: () => void;
 }) {
   return (
-    <section className="overflow-hidden rounded-lg border bg-gradient-to-br from-slate-50 to-white shadow-sm">
-      <div className="px-4 py-6 sm:px-6">
-        <h2 className="text-2xl font-bold tracking-tight text-slate-900">
+    <section className="relative overflow-hidden rounded-2xl border border-primary/10 bg-gradient-to-br from-primary via-primary to-indigo-800 shadow-lg">
+      {/* subtle radial highlight */}
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.25),transparent_55%)]" />
+      {/* decorative blur orb */}
+      <div className="pointer-events-none absolute -right-16 -top-16 h-72 w-72 rounded-full bg-white/10 blur-3xl" />
+
+      <div className="relative px-5 py-8 sm:px-8 sm:py-10">
+        <h2 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">
           Track your stance on what matters
         </h2>
-        <p className="mt-2 text-sm text-slate-600">
-          Start with what’s trending, take a stance, and track how your views
-          evolve over time.
+        <p className="mt-3 max-w-2xl text-sm leading-relaxed text-white/85 sm:text-base">
+          Start with what’s trending, take a stance, and track how your views evolve over time.
         </p>
-        <div className="mt-4 flex flex-wrap gap-2">
-          <button
-            type="button"
-            className="inline-flex items-center justify-center rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-900"
-            onClick={onSignup}
-          >
-            Sign up
+
+        <div className="mt-6 flex flex-wrap gap-3">
+          <button type="button" className={BTN_PRIMARY} onClick={onSignup}>
+            Get started free
           </button>
-          <button
-            type="button"
-            className="inline-flex items-center justify-center rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-900 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-900"
-            onClick={onLogin}
-          >
+          <button type="button" className={BTN_OUTLINE} onClick={onLogin}>
             Log in
           </button>
         </div>
@@ -347,21 +344,38 @@ function HeroCta({
   );
 }
 
+
 // ---------- Hero Welcome ----------
 function HeroWelcome({ name }: { name: string }) {
   return (
-    <section className="overflow-hidden rounded-lg border bg-gradient-to-br from-slate-50 to-white shadow-sm">
-      <div className="px-4 py-5 sm:px-6">
-        <h2 className="text-2xl font-bold tracking-tight text-slate-900">
+    <section className="relative overflow-hidden rounded-2xl border border-primary/10 bg-gradient-to-br from-primary/5 via-card to-card shadow-sm">
+      <div className="pointer-events-none absolute -right-12 -top-12 h-64 w-64 rounded-full bg-primary/10 blur-3xl" />
+      <div className="relative px-5 py-6 sm:px-8 sm:py-7">
+        <h2 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
           Welcome back, {name}!
         </h2>
-        <p className="mt-2 text-sm text-slate-600">
+        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
           Start with what’s trending, then answer today’s questions.
         </p>
       </div>
     </section>
   );
 }
+
+
+// ---------- Visual system (shared classes) ----------
+const BTN_PRIMARY =
+  "inline-flex items-center justify-center rounded-full bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring/40";
+const BTN_OUTLINE =
+  "inline-flex items-center justify-center rounded-full border border-primary/20 bg-primary/5 px-5 py-2 text-sm font-semibold text-primary transition hover:bg-primary hover:text-primary-foreground hover:border-primary focus:outline-none focus:ring-2 focus:ring-ring/30";
+const BTN_OUTLINE_SM =
+  "inline-flex items-center justify-center rounded-full border border-primary/20 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary transition hover:bg-primary hover:text-primary-foreground hover:border-primary";
+const BTN_GHOST_SM =
+  "inline-flex items-center justify-center rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-accent";
+const CHIP =
+  "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset bg-primary/10 text-primary ring-primary/20";
+const CHIP_MUTED =
+  "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset bg-muted/50 text-muted-foreground ring-border";
 
 // ---------- UI helpers ----------
 function formatScore(n?: number | null) {
@@ -469,8 +483,8 @@ function WireframeTrendingCarousel({
       <div
         className={
           variant === "large"
-            ? "rounded-lg border bg-gradient-to-b from-slate-50 to-white p-4 shadow-sm"
-            : "rounded-lg border bg-gradient-to-b from-slate-50 to-white p-3 shadow-sm"
+            ? "rounded-lg border bg-gradient-to-b from-primary/5 to-card p-4 shadow-sm"
+            : "rounded-lg border bg-gradient-to-b from-primary/5 to-card p-3 shadow-sm"
         }
       >
         <button
@@ -516,11 +530,7 @@ function WireframeTrendingCarousel({
         <div className={variant === "large" ? "mt-4" : "mt-3"}>
           <button
             type="button"
-            className={
-              variant === "large"
-                ? "rounded bg-slate-700 px-5 py-2 text-sm font-semibold text-white hover:bg-slate-800"
-                : "rounded border bg-white px-4 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50"
-            }
+            className={variant === "large" ? BTN_PRIMARY : BTN_OUTLINE_SM}
             onClick={() => onAnswer(t.id)}
           >
             Answer
@@ -814,7 +824,7 @@ function QuestionRow({
                 <button
                   key={r.related_question_id}
                   type="button"
-                  className="rounded border px-2 py-1 text-[11px] hover:bg-slate-50"
+                  className={BTN_GHOST_SM}
                   onClick={(e) => {
                     e.stopPropagation();
                     window.location.hash = `#/q/${r.related_question_id}`;
@@ -837,7 +847,7 @@ function QuestionRow({
           <button
             type="button"
             onClick={onAnswer}
-            className="rounded border px-3 py-1.5 text-xs hover:bg-slate-50"
+            className={BTN_OUTLINE_SM}
           >
             Answer
           </button>
@@ -870,7 +880,7 @@ export default function IndexPage() {
   const actions = (
     <div className="flex items-center gap-2">
       <button
-        className="rounded border px-3 py-1.5 text-sm hover:bg-slate-50 flex items-center gap-2"
+        className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-sm transition hover:bg-accent"
         onClick={() => navigate("/search")}
         aria-label="Search questions"
       >
@@ -878,7 +888,7 @@ export default function IndexPage() {
         <span className="hidden sm:inline">Search</span>
       </button>
       <button
-        className="rounded border px-3 py-1.5 text-sm hover:bg-slate-50"
+        className="inline-flex items-center justify-center rounded-full border border-border bg-card px-3 py-1.5 text-sm transition hover:bg-accent"
         onClick={() => navigate("/topics")}
         aria-label="Explore topics"
       >
@@ -1361,7 +1371,7 @@ const globalTopics = React.useMemo(() => trending, [trending]);
             </div>
             <button
               type="button"
-              className="rounded border px-3 py-1 text-xs hover:bg-slate-50"
+              className={BTN_GHOST_SM}
               onClick={() => openTopic(globalBreaking.id)}
             >
               Answer
@@ -1388,7 +1398,7 @@ const globalTopics = React.useMemo(() => trending, [trending]);
             {!isAuthed ? (
               <button
                 type="button"
-                className="rounded border px-3 py-1.5 text-sm hover:bg-slate-50"
+                className="inline-flex items-center justify-center rounded-full border border-border bg-card px-3 py-1.5 text-sm transition hover:bg-accent"
                 onClick={() => navigate("/login")}
               >
                 Log in to personalize
@@ -1847,7 +1857,7 @@ const globalTopics = React.useMemo(() => trending, [trending]);
               <div className="mt-2 flex flex-wrap gap-2">
                 <button
                   type="button"
-                  className="rounded border px-3 py-1.5 text-xs hover:bg-slate-50"
+                  className={BTN_OUTLINE_SM}
                   onClick={() => {
                     if (!isAuthed) {
                       const returnTo = window.location.hash || "#/";
@@ -1862,7 +1872,7 @@ const globalTopics = React.useMemo(() => trending, [trending]);
                 </button>
                 <button
                   type="button"
-                  className="rounded border px-3 py-1.5 text-xs hover:bg-slate-50"
+                  className={BTN_OUTLINE_SM}
                   onClick={() => {
                     if (!isAuthed) {
                       const returnTo = window.location.hash || "#/";
@@ -1887,7 +1897,7 @@ const globalTopics = React.useMemo(() => trending, [trending]);
               <div className="mt-2 flex flex-wrap gap-2">
                 <button
                   type="button"
-                  className="rounded border px-3 py-1.5 text-xs hover:bg-slate-50"
+                  className={BTN_OUTLINE_SM}
                   onClick={() => {
                     if (!isAuthed) {
                       const returnTo = window.location.hash || "#/";
@@ -1902,7 +1912,7 @@ const globalTopics = React.useMemo(() => trending, [trending]);
                 </button>
                 <button
                   type="button"
-                  className="rounded border px-3 py-1.5 text-xs hover:bg-slate-50"
+                  className={BTN_OUTLINE_SM}
                   onClick={() => {
                     if (!isAuthed) {
                       const returnTo = window.location.hash || "#/";
@@ -1948,7 +1958,7 @@ const globalTopics = React.useMemo(() => trending, [trending]);
               <div className="mt-2">
                 <button
                   type="button"
-                  className="rounded border px-3 py-1.5 text-xs hover:bg-slate-50"
+                  className={BTN_OUTLINE_SM}
                   onClick={() => {
                     if (!isAuthed) {
                       const returnTo = window.location.hash || "#/";
@@ -1973,7 +1983,7 @@ const globalTopics = React.useMemo(() => trending, [trending]);
               <div className="mt-2">
                 <button
                   type="button"
-                  className="rounded border px-3 py-1.5 text-xs hover:bg-slate-50"
+                  className={BTN_OUTLINE_SM}
                   onClick={() => {
                     if (!isAuthed) {
                       const returnTo = window.location.hash || "#/";
@@ -2028,7 +2038,7 @@ const globalTopics = React.useMemo(() => trending, [trending]);
                       <div className="mt-2">
                         <button
                           type="button"
-                          className="rounded border px-3 py-1.5 text-xs hover:bg-slate-50"
+                          className={BTN_OUTLINE_SM}
                           onClick={() => goToQuestion(r.question_id)}
                         >
                           Answer
