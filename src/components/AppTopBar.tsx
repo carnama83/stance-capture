@@ -332,20 +332,6 @@ export default function AppTopBar({
               {/* Logged-out CTAs */}
               <button
                 onClick={() => {
-                  if (!onLoginPage) navigate("/login");
-                }}
-                className={
-                  onLoginPage
-                    ? "px-4 py-2 text-sm font-medium text-muted-foreground rounded-full cursor-default"
-                    : "px-4 py-2 text-sm font-medium text-foreground hover:text-foreground rounded-full hover:bg-accent transition-colors"
-                }
-                aria-current={onLoginPage ? "page" : undefined}
-              >
-                Sign in
-              </button>
-              
-              <button
-                onClick={() => {
                   if (!onSignupPage) navigate("/signup");
                 }}
                 className={
