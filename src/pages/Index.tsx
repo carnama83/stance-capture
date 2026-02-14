@@ -317,7 +317,7 @@ function HeroCta({
   onSignup: () => void;
 }) {
   return (
-    <section className="overflow-hidden rounded-lg border bg-gradient-to-br from-slate-50 to-white shadow-sm">
+    <section className="overflow-hidden rounded-lg border bg-gradient-to-br from-slate-50 to-white shadow-sm transition-shadow duration-150">
       <div className="px-4 py-6 sm:px-6">
         <h2 className="text-2xl font-bold tracking-tight text-foreground">
           Track your stance on what matters
@@ -329,7 +329,7 @@ function HeroCta({
         <div className="mt-4 flex flex-wrap gap-2">
           <button
             type="button"
-            className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
+            className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-shadow duration-150 hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
             onClick={onSignup}
           >
             Sign up
@@ -350,7 +350,7 @@ function HeroCta({
 // ---------- Hero Welcome ----------
 function HeroWelcome({ name }: { name: string }) {
   return (
-    <section className="overflow-hidden rounded-lg border bg-gradient-to-br from-slate-50 to-white shadow-sm">
+    <section className="overflow-hidden rounded-lg border bg-gradient-to-br from-slate-50 to-white shadow-sm transition-shadow duration-150">
       <div className="px-4 py-5 sm:px-6">
         <h2 className="text-2xl font-bold tracking-tight text-foreground">
           Welcome back, {name}!
@@ -395,7 +395,7 @@ function TopicCard({
     <button
       type="button"
       onClick={() => onOpen(topic.id)}
-      className="text-left min-w-[260px] max-w-[340px] rounded-lg border bg-card p-3 shadow-sm hover:bg-muted/50 transition"
+      className="text-left min-w-[260px] max-w-[340px] rounded-lg border bg-card p-3 shadow-sm transition-shadow duration-150 hover:bg-muted/50 transition"
     >
       <div className="flex items-start justify-between gap-2">
         <div className="font-semibold text-foreground line-clamp-2">
@@ -469,8 +469,8 @@ function WireframeTrendingCarousel({
       <div
         className={
           variant === "large"
-            ? "rounded-lg border bg-gradient-to-b from-slate-50 to-white p-4 shadow-sm"
-            : "rounded-lg border bg-gradient-to-b from-slate-50 to-white p-3 shadow-sm"
+            ? "rounded-lg border bg-gradient-to-b from-slate-50 to-white p-4 shadow-sm transition-shadow duration-150"
+            : "rounded-lg border bg-gradient-to-b from-slate-50 to-white p-3 shadow-sm transition-shadow duration-150"
         }
       >
         <button
@@ -487,7 +487,7 @@ function WireframeTrendingCarousel({
         </button>
 
         <div className="mt-2 flex flex-wrap gap-1.5">
-          <span className="rounded bg-primary px-2 py-0.5 text-[10px] text-primary-foreground">
+          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] text-primary ring-1 ring-inset ring-primary/20">
             {tier}
           </span>
           {(t.tags ?? []).map((tag) => {
@@ -496,7 +496,7 @@ function WireframeTrendingCarousel({
               return (
                 <span
                   key={tag}
-                  className="rounded bg-primary/10 px-2 py-0.5 text-[10px] text-foreground"
+                  className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground ring-1 ring-inset ring-border"
                 >
                   {up}
                 </span>
@@ -544,7 +544,7 @@ function WireframeTrendingCarousel({
         <button
           type="button"
           aria-label="Next"
-          className="absolute -right-2 top-1/2 -translate-y-1/2 rounded-full border bg-card p-2 shadow-sm hover:bg-muted/50"
+          className="absolute -right-2 top-1/2 -translate-y-1/2 rounded-full border bg-card p-2 shadow-sm transition-shadow duration-150 hover:bg-muted/50"
           onClick={() => setPage((p) => (p + 1) % totalPages)}
         >
           ›
@@ -581,7 +581,7 @@ function GlobalBreakingBanner({
   onOpen: (topicId: string) => void;
 }) {
   return (
-    <div className="mb-3 rounded-lg border bg-primary text-primary-foreground px-4 py-3 shadow-sm">
+    <div className="mb-3 rounded-lg border bg-primary text-primary-foreground px-4 py-3 shadow-sm transition-shadow duration-150">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <span className="rounded bg-card/15 px-2 py-0.5 text-[11px] font-semibold tracking-wide">
@@ -628,7 +628,7 @@ function TrendingQuestionCard({
       : "bg-amber-500/15 text-amber-800";
 
   return (
-    <div className="rounded-lg border bg-card p-3 shadow-sm">
+    <div className="rounded-lg border bg-card p-3 shadow-sm transition-shadow duration-150">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -763,7 +763,7 @@ function QuestionRow({
   ) : null;
 
   return (
-    <div className="grid grid-cols-1 gap-3 rounded-lg border bg-card p-3 shadow-sm md:grid-cols-[1fr_460px]">
+    <div className="grid grid-cols-1 gap-3 rounded-lg border bg-card p-3 shadow-sm transition-shadow duration-150 md:grid-cols-[1fr_460px]">
       <div className="min-w-0">
         <div className="flex items-center gap-2">
           <Link
@@ -1557,7 +1557,7 @@ const globalTopics = React.useMemo(() => trending, [trending]);
               ) : anonTrendingQuestions.length ? (
                 <div className="grid grid-cols-1 gap-3">
                   {anonTrendingQuestions.map((row) => (
-                    <div key={row.id} className="rounded-lg border bg-card p-3 shadow-sm">
+                    <div key={row.id} className="rounded-lg border bg-card p-3 shadow-sm transition-shadow duration-150">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <Link
@@ -1573,12 +1573,12 @@ const globalTopics = React.useMemo(() => trending, [trending]);
                           ) : null}
                           <div className="mt-2 flex flex-wrap gap-1.5">
                             {row.location_label ? (
-                              <span className="rounded bg-primary px-2 py-0.5 text-[10px] text-primary-foreground">
+                              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] text-primary ring-1 ring-inset ring-primary/20">
                                 {row.location_label.toUpperCase()}
                               </span>
                             ) : null}
                             {(row.tags ?? []).slice(0, 2).map((tag) => (
-                              <span key={tag} className="rounded bg-primary/10 px-2 py-0.5 text-[10px] text-foreground">
+                              <span key={tag} className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground ring-1 ring-inset ring-border">
                                 {tag}
                               </span>
                             ))}
@@ -1586,7 +1586,7 @@ const globalTopics = React.useMemo(() => trending, [trending]);
                         </div>
                         <button
                           type="button"
-                          className="shrink-0 rounded border px-3 py-1.5 text-xs hover:bg-muted/50"
+                          className="shrink-0 rounded-md border border-primary/20 bg-primary/5 px-3 py-1.5 text-xs text-primary transition-colors hover:bg-primary hover:text-primary-foreground"
                           onClick={() => goToQuestion(row.id)}
                         >
                           Answer
@@ -1608,10 +1608,10 @@ const globalTopics = React.useMemo(() => trending, [trending]);
 
 
 {/* Trending Now */}
-        <div className="rounded-lg border bg-card p-4 shadow-sm">
+        <div className="rounded-2xl border border-border bg-card p-5 shadow-sm transition-shadow duration-150">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h3 className="text-base font-semibold text-foreground">
+              <h3 className="text-base font-semibold text-foreground tracking-tight">
                 Trending Now
               </h3>
               <p className="mt-0.5 text-xs text-muted-foreground">
@@ -1622,7 +1622,7 @@ const globalTopics = React.useMemo(() => trending, [trending]);
             </div>
             <button
               type="button"
-              className="text-xs text-muted-foreground hover:text-foreground"
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
               onClick={() => navigate("/topics")}
             >
               Explore →
@@ -1658,11 +1658,11 @@ const globalTopics = React.useMemo(() => trending, [trending]);
               </div>
             ) : countryLabel ? (
               <Tabs defaultValue="country" className="w-full">
-                <TabsList className="mb-3 w-full sm:w-auto">
-                  <TabsTrigger value="country" className="flex-1 sm:flex-initial">
+                <TabsList className="mb-4 w-full sm:w-auto rounded-full bg-muted/50 p-1">
+                  <TabsTrigger value="country" className="flex-1 sm:flex-initial rounded-full data-[state=active]:bg-background data-[state=active]:shadow-sm">
                     {countryLabel}
                   </TabsTrigger>
-                  <TabsTrigger value="global" className="flex-1 sm:flex-initial">
+                  <TabsTrigger value="global" className="flex-1 sm:flex-initial rounded-full data-[state=active]:bg-background data-[state=active]:shadow-sm">
                     Global
                   </TabsTrigger>
                 </TabsList>
@@ -1695,10 +1695,10 @@ const globalTopics = React.useMemo(() => trending, [trending]);
         </div>
 
         {/* Today’s 5 Questions */}
-        <div className="rounded-lg border bg-card p-4 shadow-sm">
+        <div className="rounded-2xl border border-border bg-card p-5 shadow-sm transition-shadow duration-150">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h3 className="text-base font-semibold text-foreground">
+              <h3 className="text-base font-semibold text-foreground tracking-tight">
                 Today’s 5 Questions
               </h3>
               <p className="mt-0.5 text-xs text-muted-foreground">
@@ -1708,7 +1708,7 @@ const globalTopics = React.useMemo(() => trending, [trending]);
             {!isAuthed ? (
               <button
                 type="button"
-                className="text-xs text-muted-foreground hover:text-foreground"
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
                 onClick={() => navigate("/signup")}
               >
                 Personalize →
@@ -1822,10 +1822,10 @@ const globalTopics = React.useMemo(() => trending, [trending]);
         </div>
 
         {/* Because you engaged with... (intent tiles; show for anon too) */}
-        <div className="rounded-lg border bg-card p-4 shadow-sm">
+        <div className="rounded-2xl border border-border bg-card p-5 shadow-sm transition-shadow duration-150">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h3 className="text-base font-semibold text-foreground">
+              <h3 className="text-base font-semibold text-foreground tracking-tight">
                 Because you engaged with:{" "}
                 {topEngagedTags.length ? topEngagedTags.join(", ") : "your topics"}
               </h3>
@@ -1839,7 +1839,7 @@ const globalTopics = React.useMemo(() => trending, [trending]);
 
           <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
             {/* Tile 1: Similar topics (intent-driven) */}
-            <div className="rounded-lg border bg-card p-3 shadow-sm">
+            <div className="rounded-lg border bg-card p-3 shadow-sm transition-shadow duration-150">
               <div className="font-semibold text-foreground">Explore similar topics</div>
               <div className="mt-1 text-xs text-muted-foreground">
                 Discover topics related to what you’ve been engaging with recently.
@@ -1879,7 +1879,7 @@ const globalTopics = React.useMemo(() => trending, [trending]);
             </div>
 
             {/* Tile 2: Compare your views (intent-driven) */}
-            <div className="rounded-lg border bg-card p-3 shadow-sm">
+            <div className="rounded-lg border bg-card p-3 shadow-sm transition-shadow duration-150">
               <div className="font-semibold text-foreground">How your views compare</div>
               <div className="mt-1 text-xs text-muted-foreground">
                 See how your saved stances align with others across your region and globally.
@@ -1921,10 +1921,10 @@ const globalTopics = React.useMemo(() => trending, [trending]);
         </div>
 
         {/* Reopened Questions for You (intent tiles; show for anon too) */}
-        <div className="rounded-lg border bg-card p-4 shadow-sm">
+        <div className="rounded-2xl border border-border bg-card p-5 shadow-sm transition-shadow duration-150">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h3 className="text-base font-semibold text-foreground">Reopened Questions for You</h3>
+              <h3 className="text-base font-semibold text-foreground tracking-tight">Reopened Questions for You</h3>
               <p className="mt-0.5 text-xs text-muted-foreground">
                 {isAuthed
                   ? "These questions have new updates since you last saw them."
@@ -1935,7 +1935,7 @@ const globalTopics = React.useMemo(() => trending, [trending]);
 
           <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
             {/* Tile 1: Reopened questions (intent-driven) */}
-            <div className="rounded-lg border bg-card p-3 shadow-sm">
+            <div className="rounded-lg border bg-card p-3 shadow-sm transition-shadow duration-150">
               <div className="flex items-center gap-2">
                 <div className="font-semibold text-foreground">Reopened questions</div>
                 <span className="shrink-0 rounded bg-primary/10 px-2 py-0.5 text-[10px] text-foreground">
@@ -1965,7 +1965,7 @@ const globalTopics = React.useMemo(() => trending, [trending]);
             </div>
 
             {/* Tile 2: New update since you answered (intent-driven) */}
-            <div className="rounded-lg border bg-card p-3 shadow-sm">
+            <div className="rounded-lg border bg-card p-3 shadow-sm transition-shadow duration-150">
               <div className="font-semibold text-foreground">New update since you answered</div>
               <div className="mt-1 text-xs text-muted-foreground">
                 See what changed since your last stance and decide if you still agree.
@@ -1993,7 +1993,7 @@ const globalTopics = React.useMemo(() => trending, [trending]);
 
         {/* Local topics collapsed */}
         <div className="text-center">
-          <details className="inline-block w-full max-w-3xl rounded-lg border bg-card p-4 shadow-sm">
+          <details className="inline-block w-full max-w-3xl rounded-2xl border border-border bg-card p-5 shadow-sm transition-shadow duration-150">
             <summary className="cursor-pointer select-none list-none">
               <div className="flex items-center justify-center gap-2 text-sm text-foreground">
                 <span>Show Local Topics</span>
@@ -2012,7 +2012,7 @@ const globalTopics = React.useMemo(() => trending, [trending]);
                   .map((r) => (
                     <div
                       key={r.question_id}
-                      className="rounded-lg border bg-card p-3 shadow-sm"
+                      className="rounded-lg border bg-card p-3 shadow-sm transition-shadow duration-150"
                     >
                       <Link
                         to={`/q/${r.question_id}`}
