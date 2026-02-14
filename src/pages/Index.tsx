@@ -370,21 +370,6 @@ function HeroWelcome({ name }: { name: string }) {
   );
 }
 
-({ name }: { name: string }) {
-  return (
-    <section className="overflow-hidden rounded-lg border bg-gradient-to-br from-slate-50 to-white shadow-sm transition-shadow duration-150">
-      <div className="px-4 py-5 sm:px-6">
-        <h2 className="text-2xl font-bold tracking-tight text-foreground">
-          Welcome back, {name}!
-        </h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Start with what’s trending, then answer today’s questions.
-        </p>
-      </div>
-    </section>
-  );
-}
-
 // ---------- UI helpers ----------
 function formatScore(n?: number | null) {
   if (n == null || Number.isNaN(n)) return null;
