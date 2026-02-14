@@ -317,26 +317,32 @@ function HeroCta({
   onSignup: () => void;
 }) {
   return (
-    <section className="overflow-hidden rounded-lg border bg-gradient-to-br from-slate-50 to-white shadow-sm transition-shadow duration-150">
-      <div className="px-4 py-6 sm:px-6">
-        <h2 className="text-2xl font-bold tracking-tight text-foreground">
+    <section className="relative overflow-hidden rounded-2xl border border-primary/10 bg-gradient-to-br from-primary via-primary to-indigo-800 shadow-lg">
+      {/* subtle radial highlight */}
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.25),transparent_55%)]" />
+      {/* decorative blur orb */}
+      <div className="pointer-events-none absolute -right-16 -top-16 h-72 w-72 rounded-full bg-white/10 blur-3xl" />
+
+      <div className="relative px-5 py-8 sm:px-8 sm:py-10">
+        <h2 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">
           Track your stance on what matters
         </h2>
-        <p className="mt-2 text-sm text-muted-foreground">
+        <p className="mt-3 max-w-2xl text-sm leading-relaxed text-white/85 sm:text-base">
           Start with what’s trending, take a stance, and track how your views
           evolve over time.
         </p>
-        <div className="mt-4 flex flex-wrap gap-2">
+
+        <div className="mt-6 flex flex-wrap gap-3">
           <button
             type="button"
-            className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-shadow duration-150 hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
+            className="inline-flex items-center justify-center rounded-lg bg-white px-4 py-2 text-sm font-semibold text-primary shadow-sm transition hover:bg-white/90 focus:outline-none focus:ring-2 focus:ring-white/60"
             onClick={onSignup}
           >
-            Sign up
+            Get started free
           </button>
           <button
             type="button"
-            className="inline-flex items-center justify-center rounded-md border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-muted/50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
+            className="inline-flex items-center justify-center rounded-lg border border-white/30 bg-white/10 px-4 py-2 text-sm font-semibold text-white backdrop-blur-sm transition hover:bg-white/15 focus:outline-none focus:ring-2 focus:ring-white/40"
             onClick={onLogin}
           >
             Log in
@@ -349,6 +355,22 @@ function HeroCta({
 
 // ---------- Hero Welcome ----------
 function HeroWelcome({ name }: { name: string }) {
+  return (
+    <section className="relative overflow-hidden rounded-2xl border border-primary/10 bg-gradient-to-br from-primary/5 via-card to-card shadow-sm">
+      <div className="pointer-events-none absolute -right-12 -top-12 h-64 w-64 rounded-full bg-primary/10 blur-3xl" />
+      <div className="relative px-5 py-6 sm:px-8 sm:py-7">
+        <h2 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+          Welcome back, {name}!
+        </h2>
+        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+          Start with what’s trending, then answer today’s questions.
+        </p>
+      </div>
+    </section>
+  );
+}
+
+({ name }: { name: string }) {
   return (
     <section className="overflow-hidden rounded-lg border bg-gradient-to-br from-slate-50 to-white shadow-sm transition-shadow duration-150">
       <div className="px-4 py-5 sm:px-6">
@@ -1376,19 +1398,26 @@ const globalTopics = React.useMemo(() => trending, [trending]);
 
         {/* Trending Questions Section */}
         <section className="mt-6">
-          <div className="flex items-end justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-semibold text-foreground">
-                Trending Questions
-              </h2>
-              <div className="text-xs text-muted-foreground">
-                Questions gaining momentum in your region and globally.
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                {/* icon */}
+                <span className="inline-flex h-4 w-4 items-center justify-center">↗</span>
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-foreground">
+                  Trending Questions
+                </h2>
+                <div className="text-xs text-muted-foreground">
+                  Questions gaining momentum in your region and globally.
+                </div>
               </div>
             </div>
+
             {!isAuthed ? (
               <button
                 type="button"
-                className="rounded border px-3 py-1.5 text-sm hover:bg-muted/50"
+                className="inline-flex items-center justify-center rounded-full border border-primary/20 bg-primary/5 px-4 py-2 text-sm font-medium text-primary shadow-sm transition hover:bg-primary/10"
                 onClick={() => navigate("/login")}
               >
                 Log in to personalize
