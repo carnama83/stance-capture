@@ -317,9 +317,9 @@ function HeroCta({
   onSignup: () => void;
 }) {
   return (
-    <section className="relative overflow-hidden rounded-2xl border border-primary/10 bg-gradient-to-br from-primary via-primary to-indigo-800 shadow-lg">
+    <section className="relative overflow-hidden rounded-2xl border border-primary/10 bg-gradient-to-br from-primary/60 via-primary/50 to-indigo-500/55 shadow-lg">
       {/* subtle radial highlight */}
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.25),transparent_55%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.18),transparent_60%)]" />
       {/* decorative blur orb */}
       <div className="pointer-events-none absolute -right-16 -top-16 h-72 w-72 rounded-full bg-white/10 blur-3xl" />
 
@@ -328,14 +328,23 @@ function HeroCta({
           Track your stance on what matters
         </h2>
         <p className="mt-3 max-w-2xl text-sm leading-relaxed text-white/85 sm:text-base">
-          Start with what’s trending, take a stance, and track how your views evolve over time.
+          Start with what’s trending, take a stance, and track how your views
+          evolve over time.
         </p>
 
         <div className="mt-6 flex flex-wrap gap-3">
-          <button type="button" className={BTN_PRIMARY} onClick={onSignup}>
+          <button
+            type="button"
+            className="inline-flex items-center justify-center rounded-lg bg-white px-4 py-2 text-sm font-semibold text-primary shadow-sm transition hover:bg-white/90 focus:outline-none focus:ring-2 focus:ring-white/60"
+            onClick={onSignup}
+          >
             Get started free
           </button>
-          <button type="button" className={BTN_OUTLINE} onClick={onLogin}>
+          <button
+            type="button"
+            className="inline-flex items-center justify-center rounded-lg border border-white/30 bg-white/10 px-4 py-2 text-sm font-semibold text-white backdrop-blur-sm transition hover:bg-white/15 focus:outline-none focus:ring-2 focus:ring-white/40"
+            onClick={onLogin}
+          >
             Log in
           </button>
         </div>
@@ -343,7 +352,6 @@ function HeroCta({
     </section>
   );
 }
-
 
 // ---------- Hero Welcome ----------
 function HeroWelcome({ name }: { name: string }) {
@@ -361,21 +369,6 @@ function HeroWelcome({ name }: { name: string }) {
     </section>
   );
 }
-
-
-// ---------- Visual system (shared classes) ----------
-const BTN_PRIMARY =
-  "inline-flex items-center justify-center rounded-full bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-ring/40";
-const BTN_OUTLINE =
-  "inline-flex items-center justify-center rounded-full border border-primary/20 bg-primary/5 px-5 py-2 text-sm font-semibold text-primary transition hover:bg-primary hover:text-primary-foreground hover:border-primary focus:outline-none focus:ring-2 focus:ring-ring/30";
-const BTN_OUTLINE_SM =
-  "inline-flex items-center justify-center rounded-full border border-primary/20 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary transition hover:bg-primary hover:text-primary-foreground hover:border-primary";
-const BTN_GHOST_SM =
-  "inline-flex items-center justify-center rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-accent";
-const CHIP =
-  "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset bg-primary/10 text-primary ring-primary/20";
-const CHIP_MUTED =
-  "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset bg-muted/50 text-muted-foreground ring-border";
 
 // ---------- UI helpers ----------
 function formatScore(n?: number | null) {
@@ -409,30 +402,30 @@ function TopicCard({
     <button
       type="button"
       onClick={() => onOpen(topic.id)}
-      className="text-left min-w-[260px] max-w-[340px] rounded-lg border bg-white p-3 shadow-sm hover:bg-slate-50 transition"
+      className="text-left min-w-[260px] max-w-[340px] rounded-lg border bg-card p-3 shadow-sm transition-shadow duration-150 hover:bg-muted/50 transition"
     >
       <div className="flex items-start justify-between gap-2">
-        <div className="font-semibold text-slate-900 line-clamp-2">
+        <div className="font-semibold text-foreground line-clamp-2">
           {topic.title}
         </div>
         {typeof topic.trending_score === "number" && (
-          <span className="shrink-0 rounded bg-slate-900 text-white px-2 py-0.5 text-[10px]">
+          <span className="shrink-0 rounded bg-primary text-primary-foreground px-2 py-0.5 text-[10px]">
             {formatScore(topic.trending_score)}
           </span>
         )}
       </div>
 
       {topic.summary ? (
-        <div className="mt-1 text-xs text-slate-600 line-clamp-2">
+        <div className="mt-1 text-xs text-muted-foreground line-clamp-2">
           {topic.summary}
         </div>
       ) : (
-        <div className="mt-1 text-xs text-slate-500">
+        <div className="mt-1 text-xs text-muted-foreground">
           Tap to view related questions.
         </div>
       )}
 
-      <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-slate-500">
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
         <span className="rounded border px-1.5 py-0.5">
           {(topic.tier ?? "trending").toUpperCase()}
         </span>
@@ -483,16 +476,16 @@ function WireframeTrendingCarousel({
       <div
         className={
           variant === "large"
-            ? "rounded-lg border bg-gradient-to-b from-primary/5 to-card p-4 shadow-sm"
-            : "rounded-lg border bg-gradient-to-b from-primary/5 to-card p-3 shadow-sm"
+            ? "rounded-lg border bg-gradient-to-b from-slate-50 to-white p-4 shadow-sm transition-shadow duration-150"
+            : "rounded-lg border bg-gradient-to-b from-slate-50 to-white p-3 shadow-sm transition-shadow duration-150"
         }
       >
         <button
           type="button"
           className={
             (variant === "large"
-              ? "text-lg font-semibold text-slate-900 line-clamp-2"
-              : "text-sm font-semibold text-slate-900 line-clamp-2") +
+              ? "text-lg font-semibold text-foreground line-clamp-2"
+              : "text-sm font-semibold text-foreground line-clamp-2") +
             " text-left hover:underline"
           }
           onClick={() => (onOpen ?? onAnswer)(t.id)}
@@ -501,7 +494,7 @@ function WireframeTrendingCarousel({
         </button>
 
         <div className="mt-2 flex flex-wrap gap-1.5">
-          <span className="rounded bg-slate-900 px-2 py-0.5 text-[10px] text-white">
+          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] text-primary ring-1 ring-inset ring-primary/20">
             {tier}
           </span>
           {(t.tags ?? []).map((tag) => {
@@ -510,7 +503,7 @@ function WireframeTrendingCarousel({
               return (
                 <span
                   key={tag}
-                  className="rounded bg-slate-900/10 px-2 py-0.5 text-[10px] text-slate-900"
+                  className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground ring-1 ring-inset ring-border"
                 >
                   {up}
                 </span>
@@ -521,7 +514,7 @@ function WireframeTrendingCarousel({
         </div>
 
         {variant === "large" ? (
-          <div className="mt-3 text-xs text-slate-600">
+          <div className="mt-3 text-xs text-muted-foreground">
             {sources ? <span>{sources}</span> : <span>— sources</span>}
             {time ? <span> • {time}</span> : null}
           </div>
@@ -530,7 +523,11 @@ function WireframeTrendingCarousel({
         <div className={variant === "large" ? "mt-4" : "mt-3"}>
           <button
             type="button"
-            className={variant === "large" ? BTN_PRIMARY : BTN_OUTLINE_SM}
+            className={
+              variant === "large"
+                ? "rounded bg-muted px-5 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+                : "rounded border bg-card px-4 py-1.5 text-xs font-semibold text-foreground hover:bg-muted/50"
+            }
             onClick={() => onAnswer(t.id)}
           >
             Answer
@@ -544,9 +541,9 @@ function WireframeTrendingCarousel({
     <div className="relative">
       {/* Cards row */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1.4fr_1fr_1fr]">
-        {a ? <Card t={a} variant="large" /> : <div className="rounded-lg border bg-slate-50 p-4" />}
-        {b ? <Card t={b} variant="small" /> : <div className="rounded-lg border bg-slate-50 p-3" />}
-        {c ? <Card t={c} variant="small" /> : <div className="rounded-lg border bg-slate-50 p-3" />}
+        {a ? <Card t={a} variant="large" /> : <div className="rounded-lg border bg-muted/50 p-4" />}
+        {b ? <Card t={b} variant="small" /> : <div className="rounded-lg border bg-muted/50 p-3" />}
+        {c ? <Card t={c} variant="small" /> : <div className="rounded-lg border bg-muted/50 p-3" />}
       </div>
 
       {/* Right chevron */}
@@ -554,7 +551,7 @@ function WireframeTrendingCarousel({
         <button
           type="button"
           aria-label="Next"
-          className="absolute -right-2 top-1/2 -translate-y-1/2 rounded-full border bg-white p-2 shadow-sm hover:bg-slate-50"
+          className="absolute -right-2 top-1/2 -translate-y-1/2 rounded-full border bg-card p-2 shadow-sm transition-shadow duration-150 hover:bg-muted/50"
           onClick={() => setPage((p) => (p + 1) % totalPages)}
         >
           ›
@@ -572,8 +569,8 @@ function WireframeTrendingCarousel({
               onClick={() => setPage(i)}
               className={
                 i === page
-                  ? "h-2 w-4 rounded-full bg-slate-700"
-                  : "h-2 w-2 rounded-full bg-slate-300"
+                  ? "h-2 w-4 rounded-full bg-muted"
+                  : "h-2 w-2 rounded-full bg-muted"
               }
             />
           ))}
@@ -591,10 +588,10 @@ function GlobalBreakingBanner({
   onOpen: (topicId: string) => void;
 }) {
   return (
-    <div className="mb-3 rounded-lg border bg-slate-900 text-white px-4 py-3 shadow-sm">
+    <div className="mb-3 rounded-lg border bg-primary text-primary-foreground px-4 py-3 shadow-sm transition-shadow duration-150">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <span className="rounded bg-white/15 px-2 py-0.5 text-[11px] font-semibold tracking-wide">
+          <span className="rounded bg-card/15 px-2 py-0.5 text-[11px] font-semibold tracking-wide">
             GLOBAL BREAKING
           </span>
           <span className="text-sm font-semibold line-clamp-1">
@@ -604,13 +601,13 @@ function GlobalBreakingBanner({
         <button
           type="button"
           onClick={() => onOpen(headline.id)}
-          className="rounded bg-white text-slate-900 px-3 py-1 text-xs font-semibold hover:bg-slate-100"
+          className="rounded bg-card text-foreground px-3 py-1 text-xs font-semibold hover:bg-muted/50"
         >
           View
         </button>
       </div>
       {headline.summary ? (
-        <div className="mt-1 text-xs text-white/80 line-clamp-1">
+        <div className="mt-1 text-xs text-primary-foreground/80 line-clamp-1">
           {headline.summary}
         </div>
       ) : null}
@@ -632,13 +629,13 @@ function TrendingQuestionCard({
 
   const microClass =
     micro === "breaking"
-      ? "bg-rose-500/10 text-rose-700 ring-1 ring-inset ring-rose-500/20"
+      ? "bg-rose-500/15 text-rose-800"
       : micro === "stable"
-      ? "bg-emerald-500/10 text-emerald-700 ring-1 ring-inset ring-emerald-500/20"
-      : "bg-amber-500/10 text-amber-700 ring-1 ring-inset ring-amber-500/20";
+      ? "bg-emerald-500/15 text-emerald-800"
+      : "bg-amber-500/15 text-amber-800";
 
   return (
-    <div className="rounded-xl border border-border bg-card p-4 shadow-sm transition hover:border-primary/20 hover:shadow-md">
+    <div className="rounded-lg border bg-card p-3 shadow-sm transition-shadow duration-150">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -649,12 +646,12 @@ function TrendingQuestionCard({
               {row.question_text}
             </Link>
 
-            <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${microClass}`}>
+            <span className={`shrink-0 rounded px-2 py-0.5 text-[10px] ${microClass}`}>
               {microLabel}
             </span>
 
             {row.user_has_answered ? (
-              <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary ring-1 ring-inset ring-primary/20">
+              <span className="shrink-0 rounded bg-primary/10 px-2 py-0.5 text-[10px] text-foreground">
                 ANSWERED
               </span>
             ) : null}
@@ -667,13 +664,13 @@ function TrendingQuestionCard({
           ) : null}
 
           <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
-            <span className="rounded-md bg-muted px-2 py-0.5">
+            <span className="rounded bg-primary/5 px-2 py-0.5">
               score: {typeof row.trend_score === "number" ? row.trend_score.toFixed(2) : "—"}
             </span>
-            <span className="rounded-md bg-muted px-2 py-0.5">
+            <span className="rounded bg-primary/5 px-2 py-0.5">
               stance: {typeof row.stance_momentum === "number" ? row.stance_momentum.toFixed(2) : "—"}
             </span>
-            <span className="rounded-md bg-muted px-2 py-0.5">
+            <span className="rounded bg-primary/5 px-2 py-0.5">
               topic: {typeof row.topic_momentum === "number" ? row.topic_momentum.toFixed(2) : "—"}
             </span>
           </div>
@@ -683,7 +680,7 @@ function TrendingQuestionCard({
           <button
             type="button"
             onClick={() => onAnswer(row.question_id)}
-            className="rounded-full border border-primary/20 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary transition hover:border-primary hover:bg-primary hover:text-primary-foreground"
+            className="rounded border px-3 py-1.5 text-xs hover:bg-muted/50"
           >
             {row.user_has_answered ? "View" : "Answer"}
           </button>
@@ -740,7 +737,7 @@ function QuestionRow({
   const stateLabel = (state ?? '').toUpperCase();
 
   const stateBadge = state ? (
-    <span className="shrink-0 rounded bg-slate-900/10 px-2 py-0.5 text-[10px] text-slate-900">
+    <span className="shrink-0 rounded bg-primary/10 px-2 py-0.5 text-[10px] text-foreground">
       {stateLabel}
     </span>
   ) : null;
@@ -773,12 +770,12 @@ function QuestionRow({
   ) : null;
 
   return (
-    <div className="grid grid-cols-1 gap-3 rounded-lg border bg-white p-3 shadow-sm md:grid-cols-[1fr_460px]">
+    <div className="grid grid-cols-1 gap-3 rounded-lg border bg-card p-3 shadow-sm transition-shadow duration-150 md:grid-cols-[1fr_460px]">
       <div className="min-w-0">
         <div className="flex items-center gap-2">
           <Link
             to={`/q/${questionId}`}
-            className="min-w-0 font-semibold text-slate-900 line-clamp-2 hover:underline cursor-pointer"
+            className="min-w-0 font-semibold text-foreground line-clamp-2 hover:underline cursor-pointer"
             title="Open question details"
           >
             {question}
@@ -788,28 +785,28 @@ function QuestionRow({
           {trendingBadge}
           {duplicateBadge}
           {showNewUpdateBadge ? (
-            <span className="shrink-0 rounded bg-slate-900/10 px-2 py-0.5 text-[10px] text-slate-900">
+            <span className="shrink-0 rounded bg-primary/10 px-2 py-0.5 text-[10px] text-foreground">
               New update
             </span>
           ) : null}
         </div>
 
         {summary ? (
-          <div className="mt-1 text-xs text-slate-600 line-clamp-2">
+          <div className="mt-1 text-xs text-muted-foreground line-clamp-2">
             {summary}
           </div>
         ) : null}
 
         {/* Engagement metrics (24h/7d/total) */}
         {engagement ? (
-          <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-600">
-            <span className="rounded bg-slate-900/5 px-2 py-0.5">
+          <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+            <span className="rounded bg-primary/5 px-2 py-0.5">
               24h: {engagement.responses_last_24h}
             </span>
-            <span className="rounded bg-slate-900/5 px-2 py-0.5">
+            <span className="rounded bg-primary/5 px-2 py-0.5">
               7d: {engagement.responses_last_7d}
             </span>
-            <span className="rounded bg-slate-900/5 px-2 py-0.5">
+            <span className="rounded bg-primary/5 px-2 py-0.5">
               total: {engagement.responses_total}
             </span>
           </div>
@@ -818,13 +815,13 @@ function QuestionRow({
         {/* Smart linking / dedup signals */}
         {related && related.length ? (
           <div className="mt-2">
-            <div className="text-[11px] text-slate-600">Related</div>
+            <div className="text-[11px] text-muted-foreground">Related</div>
             <div className="mt-1 flex flex-wrap gap-2">
               {related.slice(0, 2).map((r) => (
                 <button
                   key={r.related_question_id}
                   type="button"
-                  className={BTN_GHOST_SM}
+                  className="rounded border px-2 py-1 text-[11px] hover:bg-muted/50"
                   onClick={(e) => {
                     e.stopPropagation();
                     window.location.hash = `#/q/${r.related_question_id}`;
@@ -835,7 +832,7 @@ function QuestionRow({
                 </button>
               ))}
               {related.length > 2 ? (
-                <span className="text-[11px] text-slate-500">
+                <span className="text-[11px] text-muted-foreground">
                   +{related.length - 2} more
                 </span>
               ) : null}
@@ -847,7 +844,7 @@ function QuestionRow({
           <button
             type="button"
             onClick={onAnswer}
-            className={BTN_OUTLINE_SM}
+            className="rounded border px-3 py-1.5 text-xs hover:bg-muted/50"
           >
             Answer
           </button>
@@ -880,7 +877,7 @@ export default function IndexPage() {
   const actions = (
     <div className="flex items-center gap-2">
       <button
-        className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-sm transition hover:bg-accent"
+        className="rounded border px-3 py-1.5 text-sm hover:bg-muted/50 flex items-center gap-2"
         onClick={() => navigate("/search")}
         aria-label="Search questions"
       >
@@ -888,7 +885,7 @@ export default function IndexPage() {
         <span className="hidden sm:inline">Search</span>
       </button>
       <button
-        className="inline-flex items-center justify-center rounded-full border border-border bg-card px-3 py-1.5 text-sm transition hover:bg-accent"
+        className="rounded border px-3 py-1.5 text-sm hover:bg-muted/50"
         onClick={() => navigate("/topics")}
         aria-label="Explore topics"
       >
@@ -1345,13 +1342,13 @@ const globalTopics = React.useMemo(() => trending, [trending]);
       <section className="py-4 space-y-4">
         {/* Location Setup Nudge */}
         {showLocationNudge && (
-          <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-xs flex flex-wrap items-center justify-between gap-2">
-            <span className="text-slate-700">
+          <div className="rounded-md border border-dashed border-border bg-muted/50 px-3 py-2 text-xs flex flex-wrap items-center justify-between gap-2">
+            <span className="text-foreground">
               Set your location to compare your stance with people in your region.
             </span>
             <Link
               to="/settings/location"
-              className="inline-flex items-center rounded bg-slate-900 text-white px-2 py-1 text-[11px]"
+              className="inline-flex items-center rounded bg-primary text-primary-foreground px-2 py-1 text-[11px]"
             >
               Set location
             </Link>
@@ -1360,18 +1357,18 @@ const globalTopics = React.useMemo(() => trending, [trending]);
 
         {/* Wireframe-style top bar (only when there's a breaking headline) */}
         {globalBreaking ? (
-          <div className="rounded-md border bg-white px-4 py-2 text-sm flex items-center justify-between gap-2">
+          <div className="rounded-md border bg-card px-4 py-2 text-sm flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
               <span aria-hidden="true">🌍</span>
               <span className="font-semibold">Global Breaking</span>
               <span aria-hidden="true">⚠️</span>
-              <span className="text-slate-700 line-clamp-1">
+              <span className="text-foreground line-clamp-1">
                 {globalBreaking.title}
               </span>
             </div>
             <button
               type="button"
-              className={BTN_GHOST_SM}
+              className="rounded border px-3 py-1 text-xs hover:bg-muted/50"
               onClick={() => openTopic(globalBreaking.id)}
             >
               Answer
@@ -1386,19 +1383,26 @@ const globalTopics = React.useMemo(() => trending, [trending]);
 
         {/* Trending Questions Section */}
         <section className="mt-6">
-          <div className="flex items-end justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-semibold text-slate-900">
-                Trending Questions
-              </h2>
-              <div className="text-xs text-slate-600">
-                Questions gaining momentum in your region and globally.
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                {/* icon */}
+                <span className="inline-flex h-4 w-4 items-center justify-center">↗</span>
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-foreground">
+                  Trending Questions
+                </h2>
+                <div className="text-xs text-muted-foreground">
+                  Questions gaining momentum in your region and globally.
+                </div>
               </div>
             </div>
+
             {!isAuthed ? (
               <button
                 type="button"
-                className="inline-flex items-center justify-center rounded-full border border-border bg-card px-3 py-1.5 text-sm transition hover:bg-accent"
+                className="inline-flex items-center justify-center rounded-full border border-primary/20 bg-primary/5 px-4 py-2 text-sm font-medium text-primary shadow-sm transition hover:bg-primary/10"
                 onClick={() => navigate("/login")}
               >
                 Log in to personalize
@@ -1408,10 +1412,10 @@ const globalTopics = React.useMemo(() => trending, [trending]);
 
           {/* Loading State */}
           {isAuthed && locationIdsLoading ? (
-            <div className="mt-3 rounded-lg border bg-slate-50 px-4 py-3">
+            <div className="mt-3 rounded-lg border bg-muted/50 px-4 py-3">
               <div className="flex items-center gap-2">
-                <div className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600"></div>
-                <span className="text-sm text-slate-600">Loading trending questions...</span>
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-border border-t-slate-600"></div>
+                <span className="text-sm text-muted-foreground">Loading trending questions...</span>
               </div>
             </div>
           ) : null}
@@ -1440,7 +1444,7 @@ const globalTopics = React.useMemo(() => trending, [trending]);
                 <button
                   type="button"
                   onClick={() => navigate("/settings/location")}
-                  className="mt-2 rounded border border-amber-600 bg-amber-600 px-3 py-1.5 text-xs text-white hover:bg-amber-700"
+                  className="mt-2 rounded border border-amber-600 bg-amber-600 px-3 py-1.5 text-xs text-primary-foreground hover:bg-amber-700"
                 >
                   Update Location Settings
                 </button>
@@ -1469,9 +1473,9 @@ const globalTopics = React.useMemo(() => trending, [trending]);
                     {trendingQuestionsNationalQuery.isLoading ? (
                       <div className="space-y-3">
                         {[1, 2, 3].map((i) => (
-                          <div key={i} className="animate-pulse rounded-lg border bg-slate-50 p-4">
-                            <div className="h-4 bg-slate-200 rounded w-3/4 mb-2"></div>
-                            <div className="h-3 bg-slate-200 rounded w-1/2"></div>
+                          <div key={i} className="animate-pulse rounded-lg border bg-muted/50 p-4">
+                            <div className="h-4 bg-muted rounded w-3/4 mb-2"></div>
+                            <div className="h-3 bg-muted rounded w-1/2"></div>
                           </div>
                         ))}
                       </div>
@@ -1494,11 +1498,11 @@ const globalTopics = React.useMemo(() => trending, [trending]);
                         ))}
                       </div>
                     ) : (
-                      <div className="rounded-lg border border-dashed bg-slate-50 px-4 py-8 text-center">
-                        <p className="text-sm text-slate-600">
+                      <div className="rounded-lg border border-dashed bg-muted/50 px-4 py-8 text-center">
+                        <p className="text-sm text-muted-foreground">
                           No trending questions in {countryLabel} right now.
                         </p>
-                        <p className="mt-1 text-xs text-slate-500">
+                        <p className="mt-1 text-xs text-muted-foreground">
                           Check back soon or explore global trending topics.
                         </p>
                       </div>
@@ -1512,9 +1516,9 @@ const globalTopics = React.useMemo(() => trending, [trending]);
                     {trendingQuestionsGlobalQuery.isLoading ? (
                       <div className="space-y-3">
                         {[1, 2, 3].map((i) => (
-                          <div key={i} className="animate-pulse rounded-lg border bg-slate-50 p-4">
-                            <div className="h-4 bg-slate-200 rounded w-3/4 mb-2"></div>
-                            <div className="h-3 bg-slate-200 rounded w-1/2"></div>
+                          <div key={i} className="animate-pulse rounded-lg border bg-muted/50 p-4">
+                            <div className="h-4 bg-muted rounded w-3/4 mb-2"></div>
+                            <div className="h-3 bg-muted rounded w-1/2"></div>
                           </div>
                         ))}
                       </div>
@@ -1537,11 +1541,11 @@ const globalTopics = React.useMemo(() => trending, [trending]);
                         ))}
                       </div>
                     ) : (
-                      <div className="rounded-lg border border-dashed bg-slate-50 px-4 py-8 text-center">
-                        <p className="text-sm text-slate-600">
+                      <div className="rounded-lg border border-dashed bg-muted/50 px-4 py-8 text-center">
+                        <p className="text-sm text-muted-foreground">
                           No globally trending questions right now.
                         </p>
-                        <p className="mt-1 text-xs text-slate-500">
+                        <p className="mt-1 text-xs text-muted-foreground">
                           Check back soon for breaking topics.
                         </p>
                       </div>
@@ -1558,16 +1562,16 @@ const globalTopics = React.useMemo(() => trending, [trending]);
               {anonTrendingQuery.isLoading ? (
                 <div className="space-y-3">
                   {[1, 2, 3].map((i) => (
-                    <div key={i} className="animate-pulse rounded-lg border bg-slate-50 p-4">
-                      <div className="h-4 bg-slate-200 rounded w-3/4 mb-2" />
-                      <div className="h-3 bg-slate-200 rounded w-1/2" />
+                    <div key={i} className="animate-pulse rounded-lg border bg-muted/50 p-4">
+                      <div className="h-4 bg-muted rounded w-3/4 mb-2" />
+                      <div className="h-3 bg-muted rounded w-1/2" />
                     </div>
                   ))}
                 </div>
               ) : anonTrendingQuestions.length ? (
                 <div className="grid grid-cols-1 gap-3">
                   {anonTrendingQuestions.map((row) => (
-                    <div key={row.id} className="rounded-xl border border-border bg-card p-4 shadow-sm transition hover:border-primary/20 hover:shadow-md">
+                    <div key={row.id} className="rounded-lg border bg-card p-3 shadow-sm transition-shadow duration-150">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <Link
@@ -1583,7 +1587,7 @@ const globalTopics = React.useMemo(() => trending, [trending]);
                           ) : null}
                           <div className="mt-2 flex flex-wrap gap-1.5">
                             {row.location_label ? (
-                              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary ring-1 ring-inset ring-primary/20">
+                              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] text-primary ring-1 ring-inset ring-primary/20">
                                 {row.location_label.toUpperCase()}
                               </span>
                             ) : null}
@@ -1596,7 +1600,7 @@ const globalTopics = React.useMemo(() => trending, [trending]);
                         </div>
                         <button
                           type="button"
-                          className="shrink-0 rounded-full border border-primary/20 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary transition hover:border-primary hover:bg-primary hover:text-primary-foreground"
+                          className="shrink-0 rounded-md border border-primary/20 bg-primary/5 px-3 py-1.5 text-xs text-primary transition-colors hover:bg-primary hover:text-primary-foreground"
                           onClick={() => goToQuestion(row.id)}
                         >
                           Answer
@@ -1606,8 +1610,8 @@ const globalTopics = React.useMemo(() => trending, [trending]);
                   ))}
                 </div>
               ) : (
-                <div className="rounded-lg border border-dashed bg-slate-50 px-4 py-8 text-center">
-                  <p className="text-sm text-slate-600">
+                <div className="rounded-lg border border-dashed bg-muted/50 px-4 py-8 text-center">
+                  <p className="text-sm text-muted-foreground">
                     No questions yet. Check back soon!
                   </p>
                 </div>
@@ -1618,13 +1622,13 @@ const globalTopics = React.useMemo(() => trending, [trending]);
 
 
 {/* Trending Now */}
-        <div className="rounded-lg border bg-white p-4 shadow-sm">
+        <div className="rounded-2xl border border-border bg-card p-5 shadow-sm transition-shadow duration-150">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h3 className="text-base font-semibold text-slate-900">
+              <h3 className="text-base font-semibold text-foreground tracking-tight">
                 Trending Now
               </h3>
-              <p className="mt-0.5 text-xs text-slate-600">
+              <p className="mt-0.5 text-xs text-muted-foreground">
                 {countryLabel
                   ? "Country-first, with Global alongside."
                   : "See what topics are trending globally."}
@@ -1632,7 +1636,7 @@ const globalTopics = React.useMemo(() => trending, [trending]);
             </div>
             <button
               type="button"
-              className="text-xs text-slate-600 hover:text-slate-900"
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
               onClick={() => navigate("/topics")}
             >
               Explore →
@@ -1643,22 +1647,22 @@ const globalTopics = React.useMemo(() => trending, [trending]);
             {trendingQuery.isLoading ? (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 {[1, 2, 3].map((i) => (
-                  <div key={i} className="animate-pulse rounded-lg border bg-slate-50 p-4">
-                    <div className="h-4 bg-slate-200 rounded w-3/4 mb-2" />
-                    <div className="h-3 bg-slate-200 rounded w-1/2" />
+                  <div key={i} className="animate-pulse rounded-lg border bg-muted/50 p-4">
+                    <div className="h-4 bg-muted rounded w-3/4 mb-2" />
+                    <div className="h-3 bg-muted rounded w-1/2" />
                   </div>
                 ))}
               </div>
             ) : trending.length === 0 ? (
-              <div className="rounded-lg border border-dashed bg-slate-50 px-4 py-8 text-center">
-                <p className="text-sm text-slate-600">
+              <div className="rounded-lg border border-dashed bg-muted/50 px-4 py-8 text-center">
+                <p className="text-sm text-muted-foreground">
                   No trending topics right now.
                 </p>
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="mt-1 text-xs text-muted-foreground">
                   Check back soon or{" "}
                   <button
                     type="button"
-                    className="underline hover:text-slate-900"
+                    className="underline hover:text-foreground"
                     onClick={() => navigate("/topics")}
                   >
                     browse all topics
@@ -1668,11 +1672,11 @@ const globalTopics = React.useMemo(() => trending, [trending]);
               </div>
             ) : countryLabel ? (
               <Tabs defaultValue="country" className="w-full">
-                <TabsList className="mb-3 w-full sm:w-auto">
-                  <TabsTrigger value="country" className="flex-1 sm:flex-initial">
+                <TabsList className="mb-4 w-full sm:w-auto rounded-full bg-muted/50 p-1">
+                  <TabsTrigger value="country" className="flex-1 sm:flex-initial rounded-full data-[state=active]:bg-background data-[state=active]:shadow-sm">
                     {countryLabel}
                   </TabsTrigger>
-                  <TabsTrigger value="global" className="flex-1 sm:flex-initial">
+                  <TabsTrigger value="global" className="flex-1 sm:flex-initial rounded-full data-[state=active]:bg-background data-[state=active]:shadow-sm">
                     Global
                   </TabsTrigger>
                 </TabsList>
@@ -1705,20 +1709,20 @@ const globalTopics = React.useMemo(() => trending, [trending]);
         </div>
 
         {/* Today’s 5 Questions */}
-        <div className="rounded-lg border bg-white p-4 shadow-sm">
+        <div className="rounded-2xl border border-border bg-card p-5 shadow-sm transition-shadow duration-150">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h3 className="text-base font-semibold text-slate-900">
+              <h3 className="text-base font-semibold text-foreground tracking-tight">
                 Today’s 5 Questions
               </h3>
-              <p className="mt-0.5 text-xs text-slate-600">
+              <p className="mt-0.5 text-xs text-muted-foreground">
                 Slide to save your stance (AI meaning updates automatically).
               </p>
             </div>
             {!isAuthed ? (
               <button
                 type="button"
-                className="text-xs text-slate-600 hover:text-slate-900"
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
                 onClick={() => navigate("/signup")}
               >
                 Personalize →
@@ -1824,7 +1828,7 @@ const globalTopics = React.useMemo(() => trending, [trending]);
             )}
 
             {isAuthed && !todaysFive.length ? (
-              <div className="text-sm text-slate-600">
+              <div className="text-sm text-muted-foreground">
                 No questions found right now.
               </div>
             ) : null}
@@ -1832,14 +1836,14 @@ const globalTopics = React.useMemo(() => trending, [trending]);
         </div>
 
         {/* Because you engaged with... (intent tiles; show for anon too) */}
-        <div className="rounded-lg border bg-white p-4 shadow-sm">
+        <div className="rounded-2xl border border-border bg-card p-5 shadow-sm transition-shadow duration-150">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h3 className="text-base font-semibold text-slate-900">
+              <h3 className="text-base font-semibold text-foreground tracking-tight">
                 Because you engaged with:{" "}
                 {topEngagedTags.length ? topEngagedTags.join(", ") : "your topics"}
               </h3>
-              <p className="mt-0.5 text-xs text-slate-600">
+              <p className="mt-0.5 text-xs text-muted-foreground">
                 {isAuthed
                   ? "Personalized follow-ups based on your recent activity."
                   : "Sign in to unlock personalized follow-ups and comparisons."}
@@ -1849,15 +1853,15 @@ const globalTopics = React.useMemo(() => trending, [trending]);
 
           <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
             {/* Tile 1: Similar topics (intent-driven) */}
-            <div className="rounded-lg border bg-white p-3 shadow-sm">
-              <div className="font-semibold text-slate-900">Explore similar topics</div>
-              <div className="mt-1 text-xs text-slate-600">
+            <div className="rounded-lg border bg-card p-3 shadow-sm transition-shadow duration-150">
+              <div className="font-semibold text-foreground">Explore similar topics</div>
+              <div className="mt-1 text-xs text-muted-foreground">
                 Discover topics related to what you’ve been engaging with recently.
               </div>
               <div className="mt-2 flex flex-wrap gap-2">
                 <button
                   type="button"
-                  className={BTN_OUTLINE_SM}
+                  className="rounded border px-3 py-1.5 text-xs hover:bg-muted/50"
                   onClick={() => {
                     if (!isAuthed) {
                       const returnTo = window.location.hash || "#/";
@@ -1872,7 +1876,7 @@ const globalTopics = React.useMemo(() => trending, [trending]);
                 </button>
                 <button
                   type="button"
-                  className={BTN_OUTLINE_SM}
+                  className="rounded border px-3 py-1.5 text-xs hover:bg-muted/50"
                   onClick={() => {
                     if (!isAuthed) {
                       const returnTo = window.location.hash || "#/";
@@ -1889,15 +1893,15 @@ const globalTopics = React.useMemo(() => trending, [trending]);
             </div>
 
             {/* Tile 2: Compare your views (intent-driven) */}
-            <div className="rounded-lg border bg-white p-3 shadow-sm">
-              <div className="font-semibold text-slate-900">How your views compare</div>
-              <div className="mt-1 text-xs text-slate-600">
+            <div className="rounded-lg border bg-card p-3 shadow-sm transition-shadow duration-150">
+              <div className="font-semibold text-foreground">How your views compare</div>
+              <div className="mt-1 text-xs text-muted-foreground">
                 See how your saved stances align with others across your region and globally.
               </div>
               <div className="mt-2 flex flex-wrap gap-2">
                 <button
                   type="button"
-                  className={BTN_OUTLINE_SM}
+                  className="rounded border px-3 py-1.5 text-xs hover:bg-muted/50"
                   onClick={() => {
                     if (!isAuthed) {
                       const returnTo = window.location.hash || "#/";
@@ -1912,7 +1916,7 @@ const globalTopics = React.useMemo(() => trending, [trending]);
                 </button>
                 <button
                   type="button"
-                  className={BTN_OUTLINE_SM}
+                  className="rounded border px-3 py-1.5 text-xs hover:bg-muted/50"
                   onClick={() => {
                     if (!isAuthed) {
                       const returnTo = window.location.hash || "#/";
@@ -1931,11 +1935,11 @@ const globalTopics = React.useMemo(() => trending, [trending]);
         </div>
 
         {/* Reopened Questions for You (intent tiles; show for anon too) */}
-        <div className="rounded-lg border bg-white p-4 shadow-sm">
+        <div className="rounded-2xl border border-border bg-card p-5 shadow-sm transition-shadow duration-150">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h3 className="text-base font-semibold text-slate-900">Reopened Questions for You</h3>
-              <p className="mt-0.5 text-xs text-slate-600">
+              <h3 className="text-base font-semibold text-foreground tracking-tight">Reopened Questions for You</h3>
+              <p className="mt-0.5 text-xs text-muted-foreground">
                 {isAuthed
                   ? "These questions have new updates since you last saw them."
                   : "Sign in to review reopened questions and new updates."}
@@ -1945,20 +1949,20 @@ const globalTopics = React.useMemo(() => trending, [trending]);
 
           <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
             {/* Tile 1: Reopened questions (intent-driven) */}
-            <div className="rounded-lg border bg-white p-3 shadow-sm">
+            <div className="rounded-lg border bg-card p-3 shadow-sm transition-shadow duration-150">
               <div className="flex items-center gap-2">
-                <div className="font-semibold text-slate-900">Reopened questions</div>
-                <span className="shrink-0 rounded bg-slate-900/10 px-2 py-0.5 text-[10px] text-slate-900">
+                <div className="font-semibold text-foreground">Reopened questions</div>
+                <span className="shrink-0 rounded bg-primary/10 px-2 py-0.5 text-[10px] text-foreground">
                   REOPENED
                 </span>
               </div>
-              <div className="mt-1 text-xs text-slate-600">
+              <div className="mt-1 text-xs text-muted-foreground">
                 Review questions you already answered that have re-opened due to new context.
               </div>
               <div className="mt-2">
                 <button
                   type="button"
-                  className={BTN_OUTLINE_SM}
+                  className="rounded border px-3 py-1.5 text-xs hover:bg-muted/50"
                   onClick={() => {
                     if (!isAuthed) {
                       const returnTo = window.location.hash || "#/";
@@ -1975,15 +1979,15 @@ const globalTopics = React.useMemo(() => trending, [trending]);
             </div>
 
             {/* Tile 2: New update since you answered (intent-driven) */}
-            <div className="rounded-lg border bg-white p-3 shadow-sm">
-              <div className="font-semibold text-slate-900">New update since you answered</div>
-              <div className="mt-1 text-xs text-slate-600">
+            <div className="rounded-lg border bg-card p-3 shadow-sm transition-shadow duration-150">
+              <div className="font-semibold text-foreground">New update since you answered</div>
+              <div className="mt-1 text-xs text-muted-foreground">
                 See what changed since your last stance and decide if you still agree.
               </div>
               <div className="mt-2">
                 <button
                   type="button"
-                  className={BTN_OUTLINE_SM}
+                  className="rounded border px-3 py-1.5 text-xs hover:bg-muted/50"
                   onClick={() => {
                     if (!isAuthed) {
                       const returnTo = window.location.hash || "#/";
@@ -2003,9 +2007,9 @@ const globalTopics = React.useMemo(() => trending, [trending]);
 
         {/* Local topics collapsed */}
         <div className="text-center">
-          <details className="inline-block w-full max-w-3xl rounded-lg border bg-white p-4 shadow-sm">
+          <details className="inline-block w-full max-w-3xl rounded-2xl border border-border bg-card p-5 shadow-sm transition-shadow duration-150">
             <summary className="cursor-pointer select-none list-none">
-              <div className="flex items-center justify-center gap-2 text-sm text-slate-700">
+              <div className="flex items-center justify-center gap-2 text-sm text-foreground">
                 <span>Show Local Topics</span>
                 <span aria-hidden="true">▾</span>
               </div>
@@ -2022,23 +2026,23 @@ const globalTopics = React.useMemo(() => trending, [trending]);
                   .map((r) => (
                     <div
                       key={r.question_id}
-                      className="rounded-lg border bg-white p-3 shadow-sm"
+                      className="rounded-lg border bg-card p-3 shadow-sm transition-shadow duration-150"
                     >
                       <Link
                         to={`/q/${r.question_id}`}
-                        className="block font-semibold text-slate-900 line-clamp-2 hover:underline"
+                        className="block font-semibold text-foreground line-clamp-2 hover:underline"
                       >
                         {r.question}
                       </Link>
                       {r.summary ? (
-                        <div className="mt-1 text-xs text-slate-600 line-clamp-2">
+                        <div className="mt-1 text-xs text-muted-foreground line-clamp-2">
                           {r.summary}
                         </div>
                       ) : null}
                       <div className="mt-2">
                         <button
                           type="button"
-                          className={BTN_OUTLINE_SM}
+                          className="rounded border px-3 py-1.5 text-xs hover:bg-muted/50"
                           onClick={() => goToQuestion(r.question_id)}
                         >
                           Answer
@@ -2048,7 +2052,7 @@ const globalTopics = React.useMemo(() => trending, [trending]);
                   ))}
 
                 {!(threeTierFeedQuery.data ?? []).length ? (
-                  <div className="text-sm text-slate-600">
+                  <div className="text-sm text-muted-foreground">
                     Local feed not available yet.
                   </div>
                 ) : null}
@@ -2061,7 +2065,7 @@ const globalTopics = React.useMemo(() => trending, [trending]);
         <div className="text-center pt-2">
           <Link
             to="/topics"
-            className="inline-flex items-center gap-2 text-sm text-slate-600 hover:text-slate-900 transition"
+            className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition"
           >
             <span>Explore all topics</span>
             <span aria-hidden="true">→</span>
