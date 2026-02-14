@@ -126,6 +126,9 @@ export default function AppTopBar({
   const sb = React.useMemo(getSupabase, []);
   const isAuthed = !!session;
   const userId = session?.user?.id ?? null;
+  const onLoginPage = location.pathname === "/login";
+  const onSignupPage = location.pathname === "/signup";
+  const onAuthPage = onLoginPage || onSignupPage;
 
   // Fetch user profile
   const { data: profile } = useQuery({
@@ -202,65 +205,68 @@ export default function AppTopBar({
         {/* RIGHT: Identity & Control */}
         <div className="flex items-center space-x-3">
 
-{/* View mode: Anonymous vs Signed in (interactive) */}
-<div className="hidden sm:flex items-center">
-  <div
-    className="inline-flex items-center rounded-full border border-border bg-muted p-1"
-    aria-label="View mode"
-  >
-    <button
-      type="button"
-      onClick={async () => {
-        if (!isAuthed) return;
-        // Switch to Anonymous by signing out (privacy-first)
-        if (!sb) return;
-        await sb.auth.signOut();
-        navigate("/");
-      }}
-      className={[
-        "px-3 py-1.5 text-xs font-medium rounded-full transition",
-        !isAuthed
-          ? "bg-primary text-primary-foreground shadow-sm"
-          : "text-muted-foreground hover:text-foreground hover:bg-accent",
-      ].join(" ")}
-      aria-pressed={!isAuthed}
-      title={!isAuthed ? "Anonymous mode" : "Sign out to go anonymous"}
-    >
-      Anonymous
-    </button>
-    <button
-      type="button"
-      onClick={() => {
-        if (isAuthed) return;
-        navigate("/login");
-      }}
-      className={[
-        "px-3 py-1.5 text-xs font-medium rounded-full transition",
-        isAuthed
-          ? "bg-primary text-primary-foreground shadow-sm"
-          : "text-muted-foreground hover:text-foreground hover:bg-accent",
-      ].join(" ")}
-      aria-pressed={isAuthed}
-      title={isAuthed ? "Signed in" : "Sign in"}
-    >
-      Signed in
-    </button>
-  
+          {/* View mode: Anonymous vs Signed in (interactive) + common pills */}
+          <div className="hidden sm:flex items-center gap-3">
+            <div
+              className="inline-flex items-center rounded-full border border-border bg-muted p-1"
+              aria-label="View mode"
+            >
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!isAuthed) return;
+                  // Switch to Anonymous by signing out (privacy-first)
+                  if (!sb) return;
+                  await sb.auth.signOut();
+                  navigate("/");
+                }}
+                className={[
+                  "px-3 py-1.5 text-xs font-medium rounded-full transition",
+                  !isAuthed
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground hover:bg-accent",
+                ].join(" ")}
+                aria-pressed={!isAuthed}
+                title={!isAuthed ? "Anonymous mode" : "Sign out to go anonymous"}
+              >
+                Anonymous
+              </button>
 
-{/* Consistent pills across auth states */}
-<PillButton
-  onClick={() => navigate("/topics")}
-  icon={<Search className="h-4 w-4" />}
-  label="Search"
-/>
-<PillButton
-  onClick={() => navigate("/topics")}
-  icon={<Compass className="h-4 w-4" />}
-  label="Explore topics"
-/>
+              <button
+                type="button"
+                onClick={() => {
+                  if (isAuthed) return;
+                  if (onLoginPage) return;
+                  navigate("/login");
+                }}
+                className={[
+                  "px-3 py-1.5 text-xs font-medium rounded-full transition",
+                  // When logged in: active "Signed in".
+                  // When logged out: active on /login, otherwise neutral.
+                  isAuthed || onLoginPage
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground hover:bg-accent",
+                  onLoginPage && !isAuthed ? "cursor-default" : "",
+                ].join(" ")}
+                aria-pressed={isAuthed || onLoginPage}
+                title={isAuthed ? "Signed in" : onLoginPage ? "You are on the login page" : "Sign in"}
+              >
+                {isAuthed ? "Signed in" : "Sign in"}
+              </button>
+            </div>
 
-</div>
-</div>
+            {/* Consistent pills across auth states */}
+            <PillButton
+              onClick={() => navigate("/topics")}
+              icon={<Search className="h-4 w-4" />}
+              label="Search"
+            />
+            <PillButton
+              onClick={() => navigate("/topics")}
+              icon={<Compass className="h-4 w-4" />}
+              label="Explore topics"
+            />
+          </div>
 
           {isAuthed ? (
             <>
@@ -325,15 +331,29 @@ export default function AppTopBar({
             <>
               {/* Logged-out CTAs */}
               <button
-                onClick={() => navigate("/login")}
-                className="px-4 py-2 text-sm font-medium text-foreground hover:text-foreground rounded-full hover:bg-accent transition-colors"
+                onClick={() => {
+                  if (!onLoginPage) navigate("/login");
+                }}
+                className={
+                  onLoginPage
+                    ? "px-4 py-2 text-sm font-medium text-muted-foreground rounded-full cursor-default"
+                    : "px-4 py-2 text-sm font-medium text-foreground hover:text-foreground rounded-full hover:bg-accent transition-colors"
+                }
+                aria-current={onLoginPage ? "page" : undefined}
               >
                 Sign in
               </button>
               
               <button
-                onClick={() => navigate("/signup")}
-                className="px-4 py-2 bg-primary text-primary-foreground rounded-full hover:bg-primary/90 transition-colors text-sm font-medium"
+                onClick={() => {
+                  if (!onSignupPage) navigate("/signup");
+                }}
+                className={
+                  onSignupPage
+                    ? "px-4 py-2 rounded-full text-sm font-medium border border-border text-muted-foreground bg-card cursor-default"
+                    : "px-4 py-2 bg-primary text-primary-foreground rounded-full hover:bg-primary/90 transition-colors text-sm font-medium"
+                }
+                aria-current={onSignupPage ? "page" : undefined}
               >
                 Create account
               </button>
