@@ -14,7 +14,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ChevronDown, Plus, TrendingUp, Search } from "lucide-react";
+import { ChevronDown, Plus } from "lucide-react";
 
 type Profile = {
   random_id: string;
@@ -40,7 +40,10 @@ function useSupabaseSession() {
 }
 
 // ---------- Get Display Handle ----------
-function getDisplayHandle(profile: Profile | null | undefined, session: any): string {
+function getDisplayHandle(
+  profile: Profile | null | undefined, 
+  session: any
+): string {
   // If profile loaded, use it
   if (profile) {
     if (profile.display_handle_mode === "username" && profile.username) {
@@ -48,7 +51,7 @@ function getDisplayHandle(profile: Profile | null | undefined, session: any): st
     }
     return `#${profile.random_id}`;
   }
-
+  
   // Fallback to email local-part while loading
   if (session?.user?.email) {
     const email = session.user.email;
@@ -58,18 +61,18 @@ function getDisplayHandle(profile: Profile | null | undefined, session: any): st
       return `@${local}`;
     }
   }
-
+  
   return "...";
 }
 
 // ---------- Navigation Item Component ----------
-function NavItem({
-  to,
-  children,
-  active,
-}: {
-  to: string;
-  children: React.ReactNode;
+function NavItem({ 
+  to, 
+  children, 
+  active 
+}: { 
+  to: string; 
+  children: React.ReactNode; 
   active: boolean;
 }) {
   return (
@@ -77,7 +80,10 @@ function NavItem({
       to={to}
       className={`
         px-3 py-2 rounded-md text-sm font-medium transition-colors
-        ${active ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-accent"}
+        ${active 
+          ? 'bg-accent text-foreground' 
+          : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+        }
       `}
     >
       {children}
@@ -85,35 +91,12 @@ function NavItem({
   );
 }
 
-function AuthModePill({ isAuthed }: { isAuthed: boolean }) {
-  // Visual-only segmented control (does not change auth state)
-  return (
-    <div
-      className="inline-flex items-center rounded-full border border-border bg-muted/40 p-1"
-      aria-label="Account mode"
-    >
-      <span
-        className={
-          "px-3 py-1 text-xs font-medium rounded-full transition " +
-          (!isAuthed ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground")
-        }
-      >
-        Anonymous
-      </span>
-      <span
-        className={
-          "px-3 py-1 text-xs font-medium rounded-full transition " +
-          (isAuthed ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground")
-        }
-      >
-        Signed in
-      </span>
-    </div>
-  );
-}
-
 // ---------- Main Component ----------
-export default function AppTopBar({ rightSlot }: { rightSlot?: React.ReactNode }) {
+export default function AppTopBar({ 
+  rightSlot 
+}: { 
+  rightSlot?: React.ReactNode 
+}) {
   const navigate = useNavigate();
   const location = useLocation();
   const session = useSupabaseSession();
@@ -151,61 +134,103 @@ export default function AppTopBar({ rightSlot }: { rightSlot?: React.ReactNode }
   const isActive = (path: string) => location.pathname === path;
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-border bg-card/80 backdrop-blur supports-[backdrop-filter]:bg-card/70">
+    <header className="sticky top-0 z-50 w-full border-b border-border bg-card/80 backdrop-blur-md">
       <div className="container mx-auto flex h-16 items-center justify-between px-4">
+        
         {/* LEFT: Logo / Brand */}
-        <Link to="/" className="flex items-center space-x-2 group" title="Track how views change over time">
-          <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
-            <TrendingUp className="h-5 w-5" />
+        <Link 
+          to="/" 
+          className="flex items-center space-x-2 group"
+          title="Track how views change over time"
+        >
+          <span className="text-xl font-bold text-foreground">
+            Stance
           </span>
-          <span className="text-xl font-bold text-foreground">StanceTrack</span>
           <span className="text-xs text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity hidden sm:inline">
             Track evolving views
           </span>
         </Link>
 
-        {/* CENTER: Mode + Quick Actions + Core Navigation */}
-        <div className="hidden md:flex items-center gap-3">
-          <AuthModePill isAuthed={isAuthed} />
-
-          <button
-            onClick={() => navigate("/topics")}
-            className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-2 text-sm text-foreground shadow-sm transition hover:bg-accent"
-            aria-label="Search"
-          >
-            <Search className="h-4 w-4" />
-            <span className="hidden lg:inline">Search</span>
-          </button>
-
-          <nav className="flex items-center space-x-1">
-            {isAuthed ? (
-              <>
-                <NavItem to="/topics" active={isActive("/topics")}>
-                  Explore
-                </NavItem>
-                <NavItem to="/me/stances" active={isActive("/me/stances")}>
-                  My Stances
-                </NavItem>
-                <NavItem to="/insights" active={isActive("/insights")}>
-                  Insights
-                </NavItem>
-              </>
-            ) : (
+        {/* CENTER: Core Navigation */}
+        <nav className="hidden md:flex items-center space-x-1">
+          {isAuthed ? (
+            <>
+              {/* Logged-in Navigation */}
               <NavItem to="/topics" active={isActive("/topics")}>
                 Explore
               </NavItem>
-            )}
-          </nav>
-        </div>
+              <NavItem to="/me/stances" active={isActive("/me/stances")}>
+                My Stances
+              </NavItem>
+              <NavItem to="/insights" active={isActive("/insights")}>
+                Insights
+              </NavItem>
+            </>
+          ) : (
+            <>
+              {/* Logged-out Navigation */}
+              <NavItem to="/topics" active={isActive("/topics")}>
+                Explore
+              </NavItem>
+            </>
+          )}
+        </nav>
 
         {/* RIGHT: Identity & Control */}
         <div className="flex items-center space-x-3">
+
+{/* View mode: Anonymous vs Signed in (interactive) */}
+<div className="hidden sm:flex items-center">
+  <div
+    className="inline-flex items-center rounded-full border border-border bg-muted p-1"
+    aria-label="View mode"
+  >
+    <button
+      type="button"
+      onClick={async () => {
+        if (!isAuthed) return;
+        // Switch to Anonymous by signing out (privacy-first)
+        if (!sb) return;
+        await sb.auth.signOut();
+        navigate("/");
+      }}
+      className={[
+        "px-3 py-1.5 text-xs font-medium rounded-full transition",
+        !isAuthed
+          ? "bg-primary text-primary-foreground shadow-sm"
+          : "text-muted-foreground hover:text-foreground hover:bg-accent",
+      ].join(" ")}
+      aria-pressed={!isAuthed}
+      title={!isAuthed ? "Anonymous mode" : "Sign out to go anonymous"}
+    >
+      Anonymous
+    </button>
+    <button
+      type="button"
+      onClick={() => {
+        if (isAuthed) return;
+        navigate("/login");
+      }}
+      className={[
+        "px-3 py-1.5 text-xs font-medium rounded-full transition",
+        isAuthed
+          ? "bg-primary text-primary-foreground shadow-sm"
+          : "text-muted-foreground hover:text-foreground hover:bg-accent",
+      ].join(" ")}
+      aria-pressed={isAuthed}
+      title={isAuthed ? "Signed in" : "Sign in"}
+    >
+      Signed in
+    </button>
+  </div>
+</div>
+
           {isAuthed ? (
             <>
               {/* Primary CTA: Answer Question */}
               <button
                 onClick={() => navigate("/topics")}
-                className="hidden sm:flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-full hover:bg-primary/90 transition-colors text-sm font-medium shadow-sm"
+                className="hidden sm:flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-full hover:bg-primary/90 transition-colors text-sm font-medium"
               >
                 <Plus className="h-4 w-4" />
                 <span>Answer</span>
@@ -214,7 +239,7 @@ export default function AppTopBar({ rightSlot }: { rightSlot?: React.ReactNode }
               {/* Mobile CTA */}
               <button
                 onClick={() => navigate("/topics")}
-                className="sm:hidden flex items-center justify-center w-10 h-10 bg-primary text-primary-foreground rounded-full hover:bg-primary/90 transition-colors shadow-sm"
+                className="sm:hidden flex items-center justify-center w-10 h-10 bg-primary text-primary-foreground rounded-full hover:bg-primary/90 transition-colors"
                 aria-label="Answer question"
               >
                 <Plus className="h-5 w-5" />
@@ -222,25 +247,38 @@ export default function AppTopBar({ rightSlot }: { rightSlot?: React.ReactNode }
 
               {/* User Dropdown */}
               <DropdownMenu>
-                <DropdownMenuTrigger className="flex items-center gap-2 px-3 py-2 rounded-full border border-border hover:bg-accent transition-colors">
-                  <span className="text-sm font-medium text-foreground">{getDisplayHandle(profile, session)}</span>
+                <DropdownMenuTrigger className="flex items-center gap-2 px-3 py-2 rounded-md border border-border hover:border-primary/20 hover:bg-accent transition-colors">
+                  <span className="text-sm font-medium text-foreground">
+                    {getDisplayHandle(profile, session)}
+                  </span>
                   <ChevronDown className="h-4 w-4 text-muted-foreground" />
                 </DropdownMenuTrigger>
-
+                
                 <DropdownMenuContent align="end" className="w-56">
-                  <div className="px-2 py-1.5 text-sm font-medium text-foreground">{getDisplayHandle(profile, session)}</div>
-
+                  <div className="px-2 py-1.5 text-sm font-medium text-foreground">
+                    {getDisplayHandle(profile, session)}
+                  </div>
+                  
                   <DropdownMenuSeparator />
-
-                  <DropdownMenuItem onClick={() => navigate("/settings/profile")}>Profile</DropdownMenuItem>
-
-                  <DropdownMenuItem onClick={() => navigate("/settings/location")}>Location</DropdownMenuItem>
-
-                  <DropdownMenuItem onClick={() => navigate("/settings/privacy")}>Privacy</DropdownMenuItem>
-
+                  
+                  <DropdownMenuItem onClick={() => navigate("/settings/profile")}>
+                    Profile
+                  </DropdownMenuItem>
+                  
+                  <DropdownMenuItem onClick={() => navigate("/settings/location")}>
+                    Location
+                  </DropdownMenuItem>
+                  
+                  <DropdownMenuItem onClick={() => navigate("/settings/privacy")}>
+                    Privacy
+                  </DropdownMenuItem>
+                  
                   <DropdownMenuSeparator />
-
-                  <DropdownMenuItem onClick={handleLogout} className="text-red-600 focus:text-red-600 focus:bg-red-50">
+                  
+                  <DropdownMenuItem 
+                    onClick={handleLogout}
+                    className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                  >
                     Log out
                   </DropdownMenuItem>
                 </DropdownMenuContent>
@@ -251,14 +289,14 @@ export default function AppTopBar({ rightSlot }: { rightSlot?: React.ReactNode }
               {/* Logged-out CTAs */}
               <button
                 onClick={() => navigate("/login")}
-                className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground rounded-full hover:bg-accent transition-colors"
+                className="px-4 py-2 text-sm font-medium text-foreground hover:text-foreground rounded-full hover:bg-accent transition-colors"
               >
                 Sign in
               </button>
-
+              
               <button
                 onClick={() => navigate("/signup")}
-                className="px-4 py-2 bg-primary text-primary-foreground rounded-full hover:bg-primary/90 transition-colors text-sm font-medium shadow-sm"
+                className="px-4 py-2 bg-primary text-primary-foreground rounded-full hover:bg-primary/90 transition-colors text-sm font-medium"
               >
                 Create account
               </button>
@@ -266,7 +304,11 @@ export default function AppTopBar({ rightSlot }: { rightSlot?: React.ReactNode }
           )}
 
           {/* Optional right slot (for page-specific actions) */}
-          {rightSlot && <div className="hidden lg:flex items-center ml-2">{rightSlot}</div>}
+          {rightSlot && (
+            <div className="hidden lg:flex items-center ml-2">
+              {rightSlot}
+            </div>
+          )}
         </div>
       </div>
 
@@ -276,19 +318,31 @@ export default function AppTopBar({ rightSlot }: { rightSlot?: React.ReactNode }
           <nav className="flex items-center justify-around">
             <Link
               to="/topics"
-              className={`flex-1 text-center py-2 text-xs font-medium ${isActive("/topics") ? "text-foreground" : "text-muted-foreground"}`}
+              className={`flex-1 text-center py-2 text-xs font-medium ${
+                isActive("/topics")
+                  ? "text-foreground"
+                  : "text-muted-foreground"
+              }`}
             >
               Explore
             </Link>
             <Link
               to="/me/stances"
-              className={`flex-1 text-center py-2 text-xs font-medium ${isActive("/me/stances") ? "text-foreground" : "text-muted-foreground"}`}
+              className={`flex-1 text-center py-2 text-xs font-medium ${
+                isActive("/me/stances")
+                  ? "text-foreground"
+                  : "text-muted-foreground"
+              }`}
             >
               My Stances
             </Link>
             <Link
               to="/insights"
-              className={`flex-1 text-center py-2 text-xs font-medium ${isActive("/insights") ? "text-foreground" : "text-muted-foreground"}`}
+              className={`flex-1 text-center py-2 text-xs font-medium ${
+                isActive("/insights")
+                  ? "text-foreground"
+                  : "text-muted-foreground"
+              }`}
             >
               Insights
             </Link>
