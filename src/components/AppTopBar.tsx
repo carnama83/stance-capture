@@ -14,7 +14,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ChevronDown, Plus } from "lucide-react";
+import { ChevronDown, Plus, Search, Compass } from "lucide-react";
 
 type Profile = {
   random_id: string;
@@ -88,6 +88,29 @@ function NavItem({
     >
       {children}
     </Link>
+  );
+}
+
+
+
+function PillButton({
+  onClick,
+  icon,
+  label,
+}: {
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-2 text-sm text-muted-foreground shadow-sm transition hover:bg-accent hover:text-foreground hover:border-primary/20"
+    >
+      <span className="text-muted-foreground">{icon}</span>
+      <span className="hidden sm:inline">{label}</span>
+    </button>
   );
 }
 
@@ -222,7 +245,21 @@ export default function AppTopBar({
     >
       Signed in
     </button>
-  </div>
+  
+
+{/* Consistent pills across auth states */}
+<PillButton
+  onClick={() => navigate("/topics")}
+  icon={<Search className="h-4 w-4" />}
+  label="Search"
+/>
+<PillButton
+  onClick={() => navigate("/topics")}
+  icon={<Compass className="h-4 w-4" />}
+  label="Explore topics"
+/>
+
+</div>
 </div>
 
           {isAuthed ? (
