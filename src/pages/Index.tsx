@@ -436,28 +436,83 @@ function WhereYouStandCard({ snap }: { snap: AlignmentSnapshotRow | null }) {
 function InstantFeedbackCard({
   dist,
   onClose,
+  mode = "authed",
+  userValue,
+  onLogin,
 }: {
   dist: QuestionDistributionRow | null;
   onClose: () => void;
+  mode?: "authed" | "anon";
+  userValue?: number | null;
+  onLogin?: () => void;
 }) {
   if (!dist) return null;
+
+  const bucket =
+    userValue == null
+      ? null
+      : userValue > 0.15
+      ? "support"
+      : userValue < -0.15
+      ? "oppose"
+      : "neutral";
+
+  const alignedPct =
+    bucket === "support"
+      ? dist.support_pct
+      : bucket === "oppose"
+      ? dist.oppose_pct
+      : bucket === "neutral"
+      ? dist.neutral_pct
+      : null;
+
   return (
     <div className="rounded-xl border bg-primary/5 p-4 shadow-sm">
       <div className="flex items-start justify-between gap-3">
-        <div>
+        <div className="min-w-0">
           <div className="text-sm font-semibold text-foreground">
-            ✅ Signal recorded
+            {mode === "anon" ? "🎉 Instant reward" : "✅ Signal recorded"}
           </div>
+
           <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
             <Pill>{formatNum(dist.responses)} responses</Pill>
             <Pill>Support {formatPct(dist.support_pct)}</Pill>
             <Pill>Neutral {formatPct(dist.neutral_pct)}</Pill>
             <Pill>Oppose {formatPct(dist.oppose_pct)}</Pill>
+            {mode === "anon" && bucket ? (
+              <Pill>You’re aligned with {formatPct(alignedPct)}</Pill>
+            ) : null}
           </div>
+
+          {mode === "anon" ? (
+            <div className="mt-2 text-xs text-muted-foreground">
+              Create an account to save your stance and track how it shifts over time.
+            </div>
+          ) : null}
+
+          {mode === "anon" && onLogin ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="rounded bg-primary px-3 py-1.5 text-xs text-primary-foreground hover:opacity-90"
+                onClick={onLogin}
+              >
+                Create account
+              </button>
+              <button
+                type="button"
+                className="rounded border px-3 py-1.5 text-xs hover:bg-muted/50"
+                onClick={onLogin}
+              >
+                Log in
+              </button>
+            </div>
+          ) : null}
         </div>
+
         <button
           type="button"
-          className="rounded border px-3 py-1.5 text-xs hover:bg-muted/50"
+          className="shrink-0 rounded border px-3 py-1.5 text-xs hover:bg-muted/50"
           onClick={onClose}
         >
           Dismiss
@@ -757,6 +812,8 @@ export default function IndexPage() {
     null
   );
 
+  const [anonLastValue, setAnonLastValue] = React.useState<number | null>(null);
+
   const distributionQuery = useQuery({
     enabled: false, // manual refetch
     queryKey: ["home-distribution", feedback?.question_id ?? "none", regionLabel],
@@ -789,11 +846,10 @@ export default function IndexPage() {
     async (questionId: string, value: number) => {
       if (!sb) return;
 
-      // If not logged in, redirect to login (preserve return_to behavior)
+      // If not logged in, we still show instant reward, then prompt to log in.
       if (!userId) {
-        const returnTo = window.location.hash || "#/";
-        sessionStorage.setItem("return_to", returnTo);
-        navigate("/login");
+        setAnonLastValue(value);
+        fetchDistribution(questionId);
         return;
       }
 
@@ -819,7 +875,15 @@ export default function IndexPage() {
       ]);
     },
     [sb, userId, qc, navigate, regionLabel, fetchDistribution]
+  
+  const submitAnonStance = React.useCallback(
+    async (questionId: string, value: number) => {
+      setAnonLastValue(value);
+      await fetchDistribution(questionId);
+    },
+    [fetchDistribution]
   );
+);
 
   // Record impressions for top questions (authed only, best-effort)
   React.useEffect(() => {
@@ -867,68 +931,93 @@ export default function IndexPage() {
       </TabsList>
 
       <TabsContent value={regionTab} className="mt-4 space-y-4">
-        {/* Instant Feedback */}
-        <InstantFeedbackCard dist={feedback} onClose={() => setFeedback(null)} />
+        {isAuthed ? (
+        <>
+          {/* SECTION 2 — Instant Reward (authed) */}
+          <InstantFeedbackCard dist={feedback} onClose={() => setFeedback(null)} />
 
-        {/* PATCH 3 APPLIED: Society Pulse with error fallback */}
-        {societyPulseQuery.isError ? (
-          <ErrorFallback message="Failed to load Society Pulse. Please refresh the page." />
-        ) : (
-          <SocietyPulseCard pulse={societyPulseQuery.data ?? null} />
-        )}
-
-        {/* Media vs Belief (media card + belief hero slider) */}
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          {/* PATCH 3 APPLIED: Media Surge with error fallback */}
-          {mediaSurgeQuery.isError ? (
-            <ErrorFallback message="Failed to load Media Surge. Please refresh the page." />
+          {/* SECTION 1/3 — Society + Media vs Belief (returning user) */}
+          {societyPulseQuery.isError ? (
+            <ErrorFallback message="Failed to load Society Pulse. Please refresh the page." />
           ) : (
-            <MediaSurgeCard media={mediaSurgeQuery.data ?? null} />
+            <SocietyPulseCard pulse={societyPulseQuery.data ?? null} />
           )}
 
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            {mediaSurgeQuery.isError ? (
+              <ErrorFallback message="Failed to load Media Surge. Please refresh the page." />
+            ) : (
+              <MediaSurgeCard media={mediaSurgeQuery.data ?? null} />
+            )}
+
+            <div className="rounded-xl border bg-card p-4 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-foreground">⚖️ Add your signal</div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    A high-momentum question — answer in seconds.
+                  </div>
+                </div>
+                {heroBeliefQuestionAuthed ? (
+                  <button
+                    type="button"
+                    className="shrink-0 rounded border px-3 py-1.5 text-xs hover:bg-muted/50"
+                    onClick={() => goToQuestion(heroBeliefQuestionAuthed.question_id)}
+                  >
+                    Open
+                  </button>
+                ) : null}
+              </div>
+
+              <div className="mt-3">
+                {heroBeliefQuestionAuthed ? (
+                  <QuestionStanceSlider
+                    questionId={heroBeliefQuestionAuthed.question_id}
+                    questionText={heroBeliefQuestionAuthed.question_text}
+                    summary={heroBeliefQuestionAuthed.summary}
+                    initialValue={null}
+                    onSubmit={(v) => submitStance(heroBeliefQuestionAuthed.question_id, v)}
+                  />
+                ) : (
+                  <div className="rounded border bg-muted/30 p-3 text-sm text-muted-foreground">
+                    No questions available yet. Try again in a few minutes.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {participationQuery.isError ? (
+            <ErrorFallback message="Failed to load participation stats. Please refresh the page." />
+          ) : (
+            <ParticipationStrip stats={participationQuery.data ?? null} />
+          )}
+
+          <WhereYouStandCard snap={whereYouStandQuery.data ?? null} />
+        </>
+      ) : (
+        <>
+          {/* 🧭 VARIANT 1 — FIRST-TIME / ANON (Conversion-Oriented) */}
+
+          {/* 🟥 SECTION 1 — 🔥 One Big Shifting Question */}
           <div className="rounded-xl border bg-card p-4 shadow-sm">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <div className="text-sm font-semibold text-foreground">
-                  ⚖️ Add your signal
-                </div>
+                <div className="text-sm font-semibold text-foreground">🔥 One big shifting question</div>
                 <div className="mt-1 text-xs text-muted-foreground">
-                  A high-momentum question — answer in seconds.
+                  Answer in seconds — see where society stands.
                 </div>
               </div>
-              {isAuthed && heroBeliefQuestionAuthed ? (
-                <button
-                  type="button"
-                  className="shrink-0 rounded border px-3 py-1.5 text-xs hover:bg-muted/50"
-                  onClick={() => goToQuestion(heroBeliefQuestionAuthed.question_id)}
-                >
-                  Open
-                </button>
-              ) : null}
             </div>
 
             <div className="mt-3">
-              {isAuthed && heroBeliefQuestionAuthed ? (
-                <QuestionStanceSlider
-                  questionId={heroBeliefQuestionAuthed.question_id}
-                  questionText={heroBeliefQuestionAuthed.question_text}
-                  summary={heroBeliefQuestionAuthed.summary}
-                  initialValue={null}
-                  onSubmit={(v) => submitStance(heroBeliefQuestionAuthed.question_id, v)}
-                />
-              ) : heroBeliefQuestionAnon ? (
+              {heroBeliefQuestionAnon ? (
                 <QuestionStanceSlider
                   questionId={heroBeliefQuestionAnon.id}
                   questionText={heroBeliefQuestionAnon.question}
                   summary={heroBeliefQuestionAnon.summary}
                   initialValue={null}
-                  onSubmit={async () => {
-                    // logged-out: slider submit routes to login inside submitStance anyway,
-                    // but we don't have set_question_stance access as anon; just redirect.
-                    const returnTo = window.location.hash || "#/";
-                    sessionStorage.setItem("return_to", returnTo);
-                    navigate("/login");
-                  }}
+                  onSubmit={(v) => submitAnonStance(heroBeliefQuestionAnon.id, v)}
                 />
               ) : (
                 <div className="rounded border bg-muted/30 p-3 text-sm text-muted-foreground">
@@ -937,19 +1026,40 @@ export default function IndexPage() {
               )}
             </div>
           </div>
-        </div>
 
-        {/* PATCH 3 APPLIED: Participation with error fallback */}
-        {participationQuery.isError ? (
-          <ErrorFallback message="Failed to load participation stats. Please refresh the page." />
-        ) : (
-          <ParticipationStrip stats={participationQuery.data ?? null} />
-        )}
+          {/* 🟧 SECTION 2 — Instant Reward (Post-Slide Reveal) */}
+          <InstantFeedbackCard
+            dist={feedback}
+            onClose={() => {
+              setFeedback(null);
+              setAnonLastValue(null);
+            }}
+            mode="anon"
+            userValue={anonLastValue}
+            onLogin={() => {
+              const returnTo = window.location.hash || "#/";
+              sessionStorage.setItem("return_to", returnTo);
+              navigate("/login");
+            }}
+          />
 
-        {/* Logged-in identity */}
-        {isAuthed ? <WhereYouStandCard snap={whereYouStandQuery.data ?? null} /> : null}
+          {/* 🟦 SECTION 3 — 🌍 Society Right Now (Light) */}
+          {societyPulseQuery.isError ? (
+            <ErrorFallback message="Failed to load Society Pulse. Please refresh the page." />
+          ) : (
+            <SocietyPulseCard pulse={societyPulseQuery.data ?? null} />
+          )}
 
-        {/* Add another signal */}
+          {/* 🟨 SECTION 4 — ⚖️ Add Another Signal / What’s moving fast */}
+          {mediaSurgeQuery.isError ? (
+            <ErrorFallback message="Failed to load Media Surge. Please refresh the page." />
+          ) : (
+            <MediaSurgeCard media={mediaSurgeQuery.data ?? null} />
+          )}
+        </>
+      )}
+
+{/* Add another signal */}
         <section className="space-y-3">
           <SectionHeader
             title="Add another signal"
@@ -1030,17 +1140,27 @@ export default function IndexPage() {
                         questionText={q.question}
                         summary={q.summary}
                         initialValue={null}
-                        onSubmit={async () => {
-                          const returnTo = window.location.hash || "#/";
-                          sessionStorage.setItem("return_to", returnTo);
-                          navigate("/login");
-                        }}
+                        onSubmit={(v) => submitAnonStance(q.id, v)}
                       />
                     </div>
                   </div>
                 ))}
           </div>
         </section>
+
+        {!isAuthed ? (
+          <section className="space-y-3">
+            <SectionHeader
+              title="Social proof"
+              subtitle="A quick sense of how many people are participating."
+            />
+            {participationQuery.isError ? (
+              <ErrorFallback message="Failed to load participation stats. Please refresh the page." />
+            ) : (
+              <ParticipationStrip stats={participationQuery.data ?? null} />
+            )}
+          </section>
+        ) : null}
 
         {/* Continuing conversation */}
         {isAuthed ? (
