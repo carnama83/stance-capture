@@ -846,10 +846,11 @@ export default function IndexPage() {
     async (questionId: string, value: number) => {
       if (!sb) return;
 
-      // If not logged in, we still show instant reward, then prompt to log in.
+      // If not logged in, force auth before allowing any answering.
       if (!userId) {
-        setAnonLastValue(value);
-        fetchDistribution(questionId);
+        const returnTo = window.location.hash || "#/";
+        sessionStorage.setItem("return_to", returnTo);
+        navigate("/login");
         return;
       }
 
@@ -876,13 +877,13 @@ export default function IndexPage() {
     },
     [sb, userId, qc, navigate, regionLabel, fetchDistribution]
   );
-  const submitAnonStance = React.useCallback(
-    async (questionId: string, value: number) => {
-      setAnonLastValue(value);
-      await fetchDistribution(questionId);
-    },
-    [fetchDistribution]
-  );
+
+  // Logged-out users should be redirected before any answering interaction.
+  const redirectToLogin = React.useCallback(() => {
+    const returnTo = window.location.hash || "#/";
+    sessionStorage.setItem("return_to", returnTo);
+    navigate("/login");
+  }, [navigate]);
 
   // Record impressions for top questions (authed only, best-effort)
   React.useEffect(() => {
@@ -1011,13 +1012,32 @@ export default function IndexPage() {
 
             <div className="mt-3">
               {heroBeliefQuestionAnon ? (
-                <QuestionStanceSlider
-                  questionId={heroBeliefQuestionAnon.id}
-                  questionText={heroBeliefQuestionAnon.question}
-                  summary={heroBeliefQuestionAnon.summary}
-                  initialValue={null}
-                  onSubmit={(v) => submitAnonStance(heroBeliefQuestionAnon.id, v)}
-                />
+                <div className="relative">
+                  {/*
+                    Logged-out users are redirected as soon as they attempt to interact.
+                    We keep the slider visible for context, but block interaction with an overlay.
+                  */}
+                  <QuestionStanceSlider
+                    questionId={heroBeliefQuestionAnon.id}
+                    questionText={heroBeliefQuestionAnon.question}
+                    summary={heroBeliefQuestionAnon.summary}
+                    initialValue={null}
+                    onSubmit={() => redirectToLogin()}
+                  />
+                  <button
+                    type="button"
+                    className="absolute inset-0 z-10 rounded-xl"
+                    aria-label="Sign in to answer"
+                    onPointerDown={(e) => {
+                      e.preventDefault();
+                      redirectToLogin();
+                    }}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      redirectToLogin();
+                    }}
+                  />
+                </div>
               ) : (
                 <div className="rounded border bg-muted/30 p-3 text-sm text-muted-foreground">
                   No questions available yet. Try again in a few minutes.
@@ -1133,13 +1153,26 @@ export default function IndexPage() {
                       </button>
                     </div>
 
-                    <div className="mt-3">
+                    <div className="mt-3 relative">
                       <QuestionStanceSlider
                         questionId={q.id}
                         questionText={q.question}
                         summary={q.summary}
                         initialValue={null}
-                        onSubmit={(v) => submitAnonStance(q.id, v)}
+                        onSubmit={() => redirectToLogin()}
+                      />
+                      <button
+                        type="button"
+                        className="absolute inset-0 z-10 rounded-xl"
+                        aria-label="Sign in to answer"
+                        onPointerDown={(e) => {
+                          e.preventDefault();
+                          redirectToLogin();
+                        }}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          redirectToLogin();
+                        }}
                       />
                     </div>
                   </div>
