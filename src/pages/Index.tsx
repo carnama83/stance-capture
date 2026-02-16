@@ -875,7 +875,7 @@ export default function IndexPage() {
       ]);
     },
     [sb, userId, qc, navigate, regionLabel, fetchDistribution]
-  
+  );
   const submitAnonStance = React.useCallback(
     async (questionId: string, value: number) => {
       setAnonLastValue(value);
