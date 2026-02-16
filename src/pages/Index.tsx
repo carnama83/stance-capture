@@ -324,13 +324,6 @@ function SocietyPulseCard({ pulse }: { pulse: SocietyPulseRow | null }) {
           </Link>
         ) : null}
       </div>
-
-      {pulse.top_shift_question_text ? (
-        <div className="mt-3 text-sm text-muted-foreground line-clamp-2">
-          Top shifting:{" "}
-          <span className="text-foreground">{pulse.top_shift_question_text}</span>
-        </div>
-      ) : null}
     </div>
   );
 }
