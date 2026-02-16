@@ -883,7 +883,6 @@ export default function IndexPage() {
     },
     [fetchDistribution]
   );
-);
 
   // Record impressions for top questions (authed only, best-effort)
   React.useEffect(() => {
