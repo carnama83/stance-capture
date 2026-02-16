@@ -871,12 +871,17 @@ export default function IndexPage() {
     [sb, userId, qc, navigate, regionLabel, fetchDistribution]
   );
 
-  // Logged-out users should be redirected before any answering interaction.
-  const redirectToLogin = React.useCallback(() => {
-    const returnTo = window.location.hash || "#/";
-    sessionStorage.setItem("return_to", returnTo);
-    navigate("/login");
-  }, [navigate]);
+  // Logged-out users: keep UI briefly interactive so the mechanic is understood,
+  // then redirect to login with a clear intent.
+  const redirectToLogin = React.useCallback(
+    (reason: "take_stances" | "generic" = "generic") => {
+      const returnTo = window.location.hash || "#/";
+      sessionStorage.setItem("return_to", returnTo);
+      sessionStorage.setItem("login_reason", reason);
+      navigate("/login");
+    },
+    [navigate]
+  );
 
   // Record impressions for top questions (authed only, best-effort)
   React.useEffect(() => {
@@ -1006,34 +1011,33 @@ export default function IndexPage() {
             <div className="mt-3">
               {heroBeliefQuestionAnon ? (
                 <div className="relative">
-                  {/* Explicitly render the question text here so it always shows above the slider */}
-                  <div className="mb-3 text-sm font-medium leading-snug text-foreground">
+                  {/* Click question text -> open Question Detail (logged out is OK) */}
+                  <Link
+                    to={`/q/${heroBeliefQuestionAnon.id}`}
+                    className="mb-3 block text-sm font-medium leading-snug text-foreground hover:underline"
+                  >
                     {heroBeliefQuestionAnon.question}
-                  </div>
+                  </Link>
+
                   {/*
-                    Logged-out users are redirected as soon as they attempt to interact.
-                    We keep the slider visible for context, but block interaction with an overlay.
+                    Slider stays interactive for logged-out users so they see the position + explainer change.
+                    After they release the interaction, redirect to login to take a stance.
                   */}
-                  <QuestionStanceSlider
-                    questionId={heroBeliefQuestionAnon.id}
-                    questionText={heroBeliefQuestionAnon.question}
-                    summary={heroBeliefQuestionAnon.summary}
-                    initialValue={null}
-                    onSubmit={() => redirectToLogin()}
-                  />
-                  <button
-                    type="button"
-                    className="absolute inset-0 z-10 rounded-xl"
-                    aria-label="Sign in to answer"
-                    onPointerDown={(e) => {
-                      e.preventDefault();
-                      redirectToLogin();
-                    }}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      redirectToLogin();
-                    }}
-                  />
+                  <div
+                    className="rounded-xl"
+                    onPointerUpCapture={() => redirectToLogin("take_stances")}
+                    onPointerCancelCapture={() => redirectToLogin("take_stances")}
+                    onMouseUpCapture={() => redirectToLogin("take_stances")}
+                    onTouchEndCapture={() => redirectToLogin("take_stances")}
+                  >
+                    <QuestionStanceSlider
+                      questionId={heroBeliefQuestionAnon.id}
+                      questionText={heroBeliefQuestionAnon.question}
+                      summary={heroBeliefQuestionAnon.summary}
+                      initialValue={null}
+                      onSubmit={() => redirectToLogin("take_stances")}
+                    />
+                  </div>
                 </div>
               ) : (
                 <div className="rounded border bg-muted/30 p-3 text-sm text-muted-foreground">
@@ -1132,9 +1136,12 @@ export default function IndexPage() {
                   <div key={q.id} className="rounded-xl border bg-card p-4 shadow-sm">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="font-semibold text-foreground line-clamp-2">
+                        <Link
+                          to={`/q/${q.id}`}
+                          className="font-semibold text-foreground line-clamp-2 hover:underline"
+                        >
                           {q.question}
-                        </div>
+                        </Link>
                         {q.summary ? (
                           <div className="mt-1 text-xs text-muted-foreground line-clamp-2">
                             {q.summary}
@@ -1150,26 +1157,19 @@ export default function IndexPage() {
                       </button>
                     </div>
 
-                    <div className="mt-3 relative">
+                    <div
+                      className="mt-3"
+                      onPointerUpCapture={() => redirectToLogin("take_stances")}
+                      onPointerCancelCapture={() => redirectToLogin("take_stances")}
+                      onMouseUpCapture={() => redirectToLogin("take_stances")}
+                      onTouchEndCapture={() => redirectToLogin("take_stances")}
+                    >
                       <QuestionStanceSlider
                         questionId={q.id}
                         questionText={q.question}
                         summary={q.summary}
                         initialValue={null}
-                        onSubmit={() => redirectToLogin()}
-                      />
-                      <button
-                        type="button"
-                        className="absolute inset-0 z-10 rounded-xl"
-                        aria-label="Sign in to answer"
-                        onPointerDown={(e) => {
-                          e.preventDefault();
-                          redirectToLogin();
-                        }}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          redirectToLogin();
-                        }}
+                        onSubmit={() => redirectToLogin("take_stances")}
                       />
                     </div>
                   </div>
