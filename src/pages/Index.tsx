@@ -77,6 +77,29 @@ type SocietyPulseRow = {
   generated_at: string;
 };
 
+
+type SocietalPulseOutput = {
+  region_label: string;
+  updated_at: string; // ISO timestamp (UTC)
+  state: "STABLE" | "REAWAKENING" | "POLARIZING" | "ACCELERATING" | "FOCUSED";
+  narrative: {
+    title: string; // "Societal Pulse"
+    sentence_1: string;
+    sentence_2: string | null;
+  };
+  chips: Array<{
+    topic_id: string;
+    title: string;
+    icon: "up" | "reawakening" | "polarized" | "steady";
+    href: string;
+  }>;
+  micro_metrics: Array<{
+    label: string;
+    value: number;
+  }>;
+};
+
+
 type ParticipationStatsRow = {
   region: string;
   stances_window: number;
@@ -290,39 +313,89 @@ function ErrorFallback({ message }: { message: string }) {
 }
 
 // ---------- Cards ----------
-function SocietyPulseCard({ pulse }: { pulse: SocietyPulseRow | null }) {
+function SocietyPulseCard({ pulse }: { pulse: SocietalPulseOutput | null }) {
   if (!pulse) return null;
-  const level =
-    pulse.volatility_level === "High"
-      ? "bg-rose-500/15 text-rose-800"
-      : pulse.volatility_level === "Medium"
-      ? "bg-amber-500/15 text-amber-800"
-      : "bg-emerald-500/15 text-emerald-800";
+
+  const chips = Array.isArray(pulse.chips) ? pulse.chips : [];
+  const mm = Array.isArray(pulse.micro_metrics) ? pulse.micro_metrics : [];
+
+  const iconGlyph = (icon: SocietalPulseOutput["chips"][number]["icon"]) => {
+    switch (icon) {
+      case "reawakening":
+        return "↺";
+      case "polarized":
+        return "⇄";
+      case "up":
+        return "↑";
+      default:
+        return "→";
+    }
+  };
 
   return (
     <div className="rounded-xl border bg-card p-4 shadow-sm">
       <div className="flex items-start justify-between gap-3">
-        <div>
+        <div className="min-w-0">
           <div className="text-sm font-semibold text-foreground">
             🌍 Society right now
           </div>
-          <div className="mt-1 flex flex-wrap gap-2">
-            <span className={`rounded px-2 py-0.5 text-[11px] ${level}`}>
-              Volatility: {pulse.volatility_level}
-            </span>
-            <Pill>{pulse.rapid_shifts_count} rapid shifts</Pill>
-            <Pill>{pulse.polarized_count} polarized</Pill>
-            <Pill>{pulse.reawakening_count} reawakening</Pill>
+
+          <div className="mt-2">
+            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              {pulse.narrative?.title ?? "Societal Pulse"}
+            </div>
+            <div className="mt-1 text-sm text-foreground leading-relaxed">
+              {pulse.narrative?.sentence_1}
+              {pulse.narrative?.sentence_2 ? (
+                <>
+                  {" "}
+                  <span className="text-muted-foreground">
+                    {pulse.narrative.sentence_2}
+                  </span>
+                </>
+              ) : null}
+            </div>
+          </div>
+
+          {chips.length > 0 ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {chips.slice(0, 3).map((c) => (
+                <Link
+                  key={c.topic_id}
+                  to={c.href || `/topics/${c.topic_id}`}
+                  className="inline-flex items-center gap-1 rounded-full border bg-card px-2 py-1 text-[11px] text-foreground hover:bg-muted/50"
+                  title={c.title}
+                >
+                  <span className="text-muted-foreground">{iconGlyph(c.icon)}</span>
+                  <span className="line-clamp-1 max-w-[200px]">{c.title}</span>
+                </Link>
+              ))}
+            </div>
+          ) : null}
+
+          <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+            {mm.length > 0 ? (
+              mm.slice(0, 3).map((m) => (
+                <Pill key={m.label}>
+                  {formatNum(m.value)} {m.label}
+                </Pill>
+              ))
+            ) : (
+              <>
+                <Pill>— topics shifting rapidly</Pill>
+                <Pill>— polarized</Pill>
+                <Pill>— reawakening</Pill>
+              </>
+            )}
           </div>
         </div>
-        {pulse.top_shift_question_id ? (
-          <Link
-            to={`/q/${pulse.top_shift_question_id}`}
-            className="shrink-0 rounded border px-3 py-1.5 text-xs hover:bg-muted/50"
-          >
-            View top shift
-          </Link>
-        ) : null}
+
+        <Link
+          to="/topics"
+          className="shrink-0 rounded border px-3 py-1.5 text-xs hover:bg-muted/50"
+        >
+          Explore shifting topics
+        </Link>
       </div>
     </div>
   );
@@ -605,21 +678,56 @@ export default function IndexPage() {
 
   // -------- New Homepage RPCs --------
   
-  // PATCH 1 APPLIED: Added explicit p_shift_threshold parameter
+  // Societal Pulse (topic-level) — new RPC with safe legacy fallback
   const societyPulseQuery = useQuery({
     enabled: !!sb,
-    queryKey: ["home-society-pulse", regionLabel],
+    queryKey: ["home-societal-pulse", regionLabel],
     queryFn: async () => {
-      const { data, error } = await sb!.rpc("get_society_pulse", {
-        p_region: regionLabel,
-        p_shift_threshold: 0.08, // ✅ PATCH 1: Explicit parameter for clarity
+      // Primary (new) topic-level pulse
+      const primary = await sb!.rpc("get_societal_pulse_homepage", {
+        p_region_label: regionLabel,
+        p_topic_pick_n: 25,
       });
-      if (error) throw error;
-      // PATCH 2 APPLIED: Defensive array check with length > 0
-      const row = Array.isArray(data) && data.length > 0
-        ? (data[0] as SocietyPulseRow)
-        : null;
-      return row ?? null;
+
+      if (!primary.error && primary.data) {
+        return primary.data as SocietalPulseOutput;
+      }
+
+      // Fallback (legacy) — kept to avoid breaking the homepage if the RPC name differs across envs.
+      // IMPORTANT: legacy has no chips; we keep this section topic-level by using an empty chips array.
+      const legacy = await sb!.rpc("get_society_pulse", {
+        p_region: regionLabel,
+        p_shift_threshold: 0.08,
+      });
+
+      if (legacy.error) throw primary.error ?? legacy.error;
+
+      const row =
+        Array.isArray(legacy.data) && legacy.data.length > 0
+          ? (legacy.data[0] as SocietyPulseRow)
+          : null;
+
+      if (!row) return null;
+
+      const mapped: SocietalPulseOutput = {
+        region_label: regionLabel,
+        updated_at: row.generated_at ?? new Date().toISOString(),
+        state: "FOCUSED",
+        narrative: {
+          title: "Societal Pulse",
+          sentence_1:
+            "Signals are updating. Explore shifting topics to see where public sentiment is moving right now.",
+          sentence_2: null,
+        },
+        chips: [],
+        micro_metrics: [
+          { label: "topics shifting rapidly", value: Number(row.rapid_shifts_count ?? 0) },
+          { label: "polarized", value: Number(row.polarized_count ?? 0) },
+          { label: "reawakening", value: Number(row.reawakening_count ?? 0) },
+        ],
+      };
+
+      return mapped;
     },
     staleTime: 30_000,
   });
