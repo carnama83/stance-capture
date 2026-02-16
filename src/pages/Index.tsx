@@ -1006,6 +1006,10 @@ export default function IndexPage() {
             <div className="mt-3">
               {heroBeliefQuestionAnon ? (
                 <div className="relative">
+                  {/* Explicitly render the question text here so it always shows above the slider */}
+                  <div className="mb-3 text-sm font-medium leading-snug text-foreground">
+                    {heroBeliefQuestionAnon.question}
+                  </div>
                   {/*
                     Logged-out users are redirected as soon as they attempt to interact.
                     We keep the slider visible for context, but block interaction with an overlay.
