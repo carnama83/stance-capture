@@ -721,88 +721,133 @@ export default function IndexPage() {
   // Societal Pulse (topic-level) — new RPC with safe legacy fallback
   const societyPulseQuery = useQuery({
     enabled: !!sb,
-    queryKey: ["home-societal-pulse", regionLabel],
+    queryKey: ["home-society-pulse", regionLabel],
     queryFn: async () => {
-      // Primary (new) topic-level pulse
-      const primary = await sb!.rpc("get_societal_pulse_homepage", {
-        p_region_label: regionLabel,
-        p_topic_pick_n: 25,
-      });
+      if (!sb) return null;
 
-      if (!primary.error && primary.data) {
-        logPulse("primary");
-        return primary.data as SocietalPulseOutput;
-      }
+      const logPulse = (
+        source: "early_stage" | "legacy",
+        meta?: Record<string, unknown>
+      ) => {
+        // Helpful in prod: tells you which tier is active for each region.
+        console.info("[home] societyPulse source=", source, {
+          regionLabel,
+          ...(meta ?? {}),
+        });
+      };
 
-      // Early-stage deterministic narrative (bootstrap mode)
-      // Ensures we always show a premium 1–2 sentence pulse, even with low participation.
-      const early = await sb!.rpc("get_society_pulse_early_stage", {
-        p_region: regionLabel,
-        p_top_n: 2,
-        p_min_candidates: 3,
-        p_w24h: 0.7,
-        p_w7d: 0.3,
-      });
+      // Treat RPC-not-found as non-fatal so we can fall back.
+      const isNotFound = (err: any) => {
+        const status = err?.status;
+        const code = err?.code;
+        const msg = String(err?.message ?? "").toLowerCase();
+        return (
+          status === 404 ||
+          code === "PGRST202" ||
+          code === "PGRST204" ||
+          msg.includes("could not find the function") ||
+          msg.includes("could not find the table") ||
+          msg.includes("not find the function")
+        );
+      };
 
-      if (!early.error && Array.isArray(early.data) && early.data.length > 0) {
-        const row = early.data[0] as SocietyPulseEarlyStageRow;
-
-        const featured = Array.isArray(row.featured_topics) ? row.featured_topics : [];
-        const chips = Array.isArray(row.chips) ? row.chips : [];
-
-        const mapped: SocietalPulseOutput = {
-          region_label: regionLabel,
-          updated_at: new Date().toISOString(),
-          state: "FOCUSED",
-          narrative: {
-            title: row.headline || "Societal Pulse",
-            sentence_1:
-              row.description ||
-              "Signals are updating. Explore shifting topics to see where public sentiment is moving right now.",
-            sentence_2: null,
-          },
-          chips: featured.slice(0, 3).map((t) => ({
-            topic_id: String(t.topic_id),
-            title: String(t.title ?? ""),
-            icon: "up",
-            href: `/topics/${String(t.topic_id)}`,
-          })),
-          micro_metrics:
-            chips.length > 0
-              ? chips.slice(0, 3).map((c) => ({
-                  label: String(c.label),
-                  value: c.value == null ? null : Number(c.value),
-                }))
-              : [{ label: "topics surfacing", value: Number(row.topic_count ?? 0) }],
-        };
-
-        logPulse("early_stage", {
-          topic_count: row.topic_count,
-          featured: featured.length,
+      // ---------- Tier 1: Early-stage deterministic pulse ----------
+      try {
+        const { data, error } = await sb.rpc("get_society_pulse_early_stage", {
+          p_region: regionLabel,
+          p_top_n: 2,
+          p_min_candidates: 3,
+          p_w24h: 0.7,
+          p_w7d: 0.3,
         });
 
-        return mapped;
+        if (error) {
+          if (!isNotFound(error)) throw error;
+        } else {
+          const row =
+            Array.isArray(data) && data.length > 0
+              ? (data[0] as SocietyPulseEarlyStageRow)
+              : null;
+
+          if (row) {
+            const featured = Array.isArray(row.featured_topics)
+              ? row.featured_topics
+              : [];
+            const rpcChips = Array.isArray(row.chips) ? row.chips : [];
+
+            logPulse("early_stage", {
+              topic_count: row.topic_count,
+              featured: featured.map((t) => t.title).slice(0, 3),
+            });
+
+            const mapped: SocietalPulseOutput = {
+              region_label: regionLabel,
+              updated_at: new Date().toISOString(),
+              state: "FOCUSED",
+              narrative: {
+                title: row.headline || "Societal Pulse",
+                sentence_1:
+                  row.description ||
+                  "Signals are updating. Explore shifting topics to see where public sentiment is moving right now.",
+                sentence_2: null,
+              },
+              chips: featured.slice(0, 3).map((t) => ({
+                topic_id: String(t.topic_id),
+                title: String(t.title ?? ""),
+                icon: "up",
+                href: `/topics/${String(t.topic_id)}`,
+              })),
+              micro_metrics:
+                rpcChips.length > 0
+                  ? rpcChips.slice(0, 3).map((c) => ({
+                      label: String(c.label ?? ""),
+                      value:
+                        c.value === null || c.value === undefined
+                          ? null
+                          : Number(c.value),
+                    }))
+                  : [
+                      {
+                        label: "topics surfacing",
+                        value: Number(row.topic_count ?? 0),
+                      },
+                    ],
+            };
+
+            return mapped;
+          }
+        }
+      } catch (e) {
+        if (!isNotFound(e)) throw e;
       }
 
-      // Fallback (legacy) — kept to avoid breaking the homepage if the RPC name differs across envs.
-      // IMPORTANT: legacy has no chips; we keep this section topic-level by using an empty chips array.
-      const legacy = await sb!.rpc("get_society_pulse", {
-        p_region: regionLabel,
-        p_shift_threshold: 0.08,
-      });
+      // ---------- Tier 2: Legacy pulse ----------
+      const { data: legacyData, error: legacyError } = await sb.rpc(
+        "get_society_pulse",
+        {
+          p_region: regionLabel,
+          p_shift_threshold: 0.08,
+        }
+      );
 
-      if (legacy.error) throw primary.error ?? early.error ?? legacy.error;
+      if (legacyError) throw legacyError;
 
-      const row =
-        Array.isArray(legacy.data) && legacy.data.length > 0
-          ? (legacy.data[0] as SocietyPulseRow)
+      const legacyRow =
+        Array.isArray(legacyData) && legacyData.length > 0
+          ? (legacyData[0] as SocietyPulseRow)
           : null;
 
-      if (!row) return null;
+      if (!legacyRow) return null;
 
-      const mapped: SocietalPulseOutput = {
+      logPulse("legacy", {
+        rapid: legacyRow.rapid_shifts_count,
+        polarized: legacyRow.polarized_count,
+        reawakening: legacyRow.reawakening_count,
+      });
+
+      const mappedLegacy: SocietalPulseOutput = {
         region_label: regionLabel,
-        updated_at: row.generated_at ?? new Date().toISOString(),
+        updated_at: legacyRow.generated_at ?? new Date().toISOString(),
         state: "FOCUSED",
         narrative: {
           title: "Societal Pulse",
@@ -812,19 +857,16 @@ export default function IndexPage() {
         },
         chips: [],
         micro_metrics: [
-          { label: "topics shifting rapidly", value: Number(row.rapid_shifts_count ?? 0) },
-          { label: "polarized", value: Number(row.polarized_count ?? 0) },
-          { label: "reawakening", value: Number(row.reawakening_count ?? 0) },
+          {
+            label: "topics shifting rapidly",
+            value: Number(legacyRow.rapid_shifts_count ?? 0),
+          },
+          { label: "polarized", value: Number(legacyRow.polarized_count ?? 0) },
+          { label: "reawakening", value: Number(legacyRow.reawakening_count ?? 0) },
         ],
       };
 
-      logPulse("legacy", {
-        rapid: (row as any).rapid_shifts_count,
-        polarized: (row as any).polarized_count,
-        reawakening: (row as any).reawakening_count,
-      });
-
-      return mapped;
+      return mappedLegacy;
     },
     staleTime: 30_000,
   });
