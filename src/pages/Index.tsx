@@ -1,7 +1,7 @@
 // src/pages/Index.tsx
 // HOMEPAGE V3 (Belief Radar layout) - CORRECTED VERSION
-// - Logged OUT: Media vs Belief hero (inline stance), light Pulse + Participation, then "Add another signal"
-// - Logged IN: Society Pulse, Media vs Belief, Where You Stand, Add Your Signal, Continuing, Reopened
+// - Logged OUT: Media vs Belief hero (inline stance), light Pulse + Participation, then "Add your voice"
+// - Logged IN: Society Pulse, Media vs Belief, Where You Stand, Add your voice, Continuing, Reopened
 //
 // Uses new RPCs (already deployed):
 // - get_society_pulse(p_region text, p_shift_threshold numeric default 0.08)
@@ -78,6 +78,26 @@ type SocietyPulseRow = {
 };
 
 
+type SocietyPulseEarlyStageChip = {
+  label: string;
+  value: number | null;
+};
+
+type SocietyPulseEarlyStageTopic = {
+  topic_id: string;
+  title: string;
+};
+
+type SocietyPulseEarlyStageRow = {
+  mode: string; // 'early_stage'
+  headline: string;
+  description: string;
+  chips: SocietyPulseEarlyStageChip[]; // jsonb array
+  featured_topics: SocietyPulseEarlyStageTopic[]; // jsonb array
+  topic_count: number;
+};
+
+
 type SocietalPulseOutput = {
   region_label: string;
   updated_at: string; // ISO timestamp (UTC)
@@ -95,7 +115,7 @@ type SocietalPulseOutput = {
   }>;
   micro_metrics: Array<{
     label: string;
-    value: number;
+    value: number | null;
   }>;
 };
 
@@ -377,7 +397,13 @@ function SocietyPulseCard({ pulse }: { pulse: SocietalPulseOutput | null }) {
             {mm.length > 0 ? (
               mm.slice(0, 3).map((m) => (
                 <Pill key={m.label}>
-                  {formatNum(m.value)} {m.label}
+                  {m.value == null ? (
+                    <>{m.label}</>
+                  ) : (
+                    <>
+                      {formatNum(m.value)} {m.label}
+                    </>
+                  )}
                 </Pill>
               ))
             ) : (
@@ -623,6 +649,20 @@ export default function IndexPage() {
     enabled: !!userId,
     queryKey: ["profile", userId],
     queryFn: async () => {
+      const logPulse = (
+        source: "primary" | "early_stage" | "legacy",
+        detail?: unknown
+      ) => {
+        // Helps debug which tier is active in production.
+        try {
+          // eslint-disable-next-line no-console
+          console.info(`[home] societyPulse source=${source} region=${regionLabel}`, detail ?? "");
+        } catch {
+          /* no-op */
+        }
+      };
+
+
       if (!sb || !userId) return null;
       const { data, error } = await sb
         .from("profiles")
@@ -690,7 +730,58 @@ export default function IndexPage() {
       });
 
       if (!primary.error && primary.data) {
+        logPulse("primary");
         return primary.data as SocietalPulseOutput;
+      }
+
+      // Early-stage deterministic narrative (bootstrap mode)
+      // Ensures we always show a premium 1–2 sentence pulse, even with low participation.
+      const early = await sb!.rpc("get_society_pulse_early_stage", {
+        p_region: regionLabel,
+        p_top_n: 2,
+        p_min_candidates: 3,
+        p_w24h: 0.7,
+        p_w7d: 0.3,
+      });
+
+      if (!early.error && Array.isArray(early.data) && early.data.length > 0) {
+        const row = early.data[0] as SocietyPulseEarlyStageRow;
+
+        const featured = Array.isArray(row.featured_topics) ? row.featured_topics : [];
+        const chips = Array.isArray(row.chips) ? row.chips : [];
+
+        const mapped: SocietalPulseOutput = {
+          region_label: regionLabel,
+          updated_at: new Date().toISOString(),
+          state: "FOCUSED",
+          narrative: {
+            title: row.headline || "Societal Pulse",
+            sentence_1:
+              row.description ||
+              "Signals are updating. Explore shifting topics to see where public sentiment is moving right now.",
+            sentence_2: null,
+          },
+          chips: featured.slice(0, 3).map((t) => ({
+            topic_id: String(t.topic_id),
+            title: String(t.title ?? ""),
+            icon: "up",
+            href: `/topics/${String(t.topic_id)}`,
+          })),
+          micro_metrics:
+            chips.length > 0
+              ? chips.slice(0, 3).map((c) => ({
+                  label: String(c.label),
+                  value: c.value == null ? null : Number(c.value),
+                }))
+              : [{ label: "topics surfacing", value: Number(row.topic_count ?? 0) }],
+        };
+
+        logPulse("early_stage", {
+          topic_count: row.topic_count,
+          featured: featured.length,
+        });
+
+        return mapped;
       }
 
       // Fallback (legacy) — kept to avoid breaking the homepage if the RPC name differs across envs.
@@ -700,7 +791,7 @@ export default function IndexPage() {
         p_shift_threshold: 0.08,
       });
 
-      if (legacy.error) throw primary.error ?? legacy.error;
+      if (legacy.error) throw primary.error ?? early.error ?? legacy.error;
 
       const row =
         Array.isArray(legacy.data) && legacy.data.length > 0
@@ -726,6 +817,12 @@ export default function IndexPage() {
           { label: "reawakening", value: Number(row.reawakening_count ?? 0) },
         ],
       };
+
+      logPulse(\"legacy\", {
+        rapid: (row as any).rapid_shifts_count,
+        polarized: (row as any).polarized_count,
+        reawakening: (row as any).reawakening_count,
+      });
 
       return mapped;
     },
@@ -1178,7 +1275,7 @@ export default function IndexPage() {
             <SocietyPulseCard pulse={societyPulseQuery.data ?? null} />
           )}
 
-          {/* 🟨 SECTION 4 — ⚖️ Add Another Signal / What’s moving fast */}
+          {/* 🟨 SECTION 4 — ⚖️ Add Your Voice / What’s moving fast */}
           {mediaSurgeQuery.isError ? (
             <ErrorFallback message="Failed to load Media Surge. Please refresh the page." />
           ) : (
@@ -1187,11 +1284,11 @@ export default function IndexPage() {
         </>
       )}
 
-{/* Add another signal */}
+{/* Add your voice */}
         <section className="space-y-3">
           <SectionHeader
-            title="Add another signal"
-            subtitle="A few more high-momentum questions."
+            title="Add your voice"
+            subtitle="A few high-momentum questions to shape the signal."
           />
           <div className="space-y-3">
             {isAuthed
