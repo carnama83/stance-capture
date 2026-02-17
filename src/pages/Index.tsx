@@ -818,7 +818,7 @@ export default function IndexPage() {
         ],
       };
 
-      logPulse(\"legacy\", {
+      logPulse("legacy", {
         rapid: (row as any).rapid_shifts_count,
         polarized: (row as any).polarized_count,
         reawakening: (row as any).reawakening_count,
