@@ -4,19 +4,24 @@ import {
   QuestionStateBadge 
 } from './QuestionStateBadge';
 import { TrendingBadge } from './TrendingBadge';
+import { QuestionCoverImage } from './QuestionCoverImage';
 import { formatAgeDays, calculateAgeDays } from '@/types/questionLifecycleTypes';
 import { Badge } from '@/components/ui/badge';
 import { MessageSquare } from 'lucide-react';
 
 interface QuestionCardProps {
-  question: QuestionWithLifecycle;
+  question: QuestionWithLifecycle & {
+    cover_image_url?: string | null;
+  };
   showEngagement?: boolean;
+  showCover?: boolean;
   className?: string;
 }
 
 export function QuestionCard({ 
   question, 
   showEngagement = true,
+  showCover = true,
   className = '',
 }: QuestionCardProps) {
   const ageDays = calculateAgeDays(question.published_at);
@@ -25,12 +30,22 @@ export function QuestionCard({
     <Link 
       to={`/q/${question.id}`}
       className={`
-        block border rounded-lg p-4 bg-white 
+        block border rounded-lg overflow-hidden bg-white 
         hover:shadow-md hover:border-blue-300
         transition-all duration-200
         ${className}
       `}
     >
+      {showCover && (
+        <QuestionCoverImage
+          imageUrl={question.cover_image_url}
+          tags={question.tags}
+          variant="banner"
+          bannerHeight={100}
+        />
+      )}
+
+      <div className="p-4">
       {/* Header with badges */}
       <div className="flex items-start justify-between mb-3">
         <div className="flex flex-wrap gap-2">
@@ -103,6 +118,7 @@ export function QuestionCard({
           <span className="text-green-700">{question.resolution_summary}</span>
         </div>
       )}
+      </div>
     </Link>
   );
 }
