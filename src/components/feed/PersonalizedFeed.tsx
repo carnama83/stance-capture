@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { MessageSquare, TrendingUp, Sparkles } from 'lucide-react';
 import { useEffect } from 'react';
 import { QuestionPhaseBadge } from '@/components/question/QuestionPhaseBadge'; // ✨ NEW IMPORT
+import { QuestionCoverImage } from '@/components/question/QuestionCoverImage';
 
 // ✨ Extended type with phase information (already has phase and is_new_phase)
 interface FeedQuestion {
@@ -33,6 +34,7 @@ interface FeedQuestion {
   response_count: number;
   phase: string;  // ✅ Already present
   is_new_phase: boolean;  // ✅ Already present
+  cover_image_url?: string | null;
 }
 
 export function PersonalizedFeed() {
@@ -173,7 +175,13 @@ export function PersonalizedFeed() {
           to={`/q/${q.question_id}`}
           className="block"
         >
-          <Card className="p-6 hover:shadow-lg transition-shadow">
+          <Card className="p-6 hover:shadow-lg transition-shadow overflow-hidden">
+            <QuestionCoverImage
+              imageUrl={q.cover_image_url}
+              tags={q.tags ?? q.topic_tags}
+              variant="banner"
+              bannerHeight={90}
+            />
             {/* ✨ UPDATED: Header with badges - New layout */}
             <div className="flex items-start justify-between gap-3 mb-3">
               {/* Left: Title and topic */}
