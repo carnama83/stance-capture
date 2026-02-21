@@ -1044,6 +1044,15 @@ export default function IndexPage() {
 
   const anonQuestions = anonTrendingQuery.data ?? [];
 
+  // Loading states — distinguish "still fetching" from "fetched but empty"
+  const anonIsLoading = anonTrendingQuery.isLoading || anonTrendingQuery.isFetching;
+  const anonIsError = anonTrendingQuery.isError;
+  const authedIsLoading =
+    // Still waiting for location IDs to resolve before queries can fire
+    locationIdsLoading ||
+    trendingQuestionsNationalQuery.isLoading ||
+    trendingQuestionsGlobalQuery.isLoading;
+
   const heroBeliefQuestionAuthed = trendingQuestions[0] ?? null;
   const addSignalAuthed = trendingQuestions.slice(1, 6);
 
@@ -1218,7 +1227,12 @@ export default function IndexPage() {
               </div>
 
               <div className="mt-3">
-                {heroBeliefQuestionAuthed ? (
+                {authedIsLoading ? (
+                  <div className="space-y-2 animate-pulse">
+                    <div className="h-4 w-3/4 rounded bg-muted" />
+                    <div className="mt-3 h-10 rounded bg-muted" />
+                  </div>
+                ) : heroBeliefQuestionAuthed ? (
                   <QuestionStanceSlider
                     questionId={heroBeliefQuestionAuthed.question_id}
                     questionText={heroBeliefQuestionAuthed.question_text}
@@ -1259,7 +1273,18 @@ export default function IndexPage() {
             </div>
 
             <div className="mt-3">
-              {heroBeliefQuestionAnon ? (
+              {anonIsLoading ? (
+                // Loading skeleton — prevents "No questions" flash during fetch
+                <div className="space-y-2 animate-pulse">
+                  <div className="h-4 w-3/4 rounded bg-muted" />
+                  <div className="h-4 w-1/2 rounded bg-muted" />
+                  <div className="mt-3 h-10 rounded bg-muted" />
+                </div>
+              ) : anonIsError ? (
+                <div className="rounded border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+                  Failed to load questions. Please refresh the page.
+                </div>
+              ) : heroBeliefQuestionAnon ? (
                 <div className="relative">
                   {/* Click question text -> open Question Detail (logged out is OK) */}
                   <Link
@@ -1336,8 +1361,22 @@ export default function IndexPage() {
             subtitle="A few high-momentum questions to shape the signal."
           />
           <div className="space-y-3">
-            {isAuthed
-              ? addSignalAuthed.map((q) => (
+            {isAuthed ? (
+              authedIsLoading ? (
+                // Skeleton cards while location IDs / trending queries resolve
+                [1, 2, 3].map((i) => (
+                  <div key={i} className="rounded-xl border bg-card p-4 shadow-sm animate-pulse">
+                    <div className="h-4 w-3/4 rounded bg-muted mb-2" />
+                    <div className="h-3 w-1/3 rounded bg-muted mb-4" />
+                    <div className="h-10 rounded bg-muted" />
+                  </div>
+                ))
+              ) : addSignalAuthed.length === 0 ? (
+                <div className="rounded-xl border bg-muted/20 p-4 text-sm text-muted-foreground">
+                  No questions available right now. Check back soon.
+                </div>
+              ) : (
+                addSignalAuthed.map((q) => (
                   // ✨ FIX: overflow-hidden so banner image reaches card edges; p-4 moved inside
                   <div
                     key={q.question_id}
@@ -1393,7 +1432,27 @@ export default function IndexPage() {
                     </div>
                   </div>
                 ))
-              : addSignalAnon.map((q) => (
+              )
+            ) : (
+              // Anon path
+              anonIsLoading ? (
+                [1, 2, 3].map((i) => (
+                  <div key={i} className="rounded-xl border bg-card p-4 shadow-sm animate-pulse">
+                    <div className="h-4 w-3/4 rounded bg-muted mb-2" />
+                    <div className="h-3 w-1/2 rounded bg-muted mb-4" />
+                    <div className="h-10 rounded bg-muted" />
+                  </div>
+                ))
+              ) : anonIsError ? (
+                <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+                  Failed to load questions. Please refresh the page.
+                </div>
+              ) : addSignalAnon.length === 0 ? (
+                <div className="rounded-xl border bg-muted/20 p-4 text-sm text-muted-foreground">
+                  No questions available right now. Check back soon.
+                </div>
+              ) : (
+                addSignalAnon.map((q) => (
                   // ✨ FIX: overflow-hidden + inner p-4 wrapper for image support
                   <div key={q.id} className="rounded-xl border bg-card shadow-sm overflow-hidden">
                     {/* Cover image — only renders when available, collapses cleanly otherwise */}
@@ -1445,7 +1504,9 @@ export default function IndexPage() {
                       </div>
                     </div>
                   </div>
-                ))}
+                ))
+              )
+            )}
           </div>
         </section>
 
