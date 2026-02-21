@@ -26,6 +26,7 @@ import PageLayout from "@/components/PageLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getSupabase } from "@/lib/supabaseClient";
 import { QuestionStanceSlider } from "@/components/question/QuestionStanceSlider";
+import { QuestionCoverImage } from "@/components/question/QuestionCoverImage";
 import { useGlobalAndCountryIds } from "@/hooks/useLocationIds";
 
 // ---------- Types ----------
@@ -54,6 +55,7 @@ type TrendingHomepageQuestionRow = {
   trend_score: number | null;
   stance_momentum: number | null;
   topic_momentum: number | null;
+  cover_image_url?: string | null; // ✨ FIX: returned by RPC, was missing from type
 };
 
 type AnonQuestionRow = {
@@ -64,6 +66,7 @@ type AnonQuestionRow = {
   location_label: string | null;
   published_at: string | null;
   status?: string | null;
+  cover_image_url?: string | null; // ✨ FIX: v_live_questions includes this column
 };
 
 type SocietyPulseRow = {
@@ -1012,7 +1015,7 @@ export default function IndexPage() {
     queryFn: async () => {
       const q = sb!
         .from("v_live_questions")
-        .select("id, question, summary, tags, location_label, published_at, status")
+        .select("id, question, summary, tags, location_label, published_at, status, cover_image_url")
         .order("published_at", { ascending: false })
         .limit(10);
 
@@ -1335,89 +1338,111 @@ export default function IndexPage() {
           <div className="space-y-3">
             {isAuthed
               ? addSignalAuthed.map((q) => (
+                  // ✨ FIX: overflow-hidden so banner image reaches card edges; p-4 moved inside
                   <div
                     key={q.question_id}
-                    className="rounded-xl border bg-card p-4 shadow-sm"
+                    className="rounded-xl border bg-card shadow-sm overflow-hidden"
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <Link
-                          to={`/q/${q.question_id}`}
-                          className="font-semibold text-foreground line-clamp-2 hover:underline"
-                        >
-                          {q.question_text}
-                        </Link>
-                        {q.topic_title ? (
-                          <div className="mt-1 text-xs text-muted-foreground line-clamp-1">
-                            Topic: {q.topic_title}
-                          </div>
-                        ) : null}
-                        <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
-                          {q.trend_micro_signal ? (
-                            <Pill>{q.trend_micro_signal.toUpperCase()}</Pill>
-                          ) : null}
-                          {q.user_has_answered ? <Pill>ANSWERED</Pill> : null}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        className="shrink-0 rounded border px-3 py-1.5 text-xs hover:bg-muted/50"
-                        onClick={() => goToQuestion(q.question_id)}
-                      >
-                        Open
-                      </button>
-                    </div>
-
-                    <div className="mt-3">
-                      <QuestionStanceSlider
-                        questionId={q.question_id}
-                        questionText={q.question_text}
-                        summary={q.summary}
-                        initialValue={null}
-                        onSubmit={(v) => submitStance(q.question_id, v)}
+                    {/* Cover image — only renders when available, collapses cleanly otherwise */}
+                    {q.cover_image_url && (
+                      <QuestionCoverImage
+                        imageUrl={q.cover_image_url}
+                        tags={q.tags}
+                        variant="banner"
+                        bannerHeight={160}
                       />
+                    )}
+                    <div className="p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <Link
+                            to={`/q/${q.question_id}`}
+                            className="font-semibold text-foreground line-clamp-2 hover:underline"
+                          >
+                            {q.question_text}
+                          </Link>
+                          {q.topic_title ? (
+                            <div className="mt-1 text-xs text-muted-foreground line-clamp-1">
+                              Topic: {q.topic_title}
+                            </div>
+                          ) : null}
+                          <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+                            {q.trend_micro_signal ? (
+                              <Pill>{q.trend_micro_signal.toUpperCase()}</Pill>
+                            ) : null}
+                            {q.user_has_answered ? <Pill>ANSWERED</Pill> : null}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          className="shrink-0 rounded border px-3 py-1.5 text-xs hover:bg-muted/50"
+                          onClick={() => goToQuestion(q.question_id)}
+                        >
+                          Open
+                        </button>
+                      </div>
+                      <div className="mt-3">
+                        <QuestionStanceSlider
+                          questionId={q.question_id}
+                          questionText={q.question_text}
+                          summary={q.summary}
+                          initialValue={null}
+                          onSubmit={(v) => submitStance(q.question_id, v)}
+                        />
+                      </div>
                     </div>
                   </div>
                 ))
               : addSignalAnon.map((q) => (
-                  <div key={q.id} className="rounded-xl border bg-card p-4 shadow-sm">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <Link
-                          to={`/q/${q.id}`}
-                          className="font-semibold text-foreground line-clamp-2 hover:underline"
-                        >
-                          {q.question}
-                        </Link>
-                        {q.summary ? (
-                          <div className="mt-1 text-xs text-muted-foreground line-clamp-2">
-                            {q.summary}
-                          </div>
-                        ) : null}
-                      </div>
-                      <button
-                        type="button"
-                        className="shrink-0 rounded border px-3 py-1.5 text-xs hover:bg-muted/50"
-                        onClick={() => navigate("/login")}
-                      >
-                        Log in
-                      </button>
-                    </div>
-
-                    <div
-                      className="mt-3"
-                      onPointerUpCapture={() => redirectToLogin("take_stances")}
-                      onPointerCancelCapture={() => redirectToLogin("take_stances")}
-                      onMouseUpCapture={() => redirectToLogin("take_stances")}
-                      onTouchEndCapture={() => redirectToLogin("take_stances")}
-                    >
-                      <QuestionStanceSlider
-                        questionId={q.id}
-                        questionText={q.question}
-                        summary={q.summary}
-                        initialValue={null}
-                        onSubmit={() => redirectToLogin("take_stances")}
+                  // ✨ FIX: overflow-hidden + inner p-4 wrapper for image support
+                  <div key={q.id} className="rounded-xl border bg-card shadow-sm overflow-hidden">
+                    {/* Cover image — only renders when available, collapses cleanly otherwise */}
+                    {q.cover_image_url && (
+                      <QuestionCoverImage
+                        imageUrl={q.cover_image_url}
+                        tags={q.tags}
+                        variant="banner"
+                        bannerHeight={160}
                       />
+                    )}
+                    <div className="p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <Link
+                            to={`/q/${q.id}`}
+                            className="font-semibold text-foreground line-clamp-2 hover:underline"
+                          >
+                            {q.question}
+                          </Link>
+                          {q.summary ? (
+                            <div className="mt-1 text-xs text-muted-foreground line-clamp-2">
+                              {q.summary}
+                            </div>
+                          ) : null}
+                        </div>
+                        <button
+                          type="button"
+                          className="shrink-0 rounded border px-3 py-1.5 text-xs hover:bg-muted/50"
+                          onClick={() => navigate("/login")}
+                        >
+                          Log in
+                        </button>
+                      </div>
+                      <div
+                        className="mt-3"
+                        onPointerUpCapture={() => redirectToLogin("take_stances")}
+                        onPointerCancelCapture={() => redirectToLogin("take_stances")}
+                        onMouseUpCapture={() => redirectToLogin("take_stances")}
+                        onTouchEndCapture={() => redirectToLogin("take_stances")}
+                      >
+                        <QuestionStanceSlider
+                          questionId={q.id}
+                          questionText={q.question}
+                          summary={q.summary}
+                          initialValue={null}
+                          onSubmit={() => redirectToLogin("take_stances")}
+                        />
+                      </div>
                     </div>
                   </div>
                 ))}
