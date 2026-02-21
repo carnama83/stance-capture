@@ -11,6 +11,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getSupabase } from "../lib/supabaseClient";
 import { QuestionStanceSlider } from "@/components/question/QuestionStanceSlider";
 import { QuestionPhaseBadge } from "@/components/question/QuestionPhaseBadge"; // ✨ NEW IMPORT
+import { QuestionCoverImage } from "@/components/question/QuestionCoverImage";
 import { useToast } from "@/components/ui/use-toast";
 
 // ✅ Inline Topic follow affordance
@@ -28,6 +29,7 @@ type LiveQuestion = {
   published_at?: string | null;
   status?: string | null;
   phase?: string; // ✨ NEW: Phase field for question lifecycle
+  cover_image_url?: string | null; // ✨ FIX: Cover image for banner display
 };
 
 type TopicLite = {
@@ -120,7 +122,7 @@ async function fetchQuestionById(id: string): Promise<LiveQuestion | null> {
   const { data, error } = await sb
     .from("questions") // ✅ Changed from v_live_questions to questions
     .select(
-      "id, topic_id, question, summary, tags, location_label, published_at, status, phase"
+      "id, topic_id, question, summary, tags, location_label, published_at, status, phase, cover_image_url"
     )
     .eq("id", id)
     .eq("status", "active") // ✅ Add status filter to match v_live_questions behavior
@@ -647,6 +649,19 @@ export default function QuestionDetailPage() {
             </div>
           )}
         </header>
+
+        {/* Cover image — only rendered when a real image is available; collapses cleanly otherwise */}
+        {question.cover_image_url && (
+          <div className="-mx-4 sm:-mx-6 overflow-hidden rounded-lg">
+            <QuestionCoverImage
+              imageUrl={question.cover_image_url}
+              tags={question.tags}
+              variant="banner"
+              bannerHeight={210}
+              className="w-full"
+            />
+          </div>
+        )}
 
         {/* Question text */}
         <section className="space-y-3">
