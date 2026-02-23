@@ -12,7 +12,8 @@ import {
   User, 
   BarChart3, 
   Clock,
-  Brain  // ✅ ADDED: Brain icon import
+  Brain,  // ✅ ADDED: Brain icon import
+  SlidersHorizontal
 } from "lucide-react";
 
 import {
@@ -121,6 +122,11 @@ export default function AdminLayout() {
             to="/admin/cron-jobs"
             icon={<Clock className="h-4 w-4" />}
             label="Cron Jobs"
+          />
+          <AdminLink
+            to="/admin/scoring-config"
+            icon={<SlidersHorizontal className="h-4 w-4" />}
+            label="Scoring Config"
           />
           
           <Separator className="my-2" />
