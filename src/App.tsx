@@ -47,6 +47,7 @@ import AdminLiveQuestionShowPage from "@/routes/admin/live-questions/Show";
 import AdminAiDraftsPage from "@/routes/admin/ai-drafts/Index";
 import AdminImpactDashboardPage from "@/routes/admin/impact-dashboard/Index";
 import AdminCronJobsPage from "@/routes/admin/cron-jobs/Index";
+import ScoringConfigPage from "@/routes/admin/ScoringConfigPage";
 
 // Cognitive State Pages
 import AdminCognitiveStatesPage from '@/routes/admin/cognitive-states';
@@ -226,6 +227,7 @@ const App: React.FC = () => {
                 <Route path="impact-dashboard" element={<AdminImpactDashboardPage />} />
                 <Route path="stance-metrics" element={<AdminStanceMetricsPage />} />
                 <Route path="cron-jobs" element={<AdminCronJobsPage />} />
+                <Route path="scoring-config" element={<ScoringConfigPage />} />
                 
                 {/* ✅ NEW: Cognitive States Admin */}
                 <Route path="cognitive-states" element={<AdminCognitiveStatesPage />} />
