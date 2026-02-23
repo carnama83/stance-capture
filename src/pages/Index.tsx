@@ -1,5 +1,5 @@
 // src/pages/Index.tsx
-// HOMEPAGE V3 (Belief Radar layout) - CORRECTED VERSION
+// HOMEPAGE V3 (Belief Radar layout) - WITH INFINITE SCROLL PAGINATION
 // - Logged OUT: Media vs Belief hero (inline stance), light Pulse + Participation, then "Add your voice"
 // - Logged IN: Society Pulse, Media vs Belief, Where You Stand, Add your voice, Continuing, Reopened
 //
@@ -13,13 +13,13 @@
 // - get_reopened_questions_for_user(p_region text, p_limit int default 3, ...) [auth]
 //
 // Reuses existing:
-// - get_trending_questions_homepage (authed)
-// - v_live_questions (anon fallback)
+// - get_trending_questions_homepage (authed) — now with p_offset for pagination
+// - v_live_questions (anon fallback) — now with .range() for pagination
 // - set_question_stance, record_question_view (authed stance capture)
 
 import * as React from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { Search } from "lucide-react";
 
 import PageLayout from "@/components/PageLayout";
@@ -55,7 +55,7 @@ type TrendingHomepageQuestionRow = {
   trend_score: number | null;
   stance_momentum: number | null;
   topic_momentum: number | null;
-  cover_image_url?: string | null; // ✨ FIX: returned by RPC, was missing from type
+  cover_image_url?: string | null;
 };
 
 type AnonQuestionRow = {
@@ -66,7 +66,7 @@ type AnonQuestionRow = {
   location_label: string | null;
   published_at: string | null;
   status?: string | null;
-  cover_image_url?: string | null; // ✨ FIX: v_live_questions includes this column
+  cover_image_url?: string | null;
 };
 
 type SocietyPulseRow = {
@@ -80,7 +80,6 @@ type SocietyPulseRow = {
   generated_at: string;
 };
 
-
 type SocietyPulseEarlyStageChip = {
   label: string;
   value: number | null;
@@ -92,21 +91,20 @@ type SocietyPulseEarlyStageTopic = {
 };
 
 type SocietyPulseEarlyStageRow = {
-  mode: string; // 'early_stage'
+  mode: string;
   headline: string;
   description: string;
-  chips: SocietyPulseEarlyStageChip[]; // jsonb array
-  featured_topics: SocietyPulseEarlyStageTopic[]; // jsonb array
+  chips: SocietyPulseEarlyStageChip[];
+  featured_topics: SocietyPulseEarlyStageTopic[];
   topic_count: number;
 };
 
-
 type SocietalPulseOutput = {
   region_label: string;
-  updated_at: string; // ISO timestamp (UTC)
+  updated_at: string;
   state: "STABLE" | "REAWAKENING" | "POLARIZING" | "ACCELERATING" | "FOCUSED";
   narrative: {
-    title: string; // "Societal Pulse"
+    title: string;
     sentence_1: string;
     sentence_2: string | null;
   };
@@ -121,7 +119,6 @@ type SocietalPulseOutput = {
     value: number | null;
   }>;
 };
-
 
 type ParticipationStatsRow = {
   region: string;
@@ -575,7 +572,7 @@ function InstantFeedbackCard({
             <Pill>Neutral {formatPct(dist.neutral_pct)}</Pill>
             <Pill>Oppose {formatPct(dist.oppose_pct)}</Pill>
             {mode === "anon" && bucket ? (
-              <Pill>You’re aligned with {formatPct(alignedPct)}</Pill>
+              <Pill>You're aligned with {formatPct(alignedPct)}</Pill>
             ) : null}
           </div>
 
@@ -627,6 +624,9 @@ export default function IndexPage() {
 
   const userId = session?.user?.id ?? null;
 
+  // ✅ Sentinel ref for infinite scroll
+  const sentinelRef = React.useRef<HTMLDivElement | null>(null);
+
   const actions = (
     <div className="flex items-center gap-2">
       <button
@@ -652,20 +652,6 @@ export default function IndexPage() {
     enabled: !!userId,
     queryKey: ["profile", userId],
     queryFn: async () => {
-      const logPulse = (
-        source: "primary" | "early_stage" | "legacy",
-        detail?: unknown
-      ) => {
-        // Helps debug which tier is active in production.
-        try {
-          // eslint-disable-next-line no-console
-          console.info(`[home] societyPulse source=${source} region=${regionLabel}`, detail ?? "");
-        } catch {
-          /* no-op */
-        }
-      };
-
-
       if (!sb || !userId) return null;
       const { data, error } = await sb
         .from("profiles")
@@ -700,14 +686,13 @@ export default function IndexPage() {
   const countryLabel = myRegion?.country_label ?? null;
   const globalLabel = myRegion?.global_label ?? "Global";
 
-  // Region tab state (Country tab only shown if we know a country)
+  // Region tab state
   const hasCountry = !!countryLabel;
   const [regionTab, setRegionTab] = React.useState<"country" | "global">(
     hasCountry ? "country" : "global"
   );
 
   React.useEffect(() => {
-    // If country becomes available later, prefer country tab.
     if (hasCountry) setRegionTab((t) => (t === "global" ? "country" : t));
     if (!hasCountry) setRegionTab("global");
   }, [hasCountry]);
@@ -715,13 +700,11 @@ export default function IndexPage() {
   const regionLabel =
     regionTab === "country" && countryLabel ? countryLabel : globalLabel;
 
-  // Location IDs (still used by existing trending RPC)
+  // Location IDs
   const { globalId: GLOBAL_LOCATION_ID, countryId: COUNTRY_LOCATION_ID, isLoading: locationIdsLoading } =
     useGlobalAndCountryIds(countryLabel);
 
-  // -------- New Homepage RPCs --------
-  
-  // Societal Pulse (topic-level) — new RPC with safe legacy fallback
+  // -------- Society Pulse --------
   const societyPulseQuery = useQuery({
     enabled: !!sb,
     queryKey: ["home-society-pulse", regionLabel],
@@ -732,14 +715,12 @@ export default function IndexPage() {
         source: "early_stage" | "legacy",
         meta?: Record<string, unknown>
       ) => {
-        // Helpful in prod: tells you which tier is active for each region.
         console.info("[home] societyPulse source=", source, {
           regionLabel,
           ...(meta ?? {}),
         });
       };
 
-      // Treat RPC-not-found as non-fatal so we can fall back.
       const isNotFound = (err: any) => {
         const status = err?.status;
         const code = err?.code;
@@ -754,7 +735,7 @@ export default function IndexPage() {
         );
       };
 
-      // ---------- Tier 1: Early-stage deterministic pulse ----------
+      // Tier 1: Early-stage deterministic pulse
       try {
         const { data, error } = await sb.rpc("get_society_pulse_early_stage", {
           p_region: regionLabel,
@@ -824,7 +805,7 @@ export default function IndexPage() {
         if (!isNotFound(e)) throw e;
       }
 
-      // ---------- Tier 2: Legacy pulse ----------
+      // Tier 2: Legacy pulse
       const { data: legacyData, error: legacyError } = await sb.rpc(
         "get_society_pulse",
         {
@@ -874,7 +855,6 @@ export default function IndexPage() {
     staleTime: 30_000,
   });
 
-  // PATCH 2 APPLIED: Defensive array check
   const participationQuery = useQuery({
     enabled: !!sb,
     queryKey: ["home-participation", regionLabel],
@@ -892,7 +872,6 @@ export default function IndexPage() {
     staleTime: 30_000,
   });
 
-  // PATCH 2 APPLIED: Defensive array check
   const mediaSurgeQuery = useQuery({
     enabled: !!sb,
     queryKey: ["home-media-surge", regionLabel],
@@ -910,7 +889,6 @@ export default function IndexPage() {
     staleTime: 30_000,
   });
 
-  // PATCH 2 APPLIED: Defensive array check
   const whereYouStandQuery = useQuery({
     enabled: !!sb && !!userId,
     queryKey: ["home-where-you-stand", userId, regionLabel],
@@ -958,7 +936,7 @@ export default function IndexPage() {
     staleTime: 30_000,
   });
 
-  // -------- Belief side (questions) --------
+  // -------- Belief side (questions) — Infinite Query --------
   const canTrendingNational =
     !!sb &&
     !!userId &&
@@ -969,7 +947,8 @@ export default function IndexPage() {
   const canTrendingGlobal =
     !!sb && !!userId && !!GLOBAL_LOCATION_ID && !locationIdsLoading;
 
-  const trendingQuestionsNationalQuery = useQuery({
+  // ✅ National — useInfiniteQuery
+  const trendingQuestionsNationalQuery = useInfiniteQuery({
     enabled: canTrendingNational,
     queryKey: [
       "home-trending-questions",
@@ -978,13 +957,18 @@ export default function IndexPage() {
       countryLabel,
       COUNTRY_LOCATION_ID,
     ],
-    queryFn: async () => {
+    initialPageParam: 0,
+    getNextPageParam: (lastPage: TrendingHomepageQuestionRow[], _allPages: TrendingHomepageQuestionRow[][], lastPageParam: number) => {
+      return lastPage.length < 10 ? undefined : lastPageParam + 10;
+    },
+    queryFn: async ({ pageParam = 0 }) => {
       const { data, error } = await sb!.rpc("get_trending_questions_homepage", {
         p_user_id: userId,
         p_region_scope: "national",
         p_region_key: countryLabel,
         p_location_id: COUNTRY_LOCATION_ID,
         p_limit: 10,
+        p_offset: pageParam,
       });
       if (error) throw error;
       return (data ?? []) as TrendingHomepageQuestionRow[];
@@ -992,16 +976,22 @@ export default function IndexPage() {
     staleTime: 30_000,
   });
 
-  const trendingQuestionsGlobalQuery = useQuery({
+  // ✅ Global — useInfiniteQuery
+  const trendingQuestionsGlobalQuery = useInfiniteQuery({
     enabled: canTrendingGlobal,
     queryKey: ["home-trending-questions", "global", userId, GLOBAL_LOCATION_ID],
-    queryFn: async () => {
+    initialPageParam: 0,
+    getNextPageParam: (lastPage: TrendingHomepageQuestionRow[], _allPages: TrendingHomepageQuestionRow[][], lastPageParam: number) => {
+      return lastPage.length < 10 ? undefined : lastPageParam + 10;
+    },
+    queryFn: async ({ pageParam = 0 }) => {
       const { data, error } = await sb!.rpc("get_trending_questions_homepage", {
         p_user_id: userId,
         p_region_scope: "global",
         p_region_key: globalLabel,
         p_location_id: GLOBAL_LOCATION_ID,
         p_limit: 10,
+        p_offset: pageParam,
       });
       if (error) throw error;
       return (data ?? []) as TrendingHomepageQuestionRow[];
@@ -1009,24 +999,25 @@ export default function IndexPage() {
     staleTime: 30_000,
   });
 
-  const anonTrendingQuery = useQuery({
+  // ✅ Anon — useInfiniteQuery
+  const anonTrendingQuery = useInfiniteQuery({
     enabled: !!sb && !isAuthed,
     queryKey: ["home-questions-anon", regionLabel],
-    queryFn: async () => {
+    initialPageParam: 0,
+    getNextPageParam: (lastPage: AnonQuestionRow[], _allPages: AnonQuestionRow[][], lastPageParam: number) => {
+      return lastPage.length < 10 ? undefined : lastPageParam + 10;
+    },
+    queryFn: async ({ pageParam = 0 }) => {
       const q = sb!
         .from("v_live_questions")
         .select("id, question, summary, tags, location_label, published_at, status, cover_image_url")
         .order("published_at", { ascending: false })
-        .limit(10);
+        .range(pageParam, pageParam + 9);
 
-      // region filter (keep consistent with earlier rules)
-      // - Global: all
-      // - Country tab: {country, Global, NULL}
       if (regionLabel !== "Global") {
         const eligible = regionLabel === "United States"
           ? ["United States", "Global"]
           : [regionLabel];
-        // postgrest "in" doesn't include null, so we OR in is null via or()
         q.or(`location_label.in.(${eligible.map((x) => `"${x}"`).join(",")}),location_label.is.null`);
       }
 
@@ -1037,37 +1028,51 @@ export default function IndexPage() {
     staleTime: 60_000,
   });
 
+  // ✅ Flatten all pages into single arrays
   const trendingQuestions =
     regionTab === "country"
-      ? trendingQuestionsNationalQuery.data ?? []
-      : trendingQuestionsGlobalQuery.data ?? [];
+      ? (trendingQuestionsNationalQuery.data?.pages.flat() ?? [])
+      : (trendingQuestionsGlobalQuery.data?.pages.flat() ?? []);
 
-  const anonQuestions = anonTrendingQuery.data ?? [];
+  const anonQuestions = anonTrendingQuery.data?.pages.flat() ?? [];
 
-  // Loading states — distinguish "still fetching" from "fetched but empty"
-  const anonIsLoading = anonTrendingQuery.isLoading || anonTrendingQuery.isFetching;
+  // ✅ Active query helpers for infinite scroll controls
+  const activeAuthedQuery = regionTab === "country"
+    ? trendingQuestionsNationalQuery
+    : trendingQuestionsGlobalQuery;
+
+  const isFetchingNextPage = isAuthed
+    ? activeAuthedQuery.isFetchingNextPage
+    : anonTrendingQuery.isFetchingNextPage;
+
+  const hasNextPage = isAuthed
+    ? activeAuthedQuery.hasNextPage
+    : anonTrendingQuery.hasNextPage;
+
+  const fetchNextPage = isAuthed
+    ? activeAuthedQuery.fetchNextPage
+    : anonTrendingQuery.fetchNextPage;
+
+  // Loading states
+  const anonIsLoading = anonTrendingQuery.isLoading;
   const anonIsError = anonTrendingQuery.isError;
   const authedIsLoading =
-    // Still waiting for location IDs to resolve before queries can fire
     locationIdsLoading ||
     trendingQuestionsNationalQuery.isLoading ||
     trendingQuestionsGlobalQuery.isLoading;
 
   const heroBeliefQuestionAuthed = trendingQuestions[0] ?? null;
-  const addSignalAuthed = trendingQuestions.slice(1, 6);
+  const addSignalAuthed = trendingQuestions.slice(1);
 
   const heroBeliefQuestionAnon = anonQuestions[0] ?? null;
-  const addSignalAnon = anonQuestions.slice(1, 6);
+  const addSignalAnon = anonQuestions.slice(1);
 
   // -------- Instant feedback after stance submit --------
-  const [feedback, setFeedback] = React.useState<QuestionDistributionRow | null>(
-    null
-  );
-
+  const [feedback, setFeedback] = React.useState<QuestionDistributionRow | null>(null);
   const [anonLastValue, setAnonLastValue] = React.useState<number | null>(null);
 
   const distributionQuery = useQuery({
-    enabled: false, // manual refetch
+    enabled: false,
     queryKey: ["home-distribution", feedback?.question_id ?? "none", regionLabel],
     queryFn: async () => feedback,
   });
@@ -1087,7 +1092,6 @@ export default function IndexPage() {
           : null;
         setFeedback(row);
       } catch (e) {
-        // non-blocking
         console.warn("get_question_distribution failed", e);
       }
     },
@@ -1098,7 +1102,6 @@ export default function IndexPage() {
     async (questionId: string, value: number) => {
       if (!sb) return;
 
-      // If not logged in, force auth before allowing any answering.
       if (!userId) {
         const returnTo = window.location.hash || "#/";
         sessionStorage.setItem("return_to", returnTo);
@@ -1113,10 +1116,8 @@ export default function IndexPage() {
 
       if (error) throw error;
 
-      // Instant feedback (best-effort)
       fetchDistribution(questionId);
 
-      // Refresh key homepage queries
       await Promise.allSettled([
         qc.invalidateQueries({ queryKey: ["home-where-you-stand", userId, regionLabel] }),
         qc.invalidateQueries({ queryKey: ["home-because-you", userId, regionLabel] }),
@@ -1130,8 +1131,6 @@ export default function IndexPage() {
     [sb, userId, qc, navigate, regionLabel, fetchDistribution]
   );
 
-  // Logged-out users: keep UI briefly interactive so the mechanic is understood,
-  // then redirect to login with a clear intent.
   const redirectToLogin = React.useCallback(
     (reason: "take_stances" | "generic" = "generic") => {
       const returnTo = window.location.hash || "#/";
@@ -1167,6 +1166,28 @@ export default function IndexPage() {
       cancelled = true;
     };
   }, [sb, userId, trendingQuestions]);
+
+  // ✅ IntersectionObserver for infinite scroll
+  React.useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const first = entries[0];
+        if (first.isIntersecting && hasNextPage && !isFetchingNextPage) {
+          fetchNextPage();
+        }
+      },
+      {
+        rootMargin: "200px",
+        threshold: 0,
+      }
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   const goToQuestion = (questionId: string) => navigate(`/q/${questionId}`);
 
@@ -1259,9 +1280,9 @@ export default function IndexPage() {
         </>
       ) : (
         <>
-          {/* 🧭 VARIANT 1 — FIRST-TIME / ANON (Conversion-Oriented) */}
+          {/* VARIANT 1 — FIRST-TIME / ANON (Conversion-Oriented) */}
 
-          {/* 🟥 SECTION 1 — 🔥 One Big Shifting Question */}
+          {/* SECTION 1 — One Big Shifting Question */}
           <div className="rounded-xl border bg-card p-4 shadow-sm">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
@@ -1274,7 +1295,6 @@ export default function IndexPage() {
 
             <div className="mt-3">
               {anonIsLoading ? (
-                // Loading skeleton — prevents "No questions" flash during fetch
                 <div className="space-y-2 animate-pulse">
                   <div className="h-4 w-3/4 rounded bg-muted" />
                   <div className="h-4 w-1/2 rounded bg-muted" />
@@ -1286,7 +1306,6 @@ export default function IndexPage() {
                 </div>
               ) : heroBeliefQuestionAnon ? (
                 <div className="relative">
-                  {/* Click question text -> open Question Detail (logged out is OK) */}
                   <Link
                     to={`/q/${heroBeliefQuestionAnon.id}`}
                     className="mb-3 block text-sm font-medium leading-snug text-foreground hover:underline"
@@ -1294,10 +1313,6 @@ export default function IndexPage() {
                     {heroBeliefQuestionAnon.question}
                   </Link>
 
-                  {/*
-                    Slider stays interactive for logged-out users so they see the position + explainer change.
-                    After they release the interaction, redirect to login to take a stance.
-                  */}
                   <div
                     className="rounded-xl"
                     onPointerUpCapture={() => redirectToLogin("take_stances")}
@@ -1322,7 +1337,7 @@ export default function IndexPage() {
             </div>
           </div>
 
-          {/* 🟧 SECTION 2 — Instant Reward (Post-Slide Reveal) */}
+          {/* SECTION 2 — Instant Reward (Post-Slide Reveal) */}
           <InstantFeedbackCard
             dist={feedback}
             onClose={() => {
@@ -1338,14 +1353,14 @@ export default function IndexPage() {
             }}
           />
 
-          {/* 🟦 SECTION 3 — 🌍 Society Right Now (Light) */}
+          {/* SECTION 3 — Society Right Now (Light) */}
           {societyPulseQuery.isError ? (
             <ErrorFallback message="Failed to load Society Pulse. Please refresh the page." />
           ) : (
             <SocietyPulseCard pulse={societyPulseQuery.data ?? null} />
           )}
 
-          {/* 🟨 SECTION 4 — ⚖️ Add Your Voice / What’s moving fast */}
+          {/* SECTION 4 — What's moving fast */}
           {mediaSurgeQuery.isError ? (
             <ErrorFallback message="Failed to load Media Surge. Please refresh the page." />
           ) : (
@@ -1354,7 +1369,7 @@ export default function IndexPage() {
         </>
       )}
 
-{/* Add your voice */}
+        {/* ──────────── Add your voice ──────────── */}
         <section className="space-y-3">
           <SectionHeader
             title="Add your voice"
@@ -1363,7 +1378,6 @@ export default function IndexPage() {
           <div className="space-y-3">
             {isAuthed ? (
               authedIsLoading ? (
-                // Skeleton cards while location IDs / trending queries resolve
                 [1, 2, 3].map((i) => (
                   <div key={i} className="rounded-xl border bg-card p-4 shadow-sm animate-pulse">
                     <div className="h-4 w-3/4 rounded bg-muted mb-2" />
@@ -1377,12 +1391,10 @@ export default function IndexPage() {
                 </div>
               ) : (
                 addSignalAuthed.map((q) => (
-                  // ✨ FIX: overflow-hidden so banner image reaches card edges; p-4 moved inside
                   <div
                     key={q.question_id}
                     className="rounded-xl border bg-card shadow-sm overflow-hidden"
                   >
-                    {/* Cover image — only renders when available, collapses cleanly otherwise */}
                     {q.cover_image_url && (
                       <QuestionCoverImage
                         imageUrl={q.cover_image_url}
@@ -1453,9 +1465,7 @@ export default function IndexPage() {
                 </div>
               ) : (
                 addSignalAnon.map((q) => (
-                  // ✨ FIX: overflow-hidden + inner p-4 wrapper for image support
                   <div key={q.id} className="rounded-xl border bg-card shadow-sm overflow-hidden">
-                    {/* Cover image — only renders when available, collapses cleanly otherwise */}
                     {q.cover_image_url && (
                       <QuestionCoverImage
                         imageUrl={q.cover_image_url}
@@ -1506,6 +1516,23 @@ export default function IndexPage() {
                   </div>
                 ))
               )
+            )}
+
+            {/* ✅ Infinite scroll sentinel */}
+            <div ref={sentinelRef} className="h-1 w-full" aria-hidden="true" />
+
+            {/* ✅ Loading spinner for next page */}
+            {isFetchingNextPage && (
+              <div className="flex justify-center py-4">
+                <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+              </div>
+            )}
+
+            {/* ✅ End of feed message */}
+            {!hasNextPage && (trendingQuestions.length > 1 || anonQuestions.length > 1) && (
+              <div className="py-4 text-center text-xs text-muted-foreground">
+                You've seen all available questions
+              </div>
             )}
           </div>
         </section>
