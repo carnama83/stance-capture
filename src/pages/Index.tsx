@@ -700,6 +700,43 @@ export default function IndexPage() {
   const regionLabel =
     regionTab === "country" && countryLabel ? countryLabel : globalLabel;
 
+// --- Cover hydration (safety net) ---
+// The trending RPC may not always return cover_image_url. This hydrates missing covers
+// from the questions table (best-effort). It only fetches rows where cover_image_url is missing.
+const hydrateCoversForTrendingRows = React.useCallback(
+  async (rows: TrendingHomepageQuestionRow[]) => {
+    if (!sb) return rows;
+
+    const missingIds = rows
+      .filter((r) => !r.cover_image_url)
+      .map((r) => r.question_id)
+      .filter(Boolean);
+
+    if (missingIds.length === 0) return rows;
+
+    const { data, error } = await sb
+      .from("questions")
+      .select("id, cover_image_url")
+      .in("id", missingIds);
+
+    if (error) {
+      console.warn("[home] hydrate covers failed", error);
+      return rows;
+    }
+
+    const map = new Map<string, string | null>(
+      (data ?? []).map((d: any) => [d.id, (d.cover_image_url ?? null) as string | null])
+    );
+
+    return rows.map((r) => ({
+      ...r,
+      cover_image_url: r.cover_image_url ?? map.get(r.question_id) ?? null,
+    }));
+  },
+  [sb]
+);
+
+
   // Location IDs
   const { globalId: GLOBAL_LOCATION_ID, countryId: COUNTRY_LOCATION_ID, isLoading: locationIdsLoading } =
     useGlobalAndCountryIds(countryLabel);
@@ -971,7 +1008,8 @@ export default function IndexPage() {
         p_offset: pageParam,
       });
       if (error) throw error;
-      return (data ?? []) as TrendingHomepageQuestionRow[];
+      const rows = (data ?? []) as TrendingHomepageQuestionRow[];
+      return await hydrateCoversForTrendingRows(rows);
     },
     staleTime: 30_000,
   });
@@ -994,7 +1032,8 @@ export default function IndexPage() {
         p_offset: pageParam,
       });
       if (error) throw error;
-      return (data ?? []) as TrendingHomepageQuestionRow[];
+      const rows = (data ?? []) as TrendingHomepageQuestionRow[];
+      return await hydrateCoversForTrendingRows(rows);
     },
     staleTime: 30_000,
   });
@@ -1395,14 +1434,12 @@ export default function IndexPage() {
                     key={q.question_id}
                     className="rounded-xl border bg-card shadow-sm overflow-hidden"
                   >
-                    {q.cover_image_url && (
-                      <QuestionCoverImage
-                        imageUrl={q.cover_image_url}
-                        tags={q.tags}
-                        variant="banner"
-                        bannerHeight={160}
-                      />
-                    )}
+                    <QuestionCoverImage
+                      imageUrl={q.cover_image_url ?? null}
+                      tags={q.tags}
+                      variant="banner"
+                      bannerHeight={160}
+                    />
                     <div className="p-4">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
@@ -1466,14 +1503,12 @@ export default function IndexPage() {
               ) : (
                 addSignalAnon.map((q) => (
                   <div key={q.id} className="rounded-xl border bg-card shadow-sm overflow-hidden">
-                    {q.cover_image_url && (
-                      <QuestionCoverImage
-                        imageUrl={q.cover_image_url}
-                        tags={q.tags}
-                        variant="banner"
-                        bannerHeight={160}
-                      />
-                    )}
+                    <QuestionCoverImage
+                      imageUrl={q.cover_image_url ?? null}
+                      tags={q.tags}
+                      variant="banner"
+                      bannerHeight={160}
+                    />
                     <div className="p-4">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
