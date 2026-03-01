@@ -76,6 +76,8 @@ export default function TopicDraftsPage() {
   const [embedLoading, setEmbedLoading] = React.useState(false);
   const [embedElapsed, setEmbedElapsed] = React.useState(0);
   const [embedProgress, setEmbedProgress] = React.useState("");
+  const [embedTotal, setEmbedTotal] = React.useState<number | null>(null);
+  const [embedDone, setEmbedDone] = React.useState<number | null>(null);
 
   const [clusterLoading, setClusterLoading] = React.useState(false);
   const [clusterElapsed, setClusterElapsed] = React.useState(0);
@@ -270,18 +272,27 @@ export default function TopicDraftsPage() {
   }, [load]);
 
   // Embed progress polling — counts rows in ingestion_queue that now have embeddings
+  // Fetch both sides of the embedding count in one round-trip pair
+  // Returns { eligible: rows still needing embedding, done: rows already embedded since start }
   const pollEmbedProgress = React.useCallback(async () => {
-    const { count, error } = await supabase
-      .from("ingestion_queue")
-      .select("*", { count: "exact", head: true })
-      .not("embedding", "is", null);
-
-    if (error) throw error;
-    return count || 0;
+    const [needRes, doneRes] = await Promise.all([
+      supabase
+        .from("ingestion_queue")
+        .select("*", { count: "exact", head: true })
+        .is("embedding", null),
+      supabase
+        .from("ingestion_queue")
+        .select("*", { count: "exact", head: true })
+        .not("embedding", "is", null),
+    ]);
+    if (needRes.error) throw needRes.error;
+    if (doneRes.error) throw doneRes.error;
+    return {
+      needEmbedding: needRes.count ?? 0,
+      haveEmbedding: doneRes.count ?? 0,
+    };
   }, [supabase]);
 
-  // Run the embed edge function directly via supabase.functions.invoke
-  // (No RPC wrapper needed — embed is a standalone function unlike cluster)
   const runEmbed = React.useCallback(async () => {
     if (embedLoading) return;
 
@@ -289,77 +300,90 @@ export default function TopicDraftsPage() {
 
     setEmbedLoading(true);
     setEmbedElapsed(0);
-    setEmbedProgress("Starting...");
-
-    toast({
-      title: "Embedding started",
-      description: "Generating embeddings for un-embedded articles...",
-    });
+    setEmbedProgress("Counting articles...");
+    setEmbedTotal(null);
+    setEmbedDone(null);
 
     const startTime = Date.now();
-    let initial: number | null = null;
+    // Snapshot taken on first poll so we know the baseline
+    let baselineHave: number | null = null;
+    let totalEligible: number | null = null;
 
-    // Start polling immediately so elapsed timer is always live
+    // Start polling immediately — timer ticks every 2s
     embedIntervalRef.current = window.setInterval(async () => {
       const elapsed = Math.floor((Date.now() - startTime) / 1000);
       setEmbedElapsed(elapsed);
 
-      if (elapsed > 60) {
+      if (elapsed > 90) {
         clearEmbedInterval();
         setEmbedLoading(false);
         toast({
           title: "Embedding timeout",
-          description: "No progress detected after 60s. The job may still be running — check Edge Function logs.",
+          description: "Stopped polling after 90s. Check Edge Function logs — the job may still be running.",
           variant: "destructive",
         });
         return;
       }
 
       try {
-        const current = await pollEmbedProgress();
-        if (initial === null) initial = current;
+        const { needEmbedding, haveEmbedding } = await pollEmbedProgress();
 
-        const newEmbedded = current - initial;
-        setEmbedProgress(`${newEmbedded} rows embedded`);
+        if (baselineHave === null) {
+          // First poll: establish baseline and total eligible
+          baselineHave = haveEmbedding;
+          totalEligible = needEmbedding;   // how many need embedding right now
+          setEmbedTotal(totalEligible);
+          setEmbedDone(0);
+          setEmbedProgress(totalEligible === 0
+            ? "Nothing to embed"
+            : `0 / ${totalEligible} embedded`
+          );
 
-        if (newEmbedded > 0) {
+          if (totalEligible === 0) {
+            clearEmbedInterval();
+            setEmbedLoading(false);
+            toast({ title: "Nothing to embed", description: "All articles in the window already have embeddings." });
+            return;
+          }
+          return; // wait for next tick before declaring progress
+        }
+
+        // Subsequent polls: measure how many new rows got embeddings
+        const newlyEmbedded = haveEmbedding - baselineHave;
+        const remaining = Math.max(0, (totalEligible ?? 0) - newlyEmbedded);
+        setEmbedDone(newlyEmbedded);
+        setEmbedProgress(`${newlyEmbedded} / ${totalEligible ?? "?"} embedded — ${remaining} remaining`);
+
+        if (remaining === 0 && newlyEmbedded > 0) {
           clearEmbedInterval();
           setEmbedLoading(false);
           toast({
             title: "Embedding complete ✅",
-            description: `Embedded ${newEmbedded} articles in ${elapsed}s. Run Cluster next.`,
+            description: `All ${newlyEmbedded} articles embedded in ${elapsed}s. Run Cluster next.`,
           });
         }
       } catch (err) {
         console.warn("pollEmbedProgress failed:", err);
-        // Don't stop polling on a single failure
+        // Don't stop polling on a single network blip
       }
     }, 2000);
 
     try {
-      // Call the embed edge function directly.
-      // Note: if CRON_SECRET is set on the function, you must either:
-      //   a) Remove CRON_SECRET from the embed function env (recommended for admin-triggered runs), or
-      //   b) Add the secret via a server-side proxy / Supabase RPC wrapper (like run_cluster_http).
-      const { error } = await supabase.functions.invoke("embed", {
-        method: "POST",
-      });
-
+      // Invoke the embed edge function directly (no RPC wrapper needed).
+      // If CRON_SECRET is configured on the function, remove it from the
+      // embed function's secrets for admin-triggered calls, or wrap it in
+      // an RPC like run_cluster_http that injects the secret server-side.
+      const { error } = await supabase.functions.invoke("embed", { method: "POST" });
       if (error) throw error;
     } catch (e: any) {
       console.error("embed edge function error:", e);
       toast({
         title: "Embed trigger issue",
-        description:
-          e?.message ?? "Failed to invoke embed function. It may still be running server-side.",
+        description: e?.message ?? "Failed to invoke embed function. It may still be running server-side.",
         variant: "destructive",
       });
-
-      // Keep polling briefly so the admin can see if rows appeared despite the error
-      setTimeout(() => {
-        clearEmbedInterval();
-        setEmbedLoading(false);
-      }, 8000);
+      // Keep polling a bit longer in case the function ran anyway
+      setTimeout(() => { clearEmbedInterval(); setEmbedLoading(false); }, 8000);
     }
   }, [embedLoading, supabase, toast, pollEmbedProgress, clearEmbedInterval]);
 
@@ -822,7 +846,7 @@ export default function TopicDraftsPage() {
               {embedLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {!embedLoading && <Cpu className="mr-2 h-4 w-4" />}
               {embedLoading
-                ? `Embedding... ${embedElapsed}s (${embedProgress})`
+                ? `${embedProgress} (${embedElapsed}s)`
                 : "1. Run Embedding"}
             </Button>
 
@@ -901,7 +925,7 @@ export default function TopicDraftsPage() {
               <Button variant="outline" onClick={runEmbed} disabled={embedLoading}>
                 {embedLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 {!embedLoading && <Cpu className="mr-2 h-4 w-4" />}
-                {embedLoading ? `Embedding... ${embedElapsed}s` : "1. Run Embedding"}
+                {embedLoading ? `${embedProgress} (${embedElapsed}s)` : "1. Run Embedding"}
               </Button>
               <Button variant="outline" onClick={runCluster} disabled={clusterLoading}>
                 {clusterLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
