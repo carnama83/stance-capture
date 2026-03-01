@@ -50,12 +50,15 @@ type TrendingHomepageQuestionRow = {
   topic_title: string | null;
   tier: string | null;
   location_label: string | null;
+  origin_location_label?: string | null;
+  audience_location_label?: string | null;
   user_has_answered: boolean | null;
   trend_micro_signal: string | null;
   trend_score: number | null;
   stance_momentum: number | null;
   topic_momentum: number | null;
   cover_image_url?: string | null;
+  impact_normalized?: number | null;
 };
 
 type AnonQuestionRow = {
@@ -64,6 +67,8 @@ type AnonQuestionRow = {
   summary: string | null;
   tags: string[] | null;
   location_label: string | null;
+  origin_location_label?: string | null;
+  audience_location_label?: string | null;
   published_at: string | null;
   status?: string | null;
   cover_image_url?: string | null;
@@ -1001,7 +1006,9 @@ const hydrateCoversForTrendingRows = React.useCallback(
     queryFn: async ({ pageParam = 0 }) => {
       const { data, error } = await sb!.rpc("get_trending_questions_homepage", {
         p_user_id: userId,
-        p_region_scope: "national",
+        // NOTE: must match region_scope values stored in question_stance_momentum_region_v
+        // Verified: 2026-03 — view uses "country" | "global"
+        p_region_scope: "country",
         p_region_key: countryLabel,
         p_location_id: COUNTRY_LOCATION_ID,
         p_limit: 10,
@@ -1049,15 +1056,20 @@ const hydrateCoversForTrendingRows = React.useCallback(
     queryFn: async ({ pageParam = 0 }) => {
       const q = sb!
         .from("v_live_questions")
-        .select("id, question, summary, tags, location_label, published_at, status, cover_image_url")
+        .select("id, question, summary, tags, location_label, origin_location_label, audience_location_label, published_at, status, cover_image_url")
         .order("published_at", { ascending: false })
         .range(pageParam, pageParam + 9);
 
       if (regionLabel !== "Global") {
-        const eligible = regionLabel === "United States"
-          ? ["United States", "Global"]
-          : [regionLabel];
-        q.or(`location_label.in.(${eligible.map((x) => `"${x}"`).join(",")}),location_label.is.null`);
+        const eligible =
+          regionLabel === "United States"
+            ? ["United States", "Global"]
+            : [regionLabel, "Global"]; // Product decision: local tabs also include Global questions
+        q.or(
+          `audience_location_label.in.(${eligible
+            .map((x) => `"${x}"`)
+            .join(",")}),audience_location_label.is.null`
+        );
       }
 
       const { data, error } = await q;
@@ -1274,6 +1286,14 @@ const hydrateCoversForTrendingRows = React.useCallback(
                   <div className="mt-1 text-xs text-muted-foreground">
                     A high-momentum question — answer in seconds.
                   </div>
+                  {heroBeliefQuestionAuthed && (
+                    <Link
+                      to={`/q/${heroBeliefQuestionAuthed.question_id}`}
+                      className="mt-2 block text-sm font-medium text-foreground leading-snug hover:underline"
+                    >
+                      {heroBeliefQuestionAuthed.question_text}
+                    </Link>
+                  )}
                 </div>
                 {heroBeliefQuestionAuthed ? (
                   <button
@@ -1424,9 +1444,15 @@ const hydrateCoversForTrendingRows = React.useCallback(
                     <div className="h-10 rounded bg-muted" />
                   </div>
                 ))
-              ) : addSignalAuthed.length === 0 ? (
+              ) : addSignalAuthed.length === 0 && !heroBeliefQuestionAuthed ? (
+                // Only show hard 'no questions' if there is truly nothing at all
                 <div className="rounded-xl border bg-muted/20 p-4 text-sm text-muted-foreground">
                   No questions available right now. Check back soon.
+                </div>
+              ) : addSignalAuthed.length === 0 && heroBeliefQuestionAuthed ? (
+                // Hero exists but slice(1) is empty — softer message
+                <div className="rounded-xl border bg-muted/10 p-4 text-sm text-muted-foreground">
+                  More questions are on the way. Check back soon.
                 </div>
               ) : (
                 addSignalAuthed.map((q) => (
@@ -1452,6 +1478,12 @@ const hydrateCoversForTrendingRows = React.useCallback(
                           {q.topic_title ? (
                             <div className="mt-1 text-xs text-muted-foreground line-clamp-1">
                               Topic: {q.topic_title}
+                            </div>
+                          ) : null}
+                          {q.origin_location_label &&
+                          q.origin_location_label !== q.audience_location_label ? (
+                            <div className="mt-1 text-xs text-muted-foreground">
+                              📍 {q.origin_location_label}
                             </div>
                           ) : null}
                           <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
