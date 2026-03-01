@@ -14,7 +14,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { ExternalLink, Edit2, RefreshCw, Loader2 } from "lucide-react";
+import { ExternalLink, Edit2, RefreshCw, Loader2, Cpu } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 
 type DraftStatus = "draft" | "approved" | "rejected";
@@ -73,6 +73,10 @@ export default function TopicDraftsPage() {
   const [topicDraftHasQDraft, setTopicDraftHasQDraft] = React.useState<Set<string>>(new Set());
 
   // Pipeline button states with elapsed time
+  const [embedLoading, setEmbedLoading] = React.useState(false);
+  const [embedElapsed, setEmbedElapsed] = React.useState(0);
+  const [embedProgress, setEmbedProgress] = React.useState("");
+
   const [clusterLoading, setClusterLoading] = React.useState(false);
   const [clusterElapsed, setClusterElapsed] = React.useState(0);
   const [clusterProgress, setClusterProgress] = React.useState("");
@@ -130,8 +134,16 @@ export default function TopicDraftsPage() {
 
 
   // Keep interval ids so we can always cleanup (prevents stuck UI)
+  const embedIntervalRef = React.useRef<number | null>(null);
   const clusterIntervalRef = React.useRef<number | null>(null);
   const draftsIntervalRef = React.useRef<number | null>(null);
+
+  const clearEmbedInterval = React.useCallback(() => {
+    if (embedIntervalRef.current != null) {
+      window.clearInterval(embedIntervalRef.current);
+      embedIntervalRef.current = null;
+    }
+  }, []);
 
   const clearClusterInterval = React.useCallback(() => {
     if (clusterIntervalRef.current != null) {
@@ -155,10 +167,11 @@ export default function TopicDraftsPage() {
   React.useEffect(() => {
     // Cleanup timers on unmount (prevents ghost stuck states)
     return () => {
+      clearEmbedInterval();
       clearClusterInterval();
       clearDraftsInterval();
     };
-  }, [clearClusterInterval, clearDraftsInterval]);
+  }, [clearEmbedInterval, clearClusterInterval, clearDraftsInterval]);
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -255,6 +268,100 @@ export default function TopicDraftsPage() {
   React.useEffect(() => {
     load();
   }, [load]);
+
+  // Embed progress polling — counts rows in ingestion_queue that now have embeddings
+  const pollEmbedProgress = React.useCallback(async () => {
+    const { count, error } = await supabase
+      .from("ingestion_queue")
+      .select("*", { count: "exact", head: true })
+      .not("embedding", "is", null);
+
+    if (error) throw error;
+    return count || 0;
+  }, [supabase]);
+
+  // Run the embed edge function directly via supabase.functions.invoke
+  // (No RPC wrapper needed — embed is a standalone function unlike cluster)
+  const runEmbed = React.useCallback(async () => {
+    if (embedLoading) return;
+
+    clearEmbedInterval();
+
+    setEmbedLoading(true);
+    setEmbedElapsed(0);
+    setEmbedProgress("Starting...");
+
+    toast({
+      title: "Embedding started",
+      description: "Generating embeddings for un-embedded articles...",
+    });
+
+    const startTime = Date.now();
+    let initial: number | null = null;
+
+    // Start polling immediately so elapsed timer is always live
+    embedIntervalRef.current = window.setInterval(async () => {
+      const elapsed = Math.floor((Date.now() - startTime) / 1000);
+      setEmbedElapsed(elapsed);
+
+      if (elapsed > 60) {
+        clearEmbedInterval();
+        setEmbedLoading(false);
+        toast({
+          title: "Embedding timeout",
+          description: "No progress detected after 60s. The job may still be running — check Edge Function logs.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      try {
+        const current = await pollEmbedProgress();
+        if (initial === null) initial = current;
+
+        const newEmbedded = current - initial;
+        setEmbedProgress(`${newEmbedded} rows embedded`);
+
+        if (newEmbedded > 0) {
+          clearEmbedInterval();
+          setEmbedLoading(false);
+          toast({
+            title: "Embedding complete ✅",
+            description: `Embedded ${newEmbedded} articles in ${elapsed}s. Run Cluster next.`,
+          });
+        }
+      } catch (err) {
+        console.warn("pollEmbedProgress failed:", err);
+        // Don't stop polling on a single failure
+      }
+    }, 2000);
+
+    try {
+      // Call the embed edge function directly.
+      // Note: if CRON_SECRET is set on the function, you must either:
+      //   a) Remove CRON_SECRET from the embed function env (recommended for admin-triggered runs), or
+      //   b) Add the secret via a server-side proxy / Supabase RPC wrapper (like run_cluster_http).
+      const { error } = await supabase.functions.invoke("embed", {
+        method: "POST",
+      });
+
+      if (error) throw error;
+    } catch (e: any) {
+      console.error("embed edge function error:", e);
+      toast({
+        title: "Embed trigger issue",
+        description:
+          e?.message ?? "Failed to invoke embed function. It may still be running server-side.",
+        variant: "destructive",
+      });
+
+      // Keep polling briefly so the admin can see if rows appeared despite the error
+      setTimeout(() => {
+        clearEmbedInterval();
+        setEmbedLoading(false);
+      }, 8000);
+    }
+  }, [embedLoading, supabase, toast, pollEmbedProgress, clearEmbedInterval]);
 
   // Cluster progress polling
   const pollClusterProgress = React.useCallback(async () => {
@@ -701,30 +808,54 @@ export default function TopicDraftsPage() {
             </Button>
           </div>
 
-          {/* Pipeline buttons with real-time progress */}
-          <Button
-            variant="outline"
-            onClick={runCluster}
-            disabled={clusterLoading}
-            className="min-w-[200px]"
-          >
-            {clusterLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {clusterLoading
-              ? `Clustering... ${clusterElapsed}s (${clusterProgress})`
-              : "1. Run Cluster"}
-          </Button>
+          {/* Pipeline buttons — run in sequence: Embed → Cluster → Create Drafts */}
+          <div className="flex items-center gap-1 border rounded px-2 py-1 bg-slate-50">
+            <span className="text-xs text-muted-foreground font-medium mr-1">Pipeline:</span>
 
-          <Button
-            variant="outline"
-            onClick={runCreateDrafts}
-            disabled={createDraftsLoading}
-            className="min-w-[220px]"
-          >
-            {createDraftsLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {createDraftsLoading
-              ? `Creating... ${createDraftsElapsed}s (${createDraftsProgress})`
-              : "2. Create Topic Drafts"}
-          </Button>
+            <Button
+              variant="outline"
+              onClick={runEmbed}
+              disabled={embedLoading}
+              className="min-w-[210px]"
+              title="Step 1: Generate vector embeddings for all un-embedded articles"
+            >
+              {embedLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {!embedLoading && <Cpu className="mr-2 h-4 w-4" />}
+              {embedLoading
+                ? `Embedding... ${embedElapsed}s (${embedProgress})`
+                : "1. Run Embedding"}
+            </Button>
+
+            <span className="text-muted-foreground text-xs px-1">→</span>
+
+            <Button
+              variant="outline"
+              onClick={runCluster}
+              disabled={clusterLoading}
+              className="min-w-[210px]"
+              title="Step 2: Group embedded articles into topic clusters"
+            >
+              {clusterLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {clusterLoading
+                ? `Clustering... ${clusterElapsed}s (${clusterProgress})`
+                : "2. Run Cluster"}
+            </Button>
+
+            <span className="text-muted-foreground text-xs px-1">→</span>
+
+            <Button
+              variant="outline"
+              onClick={runCreateDrafts}
+              disabled={createDraftsLoading}
+              className="min-w-[230px]"
+              title="Step 3: Generate topic drafts from clusters for admin review"
+            >
+              {createDraftsLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {createDraftsLoading
+                ? `Creating... ${createDraftsElapsed}s (${createDraftsProgress})`
+                : "3. Create Topic Drafts"}
+            </Button>
+          </div>
 
           <Button variant="outline" size="icon" onClick={load} title="Refresh" disabled={loading}>
             <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
@@ -747,30 +878,38 @@ export default function TopicDraftsPage() {
               <p className="font-semibold">📋 Pipeline Instructions:</p>
               <ol className="list-decimal list-inside space-y-1 ml-2">
                 <li>
-                  <strong>Run Cluster</strong> - Groups similar articles (real-time progress shown)
+                  <strong>Run Embedding</strong> — Generates vector embeddings for un-embedded articles
                 </li>
                 <li>
-                  <strong>Create Topic Drafts</strong> - Generates drafts from clusters (real-time progress shown)
+                  <strong>Run Cluster</strong> — Groups embedded articles into topic clusters
                 </li>
                 <li>
-                  <strong>Refresh</strong> - See your new drafts and review/approve them
+                  <strong>Create Topic Drafts</strong> — Generates drafts from clusters for review
+                </li>
+                <li>
+                  <strong>Refresh</strong> — See your new drafts and review/approve them
                 </li>
               </ol>
               <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
                 <p className="font-semibold text-yellow-800">💡 Tip:</p>
                 <p className="text-yellow-700">
-                  If clustering seems stuck, try refreshing the page first, then clicking "1. Run Cluster"
+                  Always run Embedding before Clustering — Cluster requires embeddings to exist first.
                 </p>
               </div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={runEmbed} disabled={embedLoading}>
+                {embedLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {!embedLoading && <Cpu className="mr-2 h-4 w-4" />}
+                {embedLoading ? `Embedding... ${embedElapsed}s` : "1. Run Embedding"}
+              </Button>
               <Button variant="outline" onClick={runCluster} disabled={clusterLoading}>
                 {clusterLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {clusterLoading ? `Clustering... ${clusterElapsed}s` : "1. Run Cluster"}
+                {clusterLoading ? `Clustering... ${clusterElapsed}s` : "2. Run Cluster"}
               </Button>
               <Button variant="outline" onClick={runCreateDrafts} disabled={createDraftsLoading}>
                 {createDraftsLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {createDraftsLoading ? `Creating... ${createDraftsElapsed}s` : "2. Create Topic Drafts"}
+                {createDraftsLoading ? `Creating... ${createDraftsElapsed}s` : "3. Create Topic Drafts"}
               </Button>
               <Button variant="outline" onClick={load} disabled={loading}>
                 {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
