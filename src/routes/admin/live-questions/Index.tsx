@@ -38,6 +38,10 @@ type QuestionRow = {
   created_at: string;
   created_by: string | null;
   published_at: string;
+  // ✨ Phase 9: audience routing fields
+  origin_location_label: string | null;
+  audience_location_label: string | null;
+  audience_reason: string | null;
 };
 
 const STATUS_FILTERS: { value: "all" | QuestionStatus; label: string }[] = [
@@ -75,7 +79,10 @@ export default function LiveQuestionsPage() {
         status,
         created_at,
         created_by,
-        published_at
+        published_at,
+        origin_location_label,
+        audience_location_label,
+        audience_reason
       `,
       )
       .order("created_at", { ascending: false })
@@ -276,6 +283,18 @@ function StatusBadge({ status }: { status: QuestionStatus }) {
   );
 }
 
+// ── Audience label options ───────────────────────────────────────────────────
+// Hard-coded common values; covers ~95% of cases without a DB lookup.
+// Extend this list or replace with a dynamic fetch from the locations table
+// as your data grows.
+const AUDIENCE_OPTIONS = [
+  "Global",
+  "United States",
+  "United Kingdom",
+  "Canada",
+  "Australia",
+] as const;
+
 function EditQuestionDialog({
   row,
   onSaved,
@@ -289,6 +308,25 @@ function EditQuestionDialog({
   const [summary, setSummary] = React.useState(row.summary ?? "");
   const [tags, setTags] = React.useState((row.tags ?? []).join(", "));
   const [location, setLocation] = React.useState(row.location_label ?? "");
+  // ✨ Phase 9: audience routing fields
+  const [audience, setAudience] = React.useState(
+    row.audience_location_label ?? "",
+  );
+  const [audienceReason, setAudienceReason] = React.useState(
+    row.audience_reason ?? "",
+  );
+
+  // Reset local state whenever the dialog opens so stale edits don't persist
+  React.useEffect(() => {
+    if (open) {
+      setQuestion(row.question);
+      setSummary(row.summary ?? "");
+      setTags((row.tags ?? []).join(", "));
+      setLocation(row.location_label ?? "");
+      setAudience(row.audience_location_label ?? "");
+      setAudienceReason(row.audience_reason ?? "");
+    }
+  }, [open, row]);
 
   const save = async () => {
     const tagsArray = tags
@@ -303,6 +341,11 @@ function EditQuestionDialog({
         summary,
         tags: tagsArray,
         location_label: location || null,
+        // ✨ Phase 9: persist audience overrides
+        // origin_location_label is intentionally NOT updated here — it records
+        // where the story happened and should not be changed after publish.
+        audience_location_label: audience || null,
+        audience_reason: audienceReason || null,
       })
       .eq("id", row.id);
 
@@ -352,6 +395,59 @@ function EditQuestionDialog({
               onChange={(e) => setLocation(e.target.value)}
               placeholder="e.g., New Jersey"
             />
+          </div>
+
+          {/* ✨ Phase 9: audience routing section */}
+          <div className="border-t pt-3 space-y-3">
+            <p className="text-xs text-muted-foreground">
+              <strong>Origin:</strong>{" "}
+              <span className="font-mono">
+                {row.origin_location_label ?? "—"}
+              </span>
+              <span className="ml-1">(read-only — where the story happened)</span>
+            </p>
+
+            <div>
+              <Label>
+                Audience{" "}
+                <span className="font-normal text-muted-foreground">
+                  — which tab this appears on
+                </span>
+              </Label>
+              <select
+                className="mt-1 w-full border rounded px-2 py-1.5 text-sm bg-background"
+                value={audience}
+                onChange={(e) => setAudience(e.target.value)}
+              >
+                <option value="">— unset (fallback to location label) —</option>
+                {AUDIENCE_OPTIONS.map((opt) => (
+                  <option key={opt} value={opt}>
+                    {opt}
+                  </option>
+                ))}
+                {/* Show current value as an option if it's not in the static list */}
+                {audience &&
+                  !AUDIENCE_OPTIONS.includes(
+                    audience as (typeof AUDIENCE_OPTIONS)[number],
+                  ) && (
+                    <option value={audience}>{audience} (current)</option>
+                  )}
+              </select>
+            </div>
+
+            <div>
+              <Label>
+                Audience reason{" "}
+                <span className="font-normal text-muted-foreground">
+                  — optional note explaining the classification
+                </span>
+              </Label>
+              <Input
+                value={audienceReason}
+                onChange={(e) => setAudienceReason(e.target.value)}
+                placeholder="e.g., Federal policy — national relevance"
+              />
+            </div>
           </div>
         </div>
         <DialogFooter>
