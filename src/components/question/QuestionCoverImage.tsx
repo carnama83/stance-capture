@@ -94,26 +94,31 @@ type ImageLayout = {
 function useImageLayout(imageUrl: string | null | undefined): ImageLayout {
   const [layout, setLayout] = React.useState<ImageLayout>({
     objectFit: "cover",
-    objectPosition: "center center",
+    objectPosition: "center 20%",
   });
 
   React.useEffect(() => {
     if (!imageUrl) return;
 
-    // Reset on URL change
-    setLayout({ objectFit: "cover", objectPosition: "center center" });
+    // Reset on URL change — default to top bias immediately
+    setLayout({ objectFit: "cover", objectPosition: "center 20%" });
 
     const img = new Image();
     img.onload = () => {
       const ratio = img.naturalWidth / img.naturalHeight;
-      if (ratio < 1.2) {
-        // Portrait — contain to avoid face-cropping
+
+      if (ratio < 1.0) {
+        // True portrait (taller than wide) — contain to show full subject
         setLayout({ objectFit: "contain", objectPosition: "center center" });
-      } else if (ratio < 1.6) {
-        // Square-ish — cover with upward bias
-        setLayout({ objectFit: "cover", objectPosition: "center top" });
+      } else if (ratio < 2.2) {
+        // Landscape AND square-ish news photos (the vast majority of wire images)
+        // Subjects (faces, people) are almost always in the upper 30–40% of frame.
+        // "center 20%" means the vertical anchor is at 20% from the top —
+        // aggressively top-biased, keeps heads and faces visible.
+        setLayout({ objectFit: "cover", objectPosition: "center 20%" });
       } else {
-        // Landscape — standard center crop
+        // Ultra-wide / panoramic (ratio > 2.2) — true cinematic crop
+        // Center is correct here (landscapes, crowds, skylines)
         setLayout({ objectFit: "cover", objectPosition: "center center" });
       }
     };
