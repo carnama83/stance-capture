@@ -67,51 +67,56 @@ function getGradient(tags: string[] | null | undefined): string {
   return "from-slate-800 to-slate-600";
 }
 
-// ─── Smart focal point hook ───────────────────────────────────────────────────
+// ─── Smart image layout hook ─────────────────────────────────────────────────
 //
-// Loads the image in the background, measures its natural dimensions, and
-// returns the best object-position value:
+// Loads the image in the background, measures natural dimensions, and returns
+// the best rendering strategy:
 //
-//   - Portrait / tall (ratio < 1.2):  "top center"
-//     News images of people are almost always taller than wide. The subject's
-//     face is in the upper third, so anchoring to the top keeps them in frame.
+//   Portrait (ratio < 1.2):
+//     → object-contain + blurred background fill
+//     The banner height (120–160px) is too short to crop a tall portrait image
+//     without cutting the subject's face. object-contain shows the full image
+//     and the blurred fill hides the empty side areas.
 //
-//   - Square-ish (1.2 – 1.6):        "center top"
-//     Slight upward bias — square headshots/thumbnails still tend to have the
-//     subject in the upper half.
+//   Square-ish (1.2 – 1.6):
+//     → object-cover + "center top" position
+//     Slight upward bias keeps subjects in frame for near-square images.
 //
-//   - Wide / landscape (> 1.6):       "center center"
-//     Panoramic or cinematic shots crop symmetrically from the center, which
-//     is the standard and works well for scenery/action images.
-//
-// Falls back to "center center" if the image hasn't loaded yet.
+//   Wide / landscape (> 1.6):
+//     → object-cover + "center center"
+//     Standard center crop — correct for scenery, crowds, action shots.
 
-type FocalPoint = "top center" | "center top" | "center center";
+type ImageLayout = {
+  objectFit: "cover" | "contain";
+  objectPosition: string;
+};
 
-function useImageFocalPoint(imageUrl: string | null | undefined): FocalPoint {
-  const [focalPoint, setFocalPoint] = React.useState<FocalPoint>("center center");
+function useImageLayout(imageUrl: string | null | undefined): ImageLayout {
+  const [layout, setLayout] = React.useState<ImageLayout>({
+    objectFit: "cover",
+    objectPosition: "center center",
+  });
 
   React.useEffect(() => {
     if (!imageUrl) return;
 
-    // Reset to default on URL change
-    setFocalPoint("center center");
+    // Reset on URL change
+    setLayout({ objectFit: "cover", objectPosition: "center center" });
 
     const img = new Image();
     img.onload = () => {
       const ratio = img.naturalWidth / img.naturalHeight;
       if (ratio < 1.2) {
-        // Portrait — anchor top so face/subject stays visible
-        setFocalPoint("top center");
+        // Portrait — contain to avoid face-cropping
+        setLayout({ objectFit: "contain", objectPosition: "center center" });
       } else if (ratio < 1.6) {
-        // Square-ish — slight upward bias
-        setFocalPoint("center top");
+        // Square-ish — cover with upward bias
+        setLayout({ objectFit: "cover", objectPosition: "center top" });
       } else {
-        // Wide/landscape — standard center crop
-        setFocalPoint("center center");
+        // Landscape — standard center crop
+        setLayout({ objectFit: "cover", objectPosition: "center center" });
       }
     };
-    // On error, keep the default "center center"
     img.src = imageUrl;
 
     return () => {
@@ -120,7 +125,7 @@ function useImageFocalPoint(imageUrl: string | null | undefined): FocalPoint {
     };
   }, [imageUrl]);
 
-  return focalPoint;
+  return layout;
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -137,8 +142,8 @@ export function QuestionCoverImage({
   const gradient = getGradient(tags);
   const hasImage = !!imageUrl && !imgFailed;
 
-  // Smart focal point — portrait images anchor to top, landscape to center
-  const focalPoint = useImageFocalPoint(hasImage ? imageUrl : null);
+  // Smart layout — portrait images use contain, landscape use cover
+  const layout = useImageLayout(hasImage ? imageUrl : null);
 
   // Reset failure state if imageUrl changes
   React.useEffect(() => {
@@ -159,8 +164,8 @@ export function QuestionCoverImage({
             src={imageUrl!}
             alt=""
             role="presentation"
-            className="w-full h-full object-cover"
-            style={{ objectPosition: focalPoint }}
+            className="w-full h-full"
+            style={{ objectFit: layout.objectFit, objectPosition: layout.objectPosition }}
             loading="lazy"
             decoding="async"
             onError={() => setImgFailed(true)}
@@ -180,7 +185,8 @@ export function QuestionCoverImage({
     >
       {hasImage ? (
         <>
-          {/* Blurred background fill — always crops center, just for the blur fill */}
+          {/* Blurred background fill — always object-cover for the fill layer,
+              this is what fills the sides when the foreground uses contain */}
           {blurBackground && (
             <img
               src={imageUrl!}
@@ -190,20 +196,20 @@ export function QuestionCoverImage({
               className="absolute inset-0 w-full h-full object-cover scale-110 blur-2xl"
               loading="lazy"
               decoding="async"
-              // Don't mark failed here; foreground img handles the error state
             />
           )}
 
           {/* Dark gradient overlay — keeps text legible */}
           <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-black/10" />
 
-          {/* Sharp foreground — focal point positions subject correctly */}
+          {/* Sharp foreground — layout.objectFit switches between cover/contain
+              based on image aspect ratio detected by useImageLayout */}
           <img
             src={imageUrl!}
             alt=""
             role="presentation"
-            className="relative z-10 w-full h-full object-cover"
-            style={{ objectPosition: focalPoint }}
+            className="relative z-10 w-full h-full"
+            style={{ objectFit: layout.objectFit, objectPosition: layout.objectPosition }}
             loading="lazy"
             decoding="async"
             onError={() => setImgFailed(true)}
