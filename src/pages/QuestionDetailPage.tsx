@@ -394,12 +394,18 @@ function EditorialHeroImage({
 
       {/* Layer 2 — sharp foreground.
           object-contain: no cropping, always shows the full image.
-          drop-shadow-sm: slight separation from blurred bg, especially for light images. */}
-      <div className="relative flex h-full w-full items-center justify-center">
+          drop-shadow-sm: slight separation from blurred bg, especially for light images.
+          NOTE: h-full doesn't resolve from inline style on parent, so we pass
+          explicit style height to both the wrapper div and the img. */}
+      <div
+        className="relative flex w-full items-center justify-center"
+        style={{ height }}
+      >
         <img
           src={imageUrl}
           alt={alt}
-          className="h-full w-full object-contain drop-shadow-sm"
+          className="w-full object-contain drop-shadow-sm"
+          style={{ height }}
           loading="lazy"
           decoding="async"
           onError={() => setBroken(true)}
