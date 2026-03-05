@@ -376,13 +376,14 @@ function EditorialHeroImage({
       style={{ height }}
     >
       {/* Layer 1 — blurred background fill.
+          Fully opaque so there are zero grey gaps at the sides (letterbox areas).
           scale-110 prevents blur from showing soft edges at the container boundary.
-          opacity-30 keeps it subtle; increase to 0.40 if images are very dark. */}
+          brightness-75 darkens it slightly so the sharp foreground reads clearly. */}
       <img
         src={imageUrl}
         alt=""
         aria-hidden
-        className="absolute inset-0 h-full w-full object-cover scale-110 blur-xl opacity-30"
+        className="absolute inset-0 h-full w-full object-cover scale-110 blur-xl brightness-75"
         loading="lazy"
         decoding="async"
         onError={() => setBroken(true)}
