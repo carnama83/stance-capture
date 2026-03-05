@@ -6,29 +6,44 @@ export function getHeroImageUrl(url?: string | null): string | undefined {
   if (!url) return undefined;
 
   try {
-    const u = new URL(url);
+    // Support both absolute and relative URLs safely
+    const base =
+      typeof window !== "undefined" && window.location
+        ? window.location.href
+        : "https://example.com";
+
+    const u = new URL(url, base);
 
     // ── Guardian CDN (i.guim.co.uk) ──────────────────────────────────────────
-    // Supports query param resizing. fit=max preserves aspect ratio (no crop).
+    // IMPORTANT: Guardian URLs often omit `width` entirely, which can default
+    // to a tiny rendition (your intrinsic 140×112 case).
+    // Force a large width + dpr for crisp hero rendering.
     if (u.hostname.includes("i.guim.co.uk")) {
-      u.searchParams.set("width", "1200");
-      u.searchParams.set("quality", "85");
+      // Always force width (even if missing)
+      u.searchParams.set("width", "1600");
+
+      // Retina / high-DPR boost (leave existing dpr if already set)
+      if (!u.searchParams.get("dpr")) u.searchParams.set("dpr", "2");
+
+      // Reasonable quality; keep if already present
+      if (!u.searchParams.get("quality")) u.searchParams.set("quality", "85");
+
+      // Ensure modern format + no-crop behavior
+      // (Guardian commonly uses auto=format)
       u.searchParams.set("auto", "format");
       u.searchParams.set("fit", "max");
+
       return u.toString();
     }
 
     // ── BBC (ichef.bbci.co.uk) ────────────────────────────────────────────────
-    // Uses path segments for size. Replace all known small sizes with /1024/.
-    // Replacements are applied to the original URL (not chained) to avoid
-    // double-replacement edge cases.
+    // Uses path segments for size: /240/ /320/ /480/ etc. Upgrade to /1024/.
     if (u.hostname.includes("ichef.bbci.co.uk")) {
-      return url
-        .replace("/240/", "/1024/")
-        .replace("/320/", "/1024/")
-        .replace("/480/", "/1024/")
-        .replace("/640/", "/1024/")
-        .replace("/800/", "/1024/");
+      const upgraded = u.toString().replace(
+        /\/(80|120|160|240|320|480|624|640|660|800|976)\//,
+        "/1024/"
+      );
+      return upgraded;
     }
 
     // ── NYTimes CDN ───────────────────────────────────────────────────────────
