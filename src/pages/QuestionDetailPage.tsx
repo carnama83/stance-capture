@@ -358,23 +358,42 @@ function EditorialHeroImage({
   alt: string;
   height?: number;
 }) {
+  // Guardian sometimes uses signed URLs (query param `s=`). If signed, modifying width/quality
+  // will return 401 (invalid signature). In that case, we must render the URL as-is.
+  const isSignedGuardian = React.useMemo(() => {
+    try {
+      const u = new URL(
+        imageUrl,
+        typeof window !== "undefined" ? window.location.href : "https://example.com"
+      );
+      return u.hostname.includes("i.guim.co.uk") && !!u.searchParams.get("s");
+    } catch {
+      return false;
+    }
+  }, [imageUrl]);
+
   // Three-stage fallback:
-  //   "upgraded" → try high-res CDN URL
-  //   "original"  → CDN upgrade failed (hotlink/CORS), fall back to raw imageUrl
-  //   "broken"    → original also failed, show placeholder
-  const upgradedUrl = getHeroImageUrl(imageUrl) ?? imageUrl;
+  //   upgraded → try high-res CDN URL (only when safe)
+  //   original → CDN upgrade failed (hotlink/CORS/signature), fall back to raw imageUrl
+  //   broken   → original also failed, show placeholder
+  const upgradedUrl = (isSignedGuardian ? imageUrl : getHeroImageUrl(imageUrl)) ?? imageUrl;
+
   const [src, setSrc] = React.useState(upgradedUrl);
   const [broken, setBroken] = React.useState(false);
 
+  // Keep src in sync when question changes
+  React.useEffect(() => {
+    setBroken(false);
+    setSrc(upgradedUrl);
+  }, [upgradedUrl]);
+
   const handleError = React.useCallback(() => {
-    if (src === upgradedUrl && upgradedUrl !== imageUrl) {
-      // First failure: upgraded URL didn't load → try original
+    if (!isSignedGuardian && src === upgradedUrl && upgradedUrl !== imageUrl) {
       setSrc(imageUrl);
     } else {
-      // Second failure: original also broken → show placeholder
       setBroken(true);
     }
-  }, [src, upgradedUrl, imageUrl]);
+  }, [src, upgradedUrl, imageUrl, isSignedGuardian]);
 
   if (broken) {
     return (
@@ -388,37 +407,25 @@ function EditorialHeroImage({
   }
 
   return (
-    // Container: fixed height, clips the scale-110 blur bleed, preserves border-radius
     <div
       className="relative w-full overflow-hidden rounded-2xl bg-slate-200"
       style={{ height }}
     >
-      {/* Layer 1 — blurred background fill.
-          Fully opaque so there are zero grey gaps at the sides (letterbox areas).
-          scale-110 prevents blur from showing soft edges at the container boundary.
-          brightness-75 darkens it slightly so the sharp foreground reads clearly. */}
+      {/* Layer 1 — blurred background fill */}
       <img
         src={src}
         alt=""
         aria-hidden
-        className="absolute inset-0 h-full w-full object-cover scale-110 blur-xl brightness-75"
+        className="absolute inset-0 h-full w-full object-cover scale-110 blur-xl opacity-30"
         loading="lazy"
         decoding="async"
         onError={handleError}
       />
 
-      {/* Subtle gradient overlay — stabilises contrast at bottom edge. */}
       <div className="absolute inset-0 bg-gradient-to-t from-black/10 via-transparent to-transparent" />
 
-      {/* Layer 2 — sharp foreground.
-          object-contain: no cropping, always shows the full image.
-          drop-shadow-sm: slight separation from blurred bg for light images.
-          NOTE: h-full doesn't resolve from inline style on parent, so explicit
-          style height is passed to both the wrapper div and the img. */}
-      <div
-        className="relative flex w-full items-center justify-center"
-        style={{ height }}
-      >
+      {/* Layer 2 — sharp foreground */}
+      <div className="relative flex w-full items-center justify-center" style={{ height }}>
         <img
           src={src}
           alt={alt}
@@ -432,6 +439,7 @@ function EditorialHeroImage({
     </div>
   );
 }
+
 
 // ---------- RegionComparison ----------
 function RegionComparison({ stats }: { stats: QuestionStats | null }) {
