@@ -346,6 +346,9 @@ async function trackQuestionInteraction(
 // ---------- Plan B: Editorial hero image (detail page only) ----------
 // Two-layer pattern: blurred background fill + sharp object-contain foreground.
 // Handles portrait, landscape, square, panoramic, and broken images gracefully.
+// getHeroImageUrl upgrades low-res CDN thumbnails to full-res for both layers.
+import { getHeroImageUrl } from "@/lib/imageUtils";
+
 function EditorialHeroImage({
   imageUrl,
   alt,
@@ -356,6 +359,9 @@ function EditorialHeroImage({
   height?: number;
 }) {
   const [broken, setBroken] = React.useState(false);
+
+  // Upgrade to high-res once; reuse for both layers
+  const heroUrl = getHeroImageUrl(imageUrl) ?? imageUrl;
 
   if (broken) {
     // Graceful fallback: neutral placeholder
@@ -375,12 +381,12 @@ function EditorialHeroImage({
       className="relative w-full overflow-hidden rounded-2xl bg-slate-200"
       style={{ height }}
     >
-      {/* Layer 1 — blurred background fill.
+      {/* Layer 1 — blurred background fill (high-res).
           Fully opaque so there are zero grey gaps at the sides (letterbox areas).
           scale-110 prevents blur from showing soft edges at the container boundary.
           brightness-75 darkens it slightly so the sharp foreground reads clearly. */}
       <img
-        src={imageUrl}
+        src={heroUrl}
         alt=""
         aria-hidden
         className="absolute inset-0 h-full w-full object-cover scale-110 blur-xl brightness-75"
@@ -389,21 +395,20 @@ function EditorialHeroImage({
         onError={() => setBroken(true)}
       />
 
-      {/* Subtle gradient overlay — stabilises contrast at bottom edge.
-          Kept very light so it doesn't muddy the blurred layer. */}
+      {/* Subtle gradient overlay — stabilises contrast at bottom edge. */}
       <div className="absolute inset-0 bg-gradient-to-t from-black/10 via-transparent to-transparent" />
 
-      {/* Layer 2 — sharp foreground.
+      {/* Layer 2 — sharp foreground (high-res).
           object-contain: no cropping, always shows the full image.
-          drop-shadow-sm: slight separation from blurred bg, especially for light images.
-          NOTE: h-full doesn't resolve from inline style on parent, so we pass
-          explicit style height to both the wrapper div and the img. */}
+          drop-shadow-sm: slight separation from blurred bg for light images.
+          NOTE: h-full doesn't resolve from inline style on parent, so explicit
+          style height is passed to both the wrapper div and the img. */}
       <div
         className="relative flex w-full items-center justify-center"
         style={{ height }}
       >
         <img
-          src={imageUrl}
+          src={heroUrl}
           alt={alt}
           className="w-full object-contain drop-shadow-sm"
           style={{ height }}
