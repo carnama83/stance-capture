@@ -1,5 +1,6 @@
 // src/pages/QuestionDetailPage.tsx — Question detail with stance capture + regional comparison + related questions
 // EPIC C INTEGRATION: Added view tracking and interaction tracking
+// UI REFRESH: Phase 1-6 typography + rhythm + editorial hero image (Plan B)
 
 import * as React from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -10,8 +11,7 @@ import { useQuestionView } from "@/hooks/useQuestionView";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getSupabase } from "../lib/supabaseClient";
 import { QuestionStanceSlider } from "@/components/question/QuestionStanceSlider";
-import { QuestionPhaseBadge } from "@/components/question/QuestionPhaseBadge"; // ✨ NEW IMPORT
-import { QuestionCoverImage } from "@/components/question/QuestionCoverImage";
+import { QuestionPhaseBadge } from "@/components/question/QuestionPhaseBadge";
 import { useToast } from "@/components/ui/use-toast";
 
 // ✅ Inline Topic follow affordance
@@ -21,15 +21,15 @@ type Session = import("@supabase/supabase-js").Session;
 
 type LiveQuestion = {
   id: string;
-  topic_id?: string; // Added for interaction tracking
+  topic_id?: string;
   question: string;
   summary?: string | null;
   tags?: string[] | null;
   location_label?: string | null;
   published_at?: string | null;
   status?: string | null;
-  phase?: string; // ✨ NEW: Phase field for question lifecycle
-  cover_image_url?: string | null; // ✨ FIX: Cover image for banner display
+  phase?: string;
+  cover_image_url?: string | null;
 };
 
 type TopicLite = {
@@ -113,19 +113,17 @@ function useSupabaseSession() {
 }
 
 // ---------- Data fetchers ----------
-// NEW (CORRECT - get topic_id from questions table instead):
 async function fetchQuestionById(id: string): Promise<LiveQuestion | null> {
   const sb = getSupabase();
   if (!sb) throw new Error("Supabase client not available");
 
-  // Get from questions table directly to get topic_id
   const { data, error } = await sb
-    .from("questions") // ✅ Changed from v_live_questions to questions
+    .from("questions")
     .select(
       "id, topic_id, question, summary, tags, location_label, published_at, status, phase, cover_image_url"
     )
     .eq("id", id)
-    .eq("status", "active") // ✅ Add status filter to match v_live_questions behavior
+    .eq("status", "active")
     .limit(1);
 
   if (error) {
@@ -248,7 +246,6 @@ async function fetchMyRegion(userId: string): Promise<RegionRow | null> {
   return data ?? null;
 }
 
-// fetch related questions by shared tags, biased to same location
 async function fetchRelatedQuestions(
   questionId: string,
   tags: string[],
@@ -305,10 +302,10 @@ async function fetchThreadSentiment(
   return data ?? null;
 }
 
-// ---------- EPIC C: Track answered questions (CORRECTED) ----------
+// ---------- EPIC C: Track answered questions ----------
 async function trackQuestionInteraction(
   userId: string,
-  questionId: string, // ✨ ADDED for phase tracking
+  questionId: string,
   topicId: string | undefined,
   answered: boolean
 ): Promise<void> {
@@ -316,7 +313,6 @@ async function trackQuestionInteraction(
   if (!sb || !topicId) return;
 
   try {
-    // ✨ EPIC C PHASE-AWARE: Call RPC to track phase when user answers
     if (answered) {
       const { error: rpcError } = await sb.rpc("record_question_answer", {
         p_user_id: userId,
@@ -328,11 +324,9 @@ async function trackQuestionInteraction(
           "Failed to record question answer (phase tracking):",
           rpcError
         );
-        // Don't throw - continue with fallback
       }
     }
 
-    // Fallback: Also update user_topic_interactions directly
     await sb.from("user_topic_interactions").upsert(
       {
         user_id: userId,
@@ -341,7 +335,7 @@ async function trackQuestionInteraction(
         answered: answered,
       },
       {
-        onConflict: "user_id,topic_id", // Unique constraint on these two columns
+        onConflict: "user_id,topic_id",
       }
     );
   } catch (error) {
@@ -349,7 +343,73 @@ async function trackQuestionInteraction(
   }
 }
 
-// ---------- Component helpers ----------
+// ---------- Plan B: Editorial hero image (detail page only) ----------
+// Two-layer pattern: blurred background fill + sharp object-contain foreground.
+// Handles portrait, landscape, square, panoramic, and broken images gracefully.
+function EditorialHeroImage({
+  imageUrl,
+  alt,
+  height = 320,
+}: {
+  imageUrl: string;
+  alt: string;
+  height?: number;
+}) {
+  const [broken, setBroken] = React.useState(false);
+
+  if (broken) {
+    // Graceful fallback: neutral placeholder
+    return (
+      <div
+        className="w-full rounded-2xl bg-slate-100 flex items-center justify-center"
+        style={{ height }}
+      >
+        <span className="text-[11px] text-slate-400">Image unavailable</span>
+      </div>
+    );
+  }
+
+  return (
+    // Container: fixed height, clips the scale-110 blur bleed, preserves border-radius
+    <div
+      className="relative w-full overflow-hidden rounded-2xl bg-slate-200"
+      style={{ height }}
+    >
+      {/* Layer 1 — blurred background fill.
+          scale-110 prevents blur from showing soft edges at the container boundary.
+          opacity-30 keeps it subtle; increase to 0.40 if images are very dark. */}
+      <img
+        src={imageUrl}
+        alt=""
+        aria-hidden
+        className="absolute inset-0 h-full w-full object-cover scale-110 blur-xl opacity-30"
+        loading="lazy"
+        decoding="async"
+        onError={() => setBroken(true)}
+      />
+
+      {/* Subtle gradient overlay — stabilises contrast at bottom edge.
+          Kept very light so it doesn't muddy the blurred layer. */}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/10 via-transparent to-transparent" />
+
+      {/* Layer 2 — sharp foreground.
+          object-contain: no cropping, always shows the full image.
+          drop-shadow-sm: slight separation from blurred bg, especially for light images. */}
+      <div className="relative flex h-full w-full items-center justify-center">
+        <img
+          src={imageUrl}
+          alt={alt}
+          className="h-full w-full object-contain drop-shadow-sm"
+          loading="lazy"
+          decoding="async"
+          onError={() => setBroken(true)}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ---------- RegionComparison ----------
 function RegionComparison({ stats }: { stats: QuestionStats | null }) {
   if (!stats?.regions) return null;
 
@@ -374,8 +434,11 @@ function RegionComparison({ stats }: { stats: QuestionStats | null }) {
   if (scopeLabels.length === 0) return null;
 
   return (
-    <div className="mt-4 space-y-2">
-      <h3 className="text-xs font-medium text-slate-700">Compare by region</h3>
+    // Phase 5A: consistent rail heading
+    <div className="space-y-2">
+      <div className="text-[11px] font-semibold tracking-wide uppercase text-slate-500">
+        Compare by region
+      </div>
       <div className="space-y-1.5">
         {scopeLabels.map(({ scope, label }) => {
           const r = regions[scope];
@@ -384,15 +447,22 @@ function RegionComparison({ stats }: { stats: QuestionStats | null }) {
           return (
             <div
               key={scope}
-              className="flex items-center justify-between text-xs border rounded p-2 bg-slate-50"
+              className="flex items-center justify-between text-xs border rounded-lg p-2 bg-slate-50"
             >
+              {/* Phase 5B: region label medium, counts slightly darker */}
               <span className="text-slate-700 font-medium">{label}</span>
               <div className="text-slate-600 space-x-2">
-                {r.pct_agree != null && <span>{Math.round(r.pct_agree)}% agree</span>}
+                {r.pct_agree != null && (
+                  <span className="text-slate-700 font-medium">
+                    {Math.round(r.pct_agree)}% agree
+                  </span>
+                )}
                 {r.pct_disagree != null && (
                   <span>· {Math.round(r.pct_disagree)}% disagree</span>
                 )}
-                <span className="text-[10px] text-slate-500">({r.total_responses})</span>
+                <span className="text-[10px] text-slate-500">
+                  ({r.total_responses})
+                </span>
               </div>
             </div>
           );
@@ -451,7 +521,8 @@ export default function QuestionDetailPage() {
     staleTime: 60_000,
   });
 
-  const { data: myRegion, isLoading: myRegionLoading } = useQuery({
+  // myRegion fetched for future use / region dimension availability
+  const { data: myRegion } = useQuery({
     enabled: !!userId,
     queryKey: ["my-region", userId],
     queryFn: () => fetchMyRegion(userId!),
@@ -496,7 +567,12 @@ export default function QuestionDetailPage() {
       // EPIC C: Track interaction when user answers
       if (userId && question?.topic_id) {
         const answered = newScore !== null;
-        await trackQuestionInteraction(userId, questionId, question.topic_id, answered);
+        await trackQuestionInteraction(
+          userId,
+          questionId,
+          question.topic_id,
+          answered
+        );
 
         // Invalidate personalized feed so this question doesn't reappear
         if (answered) {
@@ -508,7 +584,8 @@ export default function QuestionDetailPage() {
       const label =
         score == null
           ? null
-          : STANCE_SCALE.find((s) => s.value === score)?.labelShort ?? `Score ${score}`;
+          : STANCE_SCALE.find((s) => s.value === score)?.labelShort ??
+            `Score ${score}`;
 
       toast({
         title: score == null ? "Stance cleared" : "Stance saved",
@@ -522,7 +599,8 @@ export default function QuestionDetailPage() {
     onError: (err: any) => {
       toast({
         title: "Error",
-        description: err?.message ?? "Failed to save your stance. Please try again.",
+        description:
+          err?.message ?? "Failed to save your stance. Please try again.",
         variant: "destructive",
       });
     },
@@ -553,124 +631,164 @@ export default function QuestionDetailPage() {
 
   if (isLoading) {
     content = (
-      <div className="rounded border bg-white px-4 py-6">
+      <div className="rounded-2xl border bg-white px-6 py-8">
         <p className="text-sm text-slate-500">Loading question...</p>
       </div>
     );
   } else if (isError) {
     content = (
-      <div className="rounded border border-red-200 bg-red-50 px-4 py-6">
+      <div className="rounded-2xl border border-red-200 bg-red-50 px-6 py-8">
         <p className="text-sm text-red-900">
-          Failed to load question: {error instanceof Error ? error.message : "Unknown error"}
+          Failed to load question:{" "}
+          {error instanceof Error ? error.message : "Unknown error"}
         </p>
       </div>
     );
   } else if (!question) {
     content = (
-      <div className="rounded border bg-white px-4 py-6">
-        <p className="text-sm text-slate-500">Question not found or no longer active.</p>
+      <div className="rounded-2xl border bg-white px-6 py-8">
+        <p className="text-sm text-slate-500">
+          Question not found or no longer active.
+        </p>
       </div>
     );
   } else {
-    // ===== UI-ONLY: Option A Layout (Main article + Sticky right rail) =====
     content = (
       <div className="grid gap-6 md:grid-cols-[1fr_320px]">
-        {/* MAIN COLUMN */}
-        <main className="rounded-2xl border bg-white p-5 md:p-6">
-          {/* Meta row */}
-          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-            <span className="font-medium text-slate-900">Question</span>
-            <span aria-hidden>•</span>
-            {question.published_at ? (
-              <time dateTime={question.published_at}>
-                {new Date(question.published_at).toLocaleDateString(undefined, {
-                  dateStyle: "long",
-                })}
-              </time>
-            ) : (
-              <span>—</span>
-            )}
-            <span aria-hidden>•</span>
-            <span className="inline-flex items-center gap-1">
-              <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
-              {question.location_label ?? "Global"}
-            </span>
-          </div>
 
-          {/* NYT-style topic ribbon (moved up; UI only) */}
-          {question.tags && question.tags.length > 0 && (
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center rounded-full bg-slate-900 px-3 py-1 text-[11px] font-semibold tracking-wide text-white">
-                {question.tags[0]}
+        {/* ===================== MAIN COLUMN ===================== */}
+        <main className="rounded-2xl border bg-white p-5 md:p-8">
+
+          {/*
+           * Phase 6: Editorial container — wraps meta + ribbon + headline + summary only.
+           * max-w-[52rem] prevents text from becoming a wall on wide screens.
+           * space-y-3 provides the deliberate rhythm between editorial elements.
+           * NOT applied to comments/related to avoid component style bleed.
+           */}
+          <div className="max-w-[52rem] space-y-3">
+
+            {/* Phase 3A: Meta row — small, editorial, non-competing */}
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="text-[11px] font-semibold tracking-wide uppercase text-slate-500">
+                Question
               </span>
-
-              {question.tags.slice(1, 6).map((tag) => (
-                <span
-                  key={tag}
-                  className="inline-flex items-center rounded-full border bg-white px-3 py-1 text-[11px] font-medium text-slate-700"
+              <span aria-hidden className="text-slate-300">·</span>
+              {question.published_at ? (
+                <time
+                  dateTime={question.published_at}
+                  className="text-[12px] text-slate-500"
                 >
-                  {tag}
-                </span>
-              ))}
-
-              {question.tags.length > 6 && (
-                <span className="text-[11px] text-slate-500">
-                  +{question.tags.length - 6} more
-                </span>
+                  {new Date(question.published_at).toLocaleDateString(
+                    undefined,
+                    { dateStyle: "long" }
+                  )}
+                </time>
+              ) : (
+                <span className="text-[12px] text-slate-500">—</span>
               )}
+              <span aria-hidden className="text-slate-300">·</span>
+              <span className="inline-flex items-center gap-1 text-[12px] text-slate-500">
+                <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+                {question.location_label ?? "Global"}
+              </span>
             </div>
-          )}
 
-          {/* Headline */}
-          <h1 className="mt-3 text-2xl md:text-3xl font-semibold leading-tight text-slate-900">
-            {question.question}
-          </h1>
-
-          {/* Phase badge (unchanged) */}
-          {question.phase && question.phase !== "initial" && (
-            <div className="mt-3">
-              <QuestionPhaseBadge phase={question.phase} size="md" />
-            </div>
-          )}
-
-          {/* Summary */}
-          {question.summary && (
-            <p className="mt-3 text-base md:text-lg text-slate-600 leading-relaxed">
-              {question.summary}
-            </p>
-          )}
-
-          {/* Cover image (preserve existing component + behavior) */}
-          {question.cover_image_url && (
-            <div className="mt-5 overflow-hidden rounded-2xl border bg-slate-50">
-              <QuestionCoverImage
-                imageUrl={question.cover_image_url}
-                tags={question.tags}
-                variant="banner"
-                bannerHeight={320}
-                className="w-full"
-              />
-              <div className="px-4 py-3 text-[11px] text-slate-500">
-                Source image from the linked article
+            {/* Phase 3B: Topic ribbon — tight to meta, gap before headline */}
+            {question.tags && question.tags.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                {/* Primary tag — bold editorial pill */}
+                <span className="inline-flex items-center rounded-full bg-slate-900 px-3 py-1 text-[11px] font-semibold tracking-wide text-white">
+                  {question.tags[0]}
+                </span>
+                {/* Secondary tags */}
+                {question.tags.slice(1, 6).map((tag) => (
+                  <span
+                    key={tag}
+                    className="inline-flex items-center rounded-full border bg-white px-3 py-1 text-[11px] font-medium text-slate-700"
+                  >
+                    {tag}
+                  </span>
+                ))}
+                {question.tags.length > 6 && (
+                  <span className="text-[11px] text-slate-400">
+                    +{question.tags.length - 6} more
+                  </span>
+                )}
               </div>
+            )}
+
+            {/*
+             * Phase 1A + 1B: Headline
+             * - Negative tracking (-0.02em) tightens news-style display type
+             * - leading-[1.1] / leading-[1.08] is tighter than Tailwind's leading-tight (1.25)
+             * - max-w-[52rem] inherited from editorial container wrapper
+             */}
+            <h1 className="text-3xl md:text-4xl font-semibold leading-[1.1] md:leading-[1.08] tracking-[-0.02em] text-slate-900">
+              {question.question}
+            </h1>
+
+            {/* Phase badge — sits between headline and summary */}
+            {question.phase && question.phase !== "initial" && (
+              <div>
+                <QuestionPhaseBadge phase={question.phase} size="md" />
+              </div>
+            )}
+
+            {/*
+             * Phase 2A + 2B: Summary / dek
+             * - max-w-[46rem] prevents full-column stretch on wide layouts
+             * - leading-relaxed md:leading-[1.6] for comfortable scanning
+             * - font-normal explicit to prevent weight inheritance
+             * - text-slate-600 softer than headline, matches editorial dek convention
+             */}
+            {question.summary && (
+              <p className="max-w-[46rem] font-normal text-base md:text-lg text-slate-600 leading-relaxed md:leading-[1.6]">
+                {question.summary}
+              </p>
+            )}
+          </div>
+          {/* End editorial container */}
+
+          {/*
+           * Phase 4: Hero image — mt-5 after summary (summary → image rhythm)
+           * Plan B: EditorialHeroImage with two-layer blurred bg + sharp contain foreground.
+           * Replaces QuestionCoverImage on this page only; no regressions elsewhere.
+           */}
+          {question.cover_image_url && (
+            <div className="mt-5">
+              <EditorialHeroImage
+                imageUrl={question.cover_image_url}
+                alt={question.question}
+                height={320}
+              />
+              {/*
+               * Caption: italic, muted, smaller than body.
+               * ring-1 ring-black/5 on the container provides subtle separation
+               * for light images that might bleed into the white card bg.
+               */}
+              <p className="mt-2 text-[11px] italic text-slate-400">
+                Source image from the linked article
+              </p>
             </div>
           )}
 
-          {/* Comments / discussion (same component, moved to main column) */}
-          <div className="mt-6 border-t pt-6">
+          {/* Phase 4: Comments — mt-7 (image → comments rhythm, larger gap signals section change) */}
+          <div className="mt-7 border-t pt-7">
             <QuestionCommentsPanel questionId={questionId} />
           </div>
 
-          {/* Related questions (same logic, moved to main column) */}
-          <section className="mt-6 border-t pt-6">
-            <h2 className="text-sm font-medium text-slate-900 mb-3">
+          {/* Phase 4: Related questions — mt-7 (comments → related rhythm) */}
+          <section className="mt-7 border-t pt-7">
+            <h2 className="text-sm font-semibold text-slate-900 mb-3">
               {question.location_label
                 ? `Related questions in ${question.location_label}`
                 : "Related questions"}
             </h2>
 
             {relatedLoading && (
-              <p className="text-xs text-slate-500">Loading related questions…</p>
+              <p className="text-xs text-slate-500">
+                Loading related questions…
+              </p>
             )}
 
             {!relatedLoading && !hasRelated && (
@@ -680,12 +798,22 @@ export default function QuestionDetailPage() {
             {hasRelated && relatedQuestions && (
               <div className="space-y-3">
                 {relatedQuestions.map((rq) => (
-                  <div key={rq.id} className="flex items-start justify-between gap-3 text-xs">
+                  <div
+                    key={rq.id}
+                    className="flex items-start justify-between gap-3 text-xs"
+                  >
                     <div className="min-w-0">
-                      <Link to={`/q/${rq.id}`} className="font-medium text-slate-900 hover:underline">
+                      <Link
+                        to={`/q/${rq.id}`}
+                        className="font-medium text-slate-900 hover:underline"
+                      >
                         {rq.question}
                       </Link>
-                      {rq.summary && <p className="text-slate-600 line-clamp-2">{rq.summary}</p>}
+                      {rq.summary && (
+                        <p className="text-slate-600 line-clamp-2 mt-0.5">
+                          {rq.summary}
+                        </p>
+                      )}
                     </div>
                     <div className="flex flex-col items-end gap-1 shrink-0">
                       {rq.location_label && (
@@ -695,9 +823,10 @@ export default function QuestionDetailPage() {
                       )}
                       {rq.published_at && (
                         <span className="text-[10px] text-slate-500">
-                          {new Date(rq.published_at).toLocaleDateString(undefined, {
-                            dateStyle: "medium",
-                          })}
+                          {new Date(rq.published_at).toLocaleDateString(
+                            undefined,
+                            { dateStyle: "medium" }
+                          )}
                         </span>
                       )}
                     </div>
@@ -709,24 +838,30 @@ export default function QuestionDetailPage() {
 
           {/* Back link */}
           <footer className="mt-6">
-            <button type="button" onClick={handleBack} className="text-sm text-slate-900 underline">
+            <button
+              type="button"
+              onClick={handleBack}
+              className="text-sm text-slate-900 underline"
+            >
               ← Back
             </button>
           </footer>
         </main>
 
-        {/* RIGHT RAIL */}
+        {/* ===================== RIGHT RAIL ===================== */}
         <aside className="md:pt-1">
-          {/* Rail polish: more breathing room + better sticky offset */}
           <div className="md:sticky md:top-24 space-y-5">
-            {/* Topic card + follow (preserves FollowTopicButton) */}
+
+            {/* Topic card + follow */}
             {question.topic_id && (
               <section className="rounded-2xl border bg-white p-4 md:p-5">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
+                    {/* Phase 5A: consistent rail heading */}
                     <div className="text-[11px] font-semibold tracking-wide uppercase text-slate-500">
                       Topic
                     </div>
+                    {/* Phase 5B: body text */}
                     <div className="mt-1 text-sm font-medium text-slate-900">
                       {topicLite?.title ?? "View topic"}
                     </div>
@@ -735,7 +870,6 @@ export default function QuestionDetailPage() {
                     <FollowTopicButton topicId={question.topic_id} />
                   </div>
                 </div>
-
                 <div className="mt-3">
                   <Link
                     to={`/topics/${question.topic_id}`}
@@ -747,14 +881,17 @@ export default function QuestionDetailPage() {
               </section>
             )}
 
-            {/* Community stance (same numbers as before) */}
+            {/* Community stance */}
             <section className="rounded-2xl border bg-white p-4 md:p-5">
+              {/* Phase 5A: rail heading */}
               <h3 className="text-[11px] font-semibold tracking-wide uppercase text-slate-500 mb-3">
                 Community stance
               </h3>
 
               {statsLoading && (
-                <p className="text-xs text-slate-500">Loading community stats…</p>
+                <p className="text-xs text-slate-500">
+                  Loading community stats…
+                </p>
               )}
 
               {!statsLoading && !hasStats && (
@@ -765,10 +902,15 @@ export default function QuestionDetailPage() {
 
               {hasStats && globalStats && (
                 <>
-                  <div className="space-y-2 text-xs text-slate-700">
+                  <div className="space-y-2 text-xs text-slate-600">
                     <div>
-                      <span className="font-medium">{globalStats.total_responses} responses</span>
-                      {globalStats.pct_agree != null && <> · {Math.round(globalStats.pct_agree)}% agree</>}
+                      {/* Phase 5B: counts slightly darker + medium weight */}
+                      <span className="text-xs text-slate-700 font-medium">
+                        {globalStats.total_responses} responses
+                      </span>
+                      {globalStats.pct_agree != null && (
+                        <> · {Math.round(globalStats.pct_agree)}% agree</>
+                      )}
                       {globalStats.pct_disagree != null && (
                         <> · {Math.round(globalStats.pct_disagree)}% disagree</>
                       )}
@@ -776,15 +918,15 @@ export default function QuestionDetailPage() {
                         <> · {Math.round(globalStats.pct_neutral)}% neutral</>
                       )}
                     </div>
-
                     {globalStats.avg_score != null && (
                       <div className="text-[11px] text-slate-500">
-                        Average stance: {globalStats.avg_score.toFixed(2)} (scale -2 to +2)
+                        Average stance: {globalStats.avg_score.toFixed(2)}{" "}
+                        (scale -2 to +2)
                       </div>
                     )}
                   </div>
 
-                  {/* Rail polish: subtle divider before region compare */}
+                  {/* Divider before region compare */}
                   {isAuthed && (
                     <>
                       <div className="border-t my-3" />
@@ -794,17 +936,21 @@ export default function QuestionDetailPage() {
                 </>
               )}
 
-              {/* If no globalStats but still authed/regions, keep old behavior */}
-              {hasStats && !globalStats && isAuthed && <RegionComparison stats={stats ?? null} />}
+              {/* Edge case: regions present but no global stat */}
+              {hasStats && !globalStats && isAuthed && (
+                <RegionComparison stats={stats ?? null} />
+              )}
             </section>
 
-            {/* Discussion mood (same data source: question_comment_sentiment) */}
+            {/* Discussion mood */}
             {threadSentimentLoading && !threadSentiment && (
               <section className="rounded-2xl border bg-white p-4 md:p-5">
                 <h3 className="text-[11px] font-semibold tracking-wide uppercase text-slate-500 mb-3">
                   Discussion mood
                 </h3>
-                <p className="text-xs text-slate-500">Analyzing discussion sentiment…</p>
+                <p className="text-xs text-slate-500">
+                  Analyzing discussion sentiment…
+                </p>
               </section>
             )}
 
@@ -813,20 +959,32 @@ export default function QuestionDetailPage() {
                 <h3 className="text-[11px] font-semibold tracking-wide uppercase text-slate-500 mb-3">
                   Discussion mood
                 </h3>
+                {/* Phase 5B: body text */}
                 <p className="text-xs text-slate-600">
-                  {threadSentiment.comment_count ?? 0} comment
-                  {threadSentiment.comment_count === 1 ? "" : "s"}
+                  {/* Phase 5B: count slightly darker */}
+                  <span className="text-xs text-slate-700 font-medium">
+                    {threadSentiment.comment_count ?? 0}
+                  </span>{" "}
+                  comment{threadSentiment.comment_count === 1 ? "" : "s"}
                   {typeof threadSentiment.avg_sentiment === "number" &&
-                    ` · avg sentiment ${threadSentiment.avg_sentiment.toFixed(2)} (−1 to +1)`}
+                    ` · avg sentiment ${threadSentiment.avg_sentiment.toFixed(
+                      2
+                    )} (−1 to +1)`}
                 </p>
                 {threadSentiment.summary_text && (
-                  <p className="text-sm text-slate-700 mt-2">{threadSentiment.summary_text}</p>
+                  <p className="text-sm text-slate-700 mt-2">
+                    {threadSentiment.summary_text}
+                  </p>
                 )}
               </section>
             )}
 
-            {/* Your stance (same component + same mutation) */}
-            <section className="rounded-2xl border bg-slate-50 p-4 md:p-5">
+            {/*
+             * Phase 5C: "Your stance" — CTA block.
+             * bg-slate-50 + border-slate-200 makes it feel like a distinct module.
+             * Stance slider and clear button are unchanged.
+             */}
+            <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4 md:p-5">
               <h3 className="text-[11px] font-semibold tracking-wide uppercase text-slate-500 mb-3">
                 Your stance
               </h3>
@@ -834,8 +992,8 @@ export default function QuestionDetailPage() {
               {!isAuthed && (
                 <div className="space-y-2">
                   <p className="text-xs text-slate-600">
-                    Log in to record your stance and compare with your city, state,
-                    country, and globally.
+                    Log in to record your stance and compare with your city,
+                    state, country, and globally.
                   </p>
                   <button
                     type="button"
@@ -869,7 +1027,8 @@ export default function QuestionDetailPage() {
                       <span>No stance recorded yet.</span>
                     ) : (
                       <span>
-                        Saved as {STANCE_SCALE.find((s) => s.value === myStance)?.label}.
+                        Saved as{" "}
+                        {STANCE_SCALE.find((s) => s.value === myStance)?.label}.
                       </span>
                     )}
 
@@ -886,6 +1045,7 @@ export default function QuestionDetailPage() {
                 </>
               )}
             </section>
+
           </div>
         </aside>
       </div>
@@ -896,7 +1056,9 @@ export default function QuestionDetailPage() {
     <PageLayout>
       <div className="max-w-6xl mx-auto py-6 space-y-4 px-4">
         <div className="flex items-center justify-between gap-2">
-          <h1 className="text-base font-semibold text-slate-900">Question detail</h1>
+          <h1 className="text-base font-semibold text-slate-900">
+            Question detail
+          </h1>
           <Link to="/" className="text-xs text-slate-600 hover:underline">
             ← Back to homepage
           </Link>
