@@ -3,6 +3,8 @@
 // UI REFRESH: Phase 1-6 typography + rhythm + editorial hero image (Plan B)
 // DESIGN PASS 2: Editorial polish — removed admin header, tightened widths, larger hero,
 //   stance framing prompt, bg-slate-50 page surface, shared rail styling, section rhythm
+// DESIGN PASS 3: Justified summary (Point 13), mobile layout reorder (Point 14),
+//   stats + pulseThumb wired to QuestionStanceSlider (Points 16–18)
 
 import * as React from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -16,7 +18,6 @@ import { QuestionStanceSlider } from "@/components/question/QuestionStanceSlider
 import { QuestionPhaseBadge } from "@/components/question/QuestionPhaseBadge";
 import { useToast } from "@/components/ui/use-toast";
 
-// ✅ Inline Topic follow affordance
 import { FollowTopicButton } from "@/components/FollowTopicButton";
 
 type Session = import("@supabase/supabase-js").Session;
@@ -135,11 +136,7 @@ async function fetchQuestionById(id: string): Promise<LiveQuestion | null> {
 
   const row = (data ?? [])[0] as LiveQuestion | undefined;
   if (!row) return null;
-
-  if (row.status && row.status !== "active") {
-    return null;
-  }
-
+  if (row.status && row.status !== "active") return null;
   return row;
 }
 
@@ -153,11 +150,7 @@ async function fetchTopicLite(topicId: string): Promise<TopicLite | null> {
     .eq("id", topicId)
     .maybeSingle<TopicLite>();
 
-  if (error) {
-    console.error("Failed to load topic title", error);
-    return null;
-  }
-
+  if (error) { console.error("Failed to load topic title", error); return null; }
   return data ?? null;
 }
 
@@ -172,20 +165,14 @@ async function fetchMyStance(questionId: string): Promise<number | null> {
     .maybeSingle<QuestionStance>();
 
   if (error) {
-    if ((error as any).code === "PGRST116") {
-      return null;
-    }
+    if ((error as any).code === "PGRST116") return null;
     console.error("Failed to load stance", error);
     throw error;
   }
-
   return data ? data.score : null;
 }
 
-async function setMyStance(
-  questionId: string,
-  score: number | null
-): Promise<number | null> {
+async function setMyStance(questionId: string, score: number | null): Promise<number | null> {
   const sb = getSupabase();
   if (!sb) throw new Error("Supabase client not available");
 
@@ -194,18 +181,12 @@ async function setMyStance(
     p_score: score,
   });
 
-  if (error) {
-    console.error("Failed to set stance", error);
-    throw error;
-  }
-
+  if (error) { console.error("Failed to set stance", error); throw error; }
   const row = data as QuestionStance | null;
   return row ? row.score : null;
 }
 
-async function fetchQuestionStats(
-  questionId: string
-): Promise<QuestionStats | null> {
+async function fetchQuestionStats(questionId: string): Promise<QuestionStats | null> {
   const sb = getSupabase();
   if (!sb) throw new Error("Supabase client not available");
 
@@ -213,20 +194,14 @@ async function fetchQuestionStats(
     p_question_id: questionId,
   });
 
-  if (error) {
-    console.error("Failed to load question stats (RPC)", error);
-    return null;
-  }
-
+  if (error) { console.error("Failed to load question stats (RPC)", error); return null; }
   if (!data) return null;
 
   const raw = data as any;
-  const regions = (raw.regions ?? {}) as QuestionStats["regions"];
-
   return {
     my_stance: typeof raw.my_stance === "number" ? raw.my_stance : null,
     location: raw.location ?? null,
-    regions,
+    regions: (raw.regions ?? {}) as QuestionStats["regions"],
   };
 }
 
@@ -240,11 +215,7 @@ async function fetchMyRegion(userId: string): Promise<RegionRow | null> {
     .eq("user_id", userId)
     .maybeSingle<RegionRow>();
 
-  if (error) {
-    console.error("Failed to load user region dimensions", error);
-    return null;
-  }
-
+  if (error) { console.error("Failed to load user region dimensions", error); return null; }
   return data ?? null;
 }
 
@@ -256,7 +227,6 @@ async function fetchRelatedQuestions(
 ): Promise<LiveQuestion[]> {
   const sb = getSupabase();
   if (!sb) throw new Error("Supabase client not available");
-
   if (!tags.length) return [];
 
   let q = sb
@@ -270,37 +240,22 @@ async function fetchRelatedQuestions(
     q = q.eq("location_label", locationLabel.trim());
   }
 
-  const { data, error } = await q
-    .order("published_at", { ascending: false })
-    .limit(limit);
-
-  if (error) {
-    console.error("Failed to load related questions", error);
-    return [];
-  }
-
+  const { data, error } = await q.order("published_at", { ascending: false }).limit(limit);
+  if (error) { console.error("Failed to load related questions", error); return []; }
   return (data ?? []) as LiveQuestion[];
 }
 
-async function fetchThreadSentiment(
-  questionId: string
-): Promise<ThreadSentimentRow | null> {
+async function fetchThreadSentiment(questionId: string): Promise<ThreadSentimentRow | null> {
   const sb = getSupabase();
   if (!sb) throw new Error("Supabase client not available");
 
   const { data, error } = await sb
     .from("question_comment_sentiment")
-    .select(
-      "question_id, avg_sentiment, sentiment_variance, comment_count, summary_text"
-    )
+    .select("question_id, avg_sentiment, sentiment_variance, comment_count, summary_text")
     .eq("question_id", questionId)
     .maybeSingle<ThreadSentimentRow>();
 
-  if (error) {
-    console.error("Failed to load thread sentiment", error);
-    return null;
-  }
-
+  if (error) { console.error("Failed to load thread sentiment", error); return null; }
   return data ?? null;
 }
 
@@ -320,13 +275,7 @@ async function trackQuestionInteraction(
         p_user_id: userId,
         p_question_id: questionId,
       });
-
-      if (rpcError) {
-        console.error(
-          "Failed to record question answer (phase tracking):",
-          rpcError
-        );
-      }
+      if (rpcError) console.error("Failed to record question answer (phase tracking):", rpcError);
     }
 
     await sb.from("user_topic_interactions").upsert(
@@ -334,21 +283,16 @@ async function trackQuestionInteraction(
         user_id: userId,
         topic_id: topicId,
         last_interacted_at: new Date().toISOString(),
-        answered: answered,
+        answered,
       },
-      {
-        onConflict: "user_id,topic_id",
-      }
+      { onConflict: "user_id,topic_id" }
     );
   } catch (error) {
     console.error("Failed to track question interaction:", error);
   }
 }
 
-// ---------- Editorial hero image (detail page only) ----------
-// Two-layer pattern: blurred background fill + sharp object-contain foreground.
-// Handles portrait, landscape, square, panoramic, and broken images gracefully.
-// getHeroImageUrl upgrades low-res CDN thumbnails to full-res for both layers.
+// ---------- Editorial hero image ----------
 import { getHeroImageUrl } from "@/lib/imageUtils";
 
 function EditorialHeroImage({
@@ -360,8 +304,6 @@ function EditorialHeroImage({
   alt: string;
   height?: number;
 }) {
-  // Guardian sometimes uses signed URLs (query param `s=`). If signed, modifying width/quality
-  // will return 401 (invalid signature). In that case, we must render the URL as-is.
   const isSignedGuardian = React.useMemo(() => {
     try {
       const u = new URL(
@@ -369,20 +311,14 @@ function EditorialHeroImage({
         typeof window !== "undefined" ? window.location.href : "https://example.com"
       );
       return u.hostname.includes("i.guim.co.uk") && !!u.searchParams.get("s");
-    } catch {
-      return false;
-    }
+    } catch { return false; }
   }, [imageUrl]);
 
   const upgradedUrl = (isSignedGuardian ? imageUrl : getHeroImageUrl(imageUrl)) ?? imageUrl;
-
   const [src, setSrc] = React.useState(upgradedUrl);
   const [broken, setBroken] = React.useState(false);
 
-  React.useEffect(() => {
-    setBroken(false);
-    setSrc(upgradedUrl);
-  }, [upgradedUrl]);
+  React.useEffect(() => { setBroken(false); setSrc(upgradedUrl); }, [upgradedUrl]);
 
   const handleError = React.useCallback(() => {
     if (!isSignedGuardian && src === upgradedUrl && upgradedUrl !== imageUrl) {
@@ -394,72 +330,39 @@ function EditorialHeroImage({
 
   if (broken) {
     return (
-      <div
-        className="w-full rounded-xl bg-slate-100 flex items-center justify-center"
-        style={{ height }}
-      >
+      <div className="w-full rounded-xl bg-slate-100 flex items-center justify-center" style={{ height }}>
         <span className="text-[11px] text-slate-400">Image unavailable</span>
       </div>
     );
   }
 
   return (
-    <div
-      className="relative w-full overflow-hidden rounded-xl bg-slate-200 shadow-sm"
-      style={{ height }}
-    >
-      {/* Layer 1 — blurred background fill */}
-      <img
-        src={src}
-        alt=""
-        aria-hidden
+    <div className="relative w-full overflow-hidden rounded-xl bg-slate-200 shadow-sm" style={{ height }}>
+      <img src={src} alt="" aria-hidden
         className="absolute inset-0 h-full w-full object-cover scale-110 blur-xl opacity-30"
-        loading="lazy"
-        decoding="async"
-        onError={handleError}
-      />
-
+        loading="lazy" decoding="async" onError={handleError} />
       <div className="absolute inset-0 bg-gradient-to-t from-black/10 via-transparent to-transparent" />
-
-      {/* Layer 2 — sharp foreground */}
       <div className="relative flex w-full items-center justify-center" style={{ height }}>
-        <img
-          src={src}
-          alt={alt}
+        <img src={src} alt={alt}
           className="w-full object-contain drop-shadow-sm"
-          style={{ height }}
-          loading="lazy"
-          decoding="async"
-          onError={handleError}
-        />
+          style={{ height }} loading="lazy" decoding="async" onError={handleError} />
       </div>
     </div>
   );
 }
 
-
 // ---------- RegionComparison ----------
 function RegionComparison({ stats }: { stats: QuestionStats | null }) {
   if (!stats?.regions) return null;
-
   const { regions, location } = stats;
   if (!regions) return null;
 
-  const scopeLabels: Array<{
-    scope: "city" | "county" | "state" | "country" | "global";
-    label: string;
-  }> = [];
-
-  if (location?.city && regions.city)
-    scopeLabels.push({ scope: "city", label: location.city });
-  if (location?.county && regions.county)
-    scopeLabels.push({ scope: "county", label: location.county });
-  if (location?.state && regions.state)
-    scopeLabels.push({ scope: "state", label: location.state });
-  if (location?.country && regions.country)
-    scopeLabels.push({ scope: "country", label: location.country });
+  const scopeLabels: Array<{ scope: "city" | "county" | "state" | "country" | "global"; label: string }> = [];
+  if (location?.city && regions.city) scopeLabels.push({ scope: "city", label: location.city });
+  if (location?.county && regions.county) scopeLabels.push({ scope: "county", label: location.county });
+  if (location?.state && regions.state) scopeLabels.push({ scope: "state", label: location.state });
+  if (location?.country && regions.country) scopeLabels.push({ scope: "country", label: location.country });
   if (regions.global) scopeLabels.push({ scope: "global", label: "Global" });
-
   if (scopeLabels.length === 0) return null;
 
   return (
@@ -471,31 +374,115 @@ function RegionComparison({ stats }: { stats: QuestionStats | null }) {
         {scopeLabels.map(({ scope, label }) => {
           const r = regions[scope];
           if (!r) return null;
-
           return (
-            <div
-              key={scope}
-              className="flex items-center justify-between text-xs border border-slate-200 rounded-lg p-2 bg-white"
-            >
+            <div key={scope} className="flex items-center justify-between text-xs border border-slate-200 rounded-lg p-2 bg-white">
               <span className="text-slate-700 font-medium">{label}</span>
               <div className="text-slate-600 space-x-2">
-                {r.pct_agree != null && (
-                  <span className="text-slate-700 font-medium">
-                    {Math.round(r.pct_agree)}% agree
-                  </span>
-                )}
-                {r.pct_disagree != null && (
-                  <span>· {Math.round(r.pct_disagree)}% disagree</span>
-                )}
-                <span className="text-[10px] text-slate-500">
-                  ({r.total_responses})
-                </span>
+                {r.pct_agree != null && <span className="text-slate-700 font-medium">{Math.round(r.pct_agree)}% agree</span>}
+                {r.pct_disagree != null && <span>· {Math.round(r.pct_disagree)}% disagree</span>}
+                <span className="text-[10px] text-slate-500">({r.total_responses})</span>
               </div>
             </div>
           );
         })}
       </div>
     </div>
+  );
+}
+
+// ---------- StanceCard — extracted for dual mobile/desktop render (Point 14) ----------
+function StanceCard({
+  isAuthed,
+  questionId,
+  question,
+  myStance,
+  stanceLoading,
+  stanceMutation,
+  stats,
+  handleSetStance,
+  handleRequireLogin,
+}: {
+  isAuthed: boolean;
+  questionId: string;
+  question: LiveQuestion;
+  myStance: number | null;
+  stanceLoading: boolean;
+  stanceMutation: any;
+  stats: QuestionStats | null;
+  handleSetStance: (val: number) => void;
+  handleRequireLogin: () => void;
+}) {
+  return (
+    <section className="rounded-xl border border-slate-200 bg-slate-50 p-4 md:p-5 shadow-sm">
+      <h3 className="text-[11px] font-semibold tracking-wide uppercase text-slate-500 mb-1">
+        Your stance
+      </h3>
+
+      {!isAuthed && (
+        <div className="space-y-3">
+          <p className="text-sm font-medium text-slate-700">
+            Where do you stand on this issue?
+          </p>
+          <p className="text-xs text-slate-500">
+            Log in to record your stance and compare with your city, state,
+            country, and globally.
+          </p>
+          <button
+            type="button"
+            onClick={handleRequireLogin}
+            className="w-full rounded-xl bg-slate-900 text-white px-3 py-2 text-xs font-medium hover:bg-slate-700 transition-colors"
+          >
+            Log in to take stance
+          </button>
+        </div>
+      )}
+
+      {isAuthed && (
+        <>
+          <p className="text-sm font-medium text-slate-700 mb-3">
+            Where do you stand on this issue?
+          </p>
+
+          <div className="mb-2">
+            {/*
+             * Points 16–18: stats passed so slider can show personalized
+             * alignment after the user commits.
+             * Point 17: pulseThumb=true when no prior stance recorded.
+             */}
+            <QuestionStanceSlider
+              questionId={questionId}
+              questionText={question.question}
+              summary={question.summary ?? null}
+              initialValue={myStance ?? 0}
+              disabled={stanceMutation.isPending}
+              onSubmit={handleSetStance}
+              stats={stats}
+              pulseThumb={myStance == null}
+            />
+          </div>
+
+          <div className="text-[11px] text-slate-500 flex items-center gap-2 mt-1">
+            {stanceLoading ? (
+              <span>Loading your stance…</span>
+            ) : stanceMutation.isPending ? (
+              <span>Saving…</span>
+            ) : myStance === null || myStance === undefined ? (
+              <span>No stance recorded yet.</span>
+            ) : (
+              <span>
+                Saved as {STANCE_SCALE.find((s) => s.value === myStance)?.label}.
+              </span>
+            )}
+
+            {isAuthed && myStance != null && !stanceMutation.isPending && (
+              <button type="button" className="underline" onClick={() => stanceMutation.mutate(null)}>
+                Clear
+              </button>
+            )}
+          </div>
+        </>
+      )}
+    </section>
   );
 }
 
@@ -512,15 +499,9 @@ export default function QuestionDetailPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
-  // EPIC C: Track question view
   useQuestionView(questionId);
 
-  const {
-    data: question,
-    isLoading,
-    isError,
-    error,
-  } = useQuery({
+  const { data: question, isLoading, isError, error } = useQuery({
     enabled: !!questionId,
     queryKey: ["question-detail", questionId],
     queryFn: () => fetchQuestionById(questionId),
@@ -548,7 +529,6 @@ export default function QuestionDetailPage() {
     staleTime: 60_000,
   });
 
-  // myRegion fetched for future use / region dimension availability
   const { data: myRegion } = useQuery({
     enabled: !!userId,
     queryKey: ["my-region", userId],
@@ -557,14 +537,8 @@ export default function QuestionDetailPage() {
   });
 
   const { data: relatedQuestions, isLoading: relatedLoading } = useQuery({
-    enabled:
-      !!questionId && !!question && !!question.tags && question.tags.length > 0,
-    queryKey: [
-      "related-questions",
-      questionId,
-      question?.tags ?? [],
-      question?.location_label ?? null,
-    ],
+    enabled: !!questionId && !!question && !!question.tags && question.tags.length > 0,
+    queryKey: ["related-questions", questionId, question?.tags ?? [], question?.location_label ?? null],
     queryFn: () =>
       fetchRelatedQuestions(
         questionId,
@@ -585,34 +559,20 @@ export default function QuestionDetailPage() {
     mutationKey: ["set-stance", questionId],
     mutationFn: (score: number | null) => setMyStance(questionId, score),
     onSuccess: async (newScore, vars) => {
-      // Keep local cache fresh
       queryClient.setQueryData(["my-stance", questionId], newScore);
-      queryClient.invalidateQueries({
-        queryKey: ["question-stats", questionId],
-      });
+      queryClient.invalidateQueries({ queryKey: ["question-stats", questionId] });
 
-      // EPIC C: Track interaction when user answers
       if (userId && question?.topic_id) {
         const answered = newScore !== null;
-        await trackQuestionInteraction(
-          userId,
-          questionId,
-          question.topic_id,
-          answered
-        );
-
-        // Invalidate personalized feed so this question doesn't reappear
-        if (answered) {
-          queryClient.invalidateQueries({ queryKey: ["personalized-feed"] });
-        }
+        await trackQuestionInteraction(userId, questionId, question.topic_id, answered);
+        if (answered) queryClient.invalidateQueries({ queryKey: ["personalized-feed"] });
       }
 
       const score = typeof vars === "number" || vars === null ? vars : newScore;
       const label =
         score == null
           ? null
-          : STANCE_SCALE.find((s) => s.value === score)?.labelShort ??
-            `Score ${score}`;
+          : STANCE_SCALE.find((s) => s.value === score)?.labelShort ?? `Score ${score}`;
 
       toast({
         title: score == null ? "Stance cleared" : "Stance saved",
@@ -626,17 +586,14 @@ export default function QuestionDetailPage() {
     onError: (err: any) => {
       toast({
         title: "Error",
-        description:
-          err?.message ?? "Failed to save your stance. Please try again.",
+        description: err?.message ?? "Failed to save your stance. Please try again.",
         variant: "destructive",
       });
     },
   });
 
   const handleSetStance = React.useCallback(
-    (newVal: number) => {
-      stanceMutation.mutate(newVal);
-    },
+    (newVal: number) => stanceMutation.mutate(newVal),
     [stanceMutation]
   );
 
@@ -646,13 +603,23 @@ export default function QuestionDetailPage() {
     navigate("/login");
   }, [navigate]);
 
-  const handleBack = React.useCallback(() => {
-    navigate(-1);
-  }, [navigate]);
+  const handleBack = React.useCallback(() => navigate(-1), [navigate]);
 
   const hasStats = !!stats?.regions;
   const globalStats = stats?.regions?.global ?? null;
   const hasRelated = !!relatedQuestions && relatedQuestions.length > 0;
+
+  // Shared props object for StanceCard — avoids duplication between mobile/desktop renders
+  const stanceCardProps = {
+    isAuthed,
+    questionId,
+    myStance: myStance ?? null,
+    stanceLoading,
+    stanceMutation,
+    stats: stats ?? null,
+    handleSetStance,
+    handleRequireLogin,
+  };
 
   let content: React.ReactNode;
 
@@ -674,41 +641,33 @@ export default function QuestionDetailPage() {
   } else if (!question) {
     content = (
       <div className="rounded-xl border border-slate-200 bg-white px-6 py-8 shadow-sm">
-        <p className="text-sm text-slate-500">
-          Question not found or no longer active.
-        </p>
+        <p className="text-sm text-slate-500">Question not found or no longer active.</p>
       </div>
     );
   } else {
     content = (
-      <div className="grid gap-8 md:grid-cols-[1fr_320px]">
+      /*
+       * Point 14: flex-col on mobile, grid on md+.
+       * This allows the inline StanceCard to sit between main content
+       * and the rest of the rail on mobile without any order-* hacks.
+       * Desktop layout is unchanged.
+       */
+      <div className="flex flex-col gap-6 md:grid md:gap-8 md:grid-cols-[1fr_320px]">
 
         {/* ===================== MAIN COLUMN ===================== */}
         <main className="rounded-xl border border-slate-200 bg-white p-5 md:p-8 shadow-sm">
 
-          {/*
-           * Editorial container — wraps meta + ribbon + headline + summary only.
-           * Tightened to max-w-[44rem] for ideal ~65-char line length.
-           * space-y-3 provides deliberate rhythm between editorial elements.
-           * NOT applied to image/comments/related to avoid component style bleed.
-           */}
           <div className="max-w-[44rem] space-y-3">
 
-            {/* Meta row — small, editorial, non-competing */}
+            {/* Meta row */}
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <span className="text-[11px] font-semibold tracking-wide uppercase text-slate-500">
                 Question
               </span>
               <span aria-hidden className="text-slate-300">·</span>
               {question.published_at ? (
-                <time
-                  dateTime={question.published_at}
-                  className="text-[12px] text-slate-500"
-                >
-                  {new Date(question.published_at).toLocaleDateString(
-                    undefined,
-                    { dateStyle: "long" }
-                  )}
+                <time dateTime={question.published_at} className="text-[12px] text-slate-500">
+                  {new Date(question.published_at).toLocaleDateString(undefined, { dateStyle: "long" })}
                 </time>
               ) : (
                 <span className="text-[12px] text-slate-500">—</span>
@@ -720,26 +679,19 @@ export default function QuestionDetailPage() {
               </span>
             </div>
 
-            {/* Tag ribbon — tight to meta, gap before headline */}
+            {/* Tag ribbon */}
             {question.tags && question.tags.length > 0 && (
               <div className="flex flex-wrap items-center gap-2 pt-1">
-                {/* Primary tag — bold editorial pill */}
                 <span className="inline-flex items-center rounded-full bg-slate-900 px-3 py-1 text-[11px] font-semibold tracking-wide text-white">
                   {question.tags[0]}
                 </span>
-                {/* Secondary tags */}
                 {question.tags.slice(1, 6).map((tag) => (
-                  <span
-                    key={tag}
-                    className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-medium text-slate-700"
-                  >
+                  <span key={tag} className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-medium text-slate-700">
                     {tag}
                   </span>
                 ))}
                 {question.tags.length > 6 && (
-                  <span className="text-[11px] text-slate-400">
-                    +{question.tags.length - 6} more
-                  </span>
+                  <span className="text-[11px] text-slate-400">+{question.tags.length - 6} more</span>
                 )}
               </div>
             )}
@@ -749,27 +701,25 @@ export default function QuestionDetailPage() {
               {question.question}
             </h1>
 
-            {/* Phase badge — sits between headline and summary */}
+            {/* Phase badge */}
             {question.phase && question.phase !== "initial" && (
-              <div>
-                <QuestionPhaseBadge phase={question.phase} size="md" />
-              </div>
+              <div><QuestionPhaseBadge phase={question.phase} size="md" /></div>
             )}
 
-            {/* Summary / dek */}
+            {/*
+             * Point 13: Justified summary on md+ screens only.
+             * text-left on mobile avoids awkward word-gap spacing on narrow viewports.
+             * hyphens-auto assists line breaking for long words.
+             */}
             {question.summary && (
-              <p className="max-w-[44rem] font-normal text-base md:text-lg text-slate-600 leading-relaxed md:leading-[1.6]">
+              <p className="max-w-[44rem] font-normal text-base md:text-lg text-slate-600 leading-relaxed md:leading-[1.6] text-left md:text-justify md:hyphens-auto">
                 {question.summary}
               </p>
             )}
           </div>
           {/* End editorial container */}
 
-          {/*
-           * Hero image — mt-6 after summary (~24px rhythm)
-           * Increased height to 420px for stronger editorial presence.
-           * rounded-xl + shadow-sm for polished card feel.
-           */}
+          {/* Hero image — mt-6 (~24px gap from summary) */}
           {question.cover_image_url && (
             <div className="mt-6">
               <EditorialHeroImage
@@ -777,19 +727,33 @@ export default function QuestionDetailPage() {
                 alt={question.question}
                 height={420}
               />
-              {/* Caption — readable, not faded */}
+              {/*
+               * Point 19 (TODO): Replace with dynamic caption when
+               * image_source_name column is available in questions table.
+               * e.g. question.image_source_name ?? "news article"
+               */}
               <p className="mt-2 text-xs text-slate-500 leading-snug">
                 Image source: news article
               </p>
             </div>
           )}
 
-          {/* Comments — mt-10 (~40px, signals clear section change) */}
+          {/*
+           * Point 14: Mobile-only inline StanceCard.
+           * Appears right after hero image so the primary interaction is
+           * prominent before the user scrolls to comments.
+           * Hidden on desktop (md:hidden) — desktop uses the rail version below.
+           */}
+          <div className="mt-6 md:hidden">
+            <StanceCard question={question} {...stanceCardProps} />
+          </div>
+
+          {/* Comments — mt-10 (~40px, clear section boundary) */}
           <div className="mt-10 border-t border-slate-200 pt-8">
             <QuestionCommentsPanel questionId={questionId} />
           </div>
 
-          {/* Related questions — mt-10 (~40px, mirrors image→comments gap) */}
+          {/* Related questions */}
           <section className="mt-10 border-t border-slate-200 pt-8">
             <h2 className="text-sm font-semibold text-slate-900 mb-4">
               {question.location_label
@@ -797,35 +761,18 @@ export default function QuestionDetailPage() {
                 : "Related questions"}
             </h2>
 
-            {relatedLoading && (
-              <p className="text-xs text-slate-500">
-                Loading related questions…
-              </p>
-            )}
-
-            {!relatedLoading && !hasRelated && (
-              <p className="text-xs text-slate-500">No related questions yet.</p>
-            )}
+            {relatedLoading && <p className="text-xs text-slate-500">Loading related questions…</p>}
+            {!relatedLoading && !hasRelated && <p className="text-xs text-slate-500">No related questions yet.</p>}
 
             {hasRelated && relatedQuestions && (
               <div className="space-y-3">
                 {relatedQuestions.map((rq) => (
-                  <div
-                    key={rq.id}
-                    className="flex items-start justify-between gap-3 text-xs"
-                  >
+                  <div key={rq.id} className="flex items-start justify-between gap-3 text-xs">
                     <div className="min-w-0">
-                      <Link
-                        to={`/q/${rq.id}`}
-                        className="font-medium text-slate-900 hover:underline"
-                      >
+                      <Link to={`/q/${rq.id}`} className="font-medium text-slate-900 hover:underline">
                         {rq.question}
                       </Link>
-                      {rq.summary && (
-                        <p className="text-slate-600 line-clamp-2 mt-0.5">
-                          {rq.summary}
-                        </p>
-                      )}
+                      {rq.summary && <p className="text-slate-600 line-clamp-2 mt-0.5">{rq.summary}</p>}
                     </div>
                     <div className="flex flex-col items-end gap-1 shrink-0">
                       {rq.location_label && (
@@ -835,10 +782,7 @@ export default function QuestionDetailPage() {
                       )}
                       {rq.published_at && (
                         <span className="text-[10px] text-slate-500">
-                          {new Date(rq.published_at).toLocaleDateString(
-                            undefined,
-                            { dateStyle: "medium" }
-                          )}
+                          {new Date(rq.published_at).toLocaleDateString(undefined, { dateStyle: "medium" })}
                         </span>
                       )}
                     </div>
@@ -850,22 +794,13 @@ export default function QuestionDetailPage() {
 
           {/* Back link */}
           <footer className="mt-8 pt-6 border-t border-slate-100">
-            <button
-              type="button"
-              onClick={handleBack}
-              className="text-sm text-slate-500 hover:text-slate-900 transition-colors"
-            >
+            <button type="button" onClick={handleBack} className="text-sm text-slate-500 hover:text-slate-900 transition-colors">
               ← Back
             </button>
           </footer>
         </main>
 
         {/* ===================== RIGHT RAIL ===================== */}
-        {/*
-         * Shared visual language with main column:
-         * same border-slate-200, same rounded-xl, same shadow-sm on all cards.
-         * gap-8 on grid provides breathing room without disconnecting rail.
-         */}
         <aside className="md:pt-1">
           <div className="md:sticky md:top-24 space-y-4">
 
@@ -874,9 +809,7 @@ export default function QuestionDetailPage() {
               <section className="rounded-xl border border-slate-200 bg-white p-4 md:p-5 shadow-sm">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-[11px] font-semibold tracking-wide uppercase text-slate-500">
-                      Topic
-                    </div>
+                    <div className="text-[11px] font-semibold tracking-wide uppercase text-slate-500">Topic</div>
                     <div className="mt-1 text-sm font-medium text-slate-900">
                       {topicLite?.title ?? "View topic"}
                     </div>
@@ -886,10 +819,7 @@ export default function QuestionDetailPage() {
                   </div>
                 </div>
                 <div className="mt-3">
-                  <Link
-                    to={`/topics/${question.topic_id}`}
-                    className="text-xs text-slate-600 hover:underline"
-                  >
+                  <Link to={`/topics/${question.topic_id}`} className="text-xs text-slate-600 hover:underline">
                     View topic →
                   </Link>
                 </div>
@@ -902,11 +832,7 @@ export default function QuestionDetailPage() {
                 Community stance
               </h3>
 
-              {statsLoading && (
-                <p className="text-xs text-slate-500">
-                  Loading community stats…
-                </p>
-              )}
+              {statsLoading && <p className="text-xs text-slate-500">Loading community stats…</p>}
 
               {!statsLoading && !hasStats && (
                 <p className="text-xs text-slate-500">
@@ -921,24 +847,16 @@ export default function QuestionDetailPage() {
                       <span className="text-xs text-slate-700 font-medium">
                         {globalStats.total_responses} responses
                       </span>
-                      {globalStats.pct_agree != null && (
-                        <> · {Math.round(globalStats.pct_agree)}% agree</>
-                      )}
-                      {globalStats.pct_disagree != null && (
-                        <> · {Math.round(globalStats.pct_disagree)}% disagree</>
-                      )}
-                      {globalStats.pct_neutral != null && (
-                        <> · {Math.round(globalStats.pct_neutral)}% neutral</>
-                      )}
+                      {globalStats.pct_agree != null && <> · {Math.round(globalStats.pct_agree)}% agree</>}
+                      {globalStats.pct_disagree != null && <> · {Math.round(globalStats.pct_disagree)}% disagree</>}
+                      {globalStats.pct_neutral != null && <> · {Math.round(globalStats.pct_neutral)}% neutral</>}
                     </div>
                     {globalStats.avg_score != null && (
                       <div className="text-[11px] text-slate-500">
-                        Average stance: {globalStats.avg_score.toFixed(2)}{" "}
-                        (scale −2 to +2)
+                        Average stance: {globalStats.avg_score.toFixed(2)} (scale −2 to +2)
                       </div>
                     )}
                   </div>
-
                   {isAuthed && (
                     <>
                       <div className="border-t border-slate-200 my-3" />
@@ -948,10 +866,7 @@ export default function QuestionDetailPage() {
                 </>
               )}
 
-              {/* Edge case: regions present but no global stat */}
-              {hasStats && !globalStats && isAuthed && (
-                <RegionComparison stats={stats ?? null} />
-              )}
+              {hasStats && !globalStats && isAuthed && <RegionComparison stats={stats ?? null} />}
             </section>
 
             {/* Discussion mood */}
@@ -960,9 +875,7 @@ export default function QuestionDetailPage() {
                 <h3 className="text-[11px] font-semibold tracking-wide uppercase text-slate-500 mb-3">
                   Discussion mood
                 </h3>
-                <p className="text-xs text-slate-500">
-                  Analyzing discussion sentiment…
-                </p>
+                <p className="text-xs text-slate-500">Analyzing discussion sentiment…</p>
               </section>
             )}
 
@@ -977,92 +890,22 @@ export default function QuestionDetailPage() {
                   </span>{" "}
                   comment{threadSentiment.comment_count === 1 ? "" : "s"}
                   {typeof threadSentiment.avg_sentiment === "number" &&
-                    ` · avg sentiment ${threadSentiment.avg_sentiment.toFixed(
-                      2
-                    )} (−1 to +1)`}
+                    ` · avg sentiment ${threadSentiment.avg_sentiment.toFixed(2)} (−1 to +1)`}
                 </p>
                 {threadSentiment.summary_text && (
-                  <p className="text-sm text-slate-700 mt-2">
-                    {threadSentiment.summary_text}
-                  </p>
+                  <p className="text-sm text-slate-700 mt-2">{threadSentiment.summary_text}</p>
                 )}
               </section>
             )}
 
             {/*
-             * "Your stance" — CTA block.
-             * bg-slate-50 + border-slate-200 distinguishes it as the primary action.
-             * Framing prompt "Where do you stand?" added above slider to improve engagement.
+             * Point 14: Desktop-only StanceCard in rail.
+             * hidden on mobile (the inline version above handles mobile).
+             * hidden md:block restores it at md+ breakpoint.
              */}
-            <section className="rounded-xl border border-slate-200 bg-slate-50 p-4 md:p-5 shadow-sm">
-              <h3 className="text-[11px] font-semibold tracking-wide uppercase text-slate-500 mb-1">
-                Your stance
-              </h3>
-
-              {!isAuthed && (
-                <div className="space-y-3">
-                  <p className="text-sm font-medium text-slate-700">
-                    Where do you stand on this issue?
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    Log in to record your stance and compare with your city,
-                    state, country, and globally.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={handleRequireLogin}
-                    className="w-full rounded-xl bg-slate-900 text-white px-3 py-2 text-xs font-medium hover:bg-slate-700 transition-colors"
-                  >
-                    Log in to take stance
-                  </button>
-                </div>
-              )}
-
-              {isAuthed && (
-                <>
-                  {/* Framing prompt above slider */}
-                  <p className="text-sm font-medium text-slate-700 mb-3">
-                    Where do you stand on this issue?
-                  </p>
-
-                  <div className="mb-2">
-                    <QuestionStanceSlider
-                      questionId={questionId}
-                      questionText={question.question}
-                      summary={question.summary ?? null}
-                      initialValue={myStance ?? 0}
-                      disabled={stanceMutation.isPending}
-                      onSubmit={handleSetStance}
-                    />
-                  </div>
-
-                  <div className="text-[11px] text-slate-500 flex items-center gap-2">
-                    {stanceLoading ? (
-                      <span>Loading your stance…</span>
-                    ) : stanceMutation.isPending ? (
-                      <span>Saving…</span>
-                    ) : myStance === null || myStance === undefined ? (
-                      <span>No stance recorded yet.</span>
-                    ) : (
-                      <span>
-                        Saved as{" "}
-                        {STANCE_SCALE.find((s) => s.value === myStance)?.label}.
-                      </span>
-                    )}
-
-                    {isAuthed && myStance != null && !stanceMutation.isPending && (
-                      <button
-                        type="button"
-                        className="underline"
-                        onClick={() => stanceMutation.mutate(null)}
-                      >
-                        Clear
-                      </button>
-                    )}
-                  </div>
-                </>
-              )}
-            </section>
+            <div className="hidden md:block">
+              <StanceCard question={question} {...stanceCardProps} />
+            </div>
 
           </div>
         </aside>
@@ -1072,16 +915,8 @@ export default function QuestionDetailPage() {
 
   return (
     <PageLayout>
-      {/*
-       * DESIGN PASS 2 changes vs original:
-       * 1. Removed "Question detail" h1 + "← Back to homepage" link row entirely
-       * 2. max-w-6xl → max-w-5xl (tighter page container, less wasted whitespace)
-       * 3. Page bg uses bg-slate-50 for subtle depth (cards remain bg-white)
-       * 4. Single left-aligned "← Back" control replaces dual-nav header
-       */}
       <div className="min-h-screen bg-slate-50">
         <div className="max-w-5xl mx-auto py-6 space-y-4 px-4">
-          {/* Lean editorial back nav — no competing right-side link */}
           <div>
             <button
               type="button"
