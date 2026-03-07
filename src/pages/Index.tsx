@@ -558,64 +558,99 @@ function HeroQuestionModule({
   }
 
   // ── States A / B — question with slider ──
+  // Layout matches the screenshot exactly:
+  //   • Single unified card, white background
+  //   • Top section: eyebrow + subtext on the LEFT, cover image on the RIGHT
+  //     The image fades to transparent on its left edge via a horizontal gradient,
+  //     so it bleeds into the white content area seamlessly
+  //   • Question headline sits below the eyebrow, spanning left + into the fade zone
+  //   • Divider, then slider below on white
   if (!heroQuestion) return null;
 
   return (
     <div className={`${card} overflow-hidden`}>
-      {/* Cover image (if available) */}
-      {heroQuestion.cover_image_url ? (
-        <div className="h-52 w-full overflow-hidden">
-          <img
-            src={heroQuestion.cover_image_url}
-            alt=""
-            className="h-full w-full object-cover"
-            loading="eager"
-          />
-        </div>
-      ) : null}
 
-      <div className="p-6">
-        <Eyebrow>🔥 One big shifting question</Eyebrow>
+      {/* ── Top section: text left / image right (split layout) ── */}
+      <div className="relative overflow-hidden">
 
-        {/* Tags row */}
-        {heroQuestion.tags && heroQuestion.tags.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mb-3">
-            <Tag primary>{heroQuestion.tags[0]}</Tag>
-            {heroQuestion.tags.slice(1, 4).map((t) => (
-              <Tag key={t}>{t}</Tag>
-            ))}
-            {heroQuestion.trend_micro_signal && (
-              <Pill>{heroQuestion.trend_micro_signal.toUpperCase()}</Pill>
-            )}
-            {heroQuestion.user_has_answered && <Pill>ANSWERED</Pill>}
-            {heroQuestion.origin_location_label &&
-              heroQuestion.origin_location_label !== heroQuestion.audience_location_label && (
-                <Pill>📍 {heroQuestion.origin_location_label}</Pill>
-              )}
-          </div>
+        {/* Image — absolute, right-aligned, fills full height of this section */}
+        {heroQuestion.cover_image_url && (
+          <>
+            <img
+              src={heroQuestion.cover_image_url}
+              alt=""
+              className="absolute top-0 right-0 h-full w-3/5 object-cover object-center"
+              loading="eager"
+            />
+            {/* Left-to-right fade: white → transparent, covering ~55% from left.
+                This lets the question text sit on pure white while the image
+                bleeds in naturally from the right, matching the screenshot. */}
+            <div
+              className="absolute top-0 right-0 h-full w-3/5 pointer-events-none"
+              style={{
+                background:
+                  "linear-gradient(to right, white 0%, white 15%, rgba(255,255,255,0.85) 35%, rgba(255,255,255,0.3) 65%, transparent 100%)",
+              }}
+            />
+          </>
         )}
 
-        {/* Question headline */}
-        <Link
-          to={`/q/${heroQuestion.question_id}`}
-          className="block text-xl font-semibold text-slate-900 leading-snug hover:underline mb-2"
-        >
-          {heroQuestion.question_text}
-        </Link>
+        {/* Text content — sits on top, left-aligned, z above the image */}
+        <div className="relative z-10 p-5 pb-4" style={{ maxWidth: "68%" }}>
 
-        {/* Summary */}
+          {/* Eyebrow */}
+          <div className="flex items-center gap-1.5 mb-0.5">
+            <span className="text-sm font-semibold text-slate-900">
+              🔥 One big shifting question
+            </span>
+          </div>
+          <p className="text-xs text-slate-500 mb-4">
+            Answer in seconds — see where society stands.
+          </p>
+
+          {/* Tags */}
+          {heroQuestion.tags && heroQuestion.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-3">
+              <Tag primary>{heroQuestion.tags[0]}</Tag>
+              {heroQuestion.tags.slice(1, 3).map((t) => (
+                <Tag key={t}>{t}</Tag>
+              ))}
+              {heroQuestion.trend_micro_signal && (
+                <Pill>{heroQuestion.trend_micro_signal.toUpperCase()}</Pill>
+              )}
+              {heroQuestion.user_has_answered && <Pill>ANSWERED</Pill>}
+              {heroQuestion.origin_location_label &&
+                heroQuestion.origin_location_label !== heroQuestion.audience_location_label && (
+                  <Pill>📍 {heroQuestion.origin_location_label}</Pill>
+                )}
+            </div>
+          )}
+
+          {/* Question headline — large, dark, reads over both white and the fade */}
+          <Link
+            to={`/q/${heroQuestion.question_id}`}
+            className="block text-2xl font-bold text-slate-900 leading-snug hover:underline underline-offset-2"
+            style={{ maxWidth: "none" }}
+          >
+            {heroQuestion.question_text}
+          </Link>
+
+          {heroQuestion.topic_title && (
+            <p className="mt-1.5 text-xs text-slate-400">
+              {heroQuestion.topic_title}
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* ── Slider section — full width, white, below the split ── */}
+      <div className="px-5 pb-5 pt-3 border-t border-slate-100">
         {heroQuestion.summary && (
-          <p className="text-sm text-slate-500 leading-relaxed line-clamp-2 mb-4">
+          <p className="text-xs text-slate-500 leading-relaxed mb-4 line-clamp-2">
             {heroQuestion.summary}
           </p>
         )}
 
-        {/* Topic */}
-        {heroQuestion.topic_title && (
-          <p className="text-xs text-slate-400 mb-4">Topic: {heroQuestion.topic_title}</p>
-        )}
-
-        {/* Slider — authed vs logged-out (Rule 5) */}
         {isAuthed ? (
           <QuestionStanceSlider
             questionId={heroQuestion.question_id}
@@ -644,9 +679,7 @@ function HeroQuestionModule({
               />
             </div>
             <div className="mt-4 flex flex-col items-center gap-2">
-              <p className="text-xs text-slate-400">
-                Log in to record your stance
-              </p>
+              <p className="text-xs text-slate-400">Log in to record your stance</p>
               <button
                 type="button"
                 className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-700 transition-colors"
@@ -2018,74 +2051,111 @@ export default function IndexPage() {
                   heroStats={heroStatsQuery.data ?? null}
                 />
               ) : (
-                // Anon hero — "One big shifting question"
+                // Anon hero — same split layout as authed hero
                 <div className={`${card} overflow-hidden`}>
-                  {anonQuestions[0]?.cover_image_url && (
-                    <div className="h-48 w-full overflow-hidden">
-                      <img
-                        src={anonQuestions[0].cover_image_url}
-                        alt=""
-                        className="h-full w-full object-cover"
-                        loading="eager"
-                      />
+
+                  {/* Top section: eyebrow + question left, image right with fade */}
+                  <div className="relative overflow-hidden">
+                    {anonQuestions[0]?.cover_image_url && (
+                      <>
+                        <img
+                          src={anonQuestions[0].cover_image_url}
+                          alt=""
+                          className="absolute top-0 right-0 h-full w-3/5 object-cover object-center"
+                          loading="eager"
+                        />
+                        <div
+                          className="absolute top-0 right-0 h-full w-3/5 pointer-events-none"
+                          style={{
+                            background:
+                              "linear-gradient(to right, white 0%, white 15%, rgba(255,255,255,0.85) 35%, rgba(255,255,255,0.3) 65%, transparent 100%)",
+                          }}
+                        />
+                      </>
+                    )}
+
+                    <div className="relative z-10 p-5 pb-4" style={{ maxWidth: "68%" }}>
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <span className="text-sm font-semibold text-slate-900">
+                          🔥 One big shifting question
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500 mb-4">
+                        Answer in seconds — see where society stands.
+                      </p>
+
+                      {anonIsLoading ? (
+                        <div className="space-y-2 animate-pulse">
+                          <div className="h-4 w-3/4 rounded bg-slate-100" />
+                          <div className="h-4 w-1/2 rounded bg-slate-100" />
+                        </div>
+                      ) : anonIsError ? (
+                        <ErrorFallback message="Failed to load questions. Please refresh the page." />
+                      ) : anonQuestions[0] ? (
+                        <>
+                          {anonQuestions[0].tags && anonQuestions[0].tags.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5 mb-3">
+                              <Tag primary>{anonQuestions[0].tags[0]}</Tag>
+                              {anonQuestions[0].tags.slice(1, 3).map((t) => (
+                                <Tag key={t}>{t}</Tag>
+                              ))}
+                              {anonQuestions[0].origin_location_label &&
+                                anonQuestions[0].origin_location_label !==
+                                  anonQuestions[0].audience_location_label && (
+                                  <Pill>📍 {anonQuestions[0].origin_location_label}</Pill>
+                                )}
+                            </div>
+                          )}
+                          <Link
+                            to={`/q/${anonQuestions[0].id}`}
+                            className="block text-2xl font-bold text-slate-900 leading-snug hover:underline underline-offset-2"
+                          >
+                            {anonQuestions[0].question}
+                          </Link>
+                        </>
+                      ) : (
+                        <p className="text-sm text-slate-500">
+                          No questions available yet. Try again in a few minutes.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Slider section */}
+                  {!anonIsLoading && !anonIsError && anonQuestions[0] && (
+                    <div className="px-5 pb-5 pt-3 border-t border-slate-100">
+                      {anonQuestions[0].summary && (
+                        <p className="text-xs text-slate-500 leading-relaxed mb-4 line-clamp-2">
+                          {anonQuestions[0].summary}
+                        </p>
+                      )}
+                      <div
+                        onPointerUpCapture={loginRedirect}
+                        onPointerCancelCapture={loginRedirect}
+                        onMouseUpCapture={loginRedirect}
+                        onTouchEndCapture={loginRedirect}
+                        className="cursor-pointer"
+                      >
+                        <QuestionStanceSlider
+                          questionId={anonQuestions[0].id}
+                          questionText={anonQuestions[0].question}
+                          summary={anonQuestions[0].summary}
+                          initialValue={null}
+                          onSubmit={loginRedirect}
+                        />
+                      </div>
+                      <div className="mt-4 flex flex-col items-center gap-2">
+                        <p className="text-xs text-slate-400">Log in to record your stance</p>
+                        <button
+                          type="button"
+                          className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-700 transition-colors"
+                          onClick={loginRedirect}
+                        >
+                          Log in to take stance
+                        </button>
+                      </div>
                     </div>
                   )}
-                  <div className="p-6">
-                    <Eyebrow>🔥 One big shifting question</Eyebrow>
-                    {anonIsLoading ? (
-                      <div className="space-y-2 animate-pulse">
-                        <div className="h-4 w-3/4 rounded bg-slate-100" />
-                        <div className="h-4 w-1/2 rounded bg-slate-100" />
-                        <div className="mt-3 h-10 rounded bg-slate-100" />
-                      </div>
-                    ) : anonIsError ? (
-                      <ErrorFallback message="Failed to load questions. Please refresh the page." />
-                    ) : anonQuestions[0] ? (
-                      <>
-                        {anonQuestions[0].tags && anonQuestions[0].tags.length > 0 && (
-                          <div className="flex flex-wrap gap-1.5 mb-3">
-                            <Tag primary>{anonQuestions[0].tags[0]}</Tag>
-                            {anonQuestions[0].tags.slice(1, 3).map((t) => (
-                              <Tag key={t}>{t}</Tag>
-                            ))}
-                            {anonQuestions[0].origin_location_label &&
-                              anonQuestions[0].origin_location_label !==
-                                anonQuestions[0].audience_location_label && (
-                                <Pill>📍 {anonQuestions[0].origin_location_label}</Pill>
-                              )}
-                          </div>
-                        )}
-                        <Link
-                          to={`/q/${anonQuestions[0].id}`}
-                          className="block text-lg font-semibold text-slate-900 leading-snug hover:underline mb-4"
-                        >
-                          {anonQuestions[0].question}
-                        </Link>
-                        <div
-                          onPointerUpCapture={loginRedirect}
-                          onPointerCancelCapture={loginRedirect}
-                          onMouseUpCapture={loginRedirect}
-                          onTouchEndCapture={loginRedirect}
-                          className="cursor-pointer"
-                        >
-                          <QuestionStanceSlider
-                            questionId={anonQuestions[0].id}
-                            questionText={anonQuestions[0].question}
-                            summary={anonQuestions[0].summary}
-                            initialValue={null}
-                            onSubmit={loginRedirect}
-                          />
-                        </div>
-                        <p className="mt-2 text-center text-xs text-slate-400">
-                          Log in to record your stance
-                        </p>
-                      </>
-                    ) : (
-                      <p className="text-sm text-slate-500">
-                        No questions available yet. Try again in a few minutes.
-                      </p>
-                    )}
-                  </div>
                 </div>
               )}
 
