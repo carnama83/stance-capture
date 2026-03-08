@@ -1486,6 +1486,7 @@ export default function IndexPage() {
   const societyPulseQuery = useQuery({
     enabled: !!sb,
     queryKey: ["home-society-pulse", regionLabel],
+    retry: false,
     queryFn: async () => {
       if (!sb) return null;
 
@@ -1658,12 +1659,18 @@ export default function IndexPage() {
   const whereYouStandQuery = useQuery({
     enabled: !!sb && !!userId,
     queryKey: ["home-where-you-stand", userId, regionLabel],
+    retry: false,
     queryFn: async () => {
+      // Try without p_lookback_days first — some deployments don't have that param
       const { data, error } = await sb!.rpc("get_user_alignment_snapshot", {
         p_region: regionLabel,
-        p_lookback_days: 30,
       });
-      if (error) throw error;
+      if (error) {
+        // 400 = param mismatch or user has no data yet — treat as empty, not a hard error
+        const status = (error as any)?.status ?? (error as any)?.code;
+        if (status === 400 || status === 404 || status === "PGRST202") return null;
+        throw error;
+      }
       return Array.isArray(data) && data.length > 0
         ? (data[0] as AlignmentSnapshotRow)
         : null;
@@ -1871,6 +1878,7 @@ export default function IndexPage() {
   const heroStatsQuery = useQuery({
     enabled: !!sb && !!userId && !!heroQ?.question_id,
     queryKey: ["home-hero-stats", heroQ?.question_id, regionLabel],
+    retry: false,
     queryFn: async (): Promise<QuestionStats | null> => {
       if (!sb || !heroQ?.question_id) return null;
       try {
@@ -1887,6 +1895,7 @@ export default function IndexPage() {
   const featuredStatsQuery = useQuery({
     enabled: !!sb && !!userId && !!featuredQ?.question_id && featuredQ?.question_id !== heroQ?.question_id,
     queryKey: ["home-featured-stats", featuredQ?.question_id, regionLabel],
+    retry: false,
     queryFn: async (): Promise<QuestionStats | null> => {
       if (!sb || !featuredQ?.question_id) return null;
       try {
