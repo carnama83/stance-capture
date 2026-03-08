@@ -177,7 +177,6 @@ export function QuestionStanceSlider({
   const [value, setValue] = React.useState<number>(
     typeof initialValue === "number" ? initialValue : 0
   );
-  const [submitting, setSubmitting] = React.useState(false);
   const [committed, setCommitted] = React.useState(
     typeof initialValue === "number" && initialValue !== null
   );
@@ -214,17 +213,13 @@ export function QuestionStanceSlider({
 
   // Side-effect: run submission after render, decoupled from the drag event.
   // Slider is never disabled during submission — user can keep interacting.
+  // `disabled` prop (stanceMutation.isPending) is the source of truth for saving state.
   React.useEffect(() => {
     if (pendingSubmit.current === null) return;
     const v = pendingSubmit.current;
     pendingSubmit.current = null;
     if (!onSubmit || disabled) return;
-    let cancelled = false;
-    setSubmitting(true);
-    Promise.resolve(onSubmit(v)).finally(() => {
-      if (!cancelled) setSubmitting(false);
-    });
-    return () => { cancelled = true; };
+    Promise.resolve(onSubmit(v));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [committed, value]);
 
@@ -444,7 +439,7 @@ export function QuestionStanceSlider({
         </div>
       )}
 
-      {submitting && (
+      {disabled && (
         <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
           <div className="h-1.5 w-1.5 rounded-full bg-slate-300 animate-pulse" />
           Saving…
