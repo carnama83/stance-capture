@@ -448,12 +448,19 @@ function StanceCard({
              * Points 16–18: stats passed so slider can show personalized
              * alignment after the user commits.
              * Point 17: pulseThumb=true when no prior stance recorded.
+             *
+             * KEY: include myStance in the key so the slider fully remounts
+             * when the stance changes (save or clear). This ensures:
+             *  - `initialValue` and `committed` state are always in sync
+             *  - Clearing resets the slider to neutral/uncommitted immediately
+             *  - "Saved as X" label always matches the actual saved value
              */}
             <QuestionStanceSlider
+              key={`stance-${questionId}-${myStance ?? "null"}`}
               questionId={questionId}
               questionText={question.question}
               summary={question.summary ?? null}
-              initialValue={myStance ?? 0}
+              initialValue={myStance ?? null}
               disabled={stanceMutation.isPending}
               onSubmit={handleSetStance}
               stats={stats}
