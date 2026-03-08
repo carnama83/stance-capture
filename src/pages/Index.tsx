@@ -1875,6 +1875,8 @@ export default function IndexPage() {
 
   // ── Rule 4: Preload stats for hero + featured slots ──
   // Grid card stats are lazy-loaded by the slider itself on demand.
+  // ── Rule 4: Stats preload for hero + featured slots ──
+  // Uses get_question_stats_for_user — same RPC as QuestionDetailPage
   const heroStatsQuery = useQuery({
     enabled: !!sb && !!userId && !!heroQ?.question_id,
     queryKey: ["home-hero-stats", heroQ?.question_id, regionLabel],
@@ -1882,7 +1884,7 @@ export default function IndexPage() {
     queryFn: async (): Promise<QuestionStats | null> => {
       if (!sb || !heroQ?.question_id) return null;
       try {
-        const { data, error } = await sb.rpc("get_question_stats", {
+        const { data, error } = await sb.rpc("get_question_stats_for_user", {
           p_question_id: heroQ.question_id,
         });
         if (error) throw error;
@@ -1899,7 +1901,7 @@ export default function IndexPage() {
     queryFn: async (): Promise<QuestionStats | null> => {
       if (!sb || !featuredQ?.question_id) return null;
       try {
-        const { data, error } = await sb.rpc("get_question_stats", {
+        const { data, error } = await sb.rpc("get_question_stats_for_user", {
           p_question_id: featuredQ.question_id,
         });
         if (error) throw error;
