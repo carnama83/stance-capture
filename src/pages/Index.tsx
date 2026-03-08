@@ -653,6 +653,7 @@ function HeroQuestionModule({
 
         {isAuthed ? (
           <QuestionStanceSlider
+            key={`hero-${heroQuestion.question_id}`}
             questionId={heroQuestion.question_id}
             questionText={heroQuestion.question_text}
             summary={heroQuestion.summary}
@@ -671,6 +672,7 @@ function HeroQuestionModule({
               className="cursor-pointer"
             >
               <QuestionStanceSlider
+                key={`hero-anon-${heroQuestion.question_id}`}
                 questionId={heroQuestion.question_id}
                 questionText={heroQuestion.question_text}
                 summary={heroQuestion.summary}
@@ -1094,6 +1096,7 @@ function FeaturedQuestionCard({
 
         {isAuthed ? (
           <QuestionStanceSlider
+            key={`featured-${q.question_id}`}
             questionId={q.question_id}
             questionText={q.question_text}
             summary={q.summary}
@@ -1111,6 +1114,7 @@ function FeaturedQuestionCard({
             className="cursor-pointer"
           >
             <QuestionStanceSlider
+              key={`featured-anon-${q.question_id}`}
               questionId={q.question_id}
               questionText={q.question_text}
               summary={q.summary}
