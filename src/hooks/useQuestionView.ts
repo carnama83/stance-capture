@@ -22,16 +22,14 @@ export function useQuestionView(questionId: string | undefined) {
   });
 
   useEffect(() => {
-    // Get userId from the session data structure
     const userId = sessionData?.session?.user?.id;
     
-    // Don't track if no question ID or no user
     if (!questionId || !userId || !supabase) return;
 
     const startTime = Date.now();
     let tracked = false;
 
-    // Track view on mount (fire and forget - don't await)
+    // Track view on mount (fire and forget)
     const trackInitialView = async () => {
       try {
         await supabase.from('question_view_events').insert({
@@ -53,15 +51,14 @@ export function useQuestionView(questionId: string | undefined) {
       
       const duration = Math.floor((Date.now() - startTime) / 1000);
       
-      // Only track duration if viewed for more than 2 seconds
       if (duration > 2) {
-        // Fire and forget - don't await
+        // .then() converts the builder to a real Promise, enabling .catch()
         supabase.from('question_view_events').insert({
           user_id: userId,
           question_id: questionId,
           viewed_at: new Date().toISOString(),
           duration_seconds: duration,
-        }).catch(err => {
+        }).then(() => {}).catch((err: unknown) => {
           console.error('Failed to track question view duration:', err);
         });
       }
