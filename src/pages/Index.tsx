@@ -1661,12 +1661,15 @@ export default function IndexPage() {
     queryKey: ["home-where-you-stand", userId, regionLabel],
     retry: false,
     queryFn: async () => {
-      // Try without p_lookback_days first — some deployments don't have that param
+      // Verify session token is actually available before calling —
+      // userId can be truthy while the client's JWT header is still being set
+      const { data: { session: liveSession } } = await sb!.auth.getSession();
+      if (!liveSession?.access_token) return null;
+
       const { data, error } = await sb!.rpc("get_user_alignment_snapshot", {
         p_region: regionLabel,
       });
       if (error) {
-        // 400 = param mismatch or user has no data yet — treat as empty, not a hard error
         const status = (error as any)?.status ?? (error as any)?.code;
         if (status === 400 || status === 404 || status === "PGRST202") return null;
         throw error;
