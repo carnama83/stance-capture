@@ -181,6 +181,8 @@ export function QuestionStanceSlider({
   const [committed, setCommitted] = React.useState(
     typeof initialValue === "number" && initialValue !== null
   );
+  // Pending submit value — set synchronously on commit, consumed by effect
+  const pendingSubmit = React.useRef<number | null>(null);
 
   const { data: aiData, isLoading: aiLoading } = useDebouncedAiStanceTip(
     questionId,
@@ -198,20 +200,33 @@ export function QuestionStanceSlider({
     setValue(v);
   };
 
-  const handleCommit = async (vals: number[]) => {
+  // Synchronous commit — updates state immediately, queues submission via ref.
+  // Never async: Radix onValueCommit must return synchronously or it breaks
+  // pointer capture on subsequent drags.
+  const handleCommit = (vals: number[]) => {
     const v = Math.max(-2, Math.min(2, Math.round(vals[0] ?? 0)));
     setValue(v);
     setCommitted(true);
-
-    if (!onSubmit || disabled) return;
-
-    try {
-      setSubmitting(true);
-      await onSubmit(v);
-    } finally {
-      setSubmitting(false);
+    if (onSubmit && !disabled) {
+      pendingSubmit.current = v;
     }
   };
+
+  // Side-effect: run submission after render, decoupled from the drag event.
+  // Slider is never disabled during submission — user can keep interacting.
+  React.useEffect(() => {
+    if (pendingSubmit.current === null) return;
+    const v = pendingSubmit.current;
+    pendingSubmit.current = null;
+    if (!onSubmit || disabled) return;
+    let cancelled = false;
+    setSubmitting(true);
+    Promise.resolve(onSubmit(v)).finally(() => {
+      if (!cancelled) setSubmitting(false);
+    });
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [committed, value]);
 
   const stanceColor = getStanceColorHex(value);
   const rawPercent = ((value + 2) / 4) * 100;
@@ -318,7 +333,7 @@ export function QuestionStanceSlider({
             max={2}
             step={1}
             value={[value]}
-            disabled={disabled || submitting}
+            disabled={disabled}
             onValueChange={handleChange}
             onValueCommit={handleCommit}
             className="relative w-full"
@@ -430,7 +445,10 @@ export function QuestionStanceSlider({
       )}
 
       {submitting && (
-        <div className="text-[10px] text-slate-500">Saving…</div>
+        <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
+          <div className="h-1.5 w-1.5 rounded-full bg-slate-300 animate-pulse" />
+          Saving…
+        </div>
       )}
     </div>
   );
