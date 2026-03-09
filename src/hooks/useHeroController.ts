@@ -309,30 +309,47 @@ export function useHeroController({
     []
   );
 
-  // ── Cross-page stance change listener ──
-  // Fires when any page (e.g. QuestionDetailPage) saves a stance via submitStance.
-  // Immediately re-fetches distribution so homepage bar updates without waiting for poll tick.
+  // ── Realtime subscription: question_stances changes ──
+  // Subscribes directly to Supabase Realtime on the question_stances table.
+  // Triggers immediately when ANY client (this page or another) inserts/updates
+  // a stance for the current hero question — no custom events needed.
   React.useEffect(() => {
-    const handler = (e: Event) => {
-      const { questionId, value } = (e as CustomEvent).detail ?? {};
-      console.log(`[hero:event] stance-saved event received qId=${questionId?.slice(0,8)} value=${value}`);
-      if (currentHeroQuestion && questionId === currentHeroQuestion.question_id) {
-        console.log(`[hero:event] ✓ matches current hero question — refreshing distribution immediately`);
-        fetchDistribution(currentHeroQuestion.question_id).then((fresh) => {
-          if (fresh) {
-            console.log(`[hero:event] ✓ distribution refreshed — responses=${fresh.responses} oppose=${fresh.oppose_pct}% support=${fresh.support_pct}%`);
-            setDistribution(fresh);
-          } else {
-            console.warn(`[hero:event] ✗ distribution refresh returned null`);
-          }
-        });
-      } else {
-        console.log(`[hero:event] ✗ different question (hero=${currentHeroQuestion?.question_id?.slice(0,8)}) — ignoring`);
-      }
+    if (!sb || !currentHeroQuestion) return;
+    const questionId = currentHeroQuestion.question_id;
+
+    console.log(`[hero:realtime] subscribing to question_stances for qId=${questionId.slice(0,8)}`);
+
+    const channel = sb
+      .channel(`hero-stances-${questionId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "question_stances",
+          filter: `question_id=eq.${questionId}`,
+        },
+        (payload) => {
+          console.log(`[hero:realtime] ✓ question_stances change detected`, payload.eventType, payload.new);
+          fetchDistribution(questionId).then((fresh) => {
+            if (fresh) {
+              console.log(`[hero:realtime] ✓ distribution refreshed — responses=${fresh.responses} oppose=${fresh.oppose_pct}% support=${fresh.support_pct}%`);
+              setDistribution(fresh);
+            } else {
+              console.warn(`[hero:realtime] ✗ distribution refresh returned null after realtime event`);
+            }
+          });
+        }
+      )
+      .subscribe((status) => {
+        console.log(`[hero:realtime] channel status=${status} qId=${questionId.slice(0,8)}`);
+      });
+
+    return () => {
+      console.log(`[hero:realtime] unsubscribing qId=${questionId.slice(0,8)}`);
+      sb.removeChannel(channel);
     };
-    window.addEventListener("stance-saved", handler);
-    return () => window.removeEventListener("stance-saved", handler);
-  }, [currentHeroQuestion, fetchDistribution]);
+  }, [sb, currentHeroQuestion, fetchDistribution]);
 
   // ── Live community distribution polling ──
   // Starts when hero_ready (so bar is live before user answers).
