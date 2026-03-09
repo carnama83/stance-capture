@@ -250,9 +250,11 @@ export function useHeroController({
         console.log(`[hero:dist]   auth=${accessToken ? "bearer" : "anon-key"}`);
 
         const url = `${supabaseUrl}/rest/v1/rpc/get_question_distribution`;
+        // Always use 'Global' for the community bar — shows all responses regardless
+        // of the user's current region tab. regionLabel would filter to just their region.
         const body = {
           p_question_id: questionId,
-          p_region: regionLabel,
+          p_region: "Global",
           p_window_hours: 168,
         };
         console.log(`[hero:dist]   POST ${url}`, body);
@@ -296,7 +298,7 @@ export function useHeroController({
         return null;
       }
     },
-    [sb, regionLabel]
+    [sb]
   );
 
   const fetchDistributionRef = React.useRef(fetchDistributionFn);
