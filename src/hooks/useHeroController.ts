@@ -173,6 +173,12 @@ export function useHeroController({
   onSubmitSuccess,
   onLoginRedirect,
 }: UseHeroControllerOptions): UseHeroControllerReturn {
+  // Instance tracking — if you see more than one MOUNT log, the component is rendering twice
+  const instanceId = React.useRef(`ctrl-${Math.random().toString(36).slice(2,6)}`);
+  React.useEffect(() => {
+    console.log(`[hero:instance] ▲ MOUNT id=${instanceId.current}`);
+    return () => console.log(`[hero:instance] ▼ UNMOUNT id=${instanceId.current}`);
+  }, []);
   const sb = React.useMemo(getSupabase, []);
 
   // ── Core state ──
@@ -368,7 +374,7 @@ export function useHeroController({
       distributionPollInterval.current = null;
     }
 
-    console.log(`[hero:poll] ▶ polling started for qId=${currentQuestionId.slice(0,8)} every 10s`);
+    console.log(`[hero:poll] ▶ polling started id=${instanceId.current} qId=${currentQuestionId.slice(0,8)} every 10s`);
     distributionPollInterval.current = setInterval(async () => {
       console.log(`[hero:poll] ⏱ tick for qId=${currentQuestionId.slice(0,8)}`);
       const fresh = await fetchDistributionRef.current(currentQuestionId);
