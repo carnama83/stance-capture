@@ -50,6 +50,8 @@ export interface HeroSectionProps {
   onNavigateToQuestion: (id: string) => void;
   onLogin: () => void;
   onSignup: () => void;
+  /** Pre-loaded stats for the initial hero question — passes my_stance to controller */
+  heroStats?: { my_stance: number | null } | null;
 }
 
 // Minimal alignment snapshot shape (matches AlignmentSnapshotRow in Index.tsx)
@@ -215,29 +217,18 @@ function SectionAQuestion({
       {/* ── Slider / Result section ── */}
       <div className="flex-1 px-5 pb-5 pt-4 border-t border-slate-100">
 
-        {/* Result mode */}
+        {question.summary && !isResultMode && (
+          <p className="text-xs text-slate-500 leading-relaxed mb-3 line-clamp-2">
+            {question.summary}
+          </p>
+        )}
+
+        {/* Distribution bar — shown above slider in result mode only */}
         {isResultMode && (
           <div
-            className="transition-opacity duration-300"
+            className="mb-4 transition-opacity duration-300"
             style={{ opacity: status === "hero_transitioning" ? 0 : 1 }}
           >
-            {/* Your stance label */}
-            {submittedStance != null && (
-              <div className="mb-3 flex items-center gap-2">
-                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                  Your stance
-                </span>
-                <span className="inline-flex items-center rounded-full bg-slate-900 px-2.5 py-0.5 text-[11px] font-medium text-white">
-                  {submittedStance > 0.15
-                    ? `Support (${Math.round((submittedStance + 1) * 50)})`
-                    : submittedStance < -0.15
-                    ? `Oppose (${Math.round((submittedStance + 1) * 50)})`
-                    : "Neutral"}
-                </span>
-              </div>
-            )}
-
-            {/* Distribution bar */}
             {distribution ? (
               <StanceDistributionBar
                 distribution={{
@@ -263,7 +254,7 @@ function SectionAQuestion({
               <button
                 type="button"
                 onClick={onAdvanceNow}
-                className="mt-4 text-xs font-medium text-slate-400 hover:text-slate-700 transition-colors underline underline-offset-2"
+                className="mt-3 text-xs font-medium text-slate-400 hover:text-slate-700 transition-colors underline underline-offset-2"
               >
                 Next question →
               </button>
@@ -271,56 +262,46 @@ function SectionAQuestion({
           </div>
         )}
 
-        {/* Slider mode (ready or submitting) */}
-        {!isResultMode && (
+        {/* Slider — always rendered; disabled when result mode or submitting */}
+        {isAuthed ? (
+          <QuestionStanceSlider
+            key={`hero-${question.question_id}`}
+            questionId={question.question_id}
+            questionText={question.question_text}
+            summary={question.summary}
+            initialValue={submittedStance ?? null}
+            disabled={isResultMode || isSubmitting}
+            pulseThumb={!isResultMode}
+            onSubmit={onSubmit}
+          />
+        ) : (
           <>
-            {question.summary && (
-              <p className="text-xs text-slate-500 leading-relaxed mb-3 line-clamp-2">
-                {question.summary}
-              </p>
-            )}
-
-            {isAuthed ? (
+            <div
+              onPointerUpCapture={onLoginRedirect}
+              onPointerCancelCapture={onLoginRedirect}
+              onMouseUpCapture={onLoginRedirect}
+              onTouchEndCapture={onLoginRedirect}
+              className="cursor-pointer"
+            >
               <QuestionStanceSlider
-                key={`hero-${question.question_id}`}
+                key={`hero-anon-${question.question_id}`}
                 questionId={question.question_id}
                 questionText={question.question_text}
                 summary={question.summary}
                 initialValue={null}
-                disabled={isSubmitting}
-                pulseThumb={true}
-                onSubmit={onSubmit}
+                onSubmit={onLoginRedirect}
               />
-            ) : (
-              <>
-                <div
-                  onPointerUpCapture={onLoginRedirect}
-                  onPointerCancelCapture={onLoginRedirect}
-                  onMouseUpCapture={onLoginRedirect}
-                  onTouchEndCapture={onLoginRedirect}
-                  className="cursor-pointer"
-                >
-                  <QuestionStanceSlider
-                    key={`hero-anon-${question.question_id}`}
-                    questionId={question.question_id}
-                    questionText={question.question_text}
-                    summary={question.summary}
-                    initialValue={null}
-                    onSubmit={onLoginRedirect}
-                  />
-                </div>
-                <div className="mt-3 flex items-center gap-3">
-                  <p className="text-xs text-slate-400">Log in to record your stance</p>
-                  <button
-                    type="button"
-                    onClick={onLoginRedirect}
-                    className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-700 transition-colors"
-                  >
-                    Log in
-                  </button>
-                </div>
-              </>
-            )}
+            </div>
+            <div className="mt-3 flex items-center gap-3">
+              <p className="text-xs text-slate-400">Log in to record your stance</p>
+              <button
+                type="button"
+                onClick={onLoginRedirect}
+                className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-700 transition-colors"
+              >
+                Log in
+              </button>
+            </div>
           </>
         )}
       </div>
@@ -629,6 +610,7 @@ export function HeroSection({
   onNavigateToQuestion,
   onLogin,
   onSignup,
+  heroStats,
 }: HeroSectionProps) {
   const {
     status,
@@ -649,6 +631,7 @@ export function HeroSection({
     onRequestReplenish,
     onSubmitSuccess,
     onLoginRedirect,
+    heroStats,
   });
 
   // ── Fade transition state for Section A inner content ──
