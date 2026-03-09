@@ -50,8 +50,6 @@ export interface HeroSectionProps {
   onNavigateToQuestion: (id: string) => void;
   onLogin: () => void;
   onSignup: () => void;
-  /** Pre-loaded stats for the initial hero question — passes my_stance to controller */
-  heroStats?: { my_stance: number | null } | null;
 }
 
 // Minimal alignment snapshot shape (matches AlignmentSnapshotRow in Index.tsx)
@@ -279,9 +277,9 @@ function SectionAQuestion({
             questionId={question.question_id}
             questionText={question.question_text}
             summary={question.summary}
-            initialValue={isResultMode ? null : null}
-            disabled={isResultMode || isSubmitting}
-            pulseThumb={!isResultMode && !isSubmitting}
+            initialValue={null}
+            disabled={isSubmitting}
+            pulseThumb={!isSubmitting}
             onSubmit={onSubmit}
           />
         ) : (
@@ -620,7 +618,6 @@ export function HeroSection({
   onNavigateToQuestion,
   onLogin,
   onSignup,
-  heroStats,
 }: HeroSectionProps) {
   const {
     status,
@@ -641,7 +638,6 @@ export function HeroSection({
     onRequestReplenish,
     onSubmitSuccess,
     onLoginRedirect,
-    heroStats,
   });
 
   // ── Fade transition state for Section A inner content ──
