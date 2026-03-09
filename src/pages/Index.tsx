@@ -1960,6 +1960,14 @@ export default function IndexPage() {
         p_score: value,
       });
       if (error) throw error;
+
+      // Fire cross-page event so HeroSection immediately re-fetches distribution
+      // without waiting for the 10s poll interval
+      console.log(`[stance:save] firing stance-saved event qId=${questionId.slice(0,8)} value=${value}`);
+      window.dispatchEvent(new CustomEvent("stance-saved", {
+        detail: { questionId, value }
+      }));
+
       fetchDistribution(questionId);
       await Promise.allSettled([
         qc.invalidateQueries({ queryKey: ["home-where-you-stand", userId, regionLabel] }),
