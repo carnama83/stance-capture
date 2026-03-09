@@ -225,9 +225,26 @@ export function useHeroController({
     return () => clearAllTimers();
   }, [clearAllTimers]);
 
-  // ── Distribution fetch ──
+  // ── Live community distribution polling ──
+  // Starts when hero_ready (so bar is live before user answers).
+  // submitHeroStance also restarts it after submission.
+  // Stops automatically on transition, unmount, or error.
+  React.useEffect(() => {
+    if (status !== "hero_ready" || !currentHeroQuestion) return;
+    const questionId = currentHeroQuestion.question_id;
+    clearDistributionPoll();
+    distributionPollInterval.current = setInterval(async () => {
+      const fresh = await fetchDistribution(questionId);
+      if (fresh) setDistribution(fresh);
+    }, 10_000);
+    return () => clearDistributionPoll();
+  }, [status, currentHeroQuestion, fetchDistribution, clearDistributionPoll]);
 
-  const fetchDistribution = React.useCallback(
+  // ── Distribution fetch ──
+  // Stored in a ref so the polling interval always calls the latest version
+  // without needing to be recreated (avoids stale closure in setInterval).
+
+  const fetchDistributionFn = React.useCallback(
     async (questionId: string): Promise<HeroDistribution | null> => {
       if (!sb) return null;
       try {
@@ -248,6 +265,16 @@ export function useHeroController({
     [sb, regionLabel]
   );
 
+  const fetchDistributionRef = React.useRef(fetchDistributionFn);
+  React.useEffect(() => {
+    fetchDistributionRef.current = fetchDistributionFn;
+  }, [fetchDistributionFn]);
+
+  const fetchDistribution = React.useCallback(
+    (questionId: string) => fetchDistributionRef.current(questionId),
+    []
+  );
+
   // ── Transition to next question ──
   // This is the core queue advancement logic.
   // Called from: auto-advance timer, manual advance, promoteQuestion.
@@ -266,9 +293,12 @@ export function useHeroController({
         setErrorMessage(null);
 
         // Always enter hero_ready — doTransition only called with unanswered questions
-        // (already-answered questions only surface via explicit promoteQuestion click)
         setStatus("hero_ready");
         fireAnalytics("hero_question_impression", { questionId: nextQuestion.question_id });
+        // Pre-fetch community distribution so the bar shows immediately
+        fetchDistribution(nextQuestion.question_id).then((dist) => {
+          if (dist) setDistribution(dist);
+        });
       }, TRANSITION_MS);
     },
     [clearAllTimers, fetchDistribution]
@@ -333,6 +363,10 @@ export function useHeroController({
 
     setStatus("hero_ready");
     fireAnalytics("hero_question_impression", { questionId: first.question_id });
+    // Pre-fetch community distribution so the bar shows immediately
+    fetchDistribution(first.question_id).then((dist) => {
+      if (dist) setDistribution(dist);
+    });
   }, [allQuestions, isLoading, status, doTransition, checkReplenish, fetchDistribution]);
 
   // ── Sync queue when allQuestions grows (replenishment) ──
@@ -396,7 +430,7 @@ export function useHeroController({
         fireAnalytics("hero_stance_submitted", { questionId, value });
         fireAnalytics("hero_alignment_viewed", { questionId });
 
-        // Poll distribution every 10s to reflect other users' responses in real time
+        // Poll distribution every 10s — keeps community bar live before and after answering
         clearDistributionPoll();
         distributionPollInterval.current = setInterval(async () => {
           const fresh = await fetchDistribution(questionId);
