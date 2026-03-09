@@ -396,12 +396,12 @@ export function useHeroController({
         fireAnalytics("hero_stance_submitted", { questionId, value });
         fireAnalytics("hero_alignment_viewed", { questionId });
 
-        // Poll distribution every 5s to reflect other users' responses in real time
+        // Poll distribution every 10s to reflect other users' responses in real time
         clearDistributionPoll();
         distributionPollInterval.current = setInterval(async () => {
           const fresh = await fetchDistribution(questionId);
           if (fresh) setDistribution(fresh);
-        }, 05_000);
+        }, 10_000);
       } catch (err) {
         console.error("[hero] submitHeroStance failed", err);
         setStatus("hero_error");
