@@ -311,13 +311,15 @@ export function useHeroController({
     []
   );
 
+  const currentQuestionId = currentHeroQuestion?.question_id ?? null;
+
   // ── Realtime subscription: question_stances changes ──
   // Subscribes directly to Supabase Realtime on the question_stances table.
   // Triggers immediately when ANY client (this page or another) inserts/updates
   // a stance for the current hero question — no custom events needed.
   React.useEffect(() => {
-    if (!sb || !currentHeroQuestion) return;
-    const questionId = currentHeroQuestion.question_id;
+    if (!sb || !currentQuestionId) return;
+    const questionId = currentQuestionId;
 
     console.log(`[hero:realtime] subscribing to question_stances for qId=${questionId.slice(0,8)}`);
 
@@ -351,25 +353,25 @@ export function useHeroController({
       console.log(`[hero:realtime] unsubscribing qId=${questionId.slice(0,8)}`);
       sb.removeChannel(channel);
     };
-  }, [sb, currentHeroQuestion, fetchDistribution]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sb, currentQuestionId]);
 
   // ── Live community distribution polling ──
-  // Starts when hero_ready (so bar is live before user answers).
-  // submitHeroStance also restarts it after submission.
-  // Stops automatically on transition, unmount, or error.
+  // Uses primitive deps (status string + questionId string) to prevent
+  // the effect re-running whenever object references change.
   React.useEffect(() => {
-    if (status !== "hero_ready" || !currentHeroQuestion) return;
-    const questionId = currentHeroQuestion.question_id;
+    if (status !== "hero_ready" || !currentQuestionId) return;
 
-    // Clear any existing interval FIRST before starting a new one
-    clearDistributionPoll();
+    // Clear any existing interval FIRST
+    if (distributionPollInterval.current) {
+      clearInterval(distributionPollInterval.current);
+      distributionPollInterval.current = null;
+    }
 
-    console.log(`[hero:poll] ▶ polling started for qId=${questionId.slice(0,8)} every 10s`);
+    console.log(`[hero:poll] ▶ polling started for qId=${currentQuestionId.slice(0,8)} every 10s`);
     distributionPollInterval.current = setInterval(async () => {
-      console.log(`[hero:poll] ⏱ tick for qId=${questionId.slice(0,8)}`);
-      // Use ref so we never capture a stale fetchDistribution closure,
-      // and so fetchDistribution is NOT a dep (prevents interval restart on every render)
-      const fresh = await fetchDistributionRef.current(questionId);
+      console.log(`[hero:poll] ⏱ tick for qId=${currentQuestionId.slice(0,8)}`);
+      const fresh = await fetchDistributionRef.current(currentQuestionId);
       if (fresh) {
         console.log(`[hero:poll] ✓ updated distribution — responses=${fresh.responses}`);
         setDistribution(fresh);
@@ -379,13 +381,15 @@ export function useHeroController({
     }, 10_000);
 
     return () => {
-      console.log(`[hero:poll] ■ polling stopped for qId=${questionId.slice(0,8)}`);
-      clearDistributionPoll();
+      console.log(`[hero:poll] ■ polling stopped for qId=${currentQuestionId.slice(0,8)}`);
+      if (distributionPollInterval.current) {
+        clearInterval(distributionPollInterval.current);
+        distributionPollInterval.current = null;
+      }
     };
-  // fetchDistribution intentionally omitted — using fetchDistributionRef.current inside
-  // to prevent the interval restarting every time fetchDistribution is recreated
+  // Primitive deps only — avoids restart on object reference changes
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, currentHeroQuestion, clearDistributionPoll]);
+  }, [status, currentQuestionId]);
 
   // ── Transition to next question ──
   // This is the core queue advancement logic.
