@@ -1960,6 +1960,9 @@ export default function IndexPage() {
         p_score: value,
       });
       if (error) throw error;
+      // Fire window event — caught by hero controller as fallback to Realtime
+      console.log(`[stance:save] dispatching stance-saved qId=${questionId.slice(0,8)} value=${value}`);
+      window.dispatchEvent(new CustomEvent("stance-saved", { detail: { questionId, value } }));
       fetchDistribution(questionId);
       await Promise.allSettled([
         qc.invalidateQueries({ queryKey: ["home-where-you-stand", userId, regionLabel] }),
