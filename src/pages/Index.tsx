@@ -2064,6 +2064,7 @@ export default function IndexPage() {
             onNavigateToQuestion={goToQuestion}
             onLogin={() => navigate("/login")}
             onSignup={() => navigate("/signup")}
+            heroStats={heroStatsQuery.data ?? null}
           />
 
           {/* ── Region tabs — Bands 3-6 ── */}
