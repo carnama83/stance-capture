@@ -42,6 +42,7 @@ import { getSupabase } from "@/lib/supabaseClient";
 import { QuestionStanceSlider } from "@/components/question/QuestionStanceSlider";
 import { QuestionCoverImage } from "@/components/question/QuestionCoverImage";
 import { useGlobalAndCountryIds } from "@/hooks/useLocationIds";
+import { HeroSection } from "@/components/hero/HeroSection";
 
 // ─────────────────────────── Types (all preserved) ───────────────────────────
 
@@ -1959,14 +1960,6 @@ export default function IndexPage() {
         p_score: value,
       });
       if (error) throw error;
-
-      // Fire cross-page event so HeroSection immediately re-fetches distribution
-      // without waiting for the 10s poll interval
-      console.log(`[stance:save] firing stance-saved event qId=${questionId.slice(0,8)} value=${value}`);
-      window.dispatchEvent(new CustomEvent("stance-saved", {
-        detail: { questionId, value }
-      }));
-
       fetchDistribution(questionId);
       await Promise.allSettled([
         qc.invalidateQueries({ queryKey: ["home-where-you-stand", userId, regionLabel] }),
@@ -2039,17 +2032,41 @@ export default function IndexPage() {
       <div className="min-h-screen bg-slate-50">
         <div className="mx-auto max-w-5xl px-4 py-6">
 
-          {/* ── Band 1 — Hero ── */}
-          {isAuthed ? (
-            <HeroWelcome name={getDisplayHandle(profile, session)} />
-          ) : (
-            <HeroCta
-              onLogin={() => navigate("/login")}
-              onSignup={() => navigate("/signup")}
-            />
-          )}
+          {/* ── Band 1 + 2 — New Hero Section (A/B/C) ── */}
+          <HeroSection
+            allQuestions={isAuthed ? trendingQuestions : anonQuestions.map((q) => ({
+              question_id: q.id,
+              question_text: q.question,
+              summary: q.summary,
+              tags: q.tags,
+              topic_id: null,
+              topic_title: null,
+              tier: null,
+              location_label: q.location_label,
+              origin_location_label: q.origin_location_label,
+              audience_location_label: q.audience_location_label,
+              user_has_answered: false,
+              trend_micro_signal: null,
+              trend_score: null,
+              stance_momentum: null,
+              topic_momentum: null,
+              cover_image_url: q.cover_image_url,
+              impact_normalized: null,
+            }))}
+            isLoading={isAuthed ? authedIsLoading : anonIsLoading}
+            isAuthed={isAuthed}
+            regionLabel={regionLabel}
+            alignmentSnap={whereYouStandQuery.data ?? null}
+            alignmentSnapLoading={whereYouStandQuery.isLoading}
+            onRequestReplenish={fetchNextPage}
+            onSubmitSuccess={submitStance}
+            onLoginRedirect={loginRedirect}
+            onNavigateToQuestion={goToQuestion}
+            onLogin={() => navigate("/login")}
+            onSignup={() => navigate("/signup")}
+          />
 
-          {/* ── Region tabs ── */}
+          {/* ── Region tabs — Bands 3-6 ── */}
           <Tabs
             value={regionTab}
             onValueChange={(v) => setRegionTab(v as any)}
@@ -2063,140 +2080,6 @@ export default function IndexPage() {
             </TabsList>
 
             <TabsContent value={regionTab} className="mt-5 space-y-5">
-
-              {/* ── Band 2 — Hero Question (state machine) ── */}
-              {isAuthed ? (
-                <HeroQuestionModule
-                  questions={trendingQuestions}
-                  mediaSurge={mediaSurgeQuery.data ?? null}
-                  alignmentSnap={whereYouStandQuery.data ?? null}
-                  isLoading={authedIsLoading}
-                  isAuthed={true}
-                  onSubmit={submitStance}
-                  onLoginRedirect={loginRedirect}
-                  heroStats={heroStatsQuery.data ?? null}
-                />
-              ) : (
-                // Anon hero — same split layout as authed hero
-                <div className={`${card} overflow-hidden`}>
-
-                  {/* Top section: eyebrow + question left, image right with fade */}
-                  <div className="relative overflow-hidden">
-                    {anonQuestions[0]?.cover_image_url && (
-                      <>
-                        <img
-                          src={anonQuestions[0].cover_image_url}
-                          alt=""
-                          className="absolute top-0 right-0 h-full w-3/5 object-cover object-center"
-                          loading="eager"
-                        />
-                        <div
-                          className="absolute top-0 right-0 h-full w-3/5 pointer-events-none"
-                          style={{
-                            background:
-                              "linear-gradient(to right, white 0%, white 15%, rgba(255,255,255,0.85) 35%, rgba(255,255,255,0.3) 65%, transparent 100%)",
-                          }}
-                        />
-                      </>
-                    )}
-
-                    <div className="relative z-10 p-5 pb-4" style={{ maxWidth: "68%" }}>
-                      <div className="flex items-center gap-1.5 mb-0.5">
-                        <span className="text-sm font-semibold text-slate-900">
-                          🔥 One big shifting question
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-500 mb-4">
-                        Answer in seconds — see where society stands.
-                      </p>
-
-                      {anonIsLoading ? (
-                        <div className="space-y-2 animate-pulse">
-                          <div className="h-4 w-3/4 rounded bg-slate-100" />
-                          <div className="h-4 w-1/2 rounded bg-slate-100" />
-                        </div>
-                      ) : anonIsError ? (
-                        <ErrorFallback message="Failed to load questions. Please refresh the page." />
-                      ) : anonQuestions[0] ? (
-                        <>
-                          {anonQuestions[0].tags && anonQuestions[0].tags.length > 0 && (
-                            <div className="flex flex-wrap gap-1.5 mb-3">
-                              <Tag primary>{anonQuestions[0].tags[0]}</Tag>
-                              {anonQuestions[0].tags.slice(1, 3).map((t) => (
-                                <Tag key={t}>{t}</Tag>
-                              ))}
-                              {anonQuestions[0].origin_location_label &&
-                                anonQuestions[0].origin_location_label !==
-                                  anonQuestions[0].audience_location_label && (
-                                  <Pill>📍 {anonQuestions[0].origin_location_label}</Pill>
-                                )}
-                            </div>
-                          )}
-                          <Link
-                            to={`/q/${anonQuestions[0].id}`}
-                            className="block text-2xl font-bold text-slate-900 leading-snug hover:underline underline-offset-2"
-                          >
-                            {anonQuestions[0].question}
-                          </Link>
-                        </>
-                      ) : (
-                        <p className="text-sm text-slate-500">
-                          No questions available yet. Try again in a few minutes.
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Slider section */}
-                  {!anonIsLoading && !anonIsError && anonQuestions[0] && (
-                    <div className="px-5 pb-5 pt-3 border-t border-slate-100">
-                      {anonQuestions[0].summary && (
-                        <p className="text-xs text-slate-500 leading-relaxed mb-4 line-clamp-2">
-                          {anonQuestions[0].summary}
-                        </p>
-                      )}
-                      <div
-                        onPointerUpCapture={loginRedirect}
-                        onPointerCancelCapture={loginRedirect}
-                        onMouseUpCapture={loginRedirect}
-                        onTouchEndCapture={loginRedirect}
-                        className="cursor-pointer"
-                      >
-                        <QuestionStanceSlider
-                          questionId={anonQuestions[0].id}
-                          questionText={anonQuestions[0].question}
-                          summary={anonQuestions[0].summary}
-                          initialValue={null}
-                          onSubmit={loginRedirect}
-                        />
-                      </div>
-                      <div className="mt-4 flex flex-col items-center gap-2">
-                        <p className="text-xs text-slate-400">Log in to record your stance</p>
-                        <button
-                          type="button"
-                          className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-700 transition-colors"
-                          onClick={loginRedirect}
-                        >
-                          Log in to take stance
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* ── Instant feedback ── */}
-              <InstantFeedbackCard
-                dist={feedback}
-                onClose={() => { setFeedback(null); setAnonLastValue(null); }}
-                mode={isAuthed ? "authed" : "anon"}
-                userValue={anonLastValue}
-                onLogin={() => {
-                  const r = window.location.hash || "#/";
-                  sessionStorage.setItem("return_to", r);
-                  navigate("/login");
-                }}
-              />
 
               {/* ── Band 3 — Since You Last Visited (authed only) ── */}
               {isAuthed && (
