@@ -233,11 +233,22 @@ export function useHeroController({
     async (questionId: string): Promise<HeroDistribution | null> => {
       if (!sb) return null;
       try {
-        const { data, error } = await sb.rpc("get_question_distribution", {
-          p_question_id: questionId,
-          p_region: regionLabel,
-          p_window_hours: 168,
-        });
+        // Pass cache-busting headers so PostgREST never serves a stale cached response.
+        // Supabase JS v2 forwards the `headers` option on each RPC call.
+        const { data, error } = await sb.rpc(
+          "get_question_distribution",
+          {
+            p_question_id: questionId,
+            p_region: regionLabel,
+            p_window_hours: 168,
+          },
+          {
+            headers: {
+              "Cache-Control": "no-cache, no-store",
+              "Pragma": "no-cache",
+            },
+          } as any
+        );
         if (error) throw error;
         return Array.isArray(data) && data.length > 0
           ? (data[0] as HeroDistribution)
