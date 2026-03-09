@@ -225,21 +225,6 @@ export function useHeroController({
     return () => clearAllTimers();
   }, [clearAllTimers]);
 
-  // ── Live community distribution polling ──
-  // Starts when hero_ready (so bar is live before user answers).
-  // submitHeroStance also restarts it after submission.
-  // Stops automatically on transition, unmount, or error.
-  React.useEffect(() => {
-    if (status !== "hero_ready" || !currentHeroQuestion) return;
-    const questionId = currentHeroQuestion.question_id;
-    clearDistributionPoll();
-    distributionPollInterval.current = setInterval(async () => {
-      const fresh = await fetchDistribution(questionId);
-      if (fresh) setDistribution(fresh);
-    }, 10_000);
-    return () => clearDistributionPoll();
-  }, [status, currentHeroQuestion, fetchDistribution, clearDistributionPoll]);
-
   // ── Distribution fetch ──
   // Stored in a ref so the polling interval always calls the latest version
   // without needing to be recreated (avoids stale closure in setInterval).
@@ -274,6 +259,21 @@ export function useHeroController({
     (questionId: string) => fetchDistributionRef.current(questionId),
     []
   );
+
+  // ── Live community distribution polling ──
+  // Starts when hero_ready (so bar is live before user answers).
+  // submitHeroStance also restarts it after submission.
+  // Stops automatically on transition, unmount, or error.
+  React.useEffect(() => {
+    if (status !== "hero_ready" || !currentHeroQuestion) return;
+    const questionId = currentHeroQuestion.question_id;
+    clearDistributionPoll();
+    distributionPollInterval.current = setInterval(async () => {
+      const fresh = await fetchDistribution(questionId);
+      if (fresh) setDistribution(fresh);
+    }, 10_000);
+    return () => clearDistributionPoll();
+  }, [status, currentHeroQuestion, fetchDistribution, clearDistributionPoll]);
 
   // ── Transition to next question ──
   // This is the core queue advancement logic.
