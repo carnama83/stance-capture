@@ -381,6 +381,9 @@ export function useHeroController({
     async (value: number) => {
       if (!currentHeroQuestion) return;
 
+      // Block re-submission in result/transitioning state (guards against disabled slider firing)
+      if (status === 'hero_answered_result' || status === 'hero_transitioning' || status === 'hero_submitting') return;
+
       // Anon users → redirect
       if (!isAuthed) {
         onLoginRedirect();
@@ -433,6 +436,7 @@ export function useHeroController({
       }
     },
     [
+      status,
       currentHeroQuestion,
       isAuthed,
       onLoginRedirect,
