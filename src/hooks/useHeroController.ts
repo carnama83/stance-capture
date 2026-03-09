@@ -273,6 +273,7 @@ export function useHeroController({
             "apikey": supabaseKey,
             "Authorization": `Bearer ${accessToken ?? supabaseKey}`,
             "Cache-Control": "no-cache, no-store",
+            "Pragma": "no-cache",
             "x-cache-bust": callId.toString(),
           },
           body: JSON.stringify(body),
