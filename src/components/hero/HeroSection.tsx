@@ -203,11 +203,18 @@ function SectionAQuestion({
             )}
           </div>
 
-          {/* Question headline — large, dark, reads over white and fade zone */}
+          {/* Question headline — adaptive size for long questions, 4-line clamp */}
           <button
             type="button"
             onClick={() => onNavigateToQuestion(question.question_id)}
-            className="text-left text-2xl font-bold text-slate-900 leading-snug hover:underline underline-offset-2"
+            className={[
+              "text-left font-bold text-slate-900 leading-snug hover:underline underline-offset-2 line-clamp-4",
+              question.question_text.length > 160
+                ? "text-base"
+                : question.question_text.length > 100
+                ? "text-lg"
+                : "text-2xl",
+            ].join(" ")}
           >
             {question.question_text}
           </button>
@@ -262,16 +269,19 @@ function SectionAQuestion({
           </div>
         )}
 
-        {/* Slider — always rendered; disabled when result mode or submitting */}
+        {/* Slider — always rendered.
+             In result mode: initialValue=null (position shown via distribution bar),
+             disabled=true to prevent re-submission.
+             pulseThumb only when interactive. */}
         {isAuthed ? (
           <QuestionStanceSlider
             key={`hero-${question.question_id}`}
             questionId={question.question_id}
             questionText={question.question_text}
             summary={question.summary}
-            initialValue={submittedStance ?? null}
+            initialValue={isResultMode ? null : null}
             disabled={isResultMode || isSubmitting}
-            pulseThumb={!isResultMode}
+            pulseThumb={!isResultMode && !isSubmitting}
             onSubmit={onSubmit}
           />
         ) : (
