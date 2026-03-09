@@ -222,55 +222,48 @@ function SectionAQuestion({
       {/* ── Slider / Result section ── */}
       <div className="flex-1 px-5 pb-5 pt-4 border-t border-slate-100">
 
-        {question.summary && !isResultMode && (
-          <p className="text-xs text-slate-500 leading-relaxed mb-3 line-clamp-2">
-            {question.summary}
-          </p>
-        )}
+        {/* Community distribution bar — always visible */}
+        <div className="mb-4">
+          {distribution && (distribution.responses ?? 0) > 0 ? (
+            <StanceDistributionBar
+              distribution={{
+                support_pct: distribution.support_pct,
+                neutral_pct: distribution.neutral_pct,
+                oppose_pct: distribution.oppose_pct,
+                responses: distribution.responses,
+              }}
+              userStance={isResultMode ? submittedStance : null}
+              showAlignment={isResultMode}
+              showCount={true}
+              size="md"
+            />
+          ) : (
+            <div className="flex items-center gap-2 py-1">
+              <div className="h-2 flex-1 rounded-full bg-slate-100" />
+              <span className="text-[11px] text-slate-400 whitespace-nowrap">
+                Responses coming in — trending will show soon
+              </span>
+            </div>
+          )}
 
-        {/* Distribution bar — shown above slider in result mode only */}
-        {isResultMode && (
-          <div
-            className="mb-4 transition-opacity duration-300"
-            style={{ opacity: status === "hero_transitioning" ? 0 : 1 }}
-          >
-            {distribution ? (
-              <StanceDistributionBar
-                distribution={{
-                  support_pct: distribution.support_pct,
-                  neutral_pct: distribution.neutral_pct,
-                  oppose_pct: distribution.oppose_pct,
-                  responses: distribution.responses,
-                }}
-                userStance={submittedStance}
-                showAlignment={true}
-                showCount={true}
-                size="md"
-              />
-            ) : (
-              <div className="animate-pulse space-y-2">
-                <div className="h-3 w-full rounded-full bg-slate-100" />
-                <div className="h-3 w-3/4 rounded bg-slate-100" />
-              </div>
-            )}
+          {/* Next question nudge — only after user has answered */}
+          {status === "hero_answered_result" && (
+            <button
+              type="button"
+              onClick={onAdvanceNow}
+              className="mt-2 text-xs font-medium text-slate-400 hover:text-slate-700 transition-colors underline underline-offset-2"
+            >
+              Next question →
+            </button>
+          )}
+        </div>
 
-            {/* Next question nudge */}
-            {status === "hero_answered_result" && (
-              <button
-                type="button"
-                onClick={onAdvanceNow}
-                className="mt-3 text-xs font-medium text-slate-400 hover:text-slate-700 transition-colors underline underline-offset-2"
-              >
-                Next question →
-              </button>
-            )}
-          </div>
-        )}
+        {/* Divider between community bar and user's slider */}
+        <div className="border-t border-slate-100 mb-4" />
 
-        {/* Slider — always rendered.
-             In result mode: initialValue=null (position shown via distribution bar),
-             disabled=true to prevent re-submission.
-             pulseThumb only when interactive. */}
+        {/* Slider — hidden once user has answered, replaced by the distribution bar alignment */}
+        {!isResultMode && (
+        <>
         {isAuthed ? (
           <QuestionStanceSlider
             key={`hero-${question.question_id}`}
@@ -311,6 +304,8 @@ function SectionAQuestion({
               </button>
             </div>
           </>
+        )}
+        </>
         )}
       </div>
     </div>
