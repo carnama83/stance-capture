@@ -399,17 +399,28 @@ export function useHeroController({
   // ── Live community distribution polling ──
   // Uses primitive deps (status string + questionId string) to prevent
   // the effect re-running whenever object references change.
+  // Use a ref-based ticker that's immune to React re-renders.
+  // We start/stop it imperatively via effects, but the interval itself
+  // only ever exists once — checked by the ref guard before creation.
   React.useEffect(() => {
-    if (status !== "hero_ready" || !currentQuestionId) return;
+    if (status !== "hero_ready" || !currentQuestionId) {
+      // Stop polling if we leave hero_ready
+      if (distributionPollInterval.current) {
+        console.log(`[hero:poll] ■ stopping — status=${status} qId=${currentQuestionId?.slice(0,8)}`);
+        clearInterval(distributionPollInterval.current);
+        distributionPollInterval.current = null;
+      }
+      return;
+    }
 
-    // Clear any existing interval FIRST
+    // Guard: if an interval already exists for this exact question, don't create another
     if (distributionPollInterval.current) {
-      clearInterval(distributionPollInterval.current);
-      distributionPollInterval.current = null;
+      console.log(`[hero:poll] ⚠ interval already running — skipping creation id=${instanceId.current}`);
+      return;
     }
 
     const pollCreatedAt = Date.now();
-    console.log(`[hero:poll] ▶ NEW INTERVAL CREATED id=${instanceId.current} qId=${currentQuestionId.slice(0,8)} at=${pollCreatedAt} — status=${status}`);
+    console.log(`[hero:poll] ▶ NEW INTERVAL CREATED id=${instanceId.current} qId=${currentQuestionId.slice(0,8)} at=${pollCreatedAt}`);
     distributionPollInterval.current = setInterval(async () => {
       console.log(`[hero:poll] ⏱ tick id=${instanceId.current} qId=${currentQuestionId.slice(0,8)}`);
       const fresh = await fetchDistributionRef.current(currentQuestionId);
@@ -417,18 +428,17 @@ export function useHeroController({
         console.log(`[hero:poll] ✓ updated distribution — responses=${fresh.responses}`);
         setDistribution(fresh);
       } else {
-        console.warn(`[hero:poll] ✗ poll returned null, distribution unchanged`);
+        console.warn(`[hero:poll] ✗ poll returned null`);
       }
     }, 10_000);
 
     return () => {
-      console.log(`[hero:poll] ■ INTERVAL CLEANUP id=${instanceId.current} qId=${currentQuestionId.slice(0,8)} created=${pollCreatedAt} — status=${status}`);
+      console.log(`[hero:poll] ■ CLEANUP id=${instanceId.current} created=${pollCreatedAt}`);
       if (distributionPollInterval.current) {
         clearInterval(distributionPollInterval.current);
         distributionPollInterval.current = null;
       }
     };
-  // Primitive deps only — avoids restart on object reference changes
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, currentQuestionId]);
 
