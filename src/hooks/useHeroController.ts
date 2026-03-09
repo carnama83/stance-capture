@@ -233,23 +233,34 @@ export function useHeroController({
     async (questionId: string): Promise<HeroDistribution | null> => {
       if (!sb) return null;
       try {
-        // Pass cache-busting headers so PostgREST never serves a stale cached response.
-        // Supabase JS v2 forwards the `headers` option on each RPC call.
-        const { data, error } = await sb.rpc(
-          "get_question_distribution",
-          {
+        // Use raw fetch with cache: 'no-store' and a timestamp query param
+        // to guarantee every poll hits the database fresh, bypassing all
+        // HTTP-level caching in the Supabase JS client and browser.
+        const supabaseUrl = (sb as any).supabaseUrl as string;
+        const supabaseKey = (sb as any).supabaseKey as string;
+        const session = await sb.auth.getSession();
+        const accessToken = session.data.session?.access_token;
+
+        const url = new URL(`${supabaseUrl}/rest/v1/rpc/get_question_distribution`);
+        url.searchParams.set("_cb", Date.now().toString()); // cache bust
+
+        const res = await fetch(url.toString(), {
+          method: "POST",
+          cache: "no-store",
+          headers: {
+            "Content-Type": "application/json",
+            "apikey": supabaseKey,
+            ...(accessToken ? { "Authorization": `Bearer ${accessToken}` } : {}),
+          },
+          body: JSON.stringify({
             p_question_id: questionId,
             p_region: regionLabel,
             p_window_hours: 168,
-          },
-          {
-            headers: {
-              "Cache-Control": "no-cache, no-store",
-              "Pragma": "no-cache",
-            },
-          } as any
-        );
-        if (error) throw error;
+          }),
+        });
+
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
         return Array.isArray(data) && data.length > 0
           ? (data[0] as HeroDistribution)
           : null;
