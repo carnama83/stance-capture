@@ -318,7 +318,7 @@ export function useHeroController({
     []
   );
 
-  const currentQuestionId = currentHeroQuestion?.question_id ?? null;
+  const currentQuestionId = React.useMemo(() => currentHeroQuestion?.question_id ?? null, [currentHeroQuestion?.question_id]);
 
   // ── Realtime subscription: question_stances changes ──
   // Subscribes directly to Supabase Realtime on the question_stances table.
@@ -353,7 +353,13 @@ export function useHeroController({
         }
       )
       .subscribe((status) => {
-        console.log(`[hero:realtime] channel status=${status} qId=${questionId.slice(0,8)}`);
+        if (status === "SUBSCRIBED") {
+          console.log(`[hero:realtime] ✅ SUBSCRIBED — listening for stance changes on qId=${questionId.slice(0,8)}`);
+        } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          console.error(`[hero:realtime] ❌ channel ${status} — realtime NOT working for qId=${questionId.slice(0,8)}`);
+        } else {
+          console.log(`[hero:realtime] channel status=${status} qId=${questionId.slice(0,8)}`);
+        }
       });
 
     return () => {
@@ -362,6 +368,33 @@ export function useHeroController({
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sb, currentQuestionId]);
+
+  // ── Belt-and-suspenders: window event fallback ──
+  // Catches stance changes from THIS browser tab (e.g. QuestionDetailPage)
+  // in case Supabase Realtime is not enabled on question_stances table.
+  // To enable Realtime: Supabase Dashboard → Database → Replication → question_stances → enable all events.
+  React.useEffect(() => {
+    if (!currentQuestionId) return;
+    const handler = (e: Event) => {
+      const { questionId, value } = (e as CustomEvent).detail ?? {};
+      console.log(`[hero:window-event] stance-saved fired qId=${questionId?.slice(0,8)} value=${value}`);
+      if (questionId === currentQuestionId) {
+        console.log(`[hero:window-event] ✓ matches hero question — refreshing distribution`);
+        fetchDistributionRef.current(currentQuestionId).then((fresh) => {
+          if (fresh) {
+            console.log(`[hero:window-event] ✓ refreshed — responses=${fresh.responses} oppose=${fresh.oppose_pct}% support=${fresh.support_pct}%`);
+            setDistribution(fresh);
+          } else {
+            console.warn(`[hero:window-event] ✗ refresh returned null`);
+          }
+        });
+      } else {
+        console.log(`[hero:window-event] different question — ignoring`);
+      }
+    };
+    window.addEventListener("stance-saved", handler);
+    return () => window.removeEventListener("stance-saved", handler);
+  }, [currentQuestionId]);
 
   // ── Live community distribution polling ──
   // Uses primitive deps (status string + questionId string) to prevent
@@ -375,7 +408,8 @@ export function useHeroController({
       distributionPollInterval.current = null;
     }
 
-    console.log(`[hero:poll] ▶ polling started id=${instanceId.current} qId=${currentQuestionId.slice(0,8)} every 10s`);
+    const pollCreatedAt = Date.now();
+    console.log(`[hero:poll] ▶ NEW INTERVAL CREATED id=${instanceId.current} qId=${currentQuestionId.slice(0,8)} at=${pollCreatedAt} — status=${status}`);
     distributionPollInterval.current = setInterval(async () => {
       console.log(`[hero:poll] ⏱ tick id=${instanceId.current} qId=${currentQuestionId.slice(0,8)}`);
       const fresh = await fetchDistributionRef.current(currentQuestionId);
@@ -388,7 +422,7 @@ export function useHeroController({
     }, 10_000);
 
     return () => {
-      console.log(`[hero:poll] ■ polling stopped for qId=${currentQuestionId.slice(0,8)}`);
+      console.log(`[hero:poll] ■ INTERVAL CLEANUP id=${instanceId.current} qId=${currentQuestionId.slice(0,8)} created=${pollCreatedAt} — status=${status}`);
       if (distributionPollInterval.current) {
         clearInterval(distributionPollInterval.current);
         distributionPollInterval.current = null;
