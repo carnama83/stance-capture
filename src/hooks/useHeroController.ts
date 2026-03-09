@@ -133,8 +133,6 @@ export interface UseHeroControllerOptions {
   onRequestReplenish: () => void;
   onSubmitSuccess: (questionId: string, value: number) => Promise<void>;
   onLoginRedirect: () => void;
-  /** Pre-loaded stats for initial hero question. my_stance pre-fills slider on already-answered questions. */
-  heroStats?: { my_stance: number | null } | null;
 }
 
 export interface UseHeroControllerReturn {
@@ -173,7 +171,6 @@ export function useHeroController({
   onRequestReplenish,
   onSubmitSuccess,
   onLoginRedirect,
-  heroStats,
 }: UseHeroControllerOptions): UseHeroControllerReturn {
   const sb = React.useMemo(getSupabase, []);
 
@@ -259,17 +256,10 @@ export function useHeroController({
         setQueuedQuestions(updatedQueue);
         setErrorMessage(null);
 
-        // If already answered: enter static result mode (no auto-timer per spec)
-        if (nextQuestion.user_has_answered) {
-          fetchDistribution(nextQuestion.question_id).then((dist) => {
-            setDistribution(dist);
-            setStatus("hero_answered_result");
-            fireAnalytics("hero_alignment_viewed", { questionId: nextQuestion.question_id });
-          });
-        } else {
-          setStatus("hero_ready");
-          fireAnalytics("hero_question_impression", { questionId: nextQuestion.question_id });
-        }
+        // Always enter hero_ready — doTransition only called with unanswered questions
+        // (already-answered questions only surface via explicit promoteQuestion click)
+        setStatus("hero_ready");
+        fireAnalytics("hero_question_impression", { questionId: nextQuestion.question_id });
       }, TRANSITION_MS);
     },
     [clearAllTimers, fetchDistribution]
@@ -296,11 +286,11 @@ export function useHeroController({
     if (status !== "hero_loading") {
       // If we're in waiting_next and new questions arrived, advance
       if (status === "hero_waiting_next" && allQuestions.length > 0) {
-        const unused = allQuestions.filter(
-          (q) => !usedQuestionIds.current.has(q.question_id)
+        const eligible = allQuestions.filter(
+          (q) => !usedQuestionIds.current.has(q.question_id) && !q.user_has_answered
         );
-        if (unused.length > 0) {
-          const [next, ...rest] = unused;
+        if (eligible.length > 0) {
+          const [next, ...rest] = eligible;
           doTransition(next, rest);
         }
       }
@@ -315,37 +305,25 @@ export function useHeroController({
       return;
     }
 
-    // Pick first unused question as hero
-    const unused = allQuestions.filter(
-      (q) => !usedQuestionIds.current.has(q.question_id)
+    // Exclude already-answered questions entirely — users go to My Stances to revisit
+    const eligible = allQuestions.filter(
+      (q) => !usedQuestionIds.current.has(q.question_id) && !q.user_has_answered
     );
 
-    if (unused.length === 0) {
+    if (eligible.length === 0) {
       setStatus("hero_waiting_next");
+      onRequestReplenish();
       return;
     }
 
-    const [first, ...rest] = unused;
+    const [first, ...rest] = eligible;
     usedQuestionIds.current.add(first.question_id);
     setCurrentHeroQuestion(first);
     setQueuedQuestions(rest);
     checkReplenish(rest);
 
-    // Already answered → static result mode (no auto-advance timer per spec)
-    if (first.user_has_answered) {
-      // Pre-fill submittedStance from heroStats so slider shows saved position
-      if (heroStats?.my_stance != null) {
-        setSubmittedStance(heroStats.my_stance);
-      }
-      fetchDistribution(first.question_id).then((dist) => {
-        setDistribution(dist);
-        setStatus("hero_answered_result");
-        fireAnalytics("hero_alignment_viewed", { questionId: first.question_id });
-      });
-    } else {
-      setStatus("hero_ready");
-      fireAnalytics("hero_question_impression", { questionId: first.question_id });
-    }
+    setStatus("hero_ready");
+    fireAnalytics("hero_question_impression", { questionId: first.question_id });
   }, [allQuestions, isLoading, status, doTransition, checkReplenish, fetchDistribution]);
 
   // ── Sync queue when allQuestions grows (replenishment) ──
@@ -361,11 +339,11 @@ export function useHeroController({
       return;
     }
 
+    // Only inject unanswered questions into queue
     const newUnused = allQuestions.filter(
-      (q) => !usedQuestionIds.current.has(q.question_id)
+      (q) => !usedQuestionIds.current.has(q.question_id) && !q.user_has_answered
     );
 
-    // Only update if we have genuinely new questions not already in queue
     const currentQueueIds = new Set(queuedQuestions.map((q) => q.question_id));
     const brandNew = newUnused.filter((q) => !currentQueueIds.has(q.question_id));
 
@@ -409,22 +387,27 @@ export function useHeroController({
         fireAnalytics("hero_stance_submitted", { questionId, value });
         fireAnalytics("hero_alignment_viewed", { questionId });
 
-        // Start auto-advance timer
-        // Timer fires → hero_transitioning → hero_ready (or hero_waiting_next)
+        // Start auto-advance timer — skips already-answered questions
         clearAutoAdvance();
         autoAdvanceTimer.current = setTimeout(() => {
           autoAdvanceTimer.current = null;
           fireAnalytics("hero_auto_advance", { questionId });
 
-          const nextQuestion = queuedQuestions[0] ?? null;
+          // Find next unanswered question in queue
+          const nextIdx = queuedQuestions.findIndex((q) => !q.user_has_answered);
 
-          if (!nextQuestion) {
+          if (nextIdx === -1) {
+            // No unanswered questions left — request replenishment
             setStatus("hero_waiting_next");
             onRequestReplenish();
             return;
           }
 
-          const updatedQueue = queuedQuestions.slice(1);
+          const nextQuestion = queuedQuestions[nextIdx];
+          const updatedQueue = [
+            ...queuedQuestions.slice(0, nextIdx),
+            ...queuedQuestions.slice(nextIdx + 1),
+          ];
           checkReplenish(updatedQueue);
           doTransition(nextQuestion, updatedQueue);
         }, RESULT_DWELL_MS);
@@ -497,15 +480,20 @@ export function useHeroController({
   const advanceNow = React.useCallback(() => {
     clearAutoAdvance();
 
-    const nextQuestion = queuedQuestions[0] ?? null;
+    // Skip to next unanswered question
+    const nextIdx = queuedQuestions.findIndex((q) => !q.user_has_answered);
 
-    if (!nextQuestion) {
+    if (nextIdx === -1) {
       setStatus("hero_waiting_next");
       onRequestReplenish();
       return;
     }
 
-    const updatedQueue = queuedQuestions.slice(1);
+    const nextQuestion = queuedQuestions[nextIdx];
+    const updatedQueue = [
+      ...queuedQuestions.slice(0, nextIdx),
+      ...queuedQuestions.slice(nextIdx + 1),
+    ];
     checkReplenish(updatedQueue);
     doTransition(nextQuestion, updatedQueue);
   }, [clearAutoAdvance, queuedQuestions, onRequestReplenish, checkReplenish, doTransition]);
