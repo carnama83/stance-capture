@@ -149,56 +149,63 @@ function SectionAQuestion({
   return (
     <div className="flex flex-col h-full">
 
-      {/* ── Image + text overlay ── */}
-      <div className="relative overflow-hidden rounded-t-xl" style={{ minHeight: 200 }}>
-        {question.cover_image_url ? (
+      {/* ── Split layout: text left on white, image right with fade ── */}
+      <div className="relative overflow-hidden">
+
+        {/* Image — absolute, right-aligned, fills full height of this section */}
+        {question.cover_image_url && (
           <>
             <img
               src={question.cover_image_url}
               alt=""
-              className="absolute inset-0 h-full w-full object-cover object-center"
+              className="absolute top-0 right-0 h-full w-3/5 object-cover object-center"
               loading="eager"
             />
-            {/* Gradient overlay: dark bottom for text legibility */}
+            {/* Left-to-right fade: white → transparent, covering ~55% from left.
+                Text sits on pure white; image bleeds in naturally from the right. */}
             <div
-              className="absolute inset-0 pointer-events-none"
+              className="absolute top-0 right-0 h-full w-3/5 pointer-events-none"
               style={{
                 background:
-                  "linear-gradient(to bottom, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.55) 60%, rgba(0,0,0,0.82) 100%)",
+                  "linear-gradient(to right, white 0%, white 15%, rgba(255,255,255,0.85) 35%, rgba(255,255,255,0.3) 65%, transparent 100%)",
               }}
             />
           </>
-        ) : (
-          /* No image — slate gradient placeholder */
-          <div className="absolute inset-0 bg-gradient-to-br from-slate-700 to-slate-900" />
         )}
 
-        {/* Text content over image */}
-        <div className="relative z-10 p-5 pb-6 flex flex-col justify-end h-full" style={{ minHeight: 200 }}>
-          {/* Topic + audience metadata */}
-          <div className="flex flex-wrap items-center gap-1.5 mb-2.5">
+        {/* Text content — sits on white, left-aligned, z above the image */}
+        <div className="relative z-10 p-5 pb-4" style={{ maxWidth: "68%" }}>
+
+          {/* Eyebrow */}
+          <div className="flex items-center gap-1.5 mb-0.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-sm font-semibold text-slate-900">One big shifting question</span>
+          </div>
+          <p className="text-xs text-slate-500 mb-4">
+            Answer in seconds — see where society stands.
+          </p>
+
+          {/* Tags + signals */}
+          <div className="flex flex-wrap gap-1.5 mb-3">
             {question.topic_title && (
-              <span className="inline-flex items-center rounded-full bg-white/20 backdrop-blur-sm px-2.5 py-0.5 text-[11px] font-medium text-white/90">
-                {question.topic_title}
-              </span>
+              <Tag primary>{question.topic_title}</Tag>
             )}
             {question.audience_location_label && (
-              <span className="inline-flex items-center rounded-full bg-white/15 backdrop-blur-sm px-2.5 py-0.5 text-[11px] text-white/75">
-                📍 {question.audience_location_label}
-              </span>
+              <Tag>📍 {question.audience_location_label}</Tag>
             )}
-            {question.tags && question.tags.length > 0 && (
-              <span className="inline-flex items-center rounded-full bg-white/15 backdrop-blur-sm px-2.5 py-0.5 text-[11px] text-white/75">
-                {question.tags[0]}
-              </span>
+            {question.tags && question.tags.slice(0, 2).map((t) => (
+              <Tag key={t}>{t}</Tag>
+            ))}
+            {question.trend_micro_signal && (
+              <Pill>{question.trend_micro_signal.toUpperCase()}</Pill>
             )}
           </div>
 
-          {/* Question headline */}
+          {/* Question headline — large, dark, reads over white and fade zone */}
           <button
             type="button"
             onClick={() => onNavigateToQuestion(question.question_id)}
-            className="text-left text-xl font-bold text-white leading-snug hover:underline underline-offset-2 sm:text-2xl"
+            className="text-left text-2xl font-bold text-slate-900 leading-snug hover:underline underline-offset-2"
           >
             {question.question_text}
           </button>
