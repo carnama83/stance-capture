@@ -153,6 +153,8 @@ export interface UseHeroControllerReturn {
   advanceNow: () => void;
   /** Retry after error */
   retry: () => void;
+  /** Manually refresh the community distribution bar */
+  refreshDistribution: () => void;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -233,24 +235,43 @@ export function useHeroController({
     async (questionId: string): Promise<HeroDistribution | null> => {
       if (!sb) return null;
       try {
-        // Use raw fetch with cache: 'no-store' and a timestamp query param
-        // to guarantee every poll hits the database fresh, bypassing all
-        // HTTP-level caching in the Supabase JS client and browser.
-        const supabaseUrl = (sb as any).supabaseUrl as string;
-        const supabaseKey = (sb as any).supabaseKey as string;
+        // Extract URL and key from Supabase client internals
+        // Supabase JS v2 stores these on the rest client
+        const restClient = (sb as any).rest ?? (sb as any).restUrl;
+        const supabaseUrl: string =
+          (sb as any).supabaseUrl ??
+          (sb as any).rest?.url?.replace("/rest/v1", "") ??
+          "";
+        const supabaseKey: string =
+          (sb as any).supabaseKey ??
+          (sb as any).rest?.headers?.["apikey"] ??
+          "";
+
+        if (!supabaseUrl || !supabaseKey) {
+          // Fallback to regular RPC if we can't extract URL/key
+          console.warn("[hero] falling back to sb.rpc");
+          const { data, error } = await sb.rpc("get_question_distribution", {
+            p_question_id: questionId,
+            p_region: regionLabel,
+            p_window_hours: 168,
+          });
+          if (error) throw error;
+          return Array.isArray(data) && data.length > 0 ? (data[0] as HeroDistribution) : null;
+        }
+
         const session = await sb.auth.getSession();
         const accessToken = session.data.session?.access_token;
 
-        const url = new URL(`${supabaseUrl}/rest/v1/rpc/get_question_distribution`);
-        url.searchParams.set("_cb", Date.now().toString()); // cache bust
+        // Cache-bust with timestamp so no HTTP layer can cache this
+        const url = `${supabaseUrl}/rest/v1/rpc/get_question_distribution?_cb=${Date.now()}`;
 
-        const res = await fetch(url.toString(), {
+        const res = await fetch(url, {
           method: "POST",
           cache: "no-store",
           headers: {
             "Content-Type": "application/json",
             "apikey": supabaseKey,
-            ...(accessToken ? { "Authorization": `Bearer ${accessToken}` } : {}),
+            "Authorization": `Bearer ${accessToken ?? supabaseKey}`,
           },
           body: JSON.stringify({
             p_question_id: questionId,
@@ -259,7 +280,10 @@ export function useHeroController({
           }),
         });
 
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(`HTTP ${res.status}: ${errText}`);
+        }
         const data = await res.json();
         return Array.isArray(data) && data.length > 0
           ? (data[0] as HeroDistribution)
@@ -554,6 +578,13 @@ export function useHeroController({
 
   // ── Return ──
 
+  const refreshDistribution = React.useCallback(() => {
+    if (!currentHeroQuestion) return;
+    fetchDistribution(currentHeroQuestion.question_id).then((fresh) => {
+      if (fresh) setDistribution(fresh);
+    });
+  }, [currentHeroQuestion, fetchDistribution]);
+
   return {
     status,
     currentHeroQuestion,
@@ -565,5 +596,6 @@ export function useHeroController({
     promoteQuestion,
     advanceNow,
     retry,
+    refreshDistribution,
   };
 }
