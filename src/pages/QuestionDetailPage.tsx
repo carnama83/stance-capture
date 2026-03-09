@@ -569,6 +569,13 @@ export default function QuestionDetailPage() {
       queryClient.setQueryData(["my-stance", questionId], newScore);
       queryClient.invalidateQueries({ queryKey: ["question-stats", questionId] });
 
+      // Notify hero section on homepage to immediately refresh community distribution
+      const savedScore = typeof vars === "number" ? vars : newScore;
+      console.log(`[qdp:stance] dispatching stance-saved qId=${questionId.slice(0,8)} score=${savedScore}`);
+      window.dispatchEvent(new CustomEvent("stance-saved", {
+        detail: { questionId, value: savedScore }
+      }));
+
       if (userId && question?.topic_id) {
         const answered = newScore !== null;
         await trackQuestionInteraction(userId, questionId, question.topic_id, answered);
