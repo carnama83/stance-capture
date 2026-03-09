@@ -376,7 +376,7 @@ export function useHeroController({
 
     console.log(`[hero:poll] ▶ polling started id=${instanceId.current} qId=${currentQuestionId.slice(0,8)} every 10s`);
     distributionPollInterval.current = setInterval(async () => {
-      console.log(`[hero:poll] ⏱ tick for qId=${currentQuestionId.slice(0,8)}`);
+      console.log(`[hero:poll] ⏱ tick id=${instanceId.current} qId=${currentQuestionId.slice(0,8)}`);
       const fresh = await fetchDistributionRef.current(currentQuestionId);
       if (fresh) {
         console.log(`[hero:poll] ✓ updated distribution — responses=${fresh.responses}`);
