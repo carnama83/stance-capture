@@ -234,17 +234,28 @@ export function useHeroController({
   const fetchDistributionFn = React.useCallback(
     async (questionId: string): Promise<HeroDistribution | null> => {
       if (!sb) return null;
+      const callId = Date.now();
+      console.log(`[hero:dist] ► fetch START qId=${questionId.slice(0,8)} callId=${callId}`);
       try {
-        // Use Vite env vars — always available, no internal property guessing
         const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
         const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
+        if (!supabaseUrl || !supabaseKey) {
+          console.error("[hero:dist] ✗ Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY");
+          return null;
+        }
+
         const session = await sb.auth.getSession();
         const accessToken = session.data.session?.access_token;
+        console.log(`[hero:dist]   auth=${accessToken ? "bearer" : "anon-key"}`);
 
-        // POST with cache-buster in a custom header (PostgREST ignores unknown headers,
-        // but the unique value prevents the browser/CDN from serving a cached response)
         const url = `${supabaseUrl}/rest/v1/rpc/get_question_distribution`;
+        const body = {
+          p_question_id: questionId,
+          p_region: regionLabel,
+          p_window_hours: 168,
+        };
+        console.log(`[hero:dist]   POST ${url}`, body);
 
         const res = await fetch(url, {
           method: "POST",
@@ -254,26 +265,34 @@ export function useHeroController({
             "apikey": supabaseKey,
             "Authorization": `Bearer ${accessToken ?? supabaseKey}`,
             "Cache-Control": "no-cache, no-store",
-            "x-cache-bust": Date.now().toString(),
+            "x-cache-bust": callId.toString(),
           },
-          body: JSON.stringify({
-            p_question_id: questionId,
-            p_region: regionLabel,
-            p_window_hours: 168,
-          }),
+          body: JSON.stringify(body),
         });
+
+        console.log(`[hero:dist]   response status=${res.status} ok=${res.ok}`);
 
         if (!res.ok) {
           const errText = await res.text();
-          console.error("[hero] fetchDistribution HTTP error", res.status, errText);
+          console.error(`[hero:dist] ✗ HTTP ${res.status}:`, errText);
           throw new Error(`HTTP ${res.status}`);
         }
+
         const data = await res.json();
-        return Array.isArray(data) && data.length > 0
+        console.log(`[hero:dist]   raw response:`, data);
+
+        const result = Array.isArray(data) && data.length > 0
           ? (data[0] as HeroDistribution)
           : null;
+
+        if (result) {
+          console.log(`[hero:dist] ✓ responses=${result.responses} oppose=${result.oppose_pct}% neutral=${result.neutral_pct}% support=${result.support_pct}%`);
+        } else {
+          console.warn(`[hero:dist] ✗ empty result — data was:`, data);
+        }
+        return result;
       } catch (e) {
-        console.error("[hero] fetchDistribution failed:", e);
+        console.error(`[hero:dist] ✗ exception callId=${callId}:`, e);
         return null;
       }
     },
@@ -298,11 +317,21 @@ export function useHeroController({
     if (status !== "hero_ready" || !currentHeroQuestion) return;
     const questionId = currentHeroQuestion.question_id;
     clearDistributionPoll();
+    console.log(`[hero:poll] ▶ polling started for qId=${questionId.slice(0,8)} every 10s`);
     distributionPollInterval.current = setInterval(async () => {
+      console.log(`[hero:poll] ⏱ tick for qId=${questionId.slice(0,8)}`);
       const fresh = await fetchDistribution(questionId);
-      if (fresh) setDistribution(fresh);
+      if (fresh) {
+        console.log(`[hero:poll] ✓ updated distribution — responses=${fresh.responses}`);
+        setDistribution(fresh);
+      } else {
+        console.warn(`[hero:poll] ✗ poll returned null, distribution unchanged`);
+      }
     }, 10_000);
-    return () => clearDistributionPoll();
+    return () => {
+      console.log(`[hero:poll] ■ polling stopped for qId=${questionId.slice(0,8)}`);
+      clearDistributionPoll();
+    };
   }, [status, currentHeroQuestion, fetchDistribution, clearDistributionPoll]);
 
   // ── Transition to next question ──
@@ -391,11 +420,17 @@ export function useHeroController({
     setQueuedQuestions(rest);
     checkReplenish(rest);
 
+    console.log(`[hero:init] entering hero_ready qId=${first.question_id.slice(0,8)}`);
     setStatus("hero_ready");
     fireAnalytics("hero_question_impression", { questionId: first.question_id });
     // Pre-fetch community distribution so the bar shows immediately
     fetchDistribution(first.question_id).then((dist) => {
-      if (dist) setDistribution(dist);
+      if (dist) {
+        console.log(`[hero:init] initial distribution loaded — responses=${dist.responses}`);
+        setDistribution(dist);
+      } else {
+        console.warn(`[hero:init] initial distribution returned null`);
+      }
     });
   }, [allQuestions, isLoading, status, doTransition, checkReplenish, fetchDistribution]);
 
@@ -462,9 +497,16 @@ export function useHeroController({
 
         // Poll distribution every 10s — keeps community bar live before and after answering
         clearDistributionPoll();
+        console.log(`[hero:poll] ▶ post-submit polling started for qId=${questionId.slice(0,8)}`);
         distributionPollInterval.current = setInterval(async () => {
+          console.log(`[hero:poll] ⏱ post-submit tick for qId=${questionId.slice(0,8)}`);
           const fresh = await fetchDistribution(questionId);
-          if (fresh) setDistribution(fresh);
+          if (fresh) {
+            console.log(`[hero:poll] ✓ post-submit distribution updated — responses=${fresh.responses}`);
+            setDistribution(fresh);
+          } else {
+            console.warn(`[hero:poll] ✗ post-submit poll returned null`);
+          }
         }, 10_000);
       } catch (err) {
         console.error("[hero] submitHeroStance failed", err);
@@ -564,8 +606,14 @@ export function useHeroController({
 
   const refreshDistribution = React.useCallback(() => {
     if (!currentHeroQuestion) return;
+    console.log(`[hero:refresh] manual refresh triggered for qId=${currentHeroQuestion.question_id.slice(0,8)}`);
     fetchDistribution(currentHeroQuestion.question_id).then((fresh) => {
-      if (fresh) setDistribution(fresh);
+      if (fresh) {
+        console.log(`[hero:refresh] ✓ manual refresh succeeded — responses=${fresh.responses}`);
+        setDistribution(fresh);
+      } else {
+        console.warn(`[hero:refresh] ✗ manual refresh returned null`);
+      }
     });
   }, [currentHeroQuestion, fetchDistribution]);
 
