@@ -227,6 +227,31 @@ export function useHeroController({
     return () => clearAllTimers();
   }, [clearAllTimers]);
 
+  // ── Cross-page stance change listener ──
+  // Fires when any page (e.g. QuestionDetailPage) saves a stance via submitStance.
+  // Immediately re-fetches distribution so homepage bar updates without waiting for poll tick.
+  React.useEffect(() => {
+    const handler = (e: Event) => {
+      const { questionId, value } = (e as CustomEvent).detail ?? {};
+      console.log(`[hero:event] stance-saved event received qId=${questionId?.slice(0,8)} value=${value}`);
+      if (currentHeroQuestion && questionId === currentHeroQuestion.question_id) {
+        console.log(`[hero:event] ✓ matches current hero question — refreshing distribution immediately`);
+        fetchDistribution(currentHeroQuestion.question_id).then((fresh) => {
+          if (fresh) {
+            console.log(`[hero:event] ✓ distribution refreshed — responses=${fresh.responses} oppose=${fresh.oppose_pct}% support=${fresh.support_pct}%`);
+            setDistribution(fresh);
+          } else {
+            console.warn(`[hero:event] ✗ distribution refresh returned null`);
+          }
+        });
+      } else {
+        console.log(`[hero:event] ✗ different question (hero=${currentHeroQuestion?.question_id?.slice(0,8)}) — ignoring`);
+      }
+    };
+    window.addEventListener("stance-saved", handler);
+    return () => window.removeEventListener("stance-saved", handler);
+  }, [currentHeroQuestion, fetchDistribution]);
+
   // ── Distribution fetch ──
   // Stored in a ref so the polling interval always calls the latest version
   // without needing to be recreated (avoids stale closure in setInterval).
