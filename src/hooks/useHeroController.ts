@@ -188,6 +188,8 @@ export function useHeroController({
   const autoAdvanceTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   // Transition completion timer
   const transitionTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Live distribution polling interval (active while in hero_answered_result)
+  const distributionPollInterval = React.useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── Timer helpers ──
 
@@ -205,10 +207,18 @@ export function useHeroController({
     }
   }, []);
 
+  const clearDistributionPoll = React.useCallback(() => {
+    if (distributionPollInterval.current) {
+      clearInterval(distributionPollInterval.current);
+      distributionPollInterval.current = null;
+    }
+  }, []);
+
   const clearAllTimers = React.useCallback(() => {
     clearAutoAdvance();
     clearTransition();
-  }, [clearAutoAdvance, clearTransition]);
+    clearDistributionPoll();
+  }, [clearAutoAdvance, clearTransition, clearDistributionPoll]);
 
   // Cleanup on unmount
   React.useEffect(() => {
@@ -386,7 +396,12 @@ export function useHeroController({
         fireAnalytics("hero_stance_submitted", { questionId, value });
         fireAnalytics("hero_alignment_viewed", { questionId });
 
-        // No auto-advance — user clicks "Next question" manually.
+        // Poll distribution every 5s to reflect other users' responses in real time
+        clearDistributionPoll();
+        distributionPollInterval.current = setInterval(async () => {
+          const fresh = await fetchDistribution(questionId);
+          if (fresh) setDistribution(fresh);
+        }, 05_000);
       } catch (err) {
         console.error("[hero] submitHeroStance failed", err);
         setStatus("hero_error");
@@ -401,6 +416,7 @@ export function useHeroController({
       onLoginRedirect,
       onSubmitSuccess,
       fetchDistribution,
+      clearDistributionPoll,
       queuedQuestions,
       onRequestReplenish,
       checkReplenish,
