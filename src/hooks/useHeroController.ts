@@ -126,20 +126,15 @@ export function deriveTeaserLabel(q: HeroQuestion): string | null {
 // ─── Hook interface ───────────────────────────────────────────────────────────
 
 export interface UseHeroControllerOptions {
-  /** All questions from the trending RPC (flat, first page already loaded) */
   allQuestions: HeroQuestion[];
-  /** Whether the question list is still loading */
   isLoading: boolean;
-  /** Whether user is authenticated */
   isAuthed: boolean;
-  /** Supabase region label for distribution fetch */
   regionLabel: string;
-  /** Called to replenish the queue — should trigger fetchNextPage on the RPC */
   onRequestReplenish: () => void;
-  /** Called after a successful stance submission — for parent query invalidations */
   onSubmitSuccess: (questionId: string, value: number) => Promise<void>;
-  /** Navigate to login (for anon users who interact with slider) */
   onLoginRedirect: () => void;
+  /** Pre-loaded stats for initial hero question. my_stance pre-fills slider on already-answered questions. */
+  heroStats?: { my_stance: number | null } | null;
 }
 
 export interface UseHeroControllerReturn {
@@ -178,6 +173,7 @@ export function useHeroController({
   onRequestReplenish,
   onSubmitSuccess,
   onLoginRedirect,
+  heroStats,
 }: UseHeroControllerOptions): UseHeroControllerReturn {
   const sb = React.useMemo(getSupabase, []);
 
@@ -337,6 +333,10 @@ export function useHeroController({
 
     // Already answered → static result mode (no auto-advance timer per spec)
     if (first.user_has_answered) {
+      // Pre-fill submittedStance from heroStats so slider shows saved position
+      if (heroStats?.my_stance != null) {
+        setSubmittedStance(heroStats.my_stance);
+      }
       fetchDistribution(first.question_id).then((dist) => {
         setDistribution(dist);
         setStatus("hero_answered_result");
