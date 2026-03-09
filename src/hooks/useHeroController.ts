@@ -157,7 +157,6 @@ export interface UseHeroControllerReturn {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const RESULT_DWELL_MS = 2200;
 const TRANSITION_MS = 350;
 const REPLENISH_THRESHOLD = 2;
 
@@ -387,30 +386,7 @@ export function useHeroController({
         fireAnalytics("hero_stance_submitted", { questionId, value });
         fireAnalytics("hero_alignment_viewed", { questionId });
 
-        // Start auto-advance timer — skips already-answered questions
-        clearAutoAdvance();
-        autoAdvanceTimer.current = setTimeout(() => {
-          autoAdvanceTimer.current = null;
-          fireAnalytics("hero_auto_advance", { questionId });
-
-          // Find next unanswered question in queue
-          const nextIdx = queuedQuestions.findIndex((q) => !q.user_has_answered);
-
-          if (nextIdx === -1) {
-            // No unanswered questions left — request replenishment
-            setStatus("hero_waiting_next");
-            onRequestReplenish();
-            return;
-          }
-
-          const nextQuestion = queuedQuestions[nextIdx];
-          const updatedQueue = [
-            ...queuedQuestions.slice(0, nextIdx),
-            ...queuedQuestions.slice(nextIdx + 1),
-          ];
-          checkReplenish(updatedQueue);
-          doTransition(nextQuestion, updatedQueue);
-        }, RESULT_DWELL_MS);
+        // No auto-advance — user clicks "Next question" manually.
       } catch (err) {
         console.error("[hero] submitHeroStance failed", err);
         setStatus("hero_error");
@@ -425,7 +401,6 @@ export function useHeroController({
       onLoginRedirect,
       onSubmitSuccess,
       fetchDistribution,
-      clearAutoAdvance,
       queuedQuestions,
       onRequestReplenish,
       checkReplenish,
