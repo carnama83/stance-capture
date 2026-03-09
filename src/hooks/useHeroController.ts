@@ -399,43 +399,44 @@ export function useHeroController({
   // ── Live community distribution polling ──
   // Uses primitive deps (status string + questionId string) to prevent
   // the effect re-running whenever object references change.
-  // Use a ref-based ticker that's immune to React re-renders.
-  // We start/stop it imperatively via effects, but the interval itself
-  // only ever exists once — checked by the ref guard before creation.
+  // Self-scheduling setTimeout chain — immune to React StrictMode double-invoke.
+  // StrictMode mounts→unmounts→remounts; a cancelled flag per effect run ensures
+  // the unmounted run's chain stops even if a tick is in-flight.
   React.useEffect(() => {
-    if (status !== "hero_ready" || !currentQuestionId) {
-      // Stop polling if we leave hero_ready
-      if (distributionPollInterval.current) {
-        console.log(`[hero:poll] ■ stopping — status=${status} qId=${currentQuestionId?.slice(0,8)}`);
-        clearInterval(distributionPollInterval.current);
-        distributionPollInterval.current = null;
+    if (status !== "hero_ready" || !currentQuestionId) return;
+
+    let cancelled = false;
+    const qId = currentQuestionId;
+    const runId = Math.random().toString(36).slice(2, 6);
+    console.log(`[hero:poll] ▶ chain START id=${instanceId.current} run=${runId} qId=${qId.slice(0,8)}`);
+
+    const tick = async () => {
+      if (cancelled) {
+        console.log(`[hero:poll] ■ chain STOPPED run=${runId} (cancelled)`);
+        return;
       }
-      return;
-    }
-
-    // Guard: if an interval already exists for this exact question, don't create another
-    if (distributionPollInterval.current) {
-      console.log(`[hero:poll] ⚠ interval already running — skipping creation id=${instanceId.current}`);
-      return;
-    }
-
-    const pollCreatedAt = Date.now();
-    console.log(`[hero:poll] ▶ NEW INTERVAL CREATED id=${instanceId.current} qId=${currentQuestionId.slice(0,8)} at=${pollCreatedAt}`);
-    distributionPollInterval.current = setInterval(async () => {
-      console.log(`[hero:poll] ⏱ tick id=${instanceId.current} qId=${currentQuestionId.slice(0,8)}`);
-      const fresh = await fetchDistributionRef.current(currentQuestionId);
+      console.log(`[hero:poll] ⏱ tick run=${runId} qId=${qId.slice(0,8)}`);
+      const fresh = await fetchDistributionRef.current(qId);
+      if (cancelled) return; // don't setState after unmount
       if (fresh) {
-        console.log(`[hero:poll] ✓ updated distribution — responses=${fresh.responses}`);
+        console.log(`[hero:poll] ✓ responses=${fresh.responses} oppose=${fresh.oppose_pct}% support=${fresh.support_pct}%`);
         setDistribution(fresh);
       } else {
-        console.warn(`[hero:poll] ✗ poll returned null`);
+        console.warn(`[hero:poll] ✗ fetch returned null`);
       }
-    }, 10_000);
+      if (!cancelled) {
+        distributionPollInterval.current = setTimeout(tick, 10_000) as unknown as ReturnType<typeof setInterval>;
+      }
+    };
+
+    // First tick after 10s
+    distributionPollInterval.current = setTimeout(tick, 10_000) as unknown as ReturnType<typeof setInterval>;
 
     return () => {
-      console.log(`[hero:poll] ■ CLEANUP id=${instanceId.current} created=${pollCreatedAt}`);
+      console.log(`[hero:poll] ■ chain CLEANUP run=${runId} qId=${qId.slice(0,8)}`);
+      cancelled = true;
       if (distributionPollInterval.current) {
-        clearInterval(distributionPollInterval.current);
+        clearTimeout(distributionPollInterval.current as unknown as ReturnType<typeof setTimeout>);
         distributionPollInterval.current = null;
       }
     };
