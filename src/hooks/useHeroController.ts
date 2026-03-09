@@ -360,11 +360,16 @@ export function useHeroController({
   React.useEffect(() => {
     if (status !== "hero_ready" || !currentHeroQuestion) return;
     const questionId = currentHeroQuestion.question_id;
+
+    // Clear any existing interval FIRST before starting a new one
     clearDistributionPoll();
+
     console.log(`[hero:poll] ▶ polling started for qId=${questionId.slice(0,8)} every 10s`);
     distributionPollInterval.current = setInterval(async () => {
       console.log(`[hero:poll] ⏱ tick for qId=${questionId.slice(0,8)}`);
-      const fresh = await fetchDistribution(questionId);
+      // Use ref so we never capture a stale fetchDistribution closure,
+      // and so fetchDistribution is NOT a dep (prevents interval restart on every render)
+      const fresh = await fetchDistributionRef.current(questionId);
       if (fresh) {
         console.log(`[hero:poll] ✓ updated distribution — responses=${fresh.responses}`);
         setDistribution(fresh);
@@ -372,11 +377,15 @@ export function useHeroController({
         console.warn(`[hero:poll] ✗ poll returned null, distribution unchanged`);
       }
     }, 10_000);
+
     return () => {
       console.log(`[hero:poll] ■ polling stopped for qId=${questionId.slice(0,8)}`);
       clearDistributionPoll();
     };
-  }, [status, currentHeroQuestion, fetchDistribution, clearDistributionPoll]);
+  // fetchDistribution intentionally omitted — using fetchDistributionRef.current inside
+  // to prevent the interval restarting every time fetchDistribution is recreated
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, currentHeroQuestion, clearDistributionPoll]);
 
   // ── Transition to next question ──
   // This is the core queue advancement logic.
@@ -544,7 +553,8 @@ export function useHeroController({
         console.log(`[hero:poll] ▶ post-submit polling started for qId=${questionId.slice(0,8)}`);
         distributionPollInterval.current = setInterval(async () => {
           console.log(`[hero:poll] ⏱ post-submit tick for qId=${questionId.slice(0,8)}`);
-          const fresh = await fetchDistribution(questionId);
+          // Use ref to avoid stale closure
+          const fresh = await fetchDistributionRef.current(questionId);
           if (fresh) {
             console.log(`[hero:poll] ✓ post-submit distribution updated — responses=${fresh.responses}`);
             setDistribution(fresh);
