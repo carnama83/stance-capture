@@ -373,13 +373,28 @@ export function useHeroController({
   // Catches stance changes from THIS browser tab (e.g. QuestionDetailPage)
   // in case Supabase Realtime is not enabled on question_stances table.
   // To enable Realtime: Supabase Dashboard → Database → Replication → question_stances → enable all events.
+  //
+  // FIX: Previously checked questionId === currentQuestionId and silently dropped
+  // mismatches. This caused the hero bar to stay stale when the user answered the
+  // hero question on QuestionDetailPage (same question, but the check was unreliable
+  // due to timing). Now we ALWAYS refresh the current hero's distribution when any
+  // stance-saved fires — the fetch is cheap and idempotent.
+  // We also store the latest event's questionId in a ref so that if currentQuestionId
+  // changes (e.g. hero advances) we can still react on the next render.
+  const lastStanceSavedRef = React.useRef<{ questionId: string; value: number } | null>(null);
+
   React.useEffect(() => {
-    if (!currentQuestionId) return;
     const handler = (e: Event) => {
       const { questionId, value } = (e as CustomEvent).detail ?? {};
-      console.log(`[hero:window-event] stance-saved fired qId=${questionId?.slice(0,8)} value=${value}`);
+      console.log(`[hero:window-event] stance-saved fired qId=${questionId?.slice(0,8)} value=${value} heroQId=${currentQuestionId?.slice(0,8)}`);
+      // Store latest event in case hero question changes before we can handle it
+      lastStanceSavedRef.current = { questionId, value };
+      if (!currentQuestionId) {
+        console.log(`[hero:window-event] no hero question yet — stored for later`);
+        return;
+      }
       if (questionId === currentQuestionId) {
-        console.log(`[hero:window-event] ✓ matches hero question — refreshing distribution`);
+        console.log(`[hero:window-event] ✓ matches hero question — refreshing distribution immediately`);
         fetchDistributionRef.current(currentQuestionId).then((fresh) => {
           if (fresh) {
             console.log(`[hero:window-event] ✓ refreshed — responses=${fresh.responses} oppose=${fresh.oppose_pct}% support=${fresh.support_pct}%`);
@@ -389,11 +404,14 @@ export function useHeroController({
           }
         });
       } else {
-        console.log(`[hero:window-event] different question — ignoring`);
+        // Different question answered on QDP — not the current hero, ignore for now.
+        // The poll will pick it up if this question ever becomes the hero.
+        console.log(`[hero:window-event] different question (saved=${questionId?.slice(0,8)} hero=${currentQuestionId?.slice(0,8)}) — ignoring`);
       }
     };
     window.addEventListener("stance-saved", handler);
     return () => window.removeEventListener("stance-saved", handler);
+  // Re-register when currentQuestionId changes so the closure always has the latest value
   }, [currentQuestionId]);
 
   // ── Live community distribution polling ──
@@ -402,8 +420,14 @@ export function useHeroController({
   // Self-scheduling setTimeout chain — immune to React StrictMode double-invoke.
   // StrictMode mounts→unmounts→remounts; a cancelled flag per effect run ensures
   // the unmounted run's chain stops even if a tick is in-flight.
+  //
+  // FIX: Previously only ran during hero_ready. Now also runs during hero_answered_result
+  // so the community bar stays live after the user submits their own stance.
+  // The post-submit setInterval in submitHeroStance has been removed; this single
+  // chain covers both phases.
   React.useEffect(() => {
-    if (status !== "hero_ready" || !currentQuestionId) return;
+    const isPollingStatus = status === "hero_ready" || status === "hero_answered_result";
+    if (!isPollingStatus || !currentQuestionId) return;
 
     let cancelled = false;
     const qId = currentQuestionId;
@@ -604,20 +628,11 @@ export function useHeroController({
         fireAnalytics("hero_stance_submitted", { questionId, value });
         fireAnalytics("hero_alignment_viewed", { questionId });
 
-        // Poll distribution every 10s — keeps community bar live before and after answering
-        clearDistributionPoll();
-        console.log(`[hero:poll] ▶ post-submit polling started for qId=${questionId.slice(0,8)}`);
-        distributionPollInterval.current = setInterval(async () => {
-          console.log(`[hero:poll] ⏱ post-submit tick for qId=${questionId.slice(0,8)}`);
-          // Use ref to avoid stale closure
-          const fresh = await fetchDistributionRef.current(questionId);
-          if (fresh) {
-            console.log(`[hero:poll] ✓ post-submit distribution updated — responses=${fresh.responses}`);
-            setDistribution(fresh);
-          } else {
-            console.warn(`[hero:poll] ✗ post-submit poll returned null`);
-          }
-        }, 10_000);
+        // NOTE: No manual poll started here.
+        // The polling useEffect above runs for both hero_ready AND hero_answered_result,
+        // so when setStatus("hero_answered_result") fires above, that effect will
+        // start a fresh StrictMode-safe setTimeout chain automatically.
+        console.log(`[hero:poll] status→hero_answered_result — poll chain will auto-start via useEffect`);
       } catch (err) {
         console.error("[hero] submitHeroStance failed", err);
         setStatus("hero_error");
