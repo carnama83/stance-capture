@@ -19,6 +19,12 @@ import { QuestionPhaseBadge } from "@/components/question/QuestionPhaseBadge";
 import { useToast } from "@/components/ui/use-toast";
 
 import { FollowTopicButton } from "@/components/FollowTopicButton";
+import { fetchCommunityStats, communityStatsKey } from "@/lib/fetchCommunityStats";
+import { CommunityStanceBar } from "@/components/question/CommunityStanceBar";
+import {
+  COMMUNITY_STANCE_GLOBAL_SCOPE,
+  COMMUNITY_STANCE_GLOBAL_KEY,
+} from "@/types/communityStance";
 
 type Session = import("@supabase/supabase-js").Session;
 
@@ -562,14 +568,87 @@ export default function QuestionDetailPage() {
     staleTime: 60_000,
   });
 
+  // ── Community stance aggregate query ──
+  // Reads directly from question_stance_stats_region (global row).
+  // This is the source of truth for the Community Stance bar on this page.
+  // Kept separate from ["question-stats", questionId] which powers RegionComparison.
+  const { data: communityStats, isLoading: communityStatsLoading } = useQuery({
+    enabled: !!questionId,
+    queryKey: communityStatsKey(questionId),
+    queryFn: () => fetchCommunityStats(questionId),
+    staleTime: 30_000,
+  });
+
+  // ── Realtime: question_stance_stats_region → refresh community bar ──
+  // Subscribes using simple question_id filter (only supported filter type).
+  // JS callback guards to global row only.
+  // Debounced 500ms — one vote triggers multiple tier row writes.
+  // Also invalidates ["question-stats"] so RegionComparison stays fresh.
+  const sb = React.useMemo(getSupabase, []);
+  React.useEffect(() => {
+    if (!sb || !questionId) return;
+
+    console.log(`[qdp:realtime] subscribing to question_stance_stats_region qId=${questionId.slice(0,8)}`);
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const channel = sb
+      .channel(`qdp-stats-${questionId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "question_stance_stats_region",
+          filter: `question_id=eq.${questionId}`,
+        },
+        (payload) => {
+          // JS-side filter: only react to the global aggregate row
+          const row = (payload.new ?? payload.old ?? {}) as Record<string, unknown>;
+          const scope = row["region_scope"];
+          const key   = row["region_key"];
+
+          if (scope !== COMMUNITY_STANCE_GLOBAL_SCOPE || key !== COMMUNITY_STANCE_GLOBAL_KEY) {
+            console.log(`[qdp:realtime] ignoring non-global row scope=${scope} key=${key}`);
+            return;
+          }
+
+          console.log(`[qdp:realtime] ✓ global aggregate changed — debouncing 500ms`);
+          if (debounceTimer) clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(() => {
+            console.log(`[qdp:realtime] ✓ invalidating community-stats + question-stats`);
+            queryClient.invalidateQueries({ queryKey: communityStatsKey(questionId) });
+            // Also refresh question-stats so RegionComparison stays current
+            queryClient.invalidateQueries({ queryKey: ["question-stats", questionId] });
+          }, 500);
+        }
+      )
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          console.log(`[qdp:realtime] ✅ SUBSCRIBED qId=${questionId.slice(0,8)}`);
+        } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          console.error(`[qdp:realtime] ❌ channel ${status} qId=${questionId.slice(0,8)}`);
+        }
+      });
+
+    return () => {
+      console.log(`[qdp:realtime] unsubscribing qId=${questionId.slice(0,8)}`);
+      if (debounceTimer) clearTimeout(debounceTimer);
+      sb.removeChannel(channel);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sb, questionId]);
+
   const stanceMutation = useMutation({
     mutationKey: ["set-stance", questionId],
     mutationFn: (score: number | null) => setMyStance(questionId, score),
     onSuccess: async (newScore, vars) => {
       queryClient.setQueryData(["my-stance", questionId], newScore);
       queryClient.invalidateQueries({ queryKey: ["question-stats", questionId] });
+      // Invalidate community-stats so the bar on this page refreshes immediately after save
+      queryClient.invalidateQueries({ queryKey: communityStatsKey(questionId) });
 
-      // Notify hero section on homepage to immediately refresh community distribution
+      // TODO: Remove this once aggregate-table realtime is confirmed working on both
+      // Hero and QDP. It is a transitional fallback for same-tab hero refresh only.
       const savedScore = typeof vars === "number" ? vars : newScore;
       console.log(`[qdp:stance] dispatching stance-saved qId=${questionId.slice(0,8)} score=${savedScore}`);
       window.dispatchEvent(new CustomEvent("stance-saved", {
@@ -619,8 +698,6 @@ export default function QuestionDetailPage() {
 
   const handleBack = React.useCallback(() => navigate(-1), [navigate]);
 
-  const hasStats = !!stats?.regions;
-  const globalStats = stats?.regions?.global ?? null;
   const hasRelated = !!relatedQuestions && relatedQuestions.length > 0;
 
   // Shared props object for StanceCard — avoids duplication between mobile/desktop renders
@@ -842,45 +919,25 @@ export default function QuestionDetailPage() {
 
             {/* Community stance */}
             <section className="rounded-xl border border-slate-200 bg-white p-4 md:p-5 shadow-sm">
-              <h3 className="text-[11px] font-semibold tracking-wide uppercase text-slate-500 mb-3">
-                Community stance
-              </h3>
+              {/* CommunityStanceBar reads from question_stance_stats_region global row.
+                  RegionComparison below reads from question-stats RPC for per-tier breakdown. */}
+              <CommunityStanceBar
+                responses={communityStats?.responses ?? 0}
+                supportPct={communityStats?.supportPct ?? null}
+                opposePct={communityStats?.opposePct ?? null}
+                neutralPct={communityStats?.neutralPct ?? null}
+                regionLabel={communityStats?.regionLabel ?? "Global"}
+                avgScore={communityStats?.avgScore ?? null}
+                isLoading={communityStatsLoading}
+                isEmpty={!communityStatsLoading && !communityStats}
+              />
 
-              {statsLoading && <p className="text-xs text-slate-500">Loading community stats…</p>}
-
-              {!statsLoading && !hasStats && (
-                <p className="text-xs text-slate-500">
-                  No responses yet. Be the first to signal your stance.
-                </p>
-              )}
-
-              {hasStats && globalStats && (
+              {isAuthed && stats?.regions && (
                 <>
-                  <div className="space-y-2 text-xs text-slate-600">
-                    <div>
-                      <span className="text-xs text-slate-700 font-medium">
-                        {globalStats.total_responses} responses
-                      </span>
-                      {globalStats.pct_agree != null && <> · {Math.round(globalStats.pct_agree)}% agree</>}
-                      {globalStats.pct_disagree != null && <> · {Math.round(globalStats.pct_disagree)}% disagree</>}
-                      {globalStats.pct_neutral != null && <> · {Math.round(globalStats.pct_neutral)}% neutral</>}
-                    </div>
-                    {globalStats.avg_score != null && (
-                      <div className="text-[11px] text-slate-500">
-                        Average stance: {globalStats.avg_score.toFixed(2)} (scale −2 to +2)
-                      </div>
-                    )}
-                  </div>
-                  {isAuthed && (
-                    <>
-                      <div className="border-t border-slate-200 my-3" />
-                      <RegionComparison stats={stats ?? null} />
-                    </>
-                  )}
+                  <div className="border-t border-slate-200 my-3" />
+                  <RegionComparison stats={stats ?? null} />
                 </>
               )}
-
-              {hasStats && !globalStats && isAuthed && <RegionComparison stats={stats ?? null} />}
             </section>
 
             {/* Discussion mood */}
