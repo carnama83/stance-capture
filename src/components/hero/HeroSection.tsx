@@ -26,7 +26,7 @@
 import * as React from "react";
 import { Link } from "react-router-dom";
 import { QuestionStanceSlider } from "@/components/question/QuestionStanceSlider";
-import { StanceDistributionBar } from "@/components/question/StanceDistributionBar";
+import { CommunityStanceBar } from "@/components/question/CommunityStanceBar";
 import {
   useHeroController,
   deriveTeaserLabel,
@@ -119,7 +119,6 @@ function SectionBSkeleton() {
 }
 
 // ─── Section A inner content ──────────────────────────────────────────────────
-// The outer container is always mounted; this inner content fades in/out.
 
 function SectionAQuestion({
   question,
@@ -163,8 +162,6 @@ function SectionAQuestion({
               className="absolute top-0 right-0 h-full w-3/5 object-cover object-center"
               loading="eager"
             />
-            {/* Left-to-right fade: white → transparent, covering ~55% from left.
-                Text sits on pure white; image bleeds in naturally from the right. */}
             <div
               className="absolute top-0 right-0 h-full w-3/5 pointer-events-none"
               style={{
@@ -175,7 +172,7 @@ function SectionAQuestion({
           </>
         )}
 
-        {/* Text content — sits on white, left-aligned, z above the image */}
+        {/* Text content */}
         <div className="relative z-10 p-5 pb-4" style={{ maxWidth: "68%" }}>
 
           {/* Eyebrow */}
@@ -203,7 +200,7 @@ function SectionAQuestion({
             )}
           </div>
 
-          {/* Question headline — adaptive size for long questions, 4-line clamp */}
+          {/* Question headline */}
           <button
             type="button"
             onClick={() => onNavigateToQuestion(question.question_id)}
@@ -224,45 +221,20 @@ function SectionAQuestion({
       {/* ── Slider / Result section ── */}
       <div className="flex-1 px-5 pb-5 pt-4 border-t border-slate-100">
 
-        {/* Community distribution bar — always visible */}
+        {/* Community distribution bar — uses shared CommunityStanceBar with normalized field names */}
         <div className="mb-4">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-              Community stance
-            </span>
-            <button
-              type="button"
-              onClick={onRefreshDistribution}
-              title="Refresh community data"
-              className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-slate-600 transition-colors"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
-              </svg>
-              Refresh
-            </button>
-          </div>
-          {distribution && (distribution.responses ?? 0) > 0 ? (
-            <StanceDistributionBar
-              distribution={{
-                support_pct: distribution.support_pct,
-                neutral_pct: distribution.neutral_pct,
-                oppose_pct: distribution.oppose_pct,
-                responses: distribution.responses,
-              }}
-              userStance={isResultMode ? submittedStance : null}
-              showAlignment={isResultMode}
-              showCount={true}
-              size="md"
-            />
-          ) : (
-            <div className="flex items-center gap-2 py-1">
-              <div className="h-2 flex-1 rounded-full bg-slate-100" />
-              <span className="text-[11px] text-slate-400 whitespace-nowrap">
-                Responses coming in — trending will show soon
-              </span>
-            </div>
-          )}
+          <CommunityStanceBar
+            responses={distribution?.responses ?? 0}
+            supportPct={distribution?.supportPct ?? null}
+            opposePct={distribution?.opposePct ?? null}
+            neutralPct={distribution?.neutralPct ?? null}
+            regionLabel={distribution?.regionLabel ?? "Global"}
+            avgScore={distribution?.avgScore ?? null}
+            isLoading={false}
+            isEmpty={!distribution || (distribution.responses ?? 0) === 0}
+            onRefresh={onRefreshDistribution}
+            compact={true}
+          />
 
           {/* Next question nudge — only after user has answered */}
           {status === "hero_answered_result" && (
@@ -279,7 +251,7 @@ function SectionAQuestion({
         {/* Divider between community bar and user's slider */}
         <div className="border-t border-slate-100 mb-4" />
 
-        {/* Slider — hidden once user has answered, replaced by the distribution bar alignment */}
+        {/* Slider — hidden once user has answered */}
         {!isResultMode && (
         <>
         {isAuthed ? (
@@ -370,7 +342,6 @@ function SectionBGuest({ onLogin, onSignup }: { onLogin: () => void; onSignup: (
   return (
     <div className="flex flex-col justify-between h-full p-5">
       <div>
-        {/* Live badge */}
         <div className="flex items-center gap-1.5 mb-4">
           <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
           <span className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">
@@ -386,7 +357,6 @@ function SectionBGuest({ onLogin, onSignup }: { onLogin: () => void; onSignup: (
           you align with the majority or minority view.
         </p>
 
-        {/* Value bullets */}
         <ul className="mt-4 space-y-2">
           {[
             "Compare with your region, country, and globally",
@@ -401,7 +371,6 @@ function SectionBGuest({ onLogin, onSignup }: { onLogin: () => void; onSignup: (
         </ul>
       </div>
 
-      {/* CTAs */}
       <div className="mt-5 flex flex-col gap-2">
         <button
           type="button"
@@ -436,7 +405,6 @@ function SectionBAuthed({
   }
 
   if (!snap) {
-    // Fallback: no profile yet
     return (
       <div className="flex flex-col justify-center h-full p-5">
         <div className="flex items-center gap-1.5 mb-3">
@@ -455,7 +423,6 @@ function SectionBAuthed({
     );
   }
 
-  // Profile exists — show alignment summary
   return (
     <div className="flex flex-col justify-between h-full p-5">
       <div>
@@ -466,7 +433,6 @@ function SectionBAuthed({
           </span>
         </div>
 
-        {/* Big alignment number */}
         <div className="mb-1">
           <span className="text-3xl font-bold text-slate-900">
             {formatPct(snap.alignment_pct)}
@@ -492,7 +458,6 @@ function SectionBAuthed({
         )}
       </div>
 
-      {/* CTA — direction neutral for mobile/desktop */}
       <p className="mt-4 text-xs text-slate-400 leading-relaxed">
         Answer the question above to update your profile.
       </p>
@@ -526,7 +491,6 @@ function QueueCard({
         .filter(Boolean)
         .join(" ")}
     >
-      {/* Thumbnail */}
       <div className="relative h-24 overflow-hidden bg-slate-100">
         {question.cover_image_url ? (
           <img
@@ -539,14 +503,12 @@ function QueueCard({
           <div className="h-full w-full bg-gradient-to-br from-slate-200 to-slate-300" />
         )}
 
-        {/* Up next badge */}
         {isUpNext && (
           <div className="absolute top-2 left-2 rounded-full bg-indigo-600 px-2 py-0.5 text-[10px] font-semibold text-white shadow-sm">
             Up Next
           </div>
         )}
 
-        {/* Teaser label */}
         {teaser && !isUpNext && (
           <div className="absolute bottom-2 left-2 rounded-full bg-black/50 backdrop-blur-sm px-2 py-0.5 text-[10px] font-medium text-white">
             {teaser}
@@ -554,7 +516,6 @@ function QueueCard({
         )}
       </div>
 
-      {/* Card body */}
       <div className="p-3">
         {question.topic_title && (
           <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-1">
@@ -584,7 +545,6 @@ function SectionC({
     status === "hero_answered_result" || status === "hero_transitioning";
 
   if (queuedQuestions.length === 0) {
-    // Loading placeholders
     return (
       <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-none">
         {[1, 2, 3].map((i) => (
@@ -654,15 +614,12 @@ export function HeroSection({
     onLoginRedirect,
   });
 
-  // ── Fade transition state for Section A inner content ──
-  // Container stays mounted; opacity transitions between questions.
   const [contentVisible, setContentVisible] = React.useState(true);
 
   React.useEffect(() => {
     if (status === "hero_transitioning") {
       setContentVisible(false);
     } else if (status === "hero_ready" || status === "hero_answered_result") {
-      // Small delay to let opacity-0 settle before fading back in
       const t = setTimeout(() => setContentVisible(true), 30);
       return () => clearTimeout(t);
     }
@@ -671,10 +628,8 @@ export function HeroSection({
   return (
     <section className="space-y-3">
 
-      {/* ── Upper row: Section A + Section B ── */}
       <div className="flex flex-col gap-3 lg:flex-row lg:items-stretch">
 
-        {/* ── Section A — Main question (65%) ── */}
         <div
           className={`${card} overflow-hidden lg:flex-[65]`}
           style={{ minHeight: 380 }}
@@ -714,7 +669,6 @@ export function HeroSection({
           </div>
         </div>
 
-        {/* ── Section B — Insight panel (35%) ── */}
         <div
           className={`${card} overflow-hidden lg:flex-[35]`}
           style={{ minHeight: 280 }}
@@ -730,7 +684,6 @@ export function HeroSection({
         </div>
       </div>
 
-      {/* ── Section C — Question stream (full width) ── */}
       <div>
         <div className="flex items-center justify-between mb-2 px-0.5">
           <p className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">
