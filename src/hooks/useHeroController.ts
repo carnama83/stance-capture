@@ -22,6 +22,12 @@
 
 import * as React from "react";
 import { getSupabase } from "@/lib/supabaseClient";
+import { fetchCommunityStats } from "@/lib/fetchCommunityStats";
+import {
+  CommunityStanceData,
+  COMMUNITY_STANCE_GLOBAL_SCOPE,
+  COMMUNITY_STANCE_GLOBAL_KEY,
+} from "@/types/communityStance";
 
 // ─── Types (re-exported for use in hero components) ───────────────────────────
 
@@ -54,16 +60,9 @@ export type HeroQuestion = {
   impact_normalized?: number | null;
 };
 
-export type HeroDistribution = {
-  question_id: string;
-  region: string;
-  responses: number;
-  oppose_pct: number | null;
-  neutral_pct: number | null;
-  support_pct: number | null;
-  avg_score: number | null;
-  generated_at: string;
-};
+// HeroDistribution replaced by CommunityStanceData from @/types/communityStance
+// Field mapping: oppose_pct → opposePct, support_pct → supportPct, neutral_pct → neutralPct
+export type { CommunityStanceData as HeroDistribution };
 
 // ─── Analytics helper ─────────────────────────────────────────────────────────
 // Fire-and-forget — never blocks state transitions.
@@ -186,7 +185,7 @@ export function useHeroController({
   const [currentHeroQuestion, setCurrentHeroQuestion] = React.useState<HeroQuestion | null>(null);
   const [queuedQuestions, setQueuedQuestions] = React.useState<HeroQuestion[]>([]);
   const [submittedStance, setSubmittedStance] = React.useState<number | null>(null);
-  const [distribution, setDistribution] = React.useState<HeroDistribution | null>(null);
+  const [distribution, setDistribution] = React.useState<CommunityStanceData | null>(null);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
 
   // Track which question IDs have already been used as hero (to avoid re-promotion)
@@ -196,8 +195,8 @@ export function useHeroController({
   const autoAdvanceTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   // Transition completion timer
   const transitionTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Live distribution polling interval (active while in hero_answered_result)
-  const distributionPollInterval = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  // Distribution poll timeout ref (self-scheduling setTimeout chain)
+  const distributionPollInterval = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Timer helpers ──
 
@@ -217,7 +216,7 @@ export function useHeroController({
 
   const clearDistributionPoll = React.useCallback(() => {
     if (distributionPollInterval.current) {
-      clearInterval(distributionPollInterval.current);
+      clearTimeout(distributionPollInterval.current);
       distributionPollInterval.current = null;
     }
   }, []);
@@ -234,70 +233,22 @@ export function useHeroController({
   }, [clearAllTimers]);
 
   // ── Distribution fetch ──
-  // Stored in a ref so the polling interval always calls the latest version
-  // without needing to be recreated (avoids stale closure in setInterval).
+  // Thin wrapper around the shared fetchCommunityStats fetcher (Phase 3).
+  // Reads directly from question_stance_stats_region — no RPC, no RLS issues.
+  // Stored in a ref so the polling chain always calls the latest version
+  // without needing to be recreated (avoids stale closure in setTimeout chain).
 
   const fetchDistributionFn = React.useCallback(
-    async (questionId: string): Promise<HeroDistribution | null> => {
-      if (!sb) return null;
+    async (questionId: string): Promise<CommunityStanceData | null> => {
+      if (!questionId) return null;
       const callId = Date.now();
       console.log(`[hero:dist] ► fetch START qId=${questionId.slice(0,8)} callId=${callId}`);
       try {
-        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
-        const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
-
-        if (!supabaseUrl || !supabaseKey) {
-          console.error("[hero:dist] ✗ Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY");
-          return null;
-        }
-
-        const session = await sb.auth.getSession();
-        const accessToken = session.data.session?.access_token;
-        console.log(`[hero:dist]   auth=${accessToken ? "bearer" : "anon-key"}`);
-
-        const url = `${supabaseUrl}/rest/v1/rpc/get_question_distribution`;
-        // Always use 'Global' for the community bar — shows all responses regardless
-        // of the user's current region tab. regionLabel would filter to just their region.
-        const body = {
-          p_question_id: questionId,
-          p_region: "Global",
-          p_window_hours: 168,
-        };
-        console.log(`[hero:dist]   POST ${url}`, body);
-
-        const res = await fetch(url, {
-          method: "POST",
-          cache: "no-store",
-          headers: {
-            "Content-Type": "application/json",
-            "apikey": supabaseKey,
-            "Authorization": `Bearer ${accessToken ?? supabaseKey}`,
-            "Cache-Control": "no-cache, no-store",
-            "Pragma": "no-cache",
-            "x-cache-bust": callId.toString(),
-          },
-          body: JSON.stringify(body),
-        });
-
-        console.log(`[hero:dist]   response status=${res.status} ok=${res.ok}`);
-
-        if (!res.ok) {
-          const errText = await res.text();
-          console.error(`[hero:dist] ✗ HTTP ${res.status}:`, errText);
-          throw new Error(`HTTP ${res.status}`);
-        }
-
-        const data = await res.json();
-        console.log(`[hero:dist]   raw response:`, data);
-
-        const result = Array.isArray(data) && data.length > 0
-          ? (data[0] as HeroDistribution)
-          : null;
-
+        const result = await fetchCommunityStats(questionId);
         if (result) {
-          console.log(`[hero:dist] ✓ responses=${result.responses} oppose=${result.oppose_pct}% neutral=${result.neutral_pct}% support=${result.support_pct}%`);
+          console.log(`[hero:dist] ✓ responses=${result.responses} opposePct=${result.opposePct}% neutralPct=${result.neutralPct}% supportPct=${result.supportPct}%`);
         } else {
-          console.warn(`[hero:dist] ✗ empty result — data was:`, data);
+          console.warn(`[hero:dist] ✗ empty result for qId=${questionId.slice(0,8)} — no aggregate row yet`);
         }
         return result;
       } catch (e) {
@@ -305,7 +256,7 @@ export function useHeroController({
         return null;
       }
     },
-    [sb]
+    [] // fetchCommunityStats is a stable module-level function, no deps needed
   );
 
   const fetchDistributionRef = React.useRef(fetchDistributionFn);
@@ -320,41 +271,67 @@ export function useHeroController({
 
   const currentQuestionId = React.useMemo(() => currentHeroQuestion?.question_id ?? null, [currentHeroQuestion?.question_id]);
 
-  // ── Realtime subscription: question_stances changes ──
-  // Subscribes directly to Supabase Realtime on the question_stances table.
-  // Triggers immediately when ANY client (this page or another) inserts/updates
-  // a stance for the current hero question — no custom events needed.
+  // ── Realtime subscription: question_stance_stats_region changes ──
+  // Subscribes to the aggregate table (not raw question_stances).
+  // This fires after the DB trigger has already computed updated percentages —
+  // so the fetch returns fresh, correct data immediately.
+  //
+  // Subscription filter: question_id only (Supabase Realtime only supports
+  // simple single-column eq filters — compound filters are not supported).
+  //
+  // Global-row guard: done in JS callback — only react when the changed row is
+  // region_scope='global' AND region_key='global'.
+  //
+  // Debounce: 500ms — one vote can trigger multiple aggregate row writes
+  // (global + city/county/state/country tiers), so we debounce to avoid
+  // a burst of redundant fetches from a single stance change.
   React.useEffect(() => {
     if (!sb || !currentQuestionId) return;
     const questionId = currentQuestionId;
 
-    console.log(`[hero:realtime] subscribing to question_stances for qId=${questionId.slice(0,8)}`);
+    console.log(`[hero:realtime] subscribing to question_stance_stats_region for qId=${questionId.slice(0,8)}`);
+
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
     const channel = sb
-      .channel(`hero-stances-${questionId}`)
+      .channel(`hero-stats-${questionId}`)
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
-          table: "question_stances",
+          table: "question_stance_stats_region",
           filter: `question_id=eq.${questionId}`,
         },
         (payload) => {
-          console.log(`[hero:realtime] ✓ question_stances change detected`, payload.eventType, payload.new);
-          fetchDistribution(questionId).then((fresh) => {
-            if (fresh) {
-              console.log(`[hero:realtime] ✓ distribution refreshed — responses=${fresh.responses} oppose=${fresh.oppose_pct}% support=${fresh.support_pct}%`);
-              setDistribution(fresh);
-            } else {
-              console.warn(`[hero:realtime] ✗ distribution refresh returned null after realtime event`);
-            }
-          });
+          // JS-side filter: only react to the global aggregate row
+          const row = (payload.new ?? payload.old ?? {}) as Record<string, unknown>;
+          const scope = row["region_scope"];
+          const key   = row["region_key"];
+
+          if (scope !== COMMUNITY_STANCE_GLOBAL_SCOPE || key !== COMMUNITY_STANCE_GLOBAL_KEY) {
+            console.log(`[hero:realtime] ignoring non-global row scope=${scope} key=${key}`);
+            return;
+          }
+
+          console.log(`[hero:realtime] ✓ global aggregate change detected — debouncing 500ms`);
+
+          if (debounceTimer) clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(() => {
+            fetchDistribution(questionId).then((fresh) => {
+              if (fresh) {
+                console.log(`[hero:realtime] ✓ distribution refreshed — responses=${fresh.responses} opposePct=${fresh.opposePct}% supportPct=${fresh.supportPct}%`);
+                setDistribution(fresh);
+              } else {
+                console.warn(`[hero:realtime] ✗ distribution refresh returned null after realtime event`);
+              }
+            });
+          }, 500);
         }
       )
       .subscribe((status) => {
         if (status === "SUBSCRIBED") {
-          console.log(`[hero:realtime] ✅ SUBSCRIBED — listening for stance changes on qId=${questionId.slice(0,8)}`);
+          console.log(`[hero:realtime] ✅ SUBSCRIBED — listening for aggregate changes on qId=${questionId.slice(0,8)}`);
         } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
           console.error(`[hero:realtime] ❌ channel ${status} — realtime NOT working for qId=${questionId.slice(0,8)}`);
         } else {
@@ -364,54 +341,38 @@ export function useHeroController({
 
     return () => {
       console.log(`[hero:realtime] unsubscribing qId=${questionId.slice(0,8)}`);
+      if (debounceTimer) clearTimeout(debounceTimer);
       sb.removeChannel(channel);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sb, currentQuestionId]);
 
   // ── Belt-and-suspenders: window event fallback ──
-  // Catches stance changes from THIS browser tab (e.g. QuestionDetailPage)
-  // in case Supabase Realtime is not enabled on question_stances table.
-  // To enable Realtime: Supabase Dashboard → Database → Replication → question_stances → enable all events.
-  //
-  // FIX: Previously checked questionId === currentQuestionId and silently dropped
-  // mismatches. This caused the hero bar to stay stale when the user answered the
-  // hero question on QuestionDetailPage (same question, but the check was unreliable
-  // due to timing). Now we ALWAYS refresh the current hero's distribution when any
-  // stance-saved fires — the fetch is cheap and idempotent.
-  // We also store the latest event's questionId in a ref so that if currentQuestionId
-  // changes (e.g. hero advances) we can still react on the next render.
-  const lastStanceSavedRef = React.useRef<{ questionId: string; value: number } | null>(null);
-
+  // Catches stance changes from THIS browser tab (e.g. QuestionDetailPage).
+  // Kept as a transitional fallback while aggregate-table realtime is being validated.
+  // Once Hero + QDP both update correctly from question_stance_stats_region,
+  // remove this handler and the stance-saved dispatch in QuestionDetailPage.
   React.useEffect(() => {
+    if (!currentQuestionId) return;
     const handler = (e: Event) => {
       const { questionId, value } = (e as CustomEvent).detail ?? {};
-      console.log(`[hero:window-event] stance-saved fired qId=${questionId?.slice(0,8)} value=${value} heroQId=${currentQuestionId?.slice(0,8)}`);
-      // Store latest event in case hero question changes before we can handle it
-      lastStanceSavedRef.current = { questionId, value };
-      if (!currentQuestionId) {
-        console.log(`[hero:window-event] no hero question yet — stored for later`);
-        return;
-      }
+      console.log(`[hero:window-event] stance-saved fired qId=${questionId?.slice(0,8)} value=${value}`);
       if (questionId === currentQuestionId) {
-        console.log(`[hero:window-event] ✓ matches hero question — refreshing distribution immediately`);
+        console.log(`[hero:window-event] ✓ matches hero question — refreshing distribution`);
         fetchDistributionRef.current(currentQuestionId).then((fresh) => {
           if (fresh) {
-            console.log(`[hero:window-event] ✓ refreshed — responses=${fresh.responses} oppose=${fresh.oppose_pct}% support=${fresh.support_pct}%`);
+            console.log(`[hero:window-event] ✓ refreshed — responses=${fresh.responses} opposePct=${fresh.opposePct}% supportPct=${fresh.supportPct}%`);
             setDistribution(fresh);
           } else {
             console.warn(`[hero:window-event] ✗ refresh returned null`);
           }
         });
       } else {
-        // Different question answered on QDP — not the current hero, ignore for now.
-        // The poll will pick it up if this question ever becomes the hero.
-        console.log(`[hero:window-event] different question (saved=${questionId?.slice(0,8)} hero=${currentQuestionId?.slice(0,8)}) — ignoring`);
+        console.log(`[hero:window-event] different question — ignoring`);
       }
     };
     window.addEventListener("stance-saved", handler);
     return () => window.removeEventListener("stance-saved", handler);
-  // Re-register when currentQuestionId changes so the closure always has the latest value
   }, [currentQuestionId]);
 
   // ── Live community distribution polling ──
@@ -420,19 +381,13 @@ export function useHeroController({
   // Self-scheduling setTimeout chain — immune to React StrictMode double-invoke.
   // StrictMode mounts→unmounts→remounts; a cancelled flag per effect run ensures
   // the unmounted run's chain stops even if a tick is in-flight.
-  //
-  // FIX: Previously only ran during hero_ready. Now also runs during hero_answered_result
-  // so the community bar stays live after the user submits their own stance.
-  // The post-submit setInterval in submitHeroStance has been removed; this single
-  // chain covers both phases.
   React.useEffect(() => {
-    const isPollingStatus = status === "hero_ready" || status === "hero_answered_result";
-    if (!isPollingStatus || !currentQuestionId) return;
+    if ((status !== "hero_ready" && status !== "hero_answered_result") || !currentQuestionId) return;
 
     let cancelled = false;
     const qId = currentQuestionId;
     const runId = Math.random().toString(36).slice(2, 6);
-    console.log(`[hero:poll] ▶ chain START id=${instanceId.current} run=${runId} qId=${qId.slice(0,8)}`);
+    console.log(`[hero:poll] ▶ chain START id=${instanceId.current} run=${runId} qId=${qId.slice(0,8)} status=${status}`);
 
     const tick = async () => {
       if (cancelled) {
@@ -443,24 +398,24 @@ export function useHeroController({
       const fresh = await fetchDistributionRef.current(qId);
       if (cancelled) return; // don't setState after unmount
       if (fresh) {
-        console.log(`[hero:poll] ✓ responses=${fresh.responses} oppose=${fresh.oppose_pct}% support=${fresh.support_pct}%`);
+        console.log(`[hero:poll] ✓ responses=${fresh.responses} opposePct=${fresh.opposePct}% supportPct=${fresh.supportPct}%`);
         setDistribution(fresh);
       } else {
         console.warn(`[hero:poll] ✗ fetch returned null`);
       }
       if (!cancelled) {
-        distributionPollInterval.current = setTimeout(tick, 10_000) as unknown as ReturnType<typeof setInterval>;
+        distributionPollInterval.current = setTimeout(tick, 10_000);
       }
     };
 
     // First tick after 10s
-    distributionPollInterval.current = setTimeout(tick, 10_000) as unknown as ReturnType<typeof setInterval>;
+    distributionPollInterval.current = setTimeout(tick, 10_000);
 
     return () => {
       console.log(`[hero:poll] ■ chain CLEANUP run=${runId} qId=${qId.slice(0,8)}`);
       cancelled = true;
       if (distributionPollInterval.current) {
-        clearTimeout(distributionPollInterval.current as unknown as ReturnType<typeof setTimeout>);
+        clearTimeout(distributionPollInterval.current);
         distributionPollInterval.current = null;
       }
     };
@@ -628,11 +583,9 @@ export function useHeroController({
         fireAnalytics("hero_stance_submitted", { questionId, value });
         fireAnalytics("hero_alignment_viewed", { questionId });
 
-        // NOTE: No manual poll started here.
-        // The polling useEffect above runs for both hero_ready AND hero_answered_result,
-        // so when setStatus("hero_answered_result") fires above, that effect will
-        // start a fresh StrictMode-safe setTimeout chain automatically.
-        console.log(`[hero:poll] status→hero_answered_result — poll chain will auto-start via useEffect`);
+        // Polling continues via the unified useEffect chain above
+        // (covers both hero_ready and hero_answered_result — no manual setInterval needed here)
+        console.log(`[hero:submit] ✓ stance saved qId=${questionId.slice(0,8)} — poll chain will continue in hero_answered_result`);
       } catch (err) {
         console.error("[hero] submitHeroStance failed", err);
         setStatus("hero_error");
@@ -647,7 +600,6 @@ export function useHeroController({
       onLoginRedirect,
       onSubmitSuccess,
       fetchDistribution,
-      clearDistributionPoll,
       queuedQuestions,
       onRequestReplenish,
       checkReplenish,
