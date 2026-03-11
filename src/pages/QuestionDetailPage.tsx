@@ -612,14 +612,14 @@ export default function QuestionDetailPage() {
             return;
           }
 
-          console.log(`[qdp:realtime] ✓ global aggregate changed — debouncing 500ms`);
+          console.log(`[qdp:realtime] ✓ global aggregate changed — debouncing 1500ms`);
           if (debounceTimer) clearTimeout(debounceTimer);
           debounceTimer = setTimeout(() => {
             console.log(`[qdp:realtime] ✓ invalidating community-stats + question-stats`);
             queryClient.invalidateQueries({ queryKey: communityStatsKey(questionId) });
             // Also refresh question-stats so RegionComparison stays current
             queryClient.invalidateQueries({ queryKey: ["question-stats", questionId] });
-          }, 500);
+          }, 1500);
         }
       )
       .subscribe((status) => {
