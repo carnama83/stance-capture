@@ -314,7 +314,7 @@ export function useHeroController({
             return;
           }
 
-          console.log(`[hero:realtime] ✓ global aggregate change detected — debouncing 500ms`);
+          console.log(`[hero:realtime] ✓ global aggregate change detected — debouncing 1500ms`);
 
           if (debounceTimer) clearTimeout(debounceTimer);
           debounceTimer = setTimeout(() => {
@@ -323,10 +323,21 @@ export function useHeroController({
                 console.log(`[hero:realtime] ✓ distribution refreshed — responses=${fresh.responses} opposePct=${fresh.opposePct}% supportPct=${fresh.supportPct}%`);
                 setDistribution(fresh);
               } else {
-                console.warn(`[hero:realtime] ✗ distribution refresh returned null after realtime event`);
+                // Row may not have propagated yet — retry once after another 1500ms
+                console.warn(`[hero:realtime] ✗ null on first attempt — retrying in 1500ms`);
+                setTimeout(() => {
+                  fetchDistribution(questionId).then((retry) => {
+                    if (retry) {
+                      console.log(`[hero:realtime] ✓ retry succeeded — responses=${retry.responses}`);
+                      setDistribution(retry);
+                    } else {
+                      console.warn(`[hero:realtime] ✗ retry also returned null`);
+                    }
+                  });
+                }, 1500);
               }
             });
-          }, 500);
+          }, 1500);
         }
       )
       .subscribe((status) => {
