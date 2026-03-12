@@ -187,6 +187,12 @@ async function setMyStance(questionId: string, score: number | null): Promise<nu
   });
 
   if (error) { console.error("Failed to set stance", error); throw error; }
+
+  // When score=null (clear), the DB deletes the row and returns it via RETURNING *.
+  // We must return null explicitly — not the deleted row's score — so callers
+  // correctly see the stance as cleared.
+  if (score === null) return null;
+
   const row = data as QuestionStance | null;
   return row ? row.score : null;
 }
