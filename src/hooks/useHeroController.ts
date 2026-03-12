@@ -25,8 +25,6 @@ import { getSupabase } from "@/lib/supabaseClient";
 import { fetchCommunityStats } from "@/lib/fetchCommunityStats";
 import {
   CommunityStanceData,
-  COMMUNITY_STANCE_GLOBAL_SCOPE,
-  COMMUNITY_STANCE_GLOBAL_KEY,
 } from "@/types/communityStance";
 
 // ─── Types (re-exported for use in hero components) ───────────────────────────
@@ -188,6 +186,36 @@ export function useHeroController({
   const [distribution, setDistribution] = React.useState<CommunityStanceData | null>(null);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
 
+  // ── Fetch token guard ──
+  // Prevents stale fetch responses from overwriting newer results.
+  // Every intentional refresh increments this counter and captures the new value.
+  // A fetch result only commits if its captured token still matches current — meaning
+  // no newer fetch was started while this one was in flight.
+  // Eliminates the race where a slow poll tick resolves AFTER a faster realtime fetch
+  // and overwrites the correct new data with stale values.
+  const fetchToken = React.useRef(0);
+
+  const setDistributionGuarded = React.useCallback(
+    (data: CommunityStanceData | null, token: number) => {
+      if (token !== fetchToken.current) {
+        console.log(`[hero:dist] ⚑ stale response discarded token=${token} current=${fetchToken.current}`);
+        return;
+      }
+      setDistribution(data);
+    },
+    []
+  );
+
+  // Convenience: bump token, run a fetch, commit only if still current
+  const fetchDistributionFresh = React.useCallback(
+    async (questionId: string): Promise<void> => {
+      const token = ++fetchToken.current;
+      const result = await fetchDistributionRef.current(questionId);
+      setDistributionGuarded(result, token);
+    },
+    [setDistributionGuarded]
+  );
+
   // Track which question IDs have already been used as hero (to avoid re-promotion)
   const usedQuestionIds = React.useRef<Set<string>>(new Set());
 
@@ -303,41 +331,20 @@ export function useHeroController({
           table: "question_stance_stats_region",
           filter: `question_id=eq.${questionId}`,
         },
-        (payload) => {
-          // JS-side filter: only react to the global aggregate row
-          const row = (payload.new ?? payload.old ?? {}) as Record<string, unknown>;
-          const scope = row["region_scope"];
-          const key   = row["region_key"];
-
-          if (scope !== COMMUNITY_STANCE_GLOBAL_SCOPE || key !== COMMUNITY_STANCE_GLOBAL_KEY) {
-            console.log(`[hero:realtime] ignoring non-global row scope=${scope} key=${key}`);
-            return;
-          }
-
-          console.log(`[hero:realtime] ✓ global aggregate change detected — debouncing 1500ms`);
+        (_payload) => {
+          // NOTE: We intentionally do NOT filter by region_scope/region_key here.
+          // Supabase Realtime only sends PK columns in payload.new unless the table
+          // has REPLICA IDENTITY FULL — so those fields will be undefined and any
+          // JS-side guard on them will silently drop every event.
+          // The DB-level filter (question_id=eq.${questionId}) is sufficient — any
+          // change to this question's aggregate rows means we should re-fetch global stats.
+          console.log(`[hero:realtime] ✓ aggregate row changed for qId=${questionId.slice(0,8)} — debouncing 500ms`);
 
           if (debounceTimer) clearTimeout(debounceTimer);
           debounceTimer = setTimeout(() => {
-            fetchDistribution(questionId).then((fresh) => {
-              if (fresh) {
-                console.log(`[hero:realtime] ✓ distribution refreshed — responses=${fresh.responses} opposePct=${fresh.opposePct}% supportPct=${fresh.supportPct}%`);
-                setDistribution(fresh);
-              } else {
-                // Row may not have propagated yet — retry once after another 1500ms
-                console.warn(`[hero:realtime] ✗ null on first attempt — retrying in 1500ms`);
-                setTimeout(() => {
-                  fetchDistribution(questionId).then((retry) => {
-                    if (retry) {
-                      console.log(`[hero:realtime] ✓ retry succeeded — responses=${retry.responses}`);
-                      setDistribution(retry);
-                    } else {
-                      console.warn(`[hero:realtime] ✗ retry also returned null`);
-                    }
-                  });
-                }, 1500);
-              }
-            });
-          }, 1500);
+            console.log(`[hero:realtime] ✓ fetching fresh distribution for qId=${questionId.slice(0,8)}`);
+            fetchDistributionFresh(questionId);
+          }, 500);
         }
       )
       .subscribe((status) => {
@@ -370,14 +377,7 @@ export function useHeroController({
       console.log(`[hero:window-event] stance-saved fired qId=${questionId?.slice(0,8)} value=${value}`);
       if (questionId === currentQuestionId) {
         console.log(`[hero:window-event] ✓ matches hero question — refreshing distribution`);
-        fetchDistributionRef.current(currentQuestionId).then((fresh) => {
-          if (fresh) {
-            console.log(`[hero:window-event] ✓ refreshed — responses=${fresh.responses} opposePct=${fresh.opposePct}% supportPct=${fresh.supportPct}%`);
-            setDistribution(fresh);
-          } else {
-            console.warn(`[hero:window-event] ✗ refresh returned null`);
-          }
-        });
+        fetchDistributionFresh(currentQuestionId);
       } else {
         console.log(`[hero:window-event] different question — ignoring`);
       }
@@ -406,11 +406,14 @@ export function useHeroController({
         return;
       }
       console.log(`[hero:poll] ⏱ tick run=${runId} qId=${qId.slice(0,8)}`);
+      // Capture token BEFORE the async fetch so we can detect if a newer
+      // realtime/submit fetch started while this poll was in flight
+      const token = ++fetchToken.current;
       const fresh = await fetchDistributionRef.current(qId);
       if (cancelled) return; // don't setState after unmount
       if (fresh) {
-        console.log(`[hero:poll] ✓ responses=${fresh.responses} opposePct=${fresh.opposePct}% supportPct=${fresh.supportPct}%`);
-        setDistribution(fresh);
+        console.log(`[hero:poll] ✓ responses=${fresh.responses} — applying if token current`);
+        setDistributionGuarded(fresh, token);
       } else {
         console.warn(`[hero:poll] ✗ fetch returned null`);
       }
@@ -454,12 +457,10 @@ export function useHeroController({
         setStatus("hero_ready");
         fireAnalytics("hero_question_impression", { questionId: nextQuestion.question_id });
         // Pre-fetch community distribution so the bar shows immediately
-        fetchDistribution(nextQuestion.question_id).then((dist) => {
-          if (dist) setDistribution(dist);
-        });
+        fetchDistributionFresh(nextQuestion.question_id);
       }, TRANSITION_MS);
     },
-    [clearAllTimers, fetchDistribution]
+    [clearAllTimers, fetchDistributionFresh]
   );
 
   // ── Queue replenishment check ──
@@ -523,14 +524,7 @@ export function useHeroController({
     setStatus("hero_ready");
     fireAnalytics("hero_question_impression", { questionId: first.question_id });
     // Pre-fetch community distribution so the bar shows immediately
-    fetchDistribution(first.question_id).then((dist) => {
-      if (dist) {
-        console.log(`[hero:init] initial distribution loaded — responses=${dist.responses}`);
-        setDistribution(dist);
-      } else {
-        console.warn(`[hero:init] initial distribution returned null`);
-      }
-    });
+    fetchDistributionFresh(first.question_id);
   }, [allQuestions, isLoading, status, doTransition, checkReplenish, fetchDistribution]);
 
   // ── Sync queue when allQuestions grows (replenishment) ──
@@ -585,9 +579,8 @@ export function useHeroController({
         // Parent handles the actual RPC + query invalidations
         await onSubmitSuccess(questionId, value);
 
-        // Fetch distribution for result display
-        const dist = await fetchDistribution(questionId);
-        setDistribution(dist);
+        // Fetch distribution for result display — token-guarded so realtime can't be overwritten
+        await fetchDistributionFresh(questionId);
 
         // Enter result mode
         setStatus("hero_answered_result");
@@ -610,7 +603,7 @@ export function useHeroController({
       isAuthed,
       onLoginRedirect,
       onSubmitSuccess,
-      fetchDistribution,
+      fetchDistributionFresh,
       queuedQuestions,
       onRequestReplenish,
       checkReplenish,
@@ -695,15 +688,8 @@ export function useHeroController({
   const refreshDistribution = React.useCallback(() => {
     if (!currentHeroQuestion) return;
     console.log(`[hero:refresh] manual refresh triggered for qId=${currentHeroQuestion.question_id.slice(0,8)}`);
-    fetchDistribution(currentHeroQuestion.question_id).then((fresh) => {
-      if (fresh) {
-        console.log(`[hero:refresh] ✓ manual refresh succeeded — responses=${fresh.responses}`);
-        setDistribution(fresh);
-      } else {
-        console.warn(`[hero:refresh] ✗ manual refresh returned null`);
-      }
-    });
-  }, [currentHeroQuestion, fetchDistribution]);
+    fetchDistributionFresh(currentHeroQuestion.question_id);
+  }, [currentHeroQuestion, fetchDistributionFresh]);
 
   return {
     status,
