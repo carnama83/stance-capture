@@ -323,78 +323,70 @@ export function useHeroController({
 
   const currentQuestionId = React.useMemo(() => currentHeroQuestion?.question_id ?? null, [currentHeroQuestion?.question_id]);
 
-  // ── Realtime subscription: question_stance_stats_region changes ──
-  // Subscribes to the aggregate table (not raw question_stances).
-  // This fires after the DB trigger has already computed updated percentages —
-  // so the fetch returns fresh, correct data immediately.
+  // ── Realtime subscription: question_stances changes ──
+  // Subscribes to the RAW stances table, not the aggregate.
+  // This fires when a user saves/clears their stance — before the DB trigger
+  // has run refresh_question_stance_stats_region. We then wait 1500ms to give
+  // the trigger time to write the aggregate row, then fetch.
   //
-  // Subscription filter: question_id only (Supabase Realtime only supports
-  // simple single-column eq filters — compound filters are not supported).
+  // Why question_stances instead of question_stance_stats_region:
+  // - question_stance_stats_region realtime fires simultaneously with the row write,
+  //   meaning our fetch often races the propagation and reads a stale/missing row.
+  // - question_stances fires first, giving us a known head-start before fetching.
+  // - DELETE from question_stances = stance cleared → we set null directly.
+  // - INSERT/UPDATE = new/changed stance → wait then fetch aggregate.
   //
-  // We do NOT filter by region_scope/region_key in the JS callback.
-  // The DB-level question_id filter is sufficient — the DB trigger refreshes
-  // all scope rows together, so any event means the global row also updated.
-  // The fetcher always reads only the global row, so the broad event source is fine.
-  //
-  // Debounce: 500ms — one vote can trigger multiple aggregate row writes
-  // (global + city/county/state/country tiers), so we debounce to avoid
-  // a burst of redundant fetches from a single stance change.
+  // Filter: question_id only (Supabase Realtime simple eq filter).
   React.useEffect(() => {
     if (!sb || !currentQuestionId) return;
     const questionId = currentQuestionId;
 
-    console.log(`[hero:realtime] subscribing to question_stance_stats_region for qId=${questionId.slice(0,8)}`);
+    console.log(`[hero:realtime] subscribing to question_stances for qId=${questionId.slice(0,8)}`);
 
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
     const channel = sb
-      .channel(`hero-stats-${questionId}`)
+      .channel(`hero-stances-${questionId}`)
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
-          table: "question_stance_stats_region",
+          table: "question_stances",
           filter: `question_id=eq.${questionId}`,
         },
         (payload) => {
-          // NOTE: We intentionally do NOT filter by region_scope/region_key here.
-          // Supabase Realtime only sends PK columns in payload.new unless the table
-          // has REPLICA IDENTITY FULL — so those fields will be undefined and any
-          // JS-side guard on them will silently drop every event.
-          // The DB-level filter (question_id=eq.${questionId}) is sufficient.
-          //
-          // DELETE vs INSERT/UPDATE are handled differently:
-          // - DELETE: do NOT fetch. The event itself IS the signal that all stances
-          //   were cleared. Fetching risks reading the row before deletion propagates,
-          //   returning stale data. Instead, bump token and set null directly.
-          // - INSERT/UPDATE: fetch fresh aggregate (row now exists with new values).
           const isDelete = payload.eventType === "DELETE";
 
           if (isDelete) {
-            console.log(`[hero:realtime] ✓ aggregate row DELETED for qId=${questionId.slice(0,8)} — clearing directly`);
+            // Stance cleared — the DB trigger will DELETE from question_stance_stats_region.
+            // We don't fetch; the DELETE itself tells us distribution is now empty.
+            // Wait 800ms for the trigger cascade to complete, then clear directly.
+            console.log(`[hero:realtime] ✓ stance DELETED for qId=${questionId.slice(0,8)} — will clear distribution in 800ms`);
             if (debounceTimer) clearTimeout(debounceTimer);
             debounceTimer = setTimeout(() => {
-              ++fetchToken.current; // invalidate any in-flight fetch
+              ++fetchToken.current;
               setDistribution(null);
               console.log(`[hero:realtime] ✓ distribution cleared (token=${fetchToken.current})`);
-            }, 500);
+            }, 800);
             return;
           }
 
-          console.log(`[hero:realtime] ✓ aggregate row changed for qId=${questionId.slice(0,8)} — debouncing 500ms`);
+          // INSERT/UPDATE — wait 1500ms for trigger to write aggregate, then fetch.
+          // 1500ms gives the trigger + DB propagation time to complete reliably.
+          console.log(`[hero:realtime] ✓ stance INSERT/UPDATE for qId=${questionId.slice(0,8)} — fetching aggregate in 1500ms`);
           if (debounceTimer) clearTimeout(debounceTimer);
           debounceTimer = setTimeout(() => {
             console.log(`[hero:realtime] ✓ fetching fresh distribution for qId=${questionId.slice(0,8)}`);
             fetchDistributionFresh(questionId);
-          }, 500);
+          }, 1500);
         }
       )
       .subscribe((status) => {
         if (status === "SUBSCRIBED") {
-          console.log(`[hero:realtime] ✅ SUBSCRIBED — listening for aggregate changes on qId=${questionId.slice(0,8)}`);
+          console.log(`[hero:realtime] ✅ SUBSCRIBED to question_stances — qId=${questionId.slice(0,8)}`);
         } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-          console.error(`[hero:realtime] ❌ channel ${status} — realtime NOT working for qId=${questionId.slice(0,8)}`);
+          console.error(`[hero:realtime] ❌ channel ${status} for qId=${questionId.slice(0,8)}`);
         } else {
           console.log(`[hero:realtime] channel status=${status} qId=${questionId.slice(0,8)}`);
         }
