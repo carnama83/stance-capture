@@ -25,6 +25,8 @@ import { getSupabase } from "@/lib/supabaseClient";
 import { fetchCommunityStats } from "@/lib/fetchCommunityStats";
 import {
   CommunityStanceData,
+  RawStanceStatsRegionRow,
+  mapToCommunityStanceData,
   COMMUNITY_STANCE_GLOBAL_SCOPE,
   COMMUNITY_STANCE_GLOBAL_KEY,
 } from "@/types/communityStance";
@@ -323,168 +325,171 @@ export function useHeroController({
 
   const currentQuestionId = React.useMemo(() => currentHeroQuestion?.question_id ?? null, [currentHeroQuestion?.question_id]);
 
-  // ── Realtime subscription: question_stances changes ──
-  // Subscribes to the RAW stances table, not the aggregate.
-  // This fires when a user saves/clears their stance — before the DB trigger
-  // has run refresh_question_stance_stats_region. We then wait 1500ms to give
-  // the trigger time to write the aggregate row, then fetch.
+  // ── Realtime: subscribe to question_stance_stats_region (aggregate table) ──
   //
-  // Why question_stances instead of question_stance_stats_region:
-  // - question_stance_stats_region realtime fires simultaneously with the row write,
-  //   meaning our fetch often races the propagation and reads a stale/missing row.
-  // - question_stances fires first, giving us a known head-start before fetching.
-  // - DELETE from question_stances = stance cleared → we set null directly.
-  // - INSERT/UPDATE = new/changed stance → wait then fetch aggregate.
+  // Requires: ALTER TABLE question_stance_stats_region REPLICA IDENTITY FULL
+  // (see migration_replica_identity_full.sql)
   //
-  // Filter: question_id only (Supabase Realtime simple eq filter).
+  // With REPLICA IDENTITY FULL, payload.new contains the full aggregate row on
+  // INSERT/UPDATE — so we can build CommunityStanceData directly from the event
+  // without a follow-up fetch. This eliminates the event/read propagation race.
+  //
+  // Flow for INSERT/UPDATE (stance saved or changed):
+  //   1. question_stance_stats_region INSERT/UPDATE fires
+  //   2. Filter for region_scope='global' AND region_key='global'
+  //   3a. If payload.new has full row → build distribution directly, no fetch
+  //   3b. If payload.new is incomplete (REPLICA IDENTITY not yet active) →
+  //       fall back to a single guarded fetch after 800ms
+  //
+  // Flow for DELETE (last stance cleared — DB trigger deletes all aggregate rows):
+  //   1. question_stance_stats_region DELETE fires
+  //   2. Debounce 400ms waiting for a paired INSERT (in case it's a replace, not a clear)
+  //   3. If no INSERT arrives → set distribution = null directly
   React.useEffect(() => {
     if (!sb || !currentQuestionId) return;
     const questionId = currentQuestionId;
 
-    console.log(`[hero:realtime] subscribing to question_stances for qId=${questionId.slice(0,8)}`);
+    console.log(`[hero:realtime] subscribing to question_stance_stats_region qId=${questionId.slice(0,8)}`);
 
-    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    let deleteDebounce: ReturnType<typeof setTimeout> | null = null;
 
     const channel = sb
-      .channel(`hero-stances-${questionId}`)
+      .channel(`hero-aggregate-${questionId}`)
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
-          table: "question_stances",
+          table: "question_stance_stats_region",
           filter: `question_id=eq.${questionId}`,
         },
         (payload) => {
-          const isDelete = payload.eventType === "DELETE";
+          // Log raw payload to validate REPLICA IDENTITY FULL is active
+          console.log(`[hero:realtime] event=${payload.eventType}`, payload.new ?? payload.old);
 
-          if (isDelete) {
-            // Stance cleared — the DB trigger will DELETE from question_stance_stats_region.
-            // We don't fetch; the DELETE itself tells us distribution is now empty.
-            // Wait 800ms for the trigger cascade to complete, then clear directly.
-            console.log(`[hero:realtime] ✓ stance DELETED for qId=${questionId.slice(0,8)} — will clear distribution in 800ms`);
-            if (debounceTimer) clearTimeout(debounceTimer);
-            debounceTimer = setTimeout(() => {
+          if (payload.eventType === "DELETE") {
+            // Debounce: DB may DELETE then INSERT when replacing a row.
+            // Wait 400ms — if a paired INSERT/UPDATE arrives, cancel the clear.
+            console.log(`[hero:realtime] DELETE — waiting 400ms for paired INSERT`);
+            if (deleteDebounce) clearTimeout(deleteDebounce);
+            deleteDebounce = setTimeout(() => {
+              console.log(`[hero:realtime] ✓ no paired INSERT — clearing distribution`);
               ++fetchToken.current;
               setDistribution(null);
-              console.log(`[hero:realtime] ✓ distribution cleared (token=${fetchToken.current})`);
-            }, 800);
+            }, 400);
             return;
           }
 
-          // INSERT/UPDATE — wait 1500ms for trigger to write aggregate, then fetch.
-          // 1500ms gives the trigger + DB propagation time to complete reliably.
-          console.log(`[hero:realtime] ✓ stance INSERT/UPDATE for qId=${questionId.slice(0,8)} — fetching aggregate in 1500ms`);
-          if (debounceTimer) clearTimeout(debounceTimer);
-          debounceTimer = setTimeout(() => {
-            console.log(`[hero:realtime] ✓ fetching fresh distribution for qId=${questionId.slice(0,8)}`);
-            fetchDistributionFresh(questionId);
-          }, 1500);
+          // INSERT or UPDATE — cancel any pending DELETE clear
+          if (deleteDebounce) {
+            clearTimeout(deleteDebounce);
+            deleteDebounce = null;
+          }
+
+          // Only process the global row — trigger writes multiple scope rows per change
+          const newRow = payload.new as Partial<RawStanceStatsRegionRow>;
+          if (newRow.region_scope !== COMMUNITY_STANCE_GLOBAL_SCOPE || newRow.region_key !== COMMUNITY_STANCE_GLOBAL_KEY) {
+            console.log(`[hero:realtime] skipping non-global row scope=${newRow.region_scope} key=${newRow.region_key}`);
+            return;
+          }
+
+          // Build distribution directly from payload if REPLICA IDENTITY FULL is active
+          const hasFullRow =
+            newRow.total_responses !== undefined &&
+            newRow.region_label    !== undefined &&
+            newRow.updated_at      !== undefined;
+
+          if (hasFullRow) {
+            const data = mapToCommunityStanceData(newRow as RawStanceStatsRegionRow);
+            console.log(`[hero:realtime] ✓ payload-driven update responses=${data.responses} support=${data.supportPct}% oppose=${data.opposePct}%`);
+            const token = ++fetchToken.current;
+            setDistributionGuarded(data, token);
+          } else {
+            // Fallback: REPLICA IDENTITY FULL not yet active — payload only has PKs.
+            // Single guarded fetch after short delay.
+            console.warn(`[hero:realtime] payload incomplete — falling back to fetch in 800ms`);
+            setTimeout(async () => {
+              const token = ++fetchToken.current;
+              const result = await fetchDistributionRef.current(questionId);
+              if (result !== null) {
+                console.log(`[hero:realtime] ✓ fallback fetch succeeded responses=${result.responses}`);
+                setDistributionGuarded(result, token);
+              } else {
+                console.warn(`[hero:realtime] ✗ fallback fetch null — keeping existing`);
+              }
+            }, 800);
+          }
         }
       )
       .subscribe((status) => {
         if (status === "SUBSCRIBED") {
-          console.log(`[hero:realtime] ✅ SUBSCRIBED to question_stances — qId=${questionId.slice(0,8)}`);
+          console.log(`[hero:realtime] ✅ SUBSCRIBED to question_stance_stats_region qId=${questionId.slice(0,8)}`);
         } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-          console.error(`[hero:realtime] ❌ channel ${status} for qId=${questionId.slice(0,8)}`);
-        } else {
-          console.log(`[hero:realtime] channel status=${status} qId=${questionId.slice(0,8)}`);
+          console.error(`[hero:realtime] ❌ ${status} qId=${questionId.slice(0,8)}`);
         }
       });
 
     return () => {
-      console.log(`[hero:realtime] unsubscribing qId=${questionId.slice(0,8)}`);
-      if (debounceTimer) clearTimeout(debounceTimer);
+      if (deleteDebounce) clearTimeout(deleteDebounce);
       sb.removeChannel(channel);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sb, currentQuestionId]);
 
-  // ── Same-tab stance-saved event ──
-  // QDP dispatches this after saving a stance, carrying pre-fetched community stats.
-  // Using the bundled stats avoids a hero-side fetch racing against DB propagation.
-  // For clear (null score), stats will be null — we set distribution to null directly.
-  // Realtime remains the primary cross-tab mechanism; this is the same-tab fast path.
+  // ── Same-tab fast path ──
+  // QDP dispatches stance-saved with pre-fetched stats when saving on the same tab.
+  // This avoids any fetch/propagation race for the same-tab case.
+  // Cross-tab updates are handled by the realtime subscription above.
   React.useEffect(() => {
     if (!currentQuestionId) return;
     const handler = (e: Event) => {
-      const { questionId, value, communityStats } = (e as CustomEvent).detail ?? {};
-      console.log(`[hero:window-event] stance-saved qId=${questionId?.slice(0,8)} value=${value} hasStats=${!!communityStats}`);
-      if (questionId !== currentQuestionId) {
-        console.log(`[hero:window-event] different question — ignoring`);
-        return;
-      }
+      const { questionId, communityStats } = (e as CustomEvent).detail ?? {};
+      if (questionId !== currentQuestionId) return;
       if (communityStats) {
-        // Use stats bundled by QDP — no fetch needed, no propagation race
-        console.log(`[hero:window-event] ✓ applying bundled stats — responses=${communityStats.responses}`);
+        console.log(`[hero:window-event] ✓ applying bundled stats responses=${communityStats.responses}`);
         const token = ++fetchToken.current;
         setDistributionGuarded(communityStats, token);
-      } else if (value === null || value === undefined) {
-        // Stance cleared and stats unavailable — clear distribution directly
-        console.log(`[hero:window-event] ✓ stance cleared — setting null directly`);
+      } else {
+        // Cleared stance with no stats — clear directly
+        console.log(`[hero:window-event] ✓ stance cleared`);
         ++fetchToken.current;
         setDistribution(null);
-      } else {
-        // Stats not available yet — fall back to fetch
-        console.log(`[hero:window-event] ✓ no bundled stats — fetching`);
-        fetchDistributionFresh(currentQuestionId);
       }
     };
     window.addEventListener("stance-saved", handler);
     return () => window.removeEventListener("stance-saved", handler);
-  }, [currentQuestionId, fetchDistributionFresh, setDistributionGuarded]);
+  }, [currentQuestionId, setDistributionGuarded]);
 
-  // ── Live community distribution polling ──
-  // Uses primitive deps (status string + questionId string) to prevent
-  // the effect re-running whenever object references change.
-  // Self-scheduling setTimeout chain — immune to React StrictMode double-invoke.
-  // StrictMode mounts→unmounts→remounts; a cancelled flag per effect run ensures
-  // the unmounted run's chain stops even if a tick is in-flight.
+  // ── Recovery poll (low-frequency) ──
+  // Realtime is the primary sync mechanism. This poll exists only as a recovery
+  // fallback if realtime missed an event (e.g. connection gap, tab backgrounded).
+  // Fires every 30s — low enough to not interfere with realtime fetches.
+  // Does NOT use the token guard — poll is purely additive and low-priority.
+  // If distribution is already correct, setDistribution with same data is a no-op.
   React.useEffect(() => {
     if ((status !== "hero_ready" && status !== "hero_answered_result") || !currentQuestionId) return;
 
     let cancelled = false;
     const qId = currentQuestionId;
-    const runId = Math.random().toString(36).slice(2, 6);
-    console.log(`[hero:poll] ▶ chain START id=${instanceId.current} run=${runId} qId=${qId.slice(0,8)} status=${status}`);
 
     const tick = async () => {
-      if (cancelled) {
-        console.log(`[hero:poll] ■ chain STOPPED run=${runId} (cancelled)`);
-        return;
-      }
-      console.log(`[hero:poll] ⏱ tick run=${runId} qId=${qId.slice(0,8)}`);
-      // Polling is the LOWEST priority fetch source.
-      // It must NOT increment fetchToken — doing so would steal the token from
-      // an in-flight realtime or submit fetch, causing that higher-priority result
-      // to be discarded by setDistributionGuarded.
-      // Instead: snapshot the current token before the async fetch. If a higher-
-      // priority fetch fires while we're awaiting, it will increment the token.
-      // We commit only if the token hasn't changed since we started — meaning no
-      // higher-priority fetch raced us.
-      const tokenSnapshot = fetchToken.current;
+      if (cancelled) return;
+      console.log(`[hero:poll] ⏱ recovery tick qId=${qId.slice(0,8)}`);
       const fresh = await fetchDistributionRef.current(qId);
-      if (cancelled) return; // don't setState after unmount
-      if (fresh) {
-        if (tokenSnapshot === fetchToken.current) {
-          console.log(`[hero:poll] ✓ responses=${fresh.responses} — token unchanged, applying`);
-          setDistribution(fresh);
-        } else {
-          console.log(`[hero:poll] ⚑ token changed during poll (${tokenSnapshot}→${fetchToken.current}) — discarding stale poll result`);
-        }
-      } else {
-        console.warn(`[hero:poll] ✗ fetch returned null`);
+      if (!cancelled && fresh) {
+        // Only apply if no higher-priority fetch is in flight
+        // (token will be freshly incremented if one is)
+        const tokenNow = fetchToken.current;
+        setDistributionGuarded(fresh, tokenNow);
       }
       if (!cancelled) {
-        distributionPollInterval.current = setTimeout(tick, 10_000);
+        distributionPollInterval.current = setTimeout(tick, 30_000);
       }
     };
 
-    // First tick after 10s
-    distributionPollInterval.current = setTimeout(tick, 10_000);
+    distributionPollInterval.current = setTimeout(tick, 30_000);
 
     return () => {
-      console.log(`[hero:poll] ■ chain CLEANUP run=${runId} qId=${qId.slice(0,8)}`);
       cancelled = true;
       if (distributionPollInterval.current) {
         clearTimeout(distributionPollInterval.current);
