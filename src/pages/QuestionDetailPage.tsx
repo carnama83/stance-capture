@@ -22,8 +22,7 @@ import { FollowTopicButton } from "@/components/FollowTopicButton";
 import { fetchCommunityStats, communityStatsKey } from "@/lib/fetchCommunityStats";
 import { CommunityStanceBar } from "@/components/question/CommunityStanceBar";
 import {
-  COMMUNITY_STANCE_GLOBAL_SCOPE,
-  COMMUNITY_STANCE_GLOBAL_KEY,
+
 } from "@/types/communityStance";
 
 type Session = import("@supabase/supabase-js").Session;
@@ -601,25 +600,20 @@ export default function QuestionDetailPage() {
           table: "question_stance_stats_region",
           filter: `question_id=eq.${questionId}`,
         },
-        (payload) => {
-          // JS-side filter: only react to the global aggregate row
-          const row = (payload.new ?? payload.old ?? {}) as Record<string, unknown>;
-          const scope = row["region_scope"];
-          const key   = row["region_key"];
-
-          if (scope !== COMMUNITY_STANCE_GLOBAL_SCOPE || key !== COMMUNITY_STANCE_GLOBAL_KEY) {
-            console.log(`[qdp:realtime] ignoring non-global row scope=${scope} key=${key}`);
-            return;
-          }
-
-          console.log(`[qdp:realtime] ✓ global aggregate changed — debouncing 1500ms`);
+        (_payload) => {
+          // NOTE: We intentionally do NOT filter by region_scope/region_key here.
+          // Supabase Realtime only sends PK columns in payload.new unless the table
+          // has REPLICA IDENTITY FULL — those fields will be undefined, making any
+          // JS-side guard silently drop every event.
+          // The DB-level filter (question_id=eq.${questionId}) is sufficient.
+          console.log(`[qdp:realtime] ✓ aggregate row changed for qId=${questionId.slice(0,8)} — debouncing 500ms`);
           if (debounceTimer) clearTimeout(debounceTimer);
           debounceTimer = setTimeout(() => {
             console.log(`[qdp:realtime] ✓ invalidating community-stats + question-stats`);
             queryClient.invalidateQueries({ queryKey: communityStatsKey(questionId) });
             // Also refresh question-stats so RegionComparison stays current
             queryClient.invalidateQueries({ queryKey: ["question-stats", questionId] });
-          }, 1500);
+          }, 500);
         }
       )
       .subscribe((status) => {
