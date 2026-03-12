@@ -53,14 +53,14 @@ export function useStanceSubmission({
         throw new Error('You must be logged in to submit a stance');
       }
 
-      // 1. Submit the stance
+      // 1. Submit the stance via the canonical RPC (matches set_question_stance in DB)
       const { error: stanceError } = await supabase
         .from('question_stances')
         .upsert(
           {
             user_id: userId,
             question_id: questionId,
-            stance_value: stanceValue,
+            score: stanceValue,          // ← DB column is 'score', not 'stance_value'
             updated_at: new Date().toISOString(),
           },
           {
