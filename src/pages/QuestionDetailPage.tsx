@@ -600,13 +600,15 @@ export default function QuestionDetailPage() {
           table: "question_stance_stats_region",
           filter: `question_id=eq.${questionId}`,
         },
-        (_payload) => {
+        (payload) => {
           // NOTE: We intentionally do NOT filter by region_scope/region_key here.
           // Supabase Realtime only sends PK columns in payload.new unless the table
           // has REPLICA IDENTITY FULL — those fields will be undefined, making any
           // JS-side guard silently drop every event.
           // The DB-level filter (question_id=eq.${questionId}) is sufficient.
-          console.log(`[qdp:realtime] ✓ aggregate row changed for qId=${questionId.slice(0,8)} — debouncing 500ms`);
+          // DELETE events occur when the last stance is cleared (DB trigger deletes all rows).
+          const isDelete = payload.eventType === "DELETE";
+          console.log(`[qdp:realtime] ✓ aggregate row ${isDelete ? "DELETED" : "changed"} for qId=${questionId.slice(0,8)} — debouncing 500ms`);
           if (debounceTimer) clearTimeout(debounceTimer);
           debounceTimer = setTimeout(() => {
             console.log(`[qdp:realtime] ✓ invalidating community-stats + question-stats`);
@@ -641,13 +643,32 @@ export default function QuestionDetailPage() {
       // Invalidate community-stats so the bar on this page refreshes immediately after save
       queryClient.invalidateQueries({ queryKey: communityStatsKey(questionId) });
 
-      // TODO: Remove this once aggregate-table realtime is confirmed working on both
-      // Hero and QDP. It is a transitional fallback for same-tab hero refresh only.
+      // Broadcast fresh community stats to hero (same tab) via window event.
+      // We fetch after a short delay to let the DB aggregate propagate, then
+      // dispatch the result so the hero can set distribution directly without
+      // its own fetch racing against DB propagation timing.
       const savedScore = typeof vars === "number" ? vars : newScore;
-      console.log(`[qdp:stance] dispatching stance-saved qId=${questionId.slice(0,8)} score=${savedScore}`);
-      window.dispatchEvent(new CustomEvent("stance-saved", {
-        detail: { questionId, value: savedScore }
-      }));
+      const broadcastStats = async (attempt = 1) => {
+        const fresh = await fetchCommunityStats(questionId);
+        if (fresh) {
+          console.log(`[qdp:stance] broadcasting stance-saved with stats attempt=${attempt} responses=${fresh.responses}`);
+          window.dispatchEvent(new CustomEvent("stance-saved", {
+            detail: { questionId, value: savedScore, communityStats: fresh }
+          }));
+        } else if (attempt < 3) {
+          // Row not propagated yet — retry with backoff
+          console.log(`[qdp:stance] stats not ready attempt=${attempt} — retrying in ${attempt * 600}ms`);
+          setTimeout(() => broadcastStats(attempt + 1), attempt * 600);
+        } else {
+          // After 3 attempts just broadcast without stats — hero will handle via realtime
+          console.warn(`[qdp:stance] stats unavailable after ${attempt} attempts — broadcasting without stats`);
+          window.dispatchEvent(new CustomEvent("stance-saved", {
+            detail: { questionId, value: savedScore, communityStats: null }
+          }));
+        }
+      };
+      // Small initial delay to let DB trigger write the aggregate row
+      setTimeout(() => broadcastStats(), 300);
 
       if (userId && question?.topic_id) {
         const answered = newScore !== null;
