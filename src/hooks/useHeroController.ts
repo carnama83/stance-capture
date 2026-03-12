@@ -209,28 +209,20 @@ export function useHeroController({
   );
 
   // Convenience: bump token, run a fetch, commit only if still current.
-  // allowNull=false (default): null means the aggregate row hasn't propagated yet
-  //   after an INSERT/UPDATE (timing gap between realtime event and row being readable).
-  //   We retry once after 800ms — enough time for the row to propagate.
-  //   If the retry also returns null, we keep existing distribution.
-  // allowNull=true: null IS the correct new state (DELETE event — last stance cleared).
-  // setDistribution(null) is still used directly for intentional transition clears.
+  // On null result (INSERT/UPDATE propagation gap — row not readable yet),
+  // retries once after 800ms. If retry also null, keeps existing distribution.
+  // DELETE events are handled directly in the realtime callback without fetching.
   const fetchDistributionFresh = React.useCallback(
-    async (questionId: string, allowNull = false): Promise<void> => {
+    async (questionId: string): Promise<void> => {
       const token = ++fetchToken.current;
       const result = await fetchDistributionRef.current(questionId);
 
       if (result !== null) {
         setDistributionGuarded(result, token);
-      } else if (allowNull) {
-        // DELETE event — null is the correct new state
-        console.log(`[hero:dist] ✓ null committed (allowNull=true, DELETE event) token=${token}`);
-        setDistributionGuarded(null, token);
       } else {
         // INSERT/UPDATE propagation gap — row not readable yet, retry once after 800ms
         console.log(`[hero:dist] ⚑ null on first attempt — retrying in 800ms (token=${token})`);
         setTimeout(async () => {
-          // Only retry if no newer fetch has started since we began
           if (token !== fetchToken.current) {
             console.log(`[hero:dist] ⚑ retry skipped — newer fetch in flight (token=${token} current=${fetchToken.current})`);
             return;
@@ -240,7 +232,7 @@ export function useHeroController({
             console.log(`[hero:dist] ✓ retry succeeded — responses=${retry.responses}`);
             setDistributionGuarded(retry, token);
           } else {
-            console.warn(`[hero:dist] ✗ retry also null — keeping existing distribution (token=${token})`);
+            console.warn(`[hero:dist] ✗ retry also null — keeping existing distribution`);
           }
         }, 800);
       }
@@ -370,19 +362,31 @@ export function useHeroController({
           // Supabase Realtime only sends PK columns in payload.new unless the table
           // has REPLICA IDENTITY FULL — so those fields will be undefined and any
           // JS-side guard on them will silently drop every event.
-          // The DB-level filter (question_id=eq.${questionId}) is sufficient — any
-          // change to this question's aggregate rows means we should re-fetch global stats.
+          // The DB-level filter (question_id=eq.${questionId}) is sufficient.
           //
-          // DELETE events are special: the DB trigger deletes all region rows when the
-          // last stance is cleared. In that case null IS the correct new state — we must
-          // allow it through rather than keeping stale data.
+          // DELETE vs INSERT/UPDATE are handled differently:
+          // - DELETE: do NOT fetch. The event itself IS the signal that all stances
+          //   were cleared. Fetching risks reading the row before deletion propagates,
+          //   returning stale data. Instead, bump token and set null directly.
+          // - INSERT/UPDATE: fetch fresh aggregate (row now exists with new values).
           const isDelete = payload.eventType === "DELETE";
-          console.log(`[hero:realtime] ✓ aggregate row ${isDelete ? "DELETED" : "changed"} for qId=${questionId.slice(0,8)} — debouncing 500ms`);
 
+          if (isDelete) {
+            console.log(`[hero:realtime] ✓ aggregate row DELETED for qId=${questionId.slice(0,8)} — clearing directly`);
+            if (debounceTimer) clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
+              ++fetchToken.current; // invalidate any in-flight fetch
+              setDistribution(null);
+              console.log(`[hero:realtime] ✓ distribution cleared (token=${fetchToken.current})`);
+            }, 500);
+            return;
+          }
+
+          console.log(`[hero:realtime] ✓ aggregate row changed for qId=${questionId.slice(0,8)} — debouncing 500ms`);
           if (debounceTimer) clearTimeout(debounceTimer);
           debounceTimer = setTimeout(() => {
-            console.log(`[hero:realtime] ✓ fetching fresh distribution for qId=${questionId.slice(0,8)} allowNull=${isDelete}`);
-            fetchDistributionFresh(questionId, isDelete);
+            console.log(`[hero:realtime] ✓ fetching fresh distribution for qId=${questionId.slice(0,8)}`);
+            fetchDistributionFresh(questionId);
           }, 500);
         }
       )
