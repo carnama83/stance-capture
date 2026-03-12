@@ -211,15 +211,23 @@ export function QuestionStanceSlider({
     }
   };
 
+  // Keep onSubmit in a ref so the effect always calls the latest version
+  // without needing it as a dependency (avoids stale closure issues).
+  const onSubmitRef = React.useRef(onSubmit);
+  React.useEffect(() => { onSubmitRef.current = onSubmit; }, [onSubmit]);
+
   // Side-effect: run submission after render, decoupled from the drag event.
-  // Slider is never disabled during submission — user can keep interacting.
-  // `disabled` prop (stanceMutation.isPending) is the source of truth for saving state.
+  // IMPORTANT: consume pendingSubmit BEFORE checking disabled.
+  // If we check disabled first and bail, the pending value is lost — the mutation
+  // never fires and the user has to interact a second time.
+  // disabled (stanceMutation.isPending) can flip true in the same render batch
+  // that sets pendingSubmit, so we must not gate on it here.
   React.useEffect(() => {
     if (pendingSubmit.current === null) return;
     const v = pendingSubmit.current;
     pendingSubmit.current = null;
-    if (!onSubmit || disabled) return;
-    Promise.resolve(onSubmit(v));
+    if (!onSubmitRef.current) return;
+    Promise.resolve(onSubmitRef.current(v));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [committed, value]);
 
