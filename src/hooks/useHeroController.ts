@@ -208,18 +208,22 @@ export function useHeroController({
     []
   );
 
-  // Convenience: bump token, run a fetch, commit only if still current AND result is non-null.
-  // We never overwrite a valid distribution with null from a triggered refresh —
-  // null means the aggregate row hasn't propagated yet (timing issue between the
-  // realtime event firing and the DB row being readable). In that case we keep
-  // whatever distribution we already have and wait for the next event/poll.
-  // setDistribution(null) is still used directly for intentional clears on transition.
+  // Convenience: bump token, run a fetch, commit only if still current.
+  // allowNull=false (default): never overwrite valid data with null — null means
+  //   the aggregate row hasn't propagated yet after an INSERT/UPDATE (timing gap
+  //   between the realtime event firing and the row being readable). Keep existing.
+  // allowNull=true: null IS the correct new state — caller knows the row was
+  //   intentionally deleted (e.g. last stance cleared, DB trigger deleted all rows).
+  // setDistribution(null) is still used directly for intentional transition clears.
   const fetchDistributionFresh = React.useCallback(
-    async (questionId: string): Promise<void> => {
+    async (questionId: string, allowNull = false): Promise<void> => {
       const token = ++fetchToken.current;
       const result = await fetchDistributionRef.current(questionId);
       if (result !== null) {
         setDistributionGuarded(result, token);
+      } else if (allowNull) {
+        console.log(`[hero:dist] ✓ null committed (allowNull=true, DELETE event) token=${token}`);
+        setDistributionGuarded(null, token);
       } else {
         console.log(`[hero:dist] ⚑ fetch returned null — keeping existing distribution (token=${token})`);
       }
@@ -344,19 +348,24 @@ export function useHeroController({
           table: "question_stance_stats_region",
           filter: `question_id=eq.${questionId}`,
         },
-        (_payload) => {
+        (payload) => {
           // NOTE: We intentionally do NOT filter by region_scope/region_key here.
           // Supabase Realtime only sends PK columns in payload.new unless the table
           // has REPLICA IDENTITY FULL — so those fields will be undefined and any
           // JS-side guard on them will silently drop every event.
           // The DB-level filter (question_id=eq.${questionId}) is sufficient — any
           // change to this question's aggregate rows means we should re-fetch global stats.
-          console.log(`[hero:realtime] ✓ aggregate row changed for qId=${questionId.slice(0,8)} — debouncing 500ms`);
+          //
+          // DELETE events are special: the DB trigger deletes all region rows when the
+          // last stance is cleared. In that case null IS the correct new state — we must
+          // allow it through rather than keeping stale data.
+          const isDelete = payload.eventType === "DELETE";
+          console.log(`[hero:realtime] ✓ aggregate row ${isDelete ? "DELETED" : "changed"} for qId=${questionId.slice(0,8)} — debouncing 500ms`);
 
           if (debounceTimer) clearTimeout(debounceTimer);
           debounceTimer = setTimeout(() => {
-            console.log(`[hero:realtime] ✓ fetching fresh distribution for qId=${questionId.slice(0,8)}`);
-            fetchDistributionFresh(questionId);
+            console.log(`[hero:realtime] ✓ fetching fresh distribution for qId=${questionId.slice(0,8)} allowNull=${isDelete}`);
+            fetchDistributionFresh(questionId, isDelete);
           }, 500);
         }
       )
