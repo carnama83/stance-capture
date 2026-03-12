@@ -209,23 +209,40 @@ export function useHeroController({
   );
 
   // Convenience: bump token, run a fetch, commit only if still current.
-  // allowNull=false (default): never overwrite valid data with null — null means
-  //   the aggregate row hasn't propagated yet after an INSERT/UPDATE (timing gap
-  //   between the realtime event firing and the row being readable). Keep existing.
-  // allowNull=true: null IS the correct new state — caller knows the row was
-  //   intentionally deleted (e.g. last stance cleared, DB trigger deleted all rows).
+  // allowNull=false (default): null means the aggregate row hasn't propagated yet
+  //   after an INSERT/UPDATE (timing gap between realtime event and row being readable).
+  //   We retry once after 800ms — enough time for the row to propagate.
+  //   If the retry also returns null, we keep existing distribution.
+  // allowNull=true: null IS the correct new state (DELETE event — last stance cleared).
   // setDistribution(null) is still used directly for intentional transition clears.
   const fetchDistributionFresh = React.useCallback(
     async (questionId: string, allowNull = false): Promise<void> => {
       const token = ++fetchToken.current;
       const result = await fetchDistributionRef.current(questionId);
+
       if (result !== null) {
         setDistributionGuarded(result, token);
       } else if (allowNull) {
+        // DELETE event — null is the correct new state
         console.log(`[hero:dist] ✓ null committed (allowNull=true, DELETE event) token=${token}`);
         setDistributionGuarded(null, token);
       } else {
-        console.log(`[hero:dist] ⚑ fetch returned null — keeping existing distribution (token=${token})`);
+        // INSERT/UPDATE propagation gap — row not readable yet, retry once after 800ms
+        console.log(`[hero:dist] ⚑ null on first attempt — retrying in 800ms (token=${token})`);
+        setTimeout(async () => {
+          // Only retry if no newer fetch has started since we began
+          if (token !== fetchToken.current) {
+            console.log(`[hero:dist] ⚑ retry skipped — newer fetch in flight (token=${token} current=${fetchToken.current})`);
+            return;
+          }
+          const retry = await fetchDistributionRef.current(questionId);
+          if (retry !== null) {
+            console.log(`[hero:dist] ✓ retry succeeded — responses=${retry.responses}`);
+            setDistributionGuarded(retry, token);
+          } else {
+            console.warn(`[hero:dist] ✗ retry also null — keeping existing distribution (token=${token})`);
+          }
+        }, 800);
       }
     },
     [setDistributionGuarded]
