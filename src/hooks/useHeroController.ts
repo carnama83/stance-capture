@@ -408,26 +408,39 @@ export function useHeroController({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sb, currentQuestionId]);
 
-  // ── Belt-and-suspenders: window event fallback ──
-  // Catches stance changes from THIS browser tab (e.g. QuestionDetailPage).
-  // Kept as a transitional fallback while aggregate-table realtime is being validated.
-  // Once Hero + QDP both update correctly from question_stance_stats_region,
-  // remove this handler and the stance-saved dispatch in QuestionDetailPage.
+  // ── Same-tab stance-saved event ──
+  // QDP dispatches this after saving a stance, carrying pre-fetched community stats.
+  // Using the bundled stats avoids a hero-side fetch racing against DB propagation.
+  // For clear (null score), stats will be null — we set distribution to null directly.
+  // Realtime remains the primary cross-tab mechanism; this is the same-tab fast path.
   React.useEffect(() => {
     if (!currentQuestionId) return;
     const handler = (e: Event) => {
-      const { questionId, value } = (e as CustomEvent).detail ?? {};
-      console.log(`[hero:window-event] stance-saved fired qId=${questionId?.slice(0,8)} value=${value}`);
-      if (questionId === currentQuestionId) {
-        console.log(`[hero:window-event] ✓ matches hero question — refreshing distribution`);
-        fetchDistributionFresh(currentQuestionId);
-      } else {
+      const { questionId, value, communityStats } = (e as CustomEvent).detail ?? {};
+      console.log(`[hero:window-event] stance-saved qId=${questionId?.slice(0,8)} value=${value} hasStats=${!!communityStats}`);
+      if (questionId !== currentQuestionId) {
         console.log(`[hero:window-event] different question — ignoring`);
+        return;
+      }
+      if (communityStats) {
+        // Use stats bundled by QDP — no fetch needed, no propagation race
+        console.log(`[hero:window-event] ✓ applying bundled stats — responses=${communityStats.responses}`);
+        const token = ++fetchToken.current;
+        setDistributionGuarded(communityStats, token);
+      } else if (value === null || value === undefined) {
+        // Stance cleared and stats unavailable — clear distribution directly
+        console.log(`[hero:window-event] ✓ stance cleared — setting null directly`);
+        ++fetchToken.current;
+        setDistribution(null);
+      } else {
+        // Stats not available yet — fall back to fetch
+        console.log(`[hero:window-event] ✓ no bundled stats — fetching`);
+        fetchDistributionFresh(currentQuestionId);
       }
     };
     window.addEventListener("stance-saved", handler);
     return () => window.removeEventListener("stance-saved", handler);
-  }, [currentQuestionId]);
+  }, [currentQuestionId, fetchDistributionFresh, setDistributionGuarded]);
 
   // ── Live community distribution polling ──
   // Uses primitive deps (status string + questionId string) to prevent
