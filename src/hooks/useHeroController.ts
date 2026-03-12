@@ -25,6 +25,8 @@ import { getSupabase } from "@/lib/supabaseClient";
 import { fetchCommunityStats } from "@/lib/fetchCommunityStats";
 import {
   CommunityStanceData,
+  COMMUNITY_STANCE_GLOBAL_SCOPE,
+  COMMUNITY_STANCE_GLOBAL_KEY,
 } from "@/types/communityStance";
 
 // ─── Types (re-exported for use in hero components) ───────────────────────────
@@ -206,12 +208,21 @@ export function useHeroController({
     []
   );
 
-  // Convenience: bump token, run a fetch, commit only if still current
+  // Convenience: bump token, run a fetch, commit only if still current AND result is non-null.
+  // We never overwrite a valid distribution with null from a triggered refresh —
+  // null means the aggregate row hasn't propagated yet (timing issue between the
+  // realtime event firing and the DB row being readable). In that case we keep
+  // whatever distribution we already have and wait for the next event/poll.
+  // setDistribution(null) is still used directly for intentional clears on transition.
   const fetchDistributionFresh = React.useCallback(
     async (questionId: string): Promise<void> => {
       const token = ++fetchToken.current;
       const result = await fetchDistributionRef.current(questionId);
-      setDistributionGuarded(result, token);
+      if (result !== null) {
+        setDistributionGuarded(result, token);
+      } else {
+        console.log(`[hero:dist] ⚑ fetch returned null — keeping existing distribution (token=${token})`);
+      }
     },
     [setDistributionGuarded]
   );
@@ -307,8 +318,10 @@ export function useHeroController({
   // Subscription filter: question_id only (Supabase Realtime only supports
   // simple single-column eq filters — compound filters are not supported).
   //
-  // Global-row guard: done in JS callback — only react when the changed row is
-  // region_scope='global' AND region_key='global'.
+  // We do NOT filter by region_scope/region_key in the JS callback.
+  // The DB-level question_id filter is sufficient — the DB trigger refreshes
+  // all scope rows together, so any event means the global row also updated.
+  // The fetcher always reads only the global row, so the broad event source is fine.
   //
   // Debounce: 500ms — one vote can trigger multiple aggregate row writes
   // (global + city/county/state/country tiers), so we debounce to avoid
