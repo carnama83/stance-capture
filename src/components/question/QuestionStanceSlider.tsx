@@ -202,11 +202,14 @@ export function QuestionStanceSlider({
   // Synchronous commit — updates state immediately, queues submission via ref.
   // Never async: Radix onValueCommit must return synchronously or it breaks
   // pointer capture on subsequent drags.
+  // NOTE: do NOT check disabled here — disabled (stanceMutation.isPending) can be
+  // true during a rapid re-interaction, and blocking here means pendingSubmit never
+  // gets set and the submission is silently lost.
   const handleCommit = (vals: number[]) => {
     const v = Math.max(-2, Math.min(2, Math.round(vals[0] ?? 0)));
     setValue(v);
     setCommitted(true);
-    if (onSubmit && !disabled) {
+    if (onSubmitRef.current) {
       pendingSubmit.current = v;
     }
   };
