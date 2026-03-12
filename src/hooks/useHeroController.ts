@@ -428,14 +428,24 @@ export function useHeroController({
         return;
       }
       console.log(`[hero:poll] ⏱ tick run=${runId} qId=${qId.slice(0,8)}`);
-      // Capture token BEFORE the async fetch so we can detect if a newer
-      // realtime/submit fetch started while this poll was in flight
-      const token = ++fetchToken.current;
+      // Polling is the LOWEST priority fetch source.
+      // It must NOT increment fetchToken — doing so would steal the token from
+      // an in-flight realtime or submit fetch, causing that higher-priority result
+      // to be discarded by setDistributionGuarded.
+      // Instead: snapshot the current token before the async fetch. If a higher-
+      // priority fetch fires while we're awaiting, it will increment the token.
+      // We commit only if the token hasn't changed since we started — meaning no
+      // higher-priority fetch raced us.
+      const tokenSnapshot = fetchToken.current;
       const fresh = await fetchDistributionRef.current(qId);
       if (cancelled) return; // don't setState after unmount
       if (fresh) {
-        console.log(`[hero:poll] ✓ responses=${fresh.responses} — applying if token current`);
-        setDistributionGuarded(fresh, token);
+        if (tokenSnapshot === fetchToken.current) {
+          console.log(`[hero:poll] ✓ responses=${fresh.responses} — token unchanged, applying`);
+          setDistribution(fresh);
+        } else {
+          console.log(`[hero:poll] ⚑ token changed during poll (${tokenSnapshot}→${fetchToken.current}) — discarding stale poll result`);
+        }
       } else {
         console.warn(`[hero:poll] ✗ fetch returned null`);
       }
