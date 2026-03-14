@@ -533,6 +533,8 @@ export default function QuestionDetailPage() {
     staleTime: 5 * 60_000,
   });
 
+  const debugQid = questionId.slice(0, 8);
+
   const { data: myStance, isLoading: stanceLoading } = useQuery({
     enabled: !!questionId && isAuthed,
     queryKey: ["my-stance", questionId],
@@ -640,14 +642,51 @@ export default function QuestionDetailPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sb, questionId]);
 
+  React.useEffect(() => {
+    console.log("[qdp:state] my-stance query", {
+      qid: debugQid,
+      myStance,
+      stanceLoading,
+      isAuthed,
+      mutationPending: stanceMutation?.isPending ?? false,
+    });
+  }, [debugQid, myStance, stanceLoading, isAuthed]);
+
+  React.useEffect(() => {
+    console.log("[qdp:state] question-stats query", {
+      qid: debugQid,
+      statsMyStance: stats?.my_stance ?? null,
+      effectiveStatsMyStance: (typeof myStance === "number" || myStance === null) ? (myStance ?? null) : null,
+      statsLoading,
+    });
+  }, [debugQid, stats?.my_stance, myStance, statsLoading]);
+
+  React.useEffect(() => {
+    console.log("[qdp:state] community-stats query", {
+      qid: debugQid,
+      responses: communityStats?.responses ?? null,
+      supportPct: communityStats?.supportPct ?? null,
+      opposePct: communityStats?.opposePct ?? null,
+      neutralPct: communityStats?.neutralPct ?? null,
+      communityStatsLoading,
+    });
+  }, [debugQid, communityStats?.responses, communityStats?.supportPct, communityStats?.opposePct, communityStats?.neutralPct, communityStatsLoading]);
+
   const stanceMutation = useMutation({
     mutationKey: ["set-stance", questionId],
-    mutationFn: (score: number | null) => setMyStance(questionId, score),
+    mutationFn: async (score: number | null) => {
+      console.log("[qdp:mutation] start", { qid: debugQid, requestedScore: score, queryMyStanceBefore: queryClient.getQueryData(["my-stance", questionId]) });
+      const result = await setMyStance(questionId, score);
+      console.log("[qdp:mutation] result", { qid: debugQid, requestedScore: score, returnedScore: result });
+      return result;
+    },
     onSuccess: async (newScore, vars) => {
+      console.log("[qdp:mutation] onSuccess", { qid: debugQid, newScore, vars, cacheBefore: queryClient.getQueryData(["my-stance", questionId]), statsBefore: queryClient.getQueryData(["question-stats", questionId]) });
       const resolvedScore =
         typeof vars === "number" || vars === null ? vars : newScore;
 
       queryClient.setQueryData(["my-stance", questionId], resolvedScore);
+      console.log("[qdp:mutation] cache set my-stance", { qid: debugQid, resolvedScore });
 
       // Keep question-stats.my_stance in sync immediately so the slider,
       // alignment box, and "you chose" copy do not lag behind the saved value.
@@ -662,6 +701,8 @@ export default function QuestionDetailPage() {
             : old ?? null
       );
 
+      console.log("[qdp:mutation] cache set question-stats.my_stance", { qid: debugQid, resolvedScore, statsAfter: queryClient.getQueryData(["question-stats", questionId]) });
+
       // Still refetch in background so region aggregates / derived stats stay authoritative
       queryClient.invalidateQueries({ queryKey: ["question-stats", questionId] });
       // Invalidate community-stats so the bar on this page refreshes immediately after save
@@ -672,6 +713,7 @@ export default function QuestionDetailPage() {
       // dispatch the result so the hero can set distribution directly without
       // its own fetch racing against DB propagation timing.
       const savedScore = typeof vars === "number" ? vars : newScore;
+      console.log("[qdp:mutation] post-invalidate", { qid: debugQid, savedScore, myStanceCacheNow: queryClient.getQueryData(["my-stance", questionId]), statsCacheNow: queryClient.getQueryData(["question-stats", questionId]) });
       const broadcastStats = async (attempt = 1) => {
         const fresh = await fetchCommunityStats(questionId);
         if (fresh) {
@@ -716,6 +758,7 @@ export default function QuestionDetailPage() {
       });
     },
     onError: (err: any) => {
+      console.error("[qdp:mutation] onError", { qid: debugQid, err });
       toast({
         title: "Error",
         description: err?.message ?? "Failed to save your stance. Please try again.",
@@ -725,7 +768,10 @@ export default function QuestionDetailPage() {
   });
 
   const handleSetStance = React.useCallback(
-    (newVal: number) => stanceMutation.mutate(newVal),
+    (newVal: number) => {
+      console.log("[qdp:handleSetStance]", { qid: debugQid, newVal, queryMyStanceBefore: queryClient.getQueryData(["my-stance", questionId]), mutationPending: stanceMutation.isPending });
+      stanceMutation.mutate(newVal);
+    },
     [stanceMutation]
   );
 
@@ -749,6 +795,15 @@ export default function QuestionDetailPage() {
       my_stance: myStance ?? null,
     };
   }, [stats, myStance]);
+
+  React.useEffect(() => {
+    console.log("[qdp:effective-stats]", {
+      qid: debugQid,
+      myStance,
+      statsMyStance: stats?.my_stance ?? null,
+      effectiveStatsMyStance: effectiveStats?.my_stance ?? null,
+    });
+  }, [debugQid, myStance, stats?.my_stance, effectiveStats?.my_stance]);
 
   // Shared props object for StanceCard — avoids duplication between mobile/desktop renders
   const stanceCardProps = {
