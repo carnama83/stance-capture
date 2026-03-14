@@ -1945,26 +1945,51 @@ export default function IndexPage() {
     [sb, regionLabel]
   );
 
-  // ── Stance submit (unchanged) ──
+  // ── Stance submit ──
+  // Keep the hero save contract tight: resolve once the stance RPC succeeds.
+  // Follow-up refreshes should run in the background so the controller can leave
+  // hero_submitting immediately after a real save instead of waiting on every
+  // homepage invalidation/refetch to settle.
   const submitStance = React.useCallback(
     async (questionId: string, value: number) => {
-      if (!sb) return;
+      if (!sb) {
+        throw new Error("Supabase client not ready");
+      }
       if (!userId) {
         const returnTo = window.location.hash || "#/";
         sessionStorage.setItem("return_to", returnTo);
         navigate("/login");
         return;
       }
-      const { error } = await sb.rpc("set_question_stance", {
+
+      console.log(
+        `[home:submit] START qId=${questionId.slice(0, 8)} userId=${userId.slice(0, 8)} value=${value}`
+      );
+
+      const { data, error } = await sb.rpc("set_question_stance", {
         p_question_id: questionId,
         p_score: value,
       });
-      if (error) throw error;
-      // Fire window event — caught by hero controller as fallback to Realtime
-      console.log(`[stance:save] dispatching stance-saved qId=${questionId.slice(0,8)} value=${value}`);
-      window.dispatchEvent(new CustomEvent("stance-saved", { detail: { questionId, value } }));
-      fetchDistribution(questionId);
-      await Promise.allSettled([
+
+      if (error) {
+        console.error("[home:submit] RPC ERROR", error);
+        throw error;
+      }
+
+      console.log("[home:submit] RPC OK", { questionId, value, data });
+
+      // Same-tab fast path — hero/QDP listeners can react immediately.
+      window.dispatchEvent(
+        new CustomEvent("stance-saved", {
+          detail: { questionId, value },
+        })
+      );
+
+      // Refresh local community distribution without blocking the resolved save.
+      void fetchDistribution(questionId);
+
+      // Invalidate related homepage data in the background.
+      void Promise.allSettled([
         qc.invalidateQueries({ queryKey: ["home-where-you-stand", userId, regionLabel] }),
         qc.invalidateQueries({ queryKey: ["home-because-you", userId, regionLabel] }),
         qc.invalidateQueries({ queryKey: ["home-reopened", userId, regionLabel] }),
@@ -1972,7 +1997,11 @@ export default function IndexPage() {
         qc.invalidateQueries({ queryKey: ["home-society-pulse", regionLabel] }),
         qc.invalidateQueries({ queryKey: ["home-media-surge", regionLabel] }),
         qc.invalidateQueries({ queryKey: ["home-trending-questions"] }),
-      ]);
+      ]).then((results) => {
+        console.log("[home:submit] background invalidations settled", results);
+      });
+
+      console.log(`[home:submit] DONE qId=${questionId.slice(0, 8)} value=${value}`);
     },
     [sb, userId, qc, navigate, regionLabel, fetchDistribution]
   );
