@@ -644,7 +644,25 @@ export default function QuestionDetailPage() {
     mutationKey: ["set-stance", questionId],
     mutationFn: (score: number | null) => setMyStance(questionId, score),
     onSuccess: async (newScore, vars) => {
-      queryClient.setQueryData(["my-stance", questionId], newScore);
+      const resolvedScore =
+        typeof vars === "number" || vars === null ? vars : newScore;
+
+      queryClient.setQueryData(["my-stance", questionId], resolvedScore);
+
+      // Keep question-stats.my_stance in sync immediately so the slider,
+      // alignment box, and "you chose" copy do not lag behind the saved value.
+      queryClient.setQueryData(
+        ["question-stats", questionId],
+        (old: QuestionStats | null | undefined) =>
+          old
+            ? {
+                ...old,
+                my_stance: resolvedScore ?? null,
+              }
+            : old ?? null
+      );
+
+      // Still refetch in background so region aggregates / derived stats stay authoritative
       queryClient.invalidateQueries({ queryKey: ["question-stats", questionId] });
       // Invalidate community-stats so the bar on this page refreshes immediately after save
       queryClient.invalidateQueries({ queryKey: communityStatsKey(questionId) });
@@ -721,6 +739,17 @@ export default function QuestionDetailPage() {
 
   const hasRelated = !!relatedQuestions && relatedQuestions.length > 0;
 
+  // Keep stats.my_stance aligned with the local authoritative stance query.
+  // This prevents the slider / alignment box from showing the previous saved value
+  // while the footer below already reflects the new one.
+  const effectiveStats = React.useMemo<QuestionStats | null>(() => {
+    if (!stats) return null;
+    return {
+      ...stats,
+      my_stance: myStance ?? null,
+    };
+  }, [stats, myStance]);
+
   // Shared props object for StanceCard — avoids duplication between mobile/desktop renders
   const stanceCardProps = {
     isAuthed,
@@ -728,7 +757,7 @@ export default function QuestionDetailPage() {
     myStance: myStance ?? null,
     stanceLoading,
     stanceMutation,
-    stats: stats ?? null,
+    stats: effectiveStats,
     handleSetStance,
     handleRequireLogin,
   };
