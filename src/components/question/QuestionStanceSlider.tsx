@@ -78,6 +78,12 @@ const STANCE_TIPS_FALLBACK: Record<number, string> = {
     "You strongly support this approach, accepting the trade-offs as worthwhile to achieve the outcome.",
 };
 
+
+function clampStance(val: number | null | undefined): number {
+  if (typeof val !== "number" || !Number.isFinite(val)) return 0;
+  return Math.max(-2, Math.min(2, Math.round(val)));
+}
+
 // ---------- Helpers ----------
 
 function getMajorityStance(
@@ -174,14 +180,26 @@ export function QuestionStanceSlider({
   stats,
   pulseThumb,
 }: QuestionStanceSliderProps) {
-  const [value, setValue] = React.useState<number>(
-    typeof initialValue === "number" ? initialValue : 0
-  );
+  const [value, setValue] = React.useState<number>(clampStance(initialValue));
   const [committed, setCommitted] = React.useState(
     typeof initialValue === "number" && initialValue !== null
   );
   // Pending submit value — set synchronously on commit, consumed by effect
   const pendingSubmit = React.useRef<number | null>(null);
+
+  // Keep local slider state aligned with the parent/server truth.
+  // Without this, the slider can keep showing the last dragged value
+  // while surrounding QDP UI reflects a different saved stance.
+  React.useEffect(() => {
+    pendingSubmit.current = null;
+    if (typeof initialValue === "number" && initialValue !== null) {
+      setValue(clampStance(initialValue));
+      setCommitted(true);
+    } else {
+      setValue(0);
+      setCommitted(false);
+    }
+  }, [initialValue, questionId]);
 
   const { data: aiData, isLoading: aiLoading } = useDebouncedAiStanceTip(
     questionId,
@@ -195,7 +213,7 @@ export function QuestionStanceSlider({
   const tip = aiData?.tip || fallbackTip;
 
   const handleChange = (vals: number[]) => {
-    const v = Math.max(-2, Math.min(2, Math.round(vals[0] ?? 0)));
+    const v = clampStance(vals[0] ?? 0);
     setValue(v);
   };
 
@@ -206,12 +224,19 @@ export function QuestionStanceSlider({
   // true during a rapid re-interaction, and blocking here means pendingSubmit never
   // gets set and the submission is silently lost.
   const handleCommit = (vals: number[]) => {
-    const v = Math.max(-2, Math.min(2, Math.round(vals[0] ?? 0)));
+    const v = clampStance(vals[0] ?? 0);
     setValue(v);
     setCommitted(true);
-    if (onSubmitRef.current) {
-      pendingSubmit.current = v;
+    if (!onSubmitRef.current) return;
+
+    // Avoid resubmitting when the committed position already matches
+    // the latest parent-provided saved stance.
+    if (typeof initialValue === "number" && clampStance(initialValue) === v) {
+      pendingSubmit.current = null;
+      return;
     }
+
+    pendingSubmit.current = v;
   };
 
   // Keep onSubmit in a ref so the effect always calls the latest version
