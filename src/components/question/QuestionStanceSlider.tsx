@@ -181,6 +181,8 @@ export function QuestionStanceSlider({
   pulseThumb,
 }: QuestionStanceSliderProps) {
   const [value, setValue] = React.useState<number>(clampStance(initialValue));
+
+  const debugId = React.useMemo(() => questionId.slice(0, 8), [questionId]);
   const [committed, setCommitted] = React.useState(
     typeof initialValue === "number" && initialValue !== null
   );
@@ -191,6 +193,14 @@ export function QuestionStanceSlider({
   // Without this, the slider can keep showing the last dragged value
   // while surrounding QDP UI reflects a different saved stance.
   React.useEffect(() => {
+    console.log("[slider:sync] start", {
+      qid: debugId,
+      initialValue,
+      clampedInitial: clampStance(initialValue),
+      prevValue: value,
+      prevCommitted: committed,
+      pending: pendingSubmit.current,
+    });
     pendingSubmit.current = null;
     if (typeof initialValue === "number" && initialValue !== null) {
       setValue(clampStance(initialValue));
@@ -199,7 +209,24 @@ export function QuestionStanceSlider({
       setValue(0);
       setCommitted(false);
     }
+    console.log("[slider:sync] applied", {
+      qid: debugId,
+      nextValue: typeof initialValue === "number" && initialValue !== null ? clampStance(initialValue) : 0,
+      nextCommitted: typeof initialValue === "number" && initialValue !== null,
+    });
   }, [initialValue, questionId]);
+
+  React.useEffect(() => {
+    console.log("[slider:render-state]", {
+      qid: debugId,
+      initialValue,
+      value,
+      committed,
+      pending: pendingSubmit.current,
+      disabled: !!disabled,
+      label: STANCE_LABELS[value] ?? "unknown",
+    });
+  }, [debugId, initialValue, value, committed, disabled]);
 
   const { data: aiData, isLoading: aiLoading } = useDebouncedAiStanceTip(
     questionId,
@@ -213,7 +240,9 @@ export function QuestionStanceSlider({
   const tip = aiData?.tip || fallbackTip;
 
   const handleChange = (vals: number[]) => {
-    const v = clampStance(vals[0] ?? 0);
+    const raw = vals[0] ?? 0;
+    const v = clampStance(raw);
+    console.log("[slider:onValueChange]", { qid: debugId, raw, clamped: v, beforeValue: value, committed, disabled: !!disabled });
     setValue(v);
   };
 
@@ -224,7 +253,18 @@ export function QuestionStanceSlider({
   // true during a rapid re-interaction, and blocking here means pendingSubmit never
   // gets set and the submission is silently lost.
   const handleCommit = (vals: number[]) => {
-    const v = clampStance(vals[0] ?? 0);
+    const raw = vals[0] ?? 0;
+    const v = clampStance(raw);
+    console.log("[slider:onValueCommit]", {
+      qid: debugId,
+      raw,
+      clamped: v,
+      initialValue,
+      currentValue: value,
+      committed,
+      pendingBefore: pendingSubmit.current,
+      hasOnSubmit: !!onSubmitRef.current,
+    });
     setValue(v);
     setCommitted(true);
     if (!onSubmitRef.current) return;
@@ -232,11 +272,13 @@ export function QuestionStanceSlider({
     // Avoid resubmitting when the committed position already matches
     // the latest parent-provided saved stance.
     if (typeof initialValue === "number" && clampStance(initialValue) === v) {
+      console.log("[slider:onValueCommit] skip-submit same-as-initial", { qid: debugId, initialValue, clampedInitial: clampStance(initialValue), committedValue: v });
       pendingSubmit.current = null;
       return;
     }
 
     pendingSubmit.current = v;
+    console.log("[slider:onValueCommit] queued-submit", { qid: debugId, queued: v });
   };
 
   // Keep onSubmit in a ref so the effect always calls the latest version
@@ -251,11 +293,20 @@ export function QuestionStanceSlider({
   // disabled (stanceMutation.isPending) can flip true in the same render batch
   // that sets pendingSubmit, so we must not gate on it here.
   React.useEffect(() => {
-    if (pendingSubmit.current === null) return;
+    if (pendingSubmit.current === null) {
+      console.log("[slider:submit-effect] no-pending", { qid: debugId, value, committed });
+      return;
+    }
     const v = pendingSubmit.current;
     pendingSubmit.current = null;
-    if (!onSubmitRef.current) return;
-    Promise.resolve(onSubmitRef.current(v));
+    console.log("[slider:submit-effect] firing", { qid: debugId, submitValue: v, value, committed, disabled: !!disabled });
+    if (!onSubmitRef.current) {
+      console.log("[slider:submit-effect] missing-onSubmit", { qid: debugId });
+      return;
+    }
+    Promise.resolve(onSubmitRef.current(v))
+      .then(() => console.log("[slider:submit-effect] resolved", { qid: debugId, submitValue: v }))
+      .catch((err) => console.error("[slider:submit-effect] rejected", { qid: debugId, submitValue: v, err }));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [committed, value]);
 
