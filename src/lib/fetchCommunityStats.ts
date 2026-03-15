@@ -80,21 +80,7 @@ export async function fetchCommunityStats(
     }
 
     if (!data) {
-      // Diagnostic: check if ANY rows exist for this question (wrong scope/key vs truly no data)
-      const { data: anyRows, error: anyError } = await sb
-        .from("question_stance_stats_region")
-        .select("question_id, region_scope, region_key, total_responses")
-        .eq("question_id", questionId)
-        .limit(5);
-
-      if (!anyError && anyRows && anyRows.length > 0) {
-        console.warn(
-          `[fetchCommunityStats] ✗ No global row found, but ${anyRows.length} other row(s) exist for this question:`,
-          anyRows.map(r => `scope=${r.region_scope} key=${r.region_key} responses=${r.total_responses}`)
-        );
-      } else {
-        console.warn(`[fetchCommunityStats] ✗ No rows at all for qId=${questionId.slice(0,8)} — aggregate not written yet`);
-      }
+      console.warn(`[fetchCommunityStats] ✗ no global row yet for qId=${questionId.slice(0,8)}`);
       return null;
     }
 
