@@ -19,6 +19,10 @@
 //   - Already-answered initial hero → static hero_answered_result, NO auto-timer
 //   - hero_transitioning → check queue length → hero_ready OR hero_waiting_next
 //   - Replenishment triggered when queuedQuestions.length <= 2
+//
+// FIX: Realtime cleanup now calls sb.realtime.disconnect() when no channels remain,
+//   ensuring the server-side WAL sender replication slot is released on question
+//   change rather than accumulating stale connections.
 
 import * as React from "react";
 import { getSupabase } from "@/lib/supabaseClient";
@@ -192,11 +196,6 @@ export function useHeroController({
 
   // ── Fetch token guard ──
   // Prevents stale fetch responses from overwriting newer results.
-  // Every intentional refresh increments this counter and captures the new value.
-  // A fetch result only commits if its captured token still matches current — meaning
-  // no newer fetch was started while this one was in flight.
-  // Eliminates the race where a slow poll tick resolves AFTER a faster realtime fetch
-  // and overwrites the correct new data with stale values.
   const fetchToken = React.useRef(0);
 
   const setDistributionGuarded = React.useCallback(
@@ -210,10 +209,6 @@ export function useHeroController({
     []
   );
 
-  // Convenience: bump token, run a fetch, commit only if still current.
-  // On null result (INSERT/UPDATE propagation gap — row not readable yet),
-  // retries once after 800ms. If retry also null, keeps existing distribution.
-  // DELETE events are handled directly in the realtime callback without fetching.
   const fetchDistributionFresh = React.useCallback(
     async (questionId: string): Promise<void> => {
       const token = ++fetchToken.current;
@@ -222,7 +217,6 @@ export function useHeroController({
       if (result !== null) {
         setDistributionGuarded(result, token);
       } else {
-        // INSERT/UPDATE propagation gap — row not readable yet, retry once after 800ms
         console.log(`[hero:dist] ⚑ null on first attempt — retrying in 800ms (token=${token})`);
         setTimeout(async () => {
           if (token !== fetchToken.current) {
@@ -287,10 +281,6 @@ export function useHeroController({
   }, [clearAllTimers]);
 
   // ── Distribution fetch ──
-  // Thin wrapper around the shared fetchCommunityStats fetcher (Phase 3).
-  // Reads directly from question_stance_stats_region — no RPC, no RLS issues.
-  // Stored in a ref so the polling chain always calls the latest version
-  // without needing to be recreated (avoids stale closure in setTimeout chain).
 
   const fetchDistributionFn = React.useCallback(
     async (questionId: string): Promise<CommunityStanceData | null> => {
@@ -310,7 +300,7 @@ export function useHeroController({
         return null;
       }
     },
-    [] // fetchCommunityStats is a stable module-level function, no deps needed
+    []
   );
 
   const fetchDistributionRef = React.useRef(fetchDistributionFn);
@@ -327,43 +317,14 @@ export function useHeroController({
 
   // ── Realtime: subscribe to question_stance_stats_region (aggregate table) ──
   //
-  // Requires: ALTER TABLE question_stance_stats_region REPLICA IDENTITY FULL
-  // (see migration_replica_identity_full.sql)
+  // REPLICA IDENTITY FULL removed — payload.new only has PK columns so we
+  // always fetch on any event rather than reading from the payload.
   //
-  // With REPLICA IDENTITY FULL, payload.new contains the full aggregate row on
-  // INSERT/UPDATE — so we can build CommunityStanceData directly from the event
-  // without a follow-up fetch. This eliminates the event/read propagation race.
-  //
-  // Flow for INSERT/UPDATE (stance saved or changed):
-  //   1. question_stance_stats_region INSERT/UPDATE fires
-  //   2. Filter for region_scope='global' AND region_key='global'
-  //   3a. If payload.new has full row → build distribution directly, no fetch
-  //   3b. If payload.new is incomplete (REPLICA IDENTITY not yet active) →
-  //       fall back to a single guarded fetch after 800ms
-  //
-  // Flow for DELETE (last stance cleared — DB trigger deletes all aggregate rows):
-  //   1. question_stance_stats_region DELETE fires
-  //   2. Debounce 400ms waiting for a paired INSERT (in case it's a replace, not a clear)
-  //   3. If no INSERT arrives → set distribution = null directly
-  // ── Realtime: subscribe to question_stance_stats_region (aggregate table) ──
-  //
-  // REPLICA IDENTITY FULL removed from question_stance_stats_region to fix a
-  // deadlock where the WAL sender lock from the realtime connection blocked the
-  // AFTER UPDATE trigger on question_stances from writing to this table.
-  //
-  // Without REPLICA IDENTITY FULL, payload.new only contains PK columns, so we
-  // always fetch rather than reading from the payload. The fetch is token-guarded
-  // so stale responses from concurrent events are discarded.
-  //
-  // Flow for INSERT/UPDATE (stance saved or changed):
-  //   1. question_stance_stats_region INSERT/UPDATE fires
-  //   2. Filter ensures it's for the current question
-  //   3. Always fetch fresh data — no payload shortcut
-  //
-  // Flow for DELETE (last stance cleared):
-  //   1. DELETE fires
-  //   2. Debounce 400ms waiting for a paired INSERT (replace vs clear)
-  //   3. If no INSERT arrives → set distribution = null directly
+  // IMPORTANT: cleanup calls sb.realtime.disconnect() when no channels remain.
+  // Without this, the server-side WAL sender slot stays open after the question
+  // changes, accumulating stale replication connections (visible as multiple
+  // START_REPLICATION entries in pg_stat_activity) that cause the next RPC
+  // call to hang during the new subscription handshake.
   React.useEffect(() => {
     if (!sb || !currentQuestionId) return;
     const questionId = currentQuestionId;
@@ -409,7 +370,8 @@ export function useHeroController({
             deleteDebounce = null;
           }
 
-          // Always fetch — payload.new only has PK columns without REPLICA IDENTITY FULL
+          // Always fetch — payload.new only has PK columns without REPLICA IDENTITY FULL.
+          // Small delay to let the deferred trigger commit propagate before reading.
           console.log(`[hero:realtime] ✓ aggregate row changed — fetching fresh stats`);
           setTimeout(async () => {
             const token = ++fetchToken.current;
@@ -418,7 +380,6 @@ export function useHeroController({
               console.log(`[hero:realtime] ✓ fetch succeeded responses=${result.responses}`);
               setDistributionGuarded(result, token);
             } else {
-              // Row not propagated yet — retry once after 800ms
               console.warn(`[hero:realtime] ✗ fetch null — retrying in 800ms`);
               setTimeout(async () => {
                 if (token !== fetchToken.current) return;
@@ -444,7 +405,15 @@ export function useHeroController({
 
     return () => {
       if (deleteDebounce) clearTimeout(deleteDebounce);
-      sb.removeChannel(channel);
+      // Fully disconnect transport when no channels remain so the server-side
+      // replication slot is released immediately on question change.
+      sb.removeChannel(channel).then(() => {
+        const remaining = sb.getChannels();
+        if (remaining.length === 0) {
+          console.log(`[hero:realtime] no channels remaining — disconnecting transport`);
+          sb.realtime.disconnect();
+        }
+      });
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sb, currentQuestionId]);
@@ -463,7 +432,6 @@ export function useHeroController({
         const token = ++fetchToken.current;
         setDistributionGuarded(communityStats, token);
       } else {
-        // Cleared stance with no stats — clear directly
         console.log(`[hero:window-event] ✓ stance cleared`);
         ++fetchToken.current;
         setDistribution(null);
@@ -476,9 +444,6 @@ export function useHeroController({
   // ── Recovery poll (low-frequency) ──
   // Realtime is the primary sync mechanism. This poll exists only as a recovery
   // fallback if realtime missed an event (e.g. connection gap, tab backgrounded).
-  // Fires every 30s — low enough to not interfere with realtime fetches.
-  // Does NOT use the token guard — poll is purely additive and low-priority.
-  // If distribution is already correct, setDistribution with same data is a no-op.
   React.useEffect(() => {
     if ((status !== "hero_ready" && status !== "hero_answered_result") || !currentQuestionId) return;
 
@@ -490,8 +455,6 @@ export function useHeroController({
       console.log(`[hero:poll] ⏱ recovery tick qId=${qId.slice(0,8)}`);
       const fresh = await fetchDistributionRef.current(qId);
       if (!cancelled && fresh) {
-        // Only apply if no higher-priority fetch is in flight
-        // (token will be freshly incremented if one is)
         const tokenNow = fetchToken.current;
         setDistributionGuarded(fresh, tokenNow);
       }
@@ -513,8 +476,6 @@ export function useHeroController({
   }, [status, currentQuestionId]);
 
   // ── Transition to next question ──
-  // This is the core queue advancement logic.
-  // Called from: auto-advance timer, manual advance, promoteQuestion.
 
   const doTransition = React.useCallback(
     (nextQuestion: HeroQuestion, updatedQueue: HeroQuestion[]) => {
@@ -529,10 +490,8 @@ export function useHeroController({
         setQueuedQuestions(updatedQueue);
         setErrorMessage(null);
 
-        // Always enter hero_ready — doTransition only called with unanswered questions
         setStatus("hero_ready");
         fireAnalytics("hero_question_impression", { questionId: nextQuestion.question_id });
-        // Pre-fetch community distribution so the bar shows immediately
         fetchDistributionFresh(nextQuestion.question_id);
       }, TRANSITION_MS);
     },
@@ -551,14 +510,9 @@ export function useHeroController({
   );
 
   // ── Initialise hero from allQuestions ──
-  // Runs when questions first load, and when allQuestions changes
-  // (e.g. after replenishment or query invalidation).
-  // Does NOT re-initialise if hero is already running (status !== hero_loading).
 
   React.useEffect(() => {
-    // Only initialise from loading state
     if (status !== "hero_loading") {
-      // If we're in waiting_next and new questions arrived, advance
       if (status === "hero_waiting_next" && allQuestions.length > 0) {
         const eligible = allQuestions.filter(
           (q) => !usedQuestionIds.current.has(q.question_id) && !q.user_has_answered
@@ -579,7 +533,6 @@ export function useHeroController({
       return;
     }
 
-    // Exclude already-answered questions entirely — users go to My Stances to revisit
     const eligible = allQuestions.filter(
       (q) => !usedQuestionIds.current.has(q.question_id) && !q.user_has_answered
     );
@@ -599,13 +552,10 @@ export function useHeroController({
     console.log(`[hero:init] entering hero_ready qId=${first.question_id.slice(0,8)}`);
     setStatus("hero_ready");
     fireAnalytics("hero_question_impression", { questionId: first.question_id });
-    // Pre-fetch community distribution so the bar shows immediately
     fetchDistributionFresh(first.question_id);
-  }, [allQuestions, isLoading, status, doTransition, checkReplenish, fetchDistribution]);
+  }, [allQuestions, isLoading, status, doTransition, checkReplenish, fetchDistributionFresh]);
 
   // ── Sync queue when allQuestions grows (replenishment) ──
-  // When the parent fetches more questions, inject new ones into the queue
-  // without disrupting the current hero.
 
   React.useEffect(() => {
     if (
@@ -616,7 +566,6 @@ export function useHeroController({
       return;
     }
 
-    // Only inject unanswered questions into queue
     const newUnused = allQuestions.filter(
       (q) => !usedQuestionIds.current.has(q.question_id) && !q.user_has_answered
     );
@@ -636,10 +585,8 @@ export function useHeroController({
     async (value: number) => {
       if (!currentHeroQuestion) return;
 
-      // Block re-submission in result/transitioning state (guards against disabled slider firing)
       if (status === 'hero_answered_result' || status === 'hero_transitioning' || status === 'hero_submitting') return;
 
-      // Anon users → redirect
       if (!isAuthed) {
         onLoginRedirect();
         return;
@@ -652,19 +599,13 @@ export function useHeroController({
       setErrorMessage(null);
 
       try {
-        // Parent handles the actual RPC + query invalidations
         await onSubmitSuccess(questionId, value);
-
-        // Fetch distribution for result display — token-guarded so realtime can't be overwritten
         await fetchDistributionFresh(questionId);
 
-        // Enter result mode
         setStatus("hero_answered_result");
         fireAnalytics("hero_stance_submitted", { questionId, value });
         fireAnalytics("hero_alignment_viewed", { questionId });
 
-        // Polling continues via the unified useEffect chain above
-        // (covers both hero_ready and hero_answered_result — no manual setInterval needed here)
         console.log(`[hero:submit] ✓ stance saved qId=${questionId.slice(0,8)} — poll chain will continue in hero_answered_result`);
       } catch (err) {
         console.error("[hero] submitHeroStance failed", err);
@@ -688,34 +629,27 @@ export function useHeroController({
   );
 
   // ── promoteQuestion ──
-  // Handles Section C card clicks.
-  // Works from both hero_ready (silent swap) and hero_answered_result (cancel timer).
 
   const promoteQuestion = React.useCallback(
     (questionId: string) => {
-      // Find question in queue
       const targetIndex = queuedQuestions.findIndex(
         (q) => q.question_id === questionId
       );
 
-      if (targetIndex === -1) return; // not in queue, ignore
+      if (targetIndex === -1) return;
 
       const target = queuedQuestions[targetIndex];
-      // Remove target from queue, keep others in order
       const updatedQueue = [
         ...queuedQuestions.slice(0, targetIndex),
         ...queuedQuestions.slice(targetIndex + 1),
       ];
 
-      // If current hero is unanswered and being replaced, add it back to front of queue
-      // so the user can return to it
       if (
         currentHeroQuestion &&
         !currentHeroQuestion.user_has_answered &&
         status === "hero_ready"
       ) {
         updatedQueue.unshift(currentHeroQuestion);
-        // Remove from usedIds so it can be re-promoted
         usedQuestionIds.current.delete(currentHeroQuestion.question_id);
       }
 
@@ -729,12 +663,10 @@ export function useHeroController({
   );
 
   // ── advanceNow ──
-  // Manual skip — cancel timer and advance immediately.
 
   const advanceNow = React.useCallback(() => {
     clearAutoAdvance();
 
-    // Skip to next unanswered question
     const nextIdx = queuedQuestions.findIndex((q) => !q.user_has_answered);
 
     if (nextIdx === -1) {
