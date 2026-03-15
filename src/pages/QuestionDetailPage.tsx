@@ -5,10 +5,10 @@
 //   stance framing prompt, bg-slate-50 page surface, shared rail styling, section rhythm
 // DESIGN PASS 3: Justified summary (Point 13), mobile layout reorder (Point 14),
 //   stats + pulseThumb wired to QuestionStanceSlider (Points 16–18)
-// FIX: Realtime channel properly disconnects transport on unmount to prevent stale
-//   WAL sender slots accumulating on the server between page navigations.
-// FIX: handleSetStance waits for channel SUBSCRIBED before firing RPC to prevent
-//   PostgREST hang when first save fires during subscription handshake.
+// FIX: channelReady ref gates handleSetStance until SUBSCRIBED fires, preventing
+//   the first save after navigation from firing before the WS handshake completes.
+// NOTE: sb.realtime.disconnect() intentionally NOT called on unmount — it breaks
+//   the singleton client's WebSocket for subsequent subscriptions on the same instance.
 
 import * as React from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -641,14 +641,11 @@ export default function QuestionDetailPage() {
       console.log(`[qdp:realtime] unsubscribing qId=${questionId.slice(0,8)}`);
       if (debounceTimer) clearTimeout(debounceTimer);
       channelReady.current = false;
-      // Fully disconnect the realtime transport when no channels remain.
-      // Without this, the server-side WAL sender slot stays open after
-      // navigation, accumulating stale replication connections that cause
-      // the next RPC call to hang during the new subscription handshake.
-      sb.removeChannel(channel).then(() => {
-  console.log(`[qdp:realtime] disconnecting realtime transport on unmount`);
-  sb.realtime.disconnect();
-});
+      // removeChannel only — do NOT call sb.realtime.disconnect() here.
+      // disconnect() destroys the singleton client's WebSocket transport,
+      // breaking subsequent subscriptions on the same client instance and
+      // causing "WebSocket closed before connection established" errors.
+      sb.removeChannel(channel);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sb, questionId]);
