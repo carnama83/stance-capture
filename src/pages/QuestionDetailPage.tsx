@@ -672,15 +672,22 @@ export default function QuestionDetailPage() {
     });
   }, [debugQid, communityStats?.responses, communityStats?.supportPct, communityStats?.opposePct, communityStats?.neutralPct, communityStatsLoading]);
 
+ // Ref-based in-flight guard — set synchronously in mutationFn so it is
+  // always true before React re-renders, preventing stale-closure races
+  // where a second slider commit fires before isPending flips to true.
+  const mutationInFlight = React.useRef(false);
+
   const stanceMutation = useMutation({
     mutationKey: ["set-stance", questionId],
     mutationFn: async (score: number | null) => {
+      mutationInFlight.current = true;
       console.log("[qdp:mutation] start", { qid: debugQid, requestedScore: score, queryMyStanceBefore: queryClient.getQueryData(["my-stance", questionId]) });
       const result = await setMyStance(questionId, score);
       console.log("[qdp:mutation] result", { qid: debugQid, requestedScore: score, returnedScore: result });
       return result;
     },
     onSuccess: (newScore, vars) => {
+      mutationInFlight.current = false;
       console.log("[qdp:mutation] onSuccess", { qid: debugQid, newScore, vars, cacheBefore: queryClient.getQueryData(["my-stance", questionId]), statsBefore: queryClient.getQueryData(["question-stats", questionId]) });
 
       // resolvedScore: use vars (what the user requested) as the source of truth.
@@ -760,6 +767,7 @@ export default function QuestionDetailPage() {
       });
     },
     onError: (err: any) => {
+      mutationInFlight.current = false;
       console.error("[qdp:mutation] onError", { qid: debugQid, err });
       toast({
         title: "Error",
@@ -769,24 +777,24 @@ export default function QuestionDetailPage() {
     },
   });
 
-const handleSetStance = React.useCallback(
-  (newVal: number | null) => {
-    // Drop the call entirely if a mutation is already in-flight.
-    // The slider is visually disabled but commits can still race on fast interactions.
-    if (stanceMutation.isPending) {
-      console.log("[qdp:handleSetStance] dropped — mutation already pending", { newVal });
-      return;
-    }
-    console.log("[qdp:handleSetStance]", {
-      qid: debugQid,
-      newVal,
-      queryMyStanceBefore: queryClient.getQueryData(["my-stance", questionId]),
-      mutationPending: stanceMutation.isPending,
-    });
-    stanceMutation.mutate(newVal);
-  },
-  [stanceMutation, debugQid, queryClient, questionId]
-);
+  const handleSetStance = React.useCallback(
+    (newVal: number | null) => {
+      // Ref-based guard — cheaper and race-safe vs stanceMutation.isPending
+      // which can be stale at the moment a rapid second commit fires.
+      if (mutationInFlight.current) {
+        console.log("[qdp:handleSetStance] dropped — mutation in flight (ref)", { newVal });
+        return;
+      }
+      console.log("[qdp:handleSetStance]", {
+        qid: debugQid,
+        newVal,
+        queryMyStanceBefore: queryClient.getQueryData(["my-stance", questionId]),
+        mutationPending: stanceMutation.isPending,
+      });
+      stanceMutation.mutate(newVal);
+    },
+    [stanceMutation, debugQid, queryClient, questionId]
+  );
 
   const handleRequireLogin = React.useCallback(() => {
     const returnTo = window.location.hash || "#/";
