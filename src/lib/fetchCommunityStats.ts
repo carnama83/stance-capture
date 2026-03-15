@@ -1,21 +1,10 @@
 // src/lib/fetchCommunityStats.ts
 //
-// Phase 3 — Shared aggregate fetcher for Community Stance bar.
-//
-// Reads ONE row directly from public.question_stance_stats_region.
-// This replaces all dependence on get_question_distribution(...) for
-// community bar rendering.
-//
-// Why direct table read instead of RPC:
-//   - Avoids PostgREST schema cache issues
-//   - Avoids RLS problems that affected get_question_distribution
-//   - question_stance_stats_region has "Anyone can read" policy
-//   - The aggregate is already maintained by DB trigger on every stance change
-//   - No time-window filtering edge cases (unlike the old RPC)
-//
-// Usage:
-//   const stats = await fetchCommunityStats(questionId);
-//   if (!stats) { /* show empty state */ }
+// Reads ONE row from public.question_stance_stats_region using a raw fetch.
+// Uses only the anon key — no JWT or getSession() call needed because the
+// table has "Anyone can read" RLS policy (no auth required for reads).
+// This avoids the supabase-js internal getSession() lock that can block
+// when a background token refresh is in flight after navigation.
 
 import { getSupabase } from "@/lib/supabaseClient";
 import {
@@ -26,58 +15,51 @@ import {
   COMMUNITY_STANCE_GLOBAL_KEY,
 } from "@/types/communityStance";
 
-// ── Main fetcher ──────────────────────────────────────────────────────────────
-
-/**
- * Fetch the global community stance aggregate for a question.
- *
- * Queries question_stance_stats_region for:
- *   question_id  = questionId
- *   region_scope = 'global'   ← stored DB value, NOT display label
- *   region_key   = 'global'   ← stored DB value, NOT display label
- *
- * Returns null if:
- *   - No row exists yet (no responses)
- *   - Supabase client unavailable
- *   - Any query error
- *
- * @param questionId  UUID of the question
- * @param regionScope Stored DB scope value (default: 'global')
- * @param regionKey   Stored DB key value   (default: 'global')
- */
 export async function fetchCommunityStats(
   questionId: string,
   regionScope: string = COMMUNITY_STANCE_GLOBAL_SCOPE,
   regionKey: string   = COMMUNITY_STANCE_GLOBAL_KEY,
 ): Promise<CommunityStanceData | null> {
-  const sb = getSupabase();
-  if (!sb) {
-    console.warn("[fetchCommunityStats] Supabase client not available");
-    return null;
-  }
+  if (!questionId) return null;
 
-  if (!questionId) {
-    console.warn("[fetchCommunityStats] No questionId provided");
-    return null;
-  }
+  const sb = getSupabase();
+  if (!sb) return null;
+
+  const supabaseUrl = (sb as any).supabaseUrl as string;
+  const anonKey     = (sb as any).supabaseKey as string;
+  if (!supabaseUrl || !anonKey) return null;
+
+  // Raw fetch — no getSession() call. question_stance_stats_region is publicly
+  // readable so the anon key alone is sufficient. This prevents the supabase-js
+  // auth mutex from blocking this fetch when a token refresh is in flight.
+  const params = new URLSearchParams({
+    question_id:  `eq.${questionId}`,
+    region_scope: `eq.${regionScope}`,
+    region_key:   `eq.${regionKey}`,
+    select: "question_id,region_scope,region_key,region_label,total_responses,pct_agree,pct_disagree,pct_neutral,avg_score,updated_at",
+    limit: "1",
+  });
 
   try {
     console.log(`[fetchCommunityStats] querying qId=${questionId.slice(0,8)} scope=${regionScope} key=${regionKey}`);
 
-    const { data, error } = await sb
-      .from("question_stance_stats_region")
-      .select(
-        "question_id, region_scope, region_key, region_label, total_responses, pct_agree, pct_disagree, pct_neutral, avg_score, updated_at"
-      )
-      .eq("question_id", questionId)
-      .eq("region_scope", regionScope)
-      .eq("region_key", regionKey)
-      .maybeSingle<RawStanceStatsRegionRow>();
+    const res = await fetch(
+      `${supabaseUrl}/rest/v1/question_stance_stats_region?${params}`,
+      {
+        headers: {
+          "apikey": anonKey,
+          "Accept": "application/json",
+        },
+      }
+    );
 
-    if (error) {
-      console.error("[fetchCommunityStats] Query error:", error);
+    if (!res.ok) {
+      console.error("[fetchCommunityStats] HTTP error:", res.status);
       return null;
     }
+
+    const rows = await res.json() as RawStanceStatsRegionRow[];
+    const data = rows[0] ?? null;
 
     if (!data) {
       console.warn(`[fetchCommunityStats] ✗ no global row yet for qId=${questionId.slice(0,8)}`);
@@ -91,15 +73,6 @@ export async function fetchCommunityStats(
     return null;
   }
 }
-
-// ── TanStack Query key factory ────────────────────────────────────────────────
-//
-// Use this for consistent cache keys across Hero and QDP.
-// Both surfaces should share the same cache entry for the same question.
-//
-// Usage in useQuery:
-//   queryKey: communityStatsKey(questionId)
-//   queryFn:  () => fetchCommunityStats(questionId)
 
 export const communityStatsKey = (
   questionId: string,
