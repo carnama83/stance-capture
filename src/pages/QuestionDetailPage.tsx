@@ -207,66 +207,24 @@ async function setMyStance(questionId: string, score: number | null) {
   const attempt = ++_saveAttempt;
   const t0 = performance.now();
 
-  // Pre-flight auth check (reads from in-memory cache in supabase-js v2)
   const { data: { session: activeSession } } = await sb.auth.getSession();
   if (!activeSession) {
     console.error(`[setMyStance #${attempt}] ✗ no active session`);
     throw new Error("Not authenticated. Please sign in and try again.");
   }
 
-  // Extract connection details for raw fetch — bypasses supabase-js so the
-  // request is fully visible in the Network tab (status, timing, stall vs pending).
-  const supabaseUrl = (sb as any).supabaseUrl as string;
-  const anonKey    = (sb as any).supabaseKey as string;
-  const jwt        = activeSession.access_token;
-
-  console.group(`[setMyStance #${attempt}] ▶ score=${score} uid=${activeSession.user.id.slice(0,8)}`);
-  console.log("attempt:", attempt, "| time:", new Date().toISOString());
-  console.log("→ sending raw fetch (visible in Network tab)");
-  console.groupEnd();
+  console.log(`[setMyStance #${attempt}] ▶ score=${score} uid=${activeSession.user.id.slice(0,8)}`);
 
   const TIMEOUT_MS = 8_000;
   let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
 
-  // Raw fetch so DevTools Network tab shows exact timing:
-  //   "Pending" for 8s  → PostgREST is hanging (DB-side issue)
-  //   "Stalled" briefly → browser queued it (connection limit or CORS preflight)
-  //   Fast HTTP error   → PostgREST returned an error immediately
-  const fetchPromise = fetch(`${supabaseUrl}/rest/v1/rpc/set_question_stance`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "apikey": anonKey,
-      "Authorization": `Bearer ${jwt}`,
-      "Prefer": "return=representation",
-    },
-    body: JSON.stringify({ p_question_id: questionId, p_score: score }),
-  }).then(async (res) => {
-    const elapsed = Math.round(performance.now() - t0);
-    const body = await res.json().catch(() => null);
-    console.log(`[setMyStance #${attempt}] HTTP ${res.status} in ${elapsed}ms`, body);
-    if (!res.ok) {
-      throw new Error(body?.message ?? `HTTP ${res.status}`);
-    }
-    // PostgREST returns an array with Prefer: return=representation
-    const row = Array.isArray(body) ? body[0] : body;
-    return (row?.score ?? null) as number | null;
-  });
-
   try {
-    const scoreResult = await Promise.race([
-      fetchPromise,
+    const result = await Promise.race([
+      sb.rpc("set_question_stance", { p_question_id: questionId, p_score: score }),
       new Promise<never>((_, reject) => {
         timeoutHandle = setTimeout(() => {
           const elapsed = Math.round(performance.now() - t0);
-          console.error(
-            `[setMyStance #${attempt}] ⏱ TIMED OUT at ${elapsed}ms — check Network tab:`,
-            "Pending=PostgREST hang | Stalled=browser queued | Missing=fetch never sent"
-          );
-          console.error(
-            "Run in Supabase SQL editor to see what is blocking:",
-            "SELECT pid, state, wait_event_type, wait_event, left(query,80) FROM pg_stat_activity WHERE usename=\'authenticator\' ORDER BY query_start;"
-          );
+          console.error(`[setMyStance #${attempt}] ⏱ TIMED OUT at ${elapsed}ms`);
           reject(new Error(`set_question_stance timed out after ${TIMEOUT_MS}ms`));
         }, TIMEOUT_MS);
       }),
@@ -274,8 +232,19 @@ async function setMyStance(questionId: string, score: number | null) {
 
     if (timeoutHandle) clearTimeout(timeoutHandle);
     const elapsed = Math.round(performance.now() - t0);
-    console.log(`[setMyStance #${attempt}] ✓ complete in ${elapsed}ms → score=${scoreResult}`);
-    return scoreResult;
+    const { data, error } = result;
+
+    if (error) {
+      console.error(`[setMyStance #${attempt}] ✗ error in ${elapsed}ms`, {
+        code: (error as any).code, message: (error as any).message,
+      });
+      throw new Error((error as any).message ?? "set_question_stance failed");
+    }
+
+    console.log(`[setMyStance #${attempt}] ✓ success in ${elapsed}ms`);
+    if (score === null) return null;
+    const row = data as QuestionStance | null;
+    return row ? row.score : null;
 
   } catch (err) {
     if (timeoutHandle) clearTimeout(timeoutHandle);
@@ -794,30 +763,24 @@ export default function QuestionDetailPage() {
 
       console.log("[qdp:mutation] cache set question-stats.my_stance", { qid: debugQid, resolvedScore, statsAfter: queryClient.getQueryData(["question-stats", questionId]) });
 
+      // Invalidate stats — realtime subscription will also fire and re-invalidate,
+      // but doing it here too ensures the UI updates even if realtime is slow.
+      // NOTE: do NOT fire any additional fetchCommunityStats calls here.
+      // The post-save period already has the realtime subscription + these two
+      // invalidations queuing refetches. Extra manual fetches saturate the
+      // PostgREST connection pool and cause the next save RPC to queue/hang.
       queryClient.invalidateQueries({ queryKey: ["question-stats", questionId] });
       queryClient.invalidateQueries({ queryKey: communityStatsKey(questionId) });
 
       const savedScore = resolvedScore;
-      console.log("[qdp:mutation] post-invalidate", { qid: debugQid, savedScore, myStanceCacheNow: queryClient.getQueryData(["my-stance", questionId]), statsCacheNow: queryClient.getQueryData(["question-stats", questionId]) });
+      console.log("[qdp:mutation] post-invalidate", { qid: debugQid, savedScore });
 
-      const broadcastStats = async (attempt = 1) => {
-        const fresh = await fetchCommunityStats(questionId);
-        if (fresh) {
-          console.log(`[qdp:stance] broadcasting stance-saved with stats attempt=${attempt} responses=${fresh.responses}`);
-          window.dispatchEvent(new CustomEvent("stance-saved", {
-            detail: { questionId, value: savedScore, communityStats: fresh }
-          }));
-        } else if (attempt < 3) {
-          console.log(`[qdp:stance] stats not ready attempt=${attempt} — retrying in ${attempt * 600}ms`);
-          setTimeout(() => broadcastStats(attempt + 1), attempt * 600);
-        } else {
-          console.warn(`[qdp:stance] stats unavailable after ${attempt} attempts — broadcasting without stats`);
-          window.dispatchEvent(new CustomEvent("stance-saved", {
-            detail: { questionId, value: savedScore, communityStats: null }
-          }));
-        }
-      };
-      setTimeout(() => broadcastStats(), 300);
+      // Broadcast stance-saved for other components (e.g. hero section).
+      // Use cached data only — no extra fetch.
+      const cachedStats = queryClient.getQueryData(communityStatsKey(questionId));
+      window.dispatchEvent(new CustomEvent("stance-saved", {
+        detail: { questionId, value: savedScore, communityStats: cachedStats ?? null }
+      }));
 
       if (userId && question?.topic_id) {
         const answered = resolvedScore !== null;
