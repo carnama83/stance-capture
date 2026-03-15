@@ -189,25 +189,52 @@ async function fetchMyStance(questionId: string): Promise<number | null> {
 // ─── Stance save diagnostics ─────────────────────────────────────────────────
 let _saveAttempt = 0;
 
-async function setMyStance(questionId: string, score: number | null) {
-  const sb = getSupabase();
-  if (!sb) throw new Error("Supabase client not available");
-
+// Uses raw fetch with a pre-resolved JWT instead of sb.rpc().
+// sb.rpc() internally calls sb.auth.getSession() on every invocation.
+// In supabase-js v2, getSession() acquires an async lock — if a background
+// token refresh is in flight (triggered by navigation/focus events), ALL rpc()
+// calls block until the refresh HTTP request completes, producing 8s hangs.
+// By passing the JWT directly we skip that lock entirely.
+async function setMyStance(
+  questionId: string,
+  score: number | null,
+  jwt: string,
+  supabaseUrl: string,
+  anonKey: string,
+) {
   const attempt = ++_saveAttempt;
   const t0 = performance.now();
 
-  // Do NOT call sb.auth.getSession() here. In supabase-js v2, getSession()
-  // can block if a background token refresh is in flight, serialising all
-  // callers until the refresh HTTP request completes. The JWT is attached to
-  // the RPC call automatically; if it is invalid, PostgREST returns 401 fast.
   console.log(`[setMyStance #${attempt}] ▶ score=${score} qid=${questionId.slice(0,8)}`);
 
   const TIMEOUT_MS = 8_000;
   let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
 
+  const fetchPromise = fetch(`${supabaseUrl}/rest/v1/rpc/set_question_stance`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "apikey": anonKey,
+      "Authorization": `Bearer ${jwt}`,
+      "Prefer": "return=representation",
+    },
+    body: JSON.stringify({ p_question_id: questionId, p_score: score }),
+  }).then(async (res) => {
+    const elapsed = Math.round(performance.now() - t0);
+    const body = await res.json().catch(() => null);
+    if (!res.ok) {
+      console.error(`[setMyStance #${attempt}] ✗ HTTP ${res.status} in ${elapsed}ms`, body);
+      throw new Error(body?.message ?? `HTTP ${res.status}`);
+    }
+    console.log(`[setMyStance #${attempt}] ✓ success in ${elapsed}ms`);
+    if (score === null) return null;
+    const row = Array.isArray(body) ? body[0] : body;
+    return (row?.score ?? null) as number | null;
+  });
+
   try {
     const result = await Promise.race([
-      sb.rpc("set_question_stance", { p_question_id: questionId, p_score: score }),
+      fetchPromise,
       new Promise<never>((_, reject) => {
         timeoutHandle = setTimeout(() => {
           const elapsed = Math.round(performance.now() - t0);
@@ -216,24 +243,8 @@ async function setMyStance(questionId: string, score: number | null) {
         }, TIMEOUT_MS);
       }),
     ]);
-
     if (timeoutHandle) clearTimeout(timeoutHandle);
-    const elapsed = Math.round(performance.now() - t0);
-    const { data, error } = result;
-
-    if (error) {
-      console.error(`[setMyStance #${attempt}] ✗ error in ${elapsed}ms`, {
-        code: (error as any).code,
-        message: (error as any).message,
-      });
-      throw new Error((error as any).message ?? "set_question_stance failed");
-    }
-
-    console.log(`[setMyStance #${attempt}] ✓ success in ${elapsed}ms`);
-    if (score === null) return null;
-    const row = data as QuestionStance | null;
-    return row ? row.score : null;
-
+    return result;
   } catch (err) {
     if (timeoutHandle) clearTimeout(timeoutHandle);
     throw err;
@@ -635,6 +646,9 @@ export default function QuestionDetailPage() {
   // on first save after page navigation.
   const channelReady = React.useRef(false);
   const sb = React.useMemo(getSupabase, []);
+  // Extract once — these never change for the lifetime of the client singleton.
+  const supabaseUrl = React.useMemo(() => (sb as any)?.supabaseUrl as string ?? "", [sb]);
+  const supabaseAnonKey = React.useMemo(() => (sb as any)?.supabaseKey as string ?? "", [sb]);
 
   React.useEffect(() => {
     if (!sb || !questionId) return;
@@ -731,8 +745,12 @@ export default function QuestionDetailPage() {
     mutationKey: ["set-stance", questionId],
     mutationFn: async (score: number | null) => {
       mutationInFlight.current = true;
+      // Use the JWT from the session that React already has — no getSession() call.
+      // session is kept fresh by onAuthStateChange in useSupabaseSession.
+      const jwt = session?.access_token;
+      if (!jwt) throw new Error("Not authenticated");
       console.log("[qdp:mutation] start", { qid: debugQid, requestedScore: score, queryMyStanceBefore: queryClient.getQueryData(["my-stance", questionId]) });
-      const result = await setMyStance(questionId, score);
+      const result = await setMyStance(questionId, score, jwt, supabaseUrl, supabaseAnonKey);
       console.log("[qdp:mutation] result", { qid: debugQid, requestedScore: score, returnedScore: result });
       return result;
     },
