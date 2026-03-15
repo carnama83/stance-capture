@@ -198,7 +198,6 @@ async function fetchMyStance(questionId: string): Promise<number | null> {
 }
 
 // ─── Stance save diagnostics ─────────────────────────────────────────────────
-// Tracks timing and state for each save attempt to diagnose pool/connection issues.
 let _saveAttempt = 0;
 
 async function setMyStance(questionId: string, score: number | null) {
@@ -208,40 +207,65 @@ async function setMyStance(questionId: string, score: number | null) {
   const attempt = ++_saveAttempt;
   const t0 = performance.now();
 
-  // Pre-flight auth check — fast path (reads from memory in supabase-js v2).
+  // Pre-flight auth check (reads from in-memory cache in supabase-js v2)
   const { data: { session: activeSession } } = await sb.auth.getSession();
   if (!activeSession) {
-    console.error(`[setMyStance #${attempt}] ✗ no active session — aborting`);
+    console.error(`[setMyStance #${attempt}] ✗ no active session`);
     throw new Error("Not authenticated. Please sign in and try again.");
   }
 
-  console.groupCollapsed(`[setMyStance #${attempt}] score=${score} uid=${activeSession.user.id.slice(0, 8)}`);
-  console.log("questionId:", questionId);
-  console.log("score:", score);
-  console.log("attempt:", attempt);
-  console.log("timestamp:", new Date().toISOString());
+  // Extract connection details for raw fetch — bypasses supabase-js so the
+  // request is fully visible in the Network tab (status, timing, stall vs pending).
+  const supabaseUrl = (sb as any).supabaseUrl as string;
+  const anonKey    = (sb as any).supabaseKey as string;
+  const jwt        = activeSession.access_token;
+
+  console.group(`[setMyStance #${attempt}] ▶ score=${score} uid=${activeSession.user.id.slice(0,8)}`);
+  console.log("attempt:", attempt, "| time:", new Date().toISOString());
+  console.log("→ sending raw fetch (visible in Network tab)");
   console.groupEnd();
 
   const TIMEOUT_MS = 8_000;
   let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
 
+  // Raw fetch so DevTools Network tab shows exact timing:
+  //   "Pending" for 8s  → PostgREST is hanging (DB-side issue)
+  //   "Stalled" briefly → browser queued it (connection limit or CORS preflight)
+  //   Fast HTTP error   → PostgREST returned an error immediately
+  const fetchPromise = fetch(`${supabaseUrl}/rest/v1/rpc/set_question_stance`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "apikey": anonKey,
+      "Authorization": `Bearer ${jwt}`,
+      "Prefer": "return=representation",
+    },
+    body: JSON.stringify({ p_question_id: questionId, p_score: score }),
+  }).then(async (res) => {
+    const elapsed = Math.round(performance.now() - t0);
+    const body = await res.json().catch(() => null);
+    console.log(`[setMyStance #${attempt}] HTTP ${res.status} in ${elapsed}ms`, body);
+    if (!res.ok) {
+      throw new Error(body?.message ?? `HTTP ${res.status}`);
+    }
+    // PostgREST returns an array with Prefer: return=representation
+    const row = Array.isArray(body) ? body[0] : body;
+    return (row?.score ?? null) as number | null;
+  });
+
   try {
-    const result = await Promise.race([
-      sb.rpc("set_question_stance", {
-        p_question_id: questionId,
-        p_score: score,
-      }),
+    const scoreResult = await Promise.race([
+      fetchPromise,
       new Promise<never>((_, reject) => {
         timeoutHandle = setTimeout(() => {
           const elapsed = Math.round(performance.now() - t0);
           console.error(
-            `[setMyStance #${attempt}] ⏱ TIMED OUT at ${elapsed}ms`,
-            "
-  → Root cause: PostgREST connection pool has corrupted session state.",
-            "
-  → Fix: Run fix_trigger.sql in Supabase SQL editor (fixes SET lock_timeout issue).",
-            "
-  → Workaround: NOTIFY pgrst, 'reload schema'; (temporary — recurs after next save)"
+            `[setMyStance #${attempt}] ⏱ TIMED OUT at ${elapsed}ms — check Network tab:`,
+            "Pending=PostgREST hang | Stalled=browser queued | Missing=fetch never sent"
+          );
+          console.error(
+            "Run in Supabase SQL editor to see what is blocking:",
+            "SELECT pid, state, wait_event_type, wait_event, left(query,80) FROM pg_stat_activity WHERE usename=\'authenticator\' ORDER BY query_start;"
           );
           reject(new Error(`set_question_stance timed out after ${TIMEOUT_MS}ms`));
         }, TIMEOUT_MS);
@@ -250,31 +274,15 @@ async function setMyStance(questionId: string, score: number | null) {
 
     if (timeoutHandle) clearTimeout(timeoutHandle);
     const elapsed = Math.round(performance.now() - t0);
-    const { data, error } = result;
-
-    if (error) {
-      console.error(`[setMyStance #${attempt}] ✗ PostgREST error in ${elapsed}ms`, {
-        code: (error as any).code,
-        message: (error as any).message,
-        details: (error as any).details,
-        hint: (error as any).hint,
-      });
-      throw new Error((error as any).message ?? "set_question_stance failed");
-    }
-
-    console.log(`[setMyStance #${attempt}] ✓ success in ${elapsed}ms`, {
-      returnedScore: (data as any)?.score ?? data,
-    });
-
-    if (score === null) return null;
-    const row = data as QuestionStance | null;
-    return row ? row.score : null;
+    console.log(`[setMyStance #${attempt}] ✓ complete in ${elapsed}ms → score=${scoreResult}`);
+    return scoreResult;
 
   } catch (err) {
     if (timeoutHandle) clearTimeout(timeoutHandle);
     throw err;
   }
 }
+
 
 async function fetchQuestionStats(questionId: string): Promise<QuestionStats | null> {
   const sb = getSupabase();
