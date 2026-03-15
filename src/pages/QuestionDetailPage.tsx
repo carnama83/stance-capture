@@ -655,13 +655,18 @@ export default function QuestionDetailPage() {
         },
         (payload) => {
           const isDelete = payload.eventType === "DELETE";
-          console.log(`[qdp:realtime] ✓ aggregate row ${isDelete ? "DELETED" : "changed"} for qId=${questionId.slice(0,8)} — debouncing 500ms`);
+          console.log(`[qdp:realtime] ✓ aggregate row ${isDelete ? "DELETED" : "changed"} for qId=${questionId.slice(0,8)} — debouncing 400ms`);
           if (debounceTimer) clearTimeout(debounceTimer);
           debounceTimer = setTimeout(() => {
-            console.log(`[qdp:realtime] ✓ invalidating community-stats + question-stats`);
+            console.log(`[qdp:realtime] ✓ invalidating community-stats (question-stats cache already updated by onSuccess)`);
+            // Only invalidate community-stats here.
+            // question-stats is kept fresh via setQueryData in onSuccess so the
+            // region comparison always reflects the user's own save immediately.
+            // Invalidating question-stats here too would fire get_question_stats_for_user
+            // concurrently with the community-stats refetch and the next save RPC,
+            // exhausting the PostgREST connection pool.
             queryClient.invalidateQueries({ queryKey: communityStatsKey(questionId) });
-            queryClient.invalidateQueries({ queryKey: ["question-stats", questionId] });
-          }, 500);
+          }, 400);
         }
       )
       .subscribe((status) => {
@@ -751,23 +756,23 @@ export default function QuestionDetailPage() {
 
       console.log("[qdp:mutation] cache set question-stats.my_stance", { qid: debugQid, resolvedScore, statsAfter: queryClient.getQueryData(["question-stats", questionId]) });
 
-      // Invalidate stats — realtime subscription will also fire and re-invalidate,
-      // but doing it here too ensures the UI updates even if realtime is slow.
-      // NOTE: do NOT fire any additional fetchCommunityStats calls here.
-      // The post-save period already has the realtime subscription + these two
-      // invalidations queuing refetches. Extra manual fetches saturate the
-      // PostgREST connection pool and cause the next save RPC to queue/hang.
-      queryClient.invalidateQueries({ queryKey: ["question-stats", questionId] });
-      queryClient.invalidateQueries({ queryKey: communityStatsKey(questionId) });
-
+      // Do NOT call invalidateQueries here. The realtime subscription fires
+      // within ~500ms and handles community-stats + question-stats invalidation.
+      // Calling invalidateQueries immediately after onSuccess fires concurrent
+      // fetchCommunityStats + fetchQuestionStats RPCs that saturate the PostgREST
+      // connection pool, leaving no connection for the next save → 8s timeout.
+      //
+      // The cache is already updated synchronously above via setQueryData,
+      // so the UI reflects the new stance immediately without any refetch.
       const savedScore = resolvedScore;
-      console.log("[qdp:mutation] post-invalidate", { qid: debugQid, savedScore });
+      console.log("[qdp:mutation] post-save cache updated", { qid: debugQid, savedScore });
 
-      // Broadcast stance-saved for other components (e.g. hero section).
-      // Use cached data only — no extra fetch.
-      const cachedStats = queryClient.getQueryData(communityStatsKey(questionId));
+      // Broadcast for other components (e.g. hero bar on home page).
+      // Pass null for communityStats — the hero controller's own realtime
+      // subscription will fetch fresh stats when the DB trigger fires.
+      // Passing stale cached stats here would briefly show wrong numbers.
       window.dispatchEvent(new CustomEvent("stance-saved", {
-        detail: { questionId, value: savedScore, communityStats: cachedStats ?? null }
+        detail: { questionId, value: savedScore, communityStats: null }
       }));
 
       if (userId && question?.topic_id) {
