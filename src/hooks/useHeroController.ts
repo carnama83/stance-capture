@@ -427,9 +427,15 @@ export function useHeroController({
         const token = ++fetchToken.current;
         setDistributionGuarded(communityStats, token);
       } else {
-        console.log(`[hero:window-event] ✓ stance cleared`);
-        ++fetchToken.current;
-        setDistribution(null);
+        // communityStats is null — fetch fresh after a short delay to let
+        // the DB trigger write the updated aggregates first.
+        console.log(`[hero:window-event] ✓ fetching fresh stats after save`);
+        const token = ++fetchToken.current;
+        setTimeout(async () => {
+          if (token !== fetchToken.current) return;
+          const fresh = await fetchCommunityStats(questionId);
+          if (fresh) setDistributionGuarded(fresh, token);
+        }, 700);
       }
     };
     window.addEventListener("stance-saved", handler);
