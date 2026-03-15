@@ -197,60 +197,83 @@ async function fetchMyStance(questionId: string): Promise<number | null> {
   return data ? data.score : null;
 }
 
+// ─── Stance save diagnostics ─────────────────────────────────────────────────
+// Tracks timing and state for each save attempt to diagnose pool/connection issues.
+let _saveAttempt = 0;
+
 async function setMyStance(questionId: string, score: number | null) {
   const sb = getSupabase();
   if (!sb) throw new Error("Supabase client not available");
 
-  // Pre-flight: confirm we have an active session before hitting the network.
-  // If auth.uid() is null PostgREST raises "Not authenticated" immediately, but
-  // a missing JWT causes a different, harder-to-diagnose hang in some pool states.
+  const attempt = ++_saveAttempt;
+  const t0 = performance.now();
+
+  // Pre-flight auth check — fast path (reads from memory in supabase-js v2).
   const { data: { session: activeSession } } = await sb.auth.getSession();
   if (!activeSession) {
-    console.error("[setMyStance] aborting — no active session");
+    console.error(`[setMyStance #${attempt}] ✗ no active session — aborting`);
     throw new Error("Not authenticated. Please sign in and try again.");
   }
 
-  console.log("[setMyStance] calling rpc", { questionId, score, uid: activeSession.user.id.slice(0, 8) });
+  console.groupCollapsed(`[setMyStance #${attempt}] score=${score} uid=${activeSession.user.id.slice(0, 8)}`);
+  console.log("questionId:", questionId);
+  console.log("score:", score);
+  console.log("attempt:", attempt);
+  console.log("timestamp:", new Date().toISOString());
+  console.groupEnd();
 
   const TIMEOUT_MS = 8_000;
+  let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
 
-  // Promise.race: the timeout path rejects (throws), which is the correct path
-  // for React Query to catch and route to onError.
-  // If the rpcPromise wins the race, we destructure its { data, error } result.
-  let timeoutFired = false;
-  const result = await Promise.race([
-    sb.rpc("set_question_stance", {
-      p_question_id: questionId,
-      p_score: score,
-    }),
-    new Promise<never>((_, reject) =>
-      setTimeout(() => {
-        timeoutFired = true;
-        console.error(
-          `[setMyStance] ⏱ TIMEOUT after ${TIMEOUT_MS}ms — PostgREST pool is likely stale.`,
-          "Run: NOTIFY pgrst, 'reload schema'; in the Supabase SQL editor."
-        );
-        reject(new Error(`set_question_stance timed out after ${TIMEOUT_MS}ms — PostgREST pool needs reload`));
-      }, TIMEOUT_MS)
-    ),
-  ]);
+  try {
+    const result = await Promise.race([
+      sb.rpc("set_question_stance", {
+        p_question_id: questionId,
+        p_score: score,
+      }),
+      new Promise<never>((_, reject) => {
+        timeoutHandle = setTimeout(() => {
+          const elapsed = Math.round(performance.now() - t0);
+          console.error(
+            `[setMyStance #${attempt}] ⏱ TIMED OUT at ${elapsed}ms`,
+            "
+  → Root cause: PostgREST connection pool has corrupted session state.",
+            "
+  → Fix: Run fix_trigger.sql in Supabase SQL editor (fixes SET lock_timeout issue).",
+            "
+  → Workaround: NOTIFY pgrst, 'reload schema'; (temporary — recurs after next save)"
+          );
+          reject(new Error(`set_question_stance timed out after ${TIMEOUT_MS}ms`));
+        }, TIMEOUT_MS);
+      }),
+    ]);
 
-  if (timeoutFired) return null; // unreachable — timeout rejects — but satisfies TS
-  const { data, error } = result;
-  console.log("[setMyStance] rpc returned", { data, error });
+    if (timeoutHandle) clearTimeout(timeoutHandle);
+    const elapsed = Math.round(performance.now() - t0);
+    const { data, error } = result;
 
-  if (error) {
-    console.error("[setMyStance] PostgREST error", {
-      code: (error as any).code,
-      message: (error as any).message,
-      details: (error as any).details,
-      hint: (error as any).hint,
+    if (error) {
+      console.error(`[setMyStance #${attempt}] ✗ PostgREST error in ${elapsed}ms`, {
+        code: (error as any).code,
+        message: (error as any).message,
+        details: (error as any).details,
+        hint: (error as any).hint,
+      });
+      throw new Error((error as any).message ?? "set_question_stance failed");
+    }
+
+    console.log(`[setMyStance #${attempt}] ✓ success in ${elapsed}ms`, {
+      returnedScore: (data as any)?.score ?? data,
     });
-    throw new Error((error as any).message ?? "set_question_stance failed");
+
+    if (score === null) return null;
+    const row = data as QuestionStance | null;
+    return row ? row.score : null;
+
+  } catch (err) {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
+    throw err;
   }
-  if (score === null) return null;
-  const row = data as QuestionStance | null;
-  return row ? row.score : null;
 }
 
 async function fetchQuestionStats(questionId: string): Promise<QuestionStats | null> {
@@ -813,16 +836,16 @@ export default function QuestionDetailPage() {
     },
     onError: (err: any) => {
       mutationInFlight.current = false;
-      // Log message and code at the top level so they're visible without expanding
-      // the object — critical for diagnosing PostgREST pool vs auth vs network errors.
+      const isTimeout = err?.message?.includes("timed out");
       console.error(
-        "[qdp:mutation] onError",
-        err?.message ?? err,
-        { qid: debugQid, code: err?.code ?? null, details: err?.details ?? null, err }
+        `[qdp:mutation] ✗ onError — ${isTimeout ? "TIMEOUT (pool issue)" : err?.message ?? "unknown"}`,
+        { qid: debugQid, isTimeout, code: err?.code ?? null, message: err?.message ?? null }
       );
       toast({
-        title: "Error saving stance",
-        description: err?.message ?? "Failed to save your stance. Please try again.",
+        title: isTimeout ? "Save timed out" : "Error saving stance",
+        description: isTimeout
+          ? "Connection issue — please try again. If this keeps happening, reload the page."
+          : (err?.message ?? "Failed to save your stance. Please try again."),
         variant: "destructive",
       });
     },
