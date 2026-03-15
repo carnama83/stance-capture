@@ -108,12 +108,28 @@ const STANCE_SCALE = [
 ];
 
 // ---------- Session hook ----------
+// Initialises from the SDK's synchronous in-memory cache so the component
+// never flashes isAuthed=false on remount for an already-signed-in user.
+// getSession() is still called to hydrate from storage on a cold start.
 function useSupabaseSession() {
   const sb = React.useMemo(getSupabase, []);
-  const [session, setSession] = React.useState<Session | null>(null);
+
+  // Seed from the synchronous cache so there is no null flash on remount.
+  const [session, setSession] = React.useState<Session | null>(() => {
+    // supabase-js exposes the cached session via auth.session() (v2 internal).
+    // We access it safely; if the method doesn't exist we fall back to null
+    // and let getSession()/onAuthStateChange fill it in asynchronously.
+    try {
+      // @ts-expect-error — internal API, not in public types
+      return sb?.auth?.currentSession ?? null;
+    } catch {
+      return null;
+    }
+  });
 
   React.useEffect(() => {
     if (!sb) return;
+    // Still call getSession() to cover cold-start / storage hydration.
     sb.auth.getSession().then(({ data }) => setSession(data.session ?? null));
     const {
       data: { subscription },
@@ -186,17 +202,28 @@ async function setMyStance(questionId: string, score: number | null) {
   if (!sb) throw new Error("Supabase client not available");
   console.log("[setMyStance] calling rpc", { questionId, score });
 
-  const rpcPromise = sb.rpc("set_question_stance", {
-    p_question_id: questionId,
-    p_score: score,
-  });
+  const TIMEOUT_MS = 8_000;
 
-  // Timeout after 8s so the mutation doesn't hang forever
-  const timeoutPromise = new Promise((_, reject) =>
-    setTimeout(() => reject(new Error("set_question_stance timed out after 8s")), 8000)
-  );
+  // Promise.race: the timeout path rejects (throws), which is the correct path
+  // for React Query to catch and route to onError.
+  // If the rpcPromise wins the race, we destructure its { data, error } result.
+  // Previous code used `as any` on the race result and then tried to destructure
+  // a rejected-promise value — that path threw before reaching the `if (error)`
+  // check, so PostgREST-level errors were never surfaced separately from timeouts.
+  const result = await Promise.race([
+    sb.rpc("set_question_stance", {
+      p_question_id: questionId,
+      p_score: score,
+    }),
+    new Promise<never>((_, reject) =>
+      setTimeout(
+        () => reject(new Error(`set_question_stance timed out after ${TIMEOUT_MS}ms`)),
+        TIMEOUT_MS
+      )
+    ),
+  ]);
 
-  const { data, error } = await Promise.race([rpcPromise, timeoutPromise]) as any;
+  const { data, error } = result;
   console.log("[setMyStance] rpc returned", { data, error });
 
   if (error) { console.error("Failed to set stance", error); throw error; }
@@ -480,10 +507,11 @@ function StanceCard({
               questionText={question.question}
               summary={question.summary ?? null}
               initialValue={myStance ?? null}
-              disabled={stanceMutation.isPending}
+              disabled={stanceMutation.isPending || stanceLoading}
+              mutationPending={stanceMutation.isPending}
               onSubmit={handleSetStance}
               stats={stats}
-              pulseThumb={myStance == null}
+              pulseThumb={!stanceLoading && myStance == null}
             />
           </div>
 
@@ -680,6 +708,11 @@ export default function QuestionDetailPage() {
     });
   }, [debugQid, communityStats?.responses, communityStats?.supportPct, communityStats?.opposePct, communityStats?.neutralPct, communityStatsLoading]);
 
+  // sessionRef lets the handleSetStance interval closure read the latest
+  // session value without capturing a stale closure over `session`.
+  const sessionRef = React.useRef(session);
+  React.useEffect(() => { sessionRef.current = session; }, [session]);
+
   // Ref-based in-flight guard — set synchronously in mutationFn so it is
   // always true before React re-renders, preventing stale-closure races
   // where a second slider commit fires before isPending flips to true.
@@ -773,10 +806,9 @@ export default function QuestionDetailPage() {
     },
   });
 
-  // handleSetStance: async so it can wait for the realtime channel to finish
-  // subscribing before firing the RPC. On first load after navigation the
-  // channel handshake takes ~200-500ms — firing the RPC during this window
-  // causes PostgREST to hang because the WebSocket transport is busy.
+  // handleSetStance: async so it can wait for:
+  //  1. The auth session to be confirmed (guards against the brief null flash on remount)
+  //  2. The realtime channel SUBSCRIBED handshake (prevents PostgREST connection hang)
   const handleSetStance = React.useCallback(
     async (newVal: number | null) => {
       if (mutationInFlight.current) {
@@ -784,17 +816,29 @@ export default function QuestionDetailPage() {
         return;
       }
 
-      // Wait up to 3s for channel to be SUBSCRIBED before firing RPC.
+      // Guard 1: session must be confirmed before we fire an authenticated RPC.
+      // useSupabaseSession seeds from the SDK cache but still starts async on a
+      // cold mount — without this wait, set_question_stance raises "Not authenticated"
+      // because auth.uid() is null while getSession() is still in flight.
+      if (!session) {
+        console.log("[qdp:handleSetStance] waiting for session...");
+        await new Promise<void>((resolve) => {
+          const check = setInterval(() => {
+                if (sessionRef.current) { clearInterval(check); resolve(); }
+          }, 50);
+          setTimeout(() => { clearInterval(check); resolve(); }, 3000);
+        });
+        console.log("[qdp:handleSetStance] session ready, proceeding");
+      }
+
+      // Guard 2: realtime channel must be SUBSCRIBED before firing the RPC.
       // Prevents the subscription handshake from blocking the PostgREST
       // connection on the first save after page mount/navigation.
       if (!channelReady.current) {
         console.log("[qdp:handleSetStance] waiting for channel ready...");
         await new Promise<void>((resolve) => {
           const check = setInterval(() => {
-            if (channelReady.current) {
-              clearInterval(check);
-              resolve();
-            }
+            if (channelReady.current) { clearInterval(check); resolve(); }
           }, 50);
           // Safety timeout: proceed after 3s regardless
           setTimeout(() => { clearInterval(check); resolve(); }, 3000);
@@ -810,7 +854,7 @@ export default function QuestionDetailPage() {
       });
       stanceMutation.mutate(newVal);
     },
-    [stanceMutation, debugQid, queryClient, questionId]
+    [stanceMutation, debugQid, queryClient, questionId, session]
   );
 
   const handleRequireLogin = React.useCallback(() => {
