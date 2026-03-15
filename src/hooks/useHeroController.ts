@@ -345,6 +345,25 @@ export function useHeroController({
   //   1. question_stance_stats_region DELETE fires
   //   2. Debounce 400ms waiting for a paired INSERT (in case it's a replace, not a clear)
   //   3. If no INSERT arrives → set distribution = null directly
+  // ── Realtime: subscribe to question_stance_stats_region (aggregate table) ──
+  //
+  // REPLICA IDENTITY FULL removed from question_stance_stats_region to fix a
+  // deadlock where the WAL sender lock from the realtime connection blocked the
+  // AFTER UPDATE trigger on question_stances from writing to this table.
+  //
+  // Without REPLICA IDENTITY FULL, payload.new only contains PK columns, so we
+  // always fetch rather than reading from the payload. The fetch is token-guarded
+  // so stale responses from concurrent events are discarded.
+  //
+  // Flow for INSERT/UPDATE (stance saved or changed):
+  //   1. question_stance_stats_region INSERT/UPDATE fires
+  //   2. Filter ensures it's for the current question
+  //   3. Always fetch fresh data — no payload shortcut
+  //
+  // Flow for DELETE (last stance cleared):
+  //   1. DELETE fires
+  //   2. Debounce 400ms waiting for a paired INSERT (replace vs clear)
+  //   3. If no INSERT arrives → set distribution = null directly
   React.useEffect(() => {
     if (!sb || !currentQuestionId) return;
     const questionId = currentQuestionId;
@@ -352,6 +371,7 @@ export function useHeroController({
     console.log(`[hero:realtime] subscribing to question_stance_stats_region qId=${questionId.slice(0,8)}`);
 
     let deleteDebounce: ReturnType<typeof setTimeout> | null = null;
+    let insertPending = false;
 
     const channel = sb
       .channel(`hero-aggregate-${questionId}`)
@@ -364,61 +384,54 @@ export function useHeroController({
           filter: `question_id=eq.${questionId}`,
         },
         (payload) => {
-          // Log raw payload to validate REPLICA IDENTITY FULL is active
-          console.log(`[hero:realtime] event=${payload.eventType}`, payload.new ?? payload.old);
+          console.log(`[hero:realtime] event=${payload.eventType}`);
 
           if (payload.eventType === "DELETE") {
             // Debounce: DB may DELETE then INSERT when replacing a row.
             // Wait 400ms — if a paired INSERT/UPDATE arrives, cancel the clear.
             console.log(`[hero:realtime] DELETE — waiting 400ms for paired INSERT`);
+            insertPending = false;
             if (deleteDebounce) clearTimeout(deleteDebounce);
             deleteDebounce = setTimeout(() => {
-              console.log(`[hero:realtime] ✓ no paired INSERT — clearing distribution`);
-              ++fetchToken.current;
-              setDistribution(null);
+              if (!insertPending) {
+                console.log(`[hero:realtime] ✓ no paired INSERT — clearing distribution`);
+                ++fetchToken.current;
+                setDistribution(null);
+              }
             }, 400);
             return;
           }
 
           // INSERT or UPDATE — cancel any pending DELETE clear
+          insertPending = true;
           if (deleteDebounce) {
             clearTimeout(deleteDebounce);
             deleteDebounce = null;
           }
 
-          // Only process the global row — trigger writes multiple scope rows per change
-          const newRow = payload.new as Partial<RawStanceStatsRegionRow>;
-          if (newRow.region_scope !== COMMUNITY_STANCE_GLOBAL_SCOPE || newRow.region_key !== COMMUNITY_STANCE_GLOBAL_KEY) {
-            console.log(`[hero:realtime] skipping non-global row scope=${newRow.region_scope} key=${newRow.region_key}`);
-            return;
-          }
-
-          // Build distribution directly from payload if REPLICA IDENTITY FULL is active
-          const hasFullRow =
-            newRow.total_responses !== undefined &&
-            newRow.region_label    !== undefined &&
-            newRow.updated_at      !== undefined;
-
-          if (hasFullRow) {
-            const data = mapToCommunityStanceData(newRow as RawStanceStatsRegionRow);
-            console.log(`[hero:realtime] ✓ payload-driven update responses=${data.responses} support=${data.supportPct}% oppose=${data.opposePct}%`);
+          // Always fetch — payload.new only has PK columns without REPLICA IDENTITY FULL
+          console.log(`[hero:realtime] ✓ aggregate row changed — fetching fresh stats`);
+          setTimeout(async () => {
             const token = ++fetchToken.current;
-            setDistributionGuarded(data, token);
-          } else {
-            // Fallback: REPLICA IDENTITY FULL not yet active — payload only has PKs.
-            // Single guarded fetch after short delay.
-            console.warn(`[hero:realtime] payload incomplete — falling back to fetch in 800ms`);
-            setTimeout(async () => {
-              const token = ++fetchToken.current;
-              const result = await fetchDistributionRef.current(questionId);
-              if (result !== null) {
-                console.log(`[hero:realtime] ✓ fallback fetch succeeded responses=${result.responses}`);
-                setDistributionGuarded(result, token);
-              } else {
-                console.warn(`[hero:realtime] ✗ fallback fetch null — keeping existing`);
-              }
-            }, 800);
-          }
+            const result = await fetchDistributionRef.current(questionId);
+            if (result !== null) {
+              console.log(`[hero:realtime] ✓ fetch succeeded responses=${result.responses}`);
+              setDistributionGuarded(result, token);
+            } else {
+              // Row not propagated yet — retry once after 800ms
+              console.warn(`[hero:realtime] ✗ fetch null — retrying in 800ms`);
+              setTimeout(async () => {
+                if (token !== fetchToken.current) return;
+                const retry = await fetchDistributionRef.current(questionId);
+                if (retry !== null) {
+                  console.log(`[hero:realtime] ✓ retry succeeded responses=${retry.responses}`);
+                  setDistributionGuarded(retry, token);
+                } else {
+                  console.warn(`[hero:realtime] ✗ retry also null — keeping existing`);
+                }
+              }, 800);
+            }
+          }, 100);
         }
       )
       .subscribe((status) => {
