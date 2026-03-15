@@ -680,8 +680,11 @@ export default function QuestionDetailPage() {
       console.log("[qdp:mutation] result", { qid: debugQid, requestedScore: score, returnedScore: result });
       return result;
     },
-    onSuccess: async (newScore, vars) => {
+    onSuccess: (newScore, vars) => {
       console.log("[qdp:mutation] onSuccess", { qid: debugQid, newScore, vars, cacheBefore: queryClient.getQueryData(["my-stance", questionId]), statsBefore: queryClient.getQueryData(["question-stats", questionId]) });
+
+      // resolvedScore: use vars (what the user requested) as the source of truth.
+      // This is safer than newScore for clear operations and any future RPC shape changes.
       const resolvedScore =
         typeof vars === "number" || vars === null ? vars : newScore;
 
@@ -709,10 +712,8 @@ export default function QuestionDetailPage() {
       queryClient.invalidateQueries({ queryKey: communityStatsKey(questionId) });
 
       // Broadcast fresh community stats to hero (same tab) via window event.
-      // We fetch after a short delay to let the DB aggregate propagate, then
-      // dispatch the result so the hero can set distribution directly without
-      // its own fetch racing against DB propagation timing.
-      const savedScore = typeof vars === "number" ? vars : newScore;
+      // Fire-and-forget via setTimeout — not awaited, does not extend isPending.
+      const savedScore = resolvedScore;
       console.log("[qdp:mutation] post-invalidate", { qid: debugQid, savedScore, myStanceCacheNow: queryClient.getQueryData(["my-stance", questionId]), statsCacheNow: queryClient.getQueryData(["question-stats", questionId]) });
       const broadcastStats = async (attempt = 1) => {
         const fresh = await fetchCommunityStats(questionId);
@@ -722,36 +723,37 @@ export default function QuestionDetailPage() {
             detail: { questionId, value: savedScore, communityStats: fresh }
           }));
         } else if (attempt < 3) {
-          // Row not propagated yet — retry with backoff
           console.log(`[qdp:stance] stats not ready attempt=${attempt} — retrying in ${attempt * 600}ms`);
           setTimeout(() => broadcastStats(attempt + 1), attempt * 600);
         } else {
-          // After 3 attempts just broadcast without stats — hero will handle via realtime
           console.warn(`[qdp:stance] stats unavailable after ${attempt} attempts — broadcasting without stats`);
           window.dispatchEvent(new CustomEvent("stance-saved", {
             detail: { questionId, value: savedScore, communityStats: null }
           }));
         }
       };
-      // Small initial delay to let DB trigger write the aggregate row
       setTimeout(() => broadcastStats(), 300);
 
+      // Fire-and-forget interaction tracking — NOT awaited so it does not keep
+      // stanceMutation.isPending=true and hold the "Saving…" UI state open.
       if (userId && question?.topic_id) {
-        const answered = newScore !== null;
-        await trackQuestionInteraction(userId, questionId, question.topic_id, answered);
-        if (answered) queryClient.invalidateQueries({ queryKey: ["personalized-feed"] });
+        const answered = resolvedScore !== null;
+        trackQuestionInteraction(userId, questionId, question.topic_id, answered)
+          .then(() => {
+            if (answered) queryClient.invalidateQueries({ queryKey: ["personalized-feed"] });
+          })
+          .catch((err) => console.error("[qdp:tracking] interaction tracking failed", err));
       }
 
-      const score = typeof vars === "number" || vars === null ? vars : newScore;
       const label =
-        score == null
+        resolvedScore == null
           ? null
-          : STANCE_SCALE.find((s) => s.value === score)?.labelShort ?? `Score ${score}`;
+          : STANCE_SCALE.find((s) => s.value === resolvedScore)?.labelShort ?? `Score ${resolvedScore}`;
 
       toast({
-        title: score == null ? "Stance cleared" : "Stance saved",
+        title: resolvedScore == null ? "Stance cleared" : "Stance saved",
         description:
-          score == null
+          resolvedScore == null
             ? "Your stance was removed from this question."
             : `Your stance is now: ${label}.`,
         duration: 2200,
