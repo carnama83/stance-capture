@@ -177,26 +177,29 @@ async function fetchMyStance(questionId: string): Promise<number | null> {
   return data ? data.score : null;
 }
 
-async function setMyStance(questionId: string, score: number | null): Promise<number | null> {
+async function setMyStance(questionId: string, score: number | null) {
   const sb = getSupabase();
   if (!sb) throw new Error("Supabase client not available");
-
-  const { data, error } = await sb.rpc("set_question_stance", {
+  console.log("[setMyStance] calling rpc", { questionId, score });
+  
+  const rpcPromise = sb.rpc("set_question_stance", {
     p_question_id: questionId,
     p_score: score,
   });
-
+  
+  // Timeout after 8s so the mutation doesn't hang forever
+  const timeoutPromise = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error("set_question_stance timed out after 8s")), 8000)
+  );
+  
+  const { data, error } = await Promise.race([rpcPromise, timeoutPromise]) as any;
+  console.log("[setMyStance] rpc returned", { data, error });
+  
   if (error) { console.error("Failed to set stance", error); throw error; }
-
-  // When score=null (clear), the DB deletes the row and returns it via RETURNING *.
-  // We must return null explicitly — not the deleted row's score — so callers
-  // correctly see the stance as cleared.
   if (score === null) return null;
-
   const row = data as QuestionStance | null;
   return row ? row.score : null;
 }
-
 async function fetchQuestionStats(questionId: string): Promise<QuestionStats | null> {
   const sb = getSupabase();
   if (!sb) throw new Error("Supabase client not available");
