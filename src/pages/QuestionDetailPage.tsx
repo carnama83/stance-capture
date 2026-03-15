@@ -108,29 +108,18 @@ const STANCE_SCALE = [
 ];
 
 // ---------- Session hook ----------
-// Initialises from the SDK's synchronous in-memory cache so the component
-// never flashes isAuthed=false on remount for an already-signed-in user.
-// getSession() is still called to hydrate from storage on a cold start.
+// Uses onAuthStateChange exclusively — avoids calling getSession() which can
+// block if a background token refresh is in flight in supabase-js v2.
+// INITIAL_SESSION fires synchronously on subscribe with the cached session,
+// so there is no null flash for already-signed-in users on remount.
 function useSupabaseSession() {
   const sb = React.useMemo(getSupabase, []);
-
-  // Seed from the synchronous cache so there is no null flash on remount.
-  const [session, setSession] = React.useState<Session | null>(() => {
-    // supabase-js exposes the cached session via auth.session() (v2 internal).
-    // We access it safely; if the method doesn't exist we fall back to null
-    // and let getSession()/onAuthStateChange fill it in asynchronously.
-    try {
-      // @ts-expect-error — internal API, not in public types
-      return sb?.auth?.currentSession ?? null;
-    } catch {
-      return null;
-    }
-  });
+  const [session, setSession] = React.useState<Session | null>(null);
 
   React.useEffect(() => {
     if (!sb) return;
-    // Still call getSession() to cover cold-start / storage hydration.
-    sb.auth.getSession().then(({ data }) => setSession(data.session ?? null));
+    // onAuthStateChange fires INITIAL_SESSION immediately (synchronously within
+    // this effect) with the current cached session — no HTTP request needed.
     const {
       data: { subscription },
     } = sb.auth.onAuthStateChange((_e, s) => setSession(s ?? null));
@@ -207,13 +196,11 @@ async function setMyStance(questionId: string, score: number | null) {
   const attempt = ++_saveAttempt;
   const t0 = performance.now();
 
-  const { data: { session: activeSession } } = await sb.auth.getSession();
-  if (!activeSession) {
-    console.error(`[setMyStance #${attempt}] ✗ no active session`);
-    throw new Error("Not authenticated. Please sign in and try again.");
-  }
-
-  console.log(`[setMyStance #${attempt}] ▶ score=${score} uid=${activeSession.user.id.slice(0,8)}`);
+  // Do NOT call sb.auth.getSession() here. In supabase-js v2, getSession()
+  // can block if a background token refresh is in flight, serialising all
+  // callers until the refresh HTTP request completes. The JWT is attached to
+  // the RPC call automatically; if it is invalid, PostgREST returns 401 fast.
+  console.log(`[setMyStance #${attempt}] ▶ score=${score} qid=${questionId.slice(0,8)}`);
 
   const TIMEOUT_MS = 8_000;
   let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
@@ -236,7 +223,8 @@ async function setMyStance(questionId: string, score: number | null) {
 
     if (error) {
       console.error(`[setMyStance #${attempt}] ✗ error in ${elapsed}ms`, {
-        code: (error as any).code, message: (error as any).message,
+        code: (error as any).code,
+        message: (error as any).message,
       });
       throw new Error((error as any).message ?? "set_question_stance failed");
     }
