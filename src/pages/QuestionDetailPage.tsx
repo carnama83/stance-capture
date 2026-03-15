@@ -476,7 +476,7 @@ function StanceCard({
   stanceLoading: boolean;
   stanceMutation: any;
   stats: QuestionStats | null;
-  handleSetStance: (val: number | null) => void | Promise<void>;
+  handleSetStance: (val: number | null) => void;
   handleRequireLogin: () => void;
 }) {
   return (
@@ -729,14 +729,9 @@ export default function QuestionDetailPage() {
     });
   }, [debugQid, communityStats?.responses, communityStats?.supportPct, communityStats?.opposePct, communityStats?.neutralPct, communityStatsLoading]);
 
-  // sessionRef lets the handleSetStance interval closure read the latest
-  // session value without capturing a stale closure over `session`.
-  const sessionRef = React.useRef(session);
-  React.useEffect(() => { sessionRef.current = session; }, [session]);
-
-  // Ref-based in-flight guard — set synchronously in mutationFn so it is
-  // always true before React re-renders, preventing stale-closure races
-  // where a second slider commit fires before isPending flips to true.
+  // Ref-based in-flight guard — set synchronously at the top of handleSetStance
+  // (before any async work in mutationFn) so no second slider commit can slip
+  // through between the guard check and the actual mutate() call.
   const mutationInFlight = React.useRef(false);
 
   const stanceMutation = useMutation({
@@ -833,55 +828,31 @@ export default function QuestionDetailPage() {
     },
   });
 
-  // handleSetStance: async so it can wait for:
-  //  1. The auth session to be confirmed (guards against the brief null flash on remount)
-  //  2. The realtime channel SUBSCRIBED handshake (prevents PostgREST connection hang)
+  // handleSetStance: synchronous trigger — no awaits here.
+  // The PostgREST pool hang that previously required channelReady/session guards
+  // is resolved by NOTIFY pgrst, 'reload schema' at the DB level.
+  // Keeping this synchronous closes the race window where a second slider commit
+  // could slip past the mutationInFlight guard while async guards were awaited.
   const handleSetStance = React.useCallback(
-    async (newVal: number | null) => {
+    (newVal: number | null) => {
       if (mutationInFlight.current) {
         console.log("[qdp:handleSetStance] dropped — mutation in flight (ref)", { newVal });
         return;
       }
-
-      // Guard 1: session must be confirmed before we fire an authenticated RPC.
-      // useSupabaseSession seeds from the SDK cache but still starts async on a
-      // cold mount — without this wait, set_question_stance raises "Not authenticated"
-      // because auth.uid() is null while getSession() is still in flight.
-      if (!session) {
-        console.log("[qdp:handleSetStance] waiting for session...");
-        await new Promise<void>((resolve) => {
-          const check = setInterval(() => {
-                if (sessionRef.current) { clearInterval(check); resolve(); }
-          }, 50);
-          setTimeout(() => { clearInterval(check); resolve(); }, 3000);
-        });
-        console.log("[qdp:handleSetStance] session ready, proceeding");
-      }
-
-      // Guard 2: realtime channel must be SUBSCRIBED before firing the RPC.
-      // Prevents the subscription handshake from blocking the PostgREST
-      // connection on the first save after page mount/navigation.
-      if (!channelReady.current) {
-        console.log("[qdp:handleSetStance] waiting for channel ready...");
-        await new Promise<void>((resolve) => {
-          const check = setInterval(() => {
-            if (channelReady.current) { clearInterval(check); resolve(); }
-          }, 50);
-          // Safety timeout: proceed after 3s regardless
-          setTimeout(() => { clearInterval(check); resolve(); }, 3000);
-        });
-        console.log("[qdp:handleSetStance] channel ready, proceeding");
-      }
+      // Set the guard synchronously before mutate() so no second commit can
+      // slip through between now and when mutationFn sets it in the async path.
+      mutationInFlight.current = true;
 
       console.log("[qdp:handleSetStance]", {
         qid: debugQid,
         newVal,
         queryMyStanceBefore: queryClient.getQueryData(["my-stance", questionId]),
         mutationPending: stanceMutation.isPending,
+        channelReady: channelReady.current,
       });
       stanceMutation.mutate(newVal);
     },
-    [stanceMutation, debugQid, queryClient, questionId, session]
+    [stanceMutation, debugQid, queryClient, questionId]
   );
 
   const handleRequireLogin = React.useCallback(() => {
