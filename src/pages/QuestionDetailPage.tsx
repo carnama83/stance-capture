@@ -200,33 +200,54 @@ async function fetchMyStance(questionId: string): Promise<number | null> {
 async function setMyStance(questionId: string, score: number | null) {
   const sb = getSupabase();
   if (!sb) throw new Error("Supabase client not available");
-  console.log("[setMyStance] calling rpc", { questionId, score });
+
+  // Pre-flight: confirm we have an active session before hitting the network.
+  // If auth.uid() is null PostgREST raises "Not authenticated" immediately, but
+  // a missing JWT causes a different, harder-to-diagnose hang in some pool states.
+  const { data: { session: activeSession } } = await sb.auth.getSession();
+  if (!activeSession) {
+    console.error("[setMyStance] aborting — no active session");
+    throw new Error("Not authenticated. Please sign in and try again.");
+  }
+
+  console.log("[setMyStance] calling rpc", { questionId, score, uid: activeSession.user.id.slice(0, 8) });
 
   const TIMEOUT_MS = 8_000;
 
   // Promise.race: the timeout path rejects (throws), which is the correct path
   // for React Query to catch and route to onError.
   // If the rpcPromise wins the race, we destructure its { data, error } result.
-  // Previous code used `as any` on the race result and then tried to destructure
-  // a rejected-promise value — that path threw before reaching the `if (error)`
-  // check, so PostgREST-level errors were never surfaced separately from timeouts.
+  let timeoutFired = false;
   const result = await Promise.race([
     sb.rpc("set_question_stance", {
       p_question_id: questionId,
       p_score: score,
     }),
     new Promise<never>((_, reject) =>
-      setTimeout(
-        () => reject(new Error(`set_question_stance timed out after ${TIMEOUT_MS}ms`)),
-        TIMEOUT_MS
-      )
+      setTimeout(() => {
+        timeoutFired = true;
+        console.error(
+          `[setMyStance] ⏱ TIMEOUT after ${TIMEOUT_MS}ms — PostgREST pool is likely stale.`,
+          "Run: NOTIFY pgrst, 'reload schema'; in the Supabase SQL editor."
+        );
+        reject(new Error(`set_question_stance timed out after ${TIMEOUT_MS}ms — PostgREST pool needs reload`));
+      }, TIMEOUT_MS)
     ),
   ]);
 
+  if (timeoutFired) return null; // unreachable — timeout rejects — but satisfies TS
   const { data, error } = result;
   console.log("[setMyStance] rpc returned", { data, error });
 
-  if (error) { console.error("Failed to set stance", error); throw error; }
+  if (error) {
+    console.error("[setMyStance] PostgREST error", {
+      code: (error as any).code,
+      message: (error as any).message,
+      details: (error as any).details,
+      hint: (error as any).hint,
+    });
+    throw new Error((error as any).message ?? "set_question_stance failed");
+  }
   if (score === null) return null;
   const row = data as QuestionStance | null;
   return row ? row.score : null;
@@ -797,9 +818,15 @@ export default function QuestionDetailPage() {
     },
     onError: (err: any) => {
       mutationInFlight.current = false;
-      console.error("[qdp:mutation] onError", { qid: debugQid, err });
+      // Log message and code at the top level so they're visible without expanding
+      // the object — critical for diagnosing PostgREST pool vs auth vs network errors.
+      console.error(
+        "[qdp:mutation] onError",
+        err?.message ?? err,
+        { qid: debugQid, code: err?.code ?? null, details: err?.details ?? null, err }
+      );
       toast({
-        title: "Error",
+        title: "Error saving stance",
         description: err?.message ?? "Failed to save your stance. Please try again.",
         variant: "destructive",
       });
