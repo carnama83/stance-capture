@@ -774,21 +774,19 @@ export default function QuestionDetailPage() {
 
       console.log("[qdp:mutation] cache set question-stats.my_stance", { qid: debugQid, resolvedScore, statsAfter: queryClient.getQueryData(["question-stats", questionId]) });
 
-      // Do NOT call invalidateQueries here. The realtime subscription fires
-      // within ~500ms and handles community-stats + question-stats invalidation.
-      // Calling invalidateQueries immediately after onSuccess fires concurrent
-      // fetchCommunityStats + fetchQuestionStats RPCs that saturate the PostgREST
-      // connection pool, leaving no connection for the next save → 8s timeout.
-      //
-      // The cache is already updated synchronously above via setQueryData,
-      // so the UI reflects the new stance immediately without any refetch.
       const savedScore = resolvedScore;
       console.log("[qdp:mutation] post-save cache updated", { qid: debugQid, savedScore });
 
-      // Broadcast for other components (e.g. hero bar on home page).
-      // Pass null for communityStats — the hero controller's own realtime
-      // subscription will fetch fresh stats when the DB trigger fires.
-      // Passing stale cached stats here would briefly show wrong numbers.
+      // Invalidate community-stats after 600ms — gives the DB trigger time to
+      // write the updated aggregates before we refetch. Both setMyStance and
+      // fetchCommunityStats now use raw fetch (no supabase-js getSession() lock),
+      // so this refetch is safe even immediately after a save.
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: communityStatsKey(questionId) });
+      }, 600);
+
+      // Broadcast for hero bar and other components.
+      // communityStats: null → hero controller fetches fresh via its own path.
       window.dispatchEvent(new CustomEvent("stance-saved", {
         detail: { questionId, value: savedScore, communityStats: null }
       }));
