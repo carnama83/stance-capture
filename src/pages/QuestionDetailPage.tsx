@@ -5,6 +5,10 @@
 //   stance framing prompt, bg-slate-50 page surface, shared rail styling, section rhythm
 // DESIGN PASS 3: Justified summary (Point 13), mobile layout reorder (Point 14),
 //   stats + pulseThumb wired to QuestionStanceSlider (Points 16–18)
+// FIX: Realtime channel properly disconnects transport on unmount to prevent stale
+//   WAL sender slots accumulating on the server between page navigations.
+// FIX: handleSetStance waits for channel SUBSCRIBED before firing RPC to prevent
+//   PostgREST hang when first save fires during subscription handshake.
 
 import * as React from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -181,25 +185,26 @@ async function setMyStance(questionId: string, score: number | null) {
   const sb = getSupabase();
   if (!sb) throw new Error("Supabase client not available");
   console.log("[setMyStance] calling rpc", { questionId, score });
-  
+
   const rpcPromise = sb.rpc("set_question_stance", {
     p_question_id: questionId,
     p_score: score,
   });
-  
+
   // Timeout after 8s so the mutation doesn't hang forever
   const timeoutPromise = new Promise((_, reject) =>
     setTimeout(() => reject(new Error("set_question_stance timed out after 8s")), 8000)
   );
-  
+
   const { data, error } = await Promise.race([rpcPromise, timeoutPromise]) as any;
   console.log("[setMyStance] rpc returned", { data, error });
-  
+
   if (error) { console.error("Failed to set stance", error); throw error; }
   if (score === null) return null;
   const row = data as QuestionStance | null;
   return row ? row.score : null;
 }
+
 async function fetchQuestionStats(questionId: string): Promise<QuestionStats | null> {
   const sb = getSupabase();
   if (!sb) throw new Error("Supabase client not available");
@@ -423,7 +428,7 @@ function StanceCard({
   stanceLoading: boolean;
   stanceMutation: any;
   stats: QuestionStats | null;
-  handleSetStance: (val: number) => void;
+  handleSetStance: (val: number | null) => void | Promise<void>;
   handleRequireLogin: () => void;
 }) {
   return (
@@ -579,9 +584,6 @@ export default function QuestionDetailPage() {
   });
 
   // ── Community stance aggregate query ──
-  // Reads directly from question_stance_stats_region (global row).
-  // This is the source of truth for the Community Stance bar on this page.
-  // Kept separate from ["question-stats", questionId] which powers RegionComparison.
   const { data: communityStats, isLoading: communityStatsLoading } = useQuery({
     enabled: !!questionId,
     queryKey: communityStatsKey(questionId),
@@ -590,14 +592,17 @@ export default function QuestionDetailPage() {
   });
 
   // ── Realtime: question_stance_stats_region → refresh community bar ──
-  // Subscribes using simple question_id filter (only supported filter type).
-  // JS callback guards to global row only.
-  // Debounced 500ms — one vote triggers multiple tier row writes.
-  // Also invalidates ["question-stats"] so RegionComparison stays fresh.
+  // channelReady ref: set true when SUBSCRIBED, false on unmount.
+  // handleSetStance waits for this before firing the RPC to prevent the
+  // PostgREST connection from hanging during the subscription handshake
+  // on first save after page navigation.
+  const channelReady = React.useRef(false);
   const sb = React.useMemo(getSupabase, []);
+
   React.useEffect(() => {
     if (!sb || !questionId) return;
 
+    channelReady.current = false;
     console.log(`[qdp:realtime] subscribing to question_stance_stats_region qId=${questionId.slice(0,8)}`);
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -612,27 +617,22 @@ export default function QuestionDetailPage() {
           filter: `question_id=eq.${questionId}`,
         },
         (payload) => {
-          // NOTE: We intentionally do NOT filter by region_scope/region_key here.
-          // Supabase Realtime only sends PK columns in payload.new unless the table
-          // has REPLICA IDENTITY FULL — those fields will be undefined, making any
-          // JS-side guard silently drop every event.
-          // The DB-level filter (question_id=eq.${questionId}) is sufficient.
-          // DELETE events occur when the last stance is cleared (DB trigger deletes all rows).
           const isDelete = payload.eventType === "DELETE";
           console.log(`[qdp:realtime] ✓ aggregate row ${isDelete ? "DELETED" : "changed"} for qId=${questionId.slice(0,8)} — debouncing 500ms`);
           if (debounceTimer) clearTimeout(debounceTimer);
           debounceTimer = setTimeout(() => {
             console.log(`[qdp:realtime] ✓ invalidating community-stats + question-stats`);
             queryClient.invalidateQueries({ queryKey: communityStatsKey(questionId) });
-            // Also refresh question-stats so RegionComparison stays current
             queryClient.invalidateQueries({ queryKey: ["question-stats", questionId] });
           }, 500);
         }
       )
       .subscribe((status) => {
         if (status === "SUBSCRIBED") {
+          channelReady.current = true;
           console.log(`[qdp:realtime] ✅ SUBSCRIBED qId=${questionId.slice(0,8)}`);
         } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          channelReady.current = false;
           console.error(`[qdp:realtime] ❌ channel ${status} qId=${questionId.slice(0,8)}`);
         }
       });
@@ -640,7 +640,18 @@ export default function QuestionDetailPage() {
     return () => {
       console.log(`[qdp:realtime] unsubscribing qId=${questionId.slice(0,8)}`);
       if (debounceTimer) clearTimeout(debounceTimer);
-      sb.removeChannel(channel);
+      channelReady.current = false;
+      // Fully disconnect the realtime transport when no channels remain.
+      // Without this, the server-side WAL sender slot stays open after
+      // navigation, accumulating stale replication connections that cause
+      // the next RPC call to hang during the new subscription handshake.
+      sb.removeChannel(channel).then(() => {
+        const remaining = sb.getChannels();
+        if (remaining.length === 0) {
+          console.log(`[qdp:realtime] no channels remaining — disconnecting transport`);
+          sb.realtime.disconnect();
+        }
+      });
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sb, questionId]);
@@ -675,7 +686,7 @@ export default function QuestionDetailPage() {
     });
   }, [debugQid, communityStats?.responses, communityStats?.supportPct, communityStats?.opposePct, communityStats?.neutralPct, communityStatsLoading]);
 
- // Ref-based in-flight guard — set synchronously in mutationFn so it is
+  // Ref-based in-flight guard — set synchronously in mutationFn so it is
   // always true before React re-renders, preventing stale-closure races
   // where a second slider commit fires before isPending flips to true.
   const mutationInFlight = React.useRef(false);
@@ -693,38 +704,28 @@ export default function QuestionDetailPage() {
       mutationInFlight.current = false;
       console.log("[qdp:mutation] onSuccess", { qid: debugQid, newScore, vars, cacheBefore: queryClient.getQueryData(["my-stance", questionId]), statsBefore: queryClient.getQueryData(["question-stats", questionId]) });
 
-      // resolvedScore: use vars (what the user requested) as the source of truth.
-      // This is safer than newScore for clear operations and any future RPC shape changes.
       const resolvedScore =
         typeof vars === "number" || vars === null ? vars : newScore;
 
       queryClient.setQueryData(["my-stance", questionId], resolvedScore);
       console.log("[qdp:mutation] cache set my-stance", { qid: debugQid, resolvedScore });
 
-      // Keep question-stats.my_stance in sync immediately so the slider,
-      // alignment box, and "you chose" copy do not lag behind the saved value.
       queryClient.setQueryData(
         ["question-stats", questionId],
         (old: QuestionStats | null | undefined) =>
           old
-            ? {
-                ...old,
-                my_stance: resolvedScore ?? null,
-              }
+            ? { ...old, my_stance: resolvedScore ?? null }
             : old ?? null
       );
 
       console.log("[qdp:mutation] cache set question-stats.my_stance", { qid: debugQid, resolvedScore, statsAfter: queryClient.getQueryData(["question-stats", questionId]) });
 
-      // Still refetch in background so region aggregates / derived stats stay authoritative
       queryClient.invalidateQueries({ queryKey: ["question-stats", questionId] });
-      // Invalidate community-stats so the bar on this page refreshes immediately after save
       queryClient.invalidateQueries({ queryKey: communityStatsKey(questionId) });
 
-      // Broadcast fresh community stats to hero (same tab) via window event.
-      // Fire-and-forget via setTimeout — not awaited, does not extend isPending.
       const savedScore = resolvedScore;
       console.log("[qdp:mutation] post-invalidate", { qid: debugQid, savedScore, myStanceCacheNow: queryClient.getQueryData(["my-stance", questionId]), statsCacheNow: queryClient.getQueryData(["question-stats", questionId]) });
+
       const broadcastStats = async (attempt = 1) => {
         const fresh = await fetchCommunityStats(questionId);
         if (fresh) {
@@ -744,8 +745,6 @@ export default function QuestionDetailPage() {
       };
       setTimeout(() => broadcastStats(), 300);
 
-      // Fire-and-forget interaction tracking — NOT awaited so it does not keep
-      // stanceMutation.isPending=true and hold the "Saving…" UI state open.
       if (userId && question?.topic_id) {
         const answered = resolvedScore !== null;
         trackQuestionInteraction(userId, questionId, question.topic_id, answered)
@@ -780,14 +779,35 @@ export default function QuestionDetailPage() {
     },
   });
 
+  // handleSetStance: async so it can wait for the realtime channel to finish
+  // subscribing before firing the RPC. On first load after navigation the
+  // channel handshake takes ~200-500ms — firing the RPC during this window
+  // causes PostgREST to hang because the WebSocket transport is busy.
   const handleSetStance = React.useCallback(
-    (newVal: number | null) => {
-      // Ref-based guard — cheaper and race-safe vs stanceMutation.isPending
-      // which can be stale at the moment a rapid second commit fires.
+    async (newVal: number | null) => {
       if (mutationInFlight.current) {
         console.log("[qdp:handleSetStance] dropped — mutation in flight (ref)", { newVal });
         return;
       }
+
+      // Wait up to 3s for channel to be SUBSCRIBED before firing RPC.
+      // Prevents the subscription handshake from blocking the PostgREST
+      // connection on the first save after page mount/navigation.
+      if (!channelReady.current) {
+        console.log("[qdp:handleSetStance] waiting for channel ready...");
+        await new Promise<void>((resolve) => {
+          const check = setInterval(() => {
+            if (channelReady.current) {
+              clearInterval(check);
+              resolve();
+            }
+          }, 50);
+          // Safety timeout: proceed after 3s regardless
+          setTimeout(() => { clearInterval(check); resolve(); }, 3000);
+        });
+        console.log("[qdp:handleSetStance] channel ready, proceeding");
+      }
+
       console.log("[qdp:handleSetStance]", {
         qid: debugQid,
         newVal,
@@ -809,9 +829,6 @@ export default function QuestionDetailPage() {
 
   const hasRelated = !!relatedQuestions && relatedQuestions.length > 0;
 
-  // Keep stats.my_stance aligned with the local authoritative stance query.
-  // This prevents the slider / alignment box from showing the previous saved value
-  // while the footer below already reflects the new one.
   const effectiveStats = React.useMemo<QuestionStats | null>(() => {
     if (!stats) return null;
     return {
@@ -829,7 +846,6 @@ export default function QuestionDetailPage() {
     });
   }, [debugQid, myStance, stats?.my_stance, effectiveStats?.my_stance]);
 
-  // Shared props object for StanceCard — avoids duplication between mobile/desktop renders
   const stanceCardProps = {
     isAuthed,
     questionId,
@@ -866,12 +882,6 @@ export default function QuestionDetailPage() {
     );
   } else {
     content = (
-      /*
-       * Point 14: flex-col on mobile, grid on md+.
-       * This allows the inline StanceCard to sit between main content
-       * and the rest of the rail on mobile without any order-* hacks.
-       * Desktop layout is unchanged.
-       */
       <div className="flex flex-col gap-6 md:grid md:gap-8 md:grid-cols-[1fr_320px]">
 
         {/* ===================== MAIN COLUMN ===================== */}
@@ -926,20 +936,13 @@ export default function QuestionDetailPage() {
               <div><QuestionPhaseBadge phase={question.phase} size="md" /></div>
             )}
 
-            {/*
-             * Point 13: Justified summary on md+ screens only.
-             * text-left on mobile avoids awkward word-gap spacing on narrow viewports.
-             * hyphens-auto assists line breaking for long words.
-             */}
             {question.summary && (
               <p className="max-w-[44rem] font-normal text-base md:text-lg text-slate-600 leading-relaxed md:leading-[1.6] text-left md:text-justify md:hyphens-auto">
                 {question.summary}
               </p>
             )}
           </div>
-          {/* End editorial container */}
 
-          {/* Hero image — mt-6 (~24px gap from summary) */}
           {question.cover_image_url && (
             <div className="mt-6">
               <EditorialHeroImage
@@ -947,33 +950,20 @@ export default function QuestionDetailPage() {
                 alt={question.question}
                 height={420}
               />
-              {/*
-               * Point 19 (TODO): Replace with dynamic caption when
-               * image_source_name column is available in questions table.
-               * e.g. question.image_source_name ?? "news article"
-               */}
               <p className="mt-2 text-xs text-slate-500 leading-snug">
                 Image source: news article
               </p>
             </div>
           )}
 
-          {/*
-           * Point 14: Mobile-only inline StanceCard.
-           * Appears right after hero image so the primary interaction is
-           * prominent before the user scrolls to comments.
-           * Hidden on desktop (md:hidden) — desktop uses the rail version below.
-           */}
           <div className="mt-6 md:hidden">
             <StanceCard question={question} {...stanceCardProps} />
           </div>
 
-          {/* Comments — mt-10 (~40px, clear section boundary) */}
           <div className="mt-10 border-t border-slate-200 pt-8">
             <QuestionCommentsPanel questionId={questionId} />
           </div>
 
-          {/* Related questions */}
           <section className="mt-10 border-t border-slate-200 pt-8">
             <h2 className="text-sm font-semibold text-slate-900 mb-4">
               {question.location_label
@@ -1012,7 +1002,6 @@ export default function QuestionDetailPage() {
             )}
           </section>
 
-          {/* Back link */}
           <footer className="mt-8 pt-6 border-t border-slate-100">
             <button type="button" onClick={handleBack} className="text-sm text-slate-500 hover:text-slate-900 transition-colors">
               ← Back
@@ -1024,7 +1013,6 @@ export default function QuestionDetailPage() {
         <aside className="md:pt-1">
           <div className="md:sticky md:top-24 space-y-4">
 
-            {/* Topic card + follow */}
             {question.topic_id && (
               <section className="rounded-xl border border-slate-200 bg-white p-4 md:p-5 shadow-sm">
                 <div className="flex items-start justify-between gap-3">
@@ -1046,10 +1034,7 @@ export default function QuestionDetailPage() {
               </section>
             )}
 
-            {/* Community stance */}
             <section className="rounded-xl border border-slate-200 bg-white p-4 md:p-5 shadow-sm">
-              {/* CommunityStanceBar reads from question_stance_stats_region global row.
-                  RegionComparison below reads from question-stats RPC for per-tier breakdown. */}
               <CommunityStanceBar
                 responses={communityStats?.responses ?? 0}
                 supportPct={communityStats?.supportPct ?? null}
@@ -1069,7 +1054,6 @@ export default function QuestionDetailPage() {
               )}
             </section>
 
-            {/* Discussion mood */}
             {threadSentimentLoading && !threadSentiment && (
               <section className="rounded-xl border border-slate-200 bg-white p-4 md:p-5 shadow-sm">
                 <h3 className="text-[11px] font-semibold tracking-wide uppercase text-slate-500 mb-3">
@@ -1098,11 +1082,6 @@ export default function QuestionDetailPage() {
               </section>
             )}
 
-            {/*
-             * Point 14: Desktop-only StanceCard in rail.
-             * hidden on mobile (the inline version above handles mobile).
-             * hidden md:block restores it at md+ breakpoint.
-             */}
             <div className="hidden md:block">
               <StanceCard question={question} {...stanceCardProps} />
             </div>
