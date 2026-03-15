@@ -493,7 +493,7 @@ function StanceCard({
             )}
 
             {isAuthed && myStance != null && !stanceMutation.isPending && (
-              <button type="button" className="underline" onClick={() => stanceMutation.mutate(null)}>
+              <button type="button" className="underline" onClick={() => handleSetStance(null)}>
                 Clear
               </button>
             )}
@@ -767,13 +767,19 @@ export default function QuestionDetailPage() {
     },
   });
 
-  const handleSetStance = React.useCallback(
-    (newVal: number) => {
-      console.log("[qdp:handleSetStance]", { qid: debugQid, newVal, queryMyStanceBefore: queryClient.getQueryData(["my-stance", questionId]), mutationPending: stanceMutation.isPending });
-      stanceMutation.mutate(newVal);
-    },
-    [stanceMutation]
-  );
+ const handleSetStance = React.useCallback(
+  (newVal: number | null) => {
+    console.log("[qdp:handleSetStance]", {
+      qid: debugQid,
+      newVal,
+      queryMyStanceBefore: queryClient.getQueryData(["my-stance", questionId]),
+      mutationPending: stanceMutation.isPending,
+    });
+
+    stanceMutation.mutate(newVal);
+  },
+  [stanceMutation]
+);
 
   const handleRequireLogin = React.useCallback(() => {
     const returnTo = window.location.hash || "#/";
