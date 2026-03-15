@@ -20,9 +20,9 @@
 //   - hero_transitioning → check queue length → hero_ready OR hero_waiting_next
 //   - Replenishment triggered when queuedQuestions.length <= 2
 //
-// FIX: Realtime cleanup now calls sb.realtime.disconnect() when no channels remain,
-//   ensuring the server-side WAL sender replication slot is released on question
-//   change rather than accumulating stale connections.
+// FIX: Realtime cleanup uses sb.removeChannel() only — sb.realtime.disconnect()
+//   intentionally NOT called as it destroys the singleton WebSocket transport
+//   and breaks subsequent subscriptions on the same client instance.
 
 import * as React from "react";
 import { getSupabase } from "@/lib/supabaseClient";
@@ -405,15 +405,10 @@ export function useHeroController({
 
     return () => {
       if (deleteDebounce) clearTimeout(deleteDebounce);
-      // Fully disconnect transport when no channels remain so the server-side
-      // replication slot is released immediately on question change.
-      sb.removeChannel(channel).then(() => {
-        const remaining = sb.getChannels();
-        if (remaining.length === 0) {
-          console.log(`[hero:realtime] no channels remaining — disconnecting transport`);
-          sb.realtime.disconnect();
-        }
-      });
+      // removeChannel only — do NOT call sb.realtime.disconnect() here.
+      // disconnect() destroys the singleton client's WebSocket transport,
+      // breaking subsequent subscriptions on the same client instance.
+      sb.removeChannel(channel);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sb, currentQuestionId]);
