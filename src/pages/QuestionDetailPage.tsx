@@ -769,18 +769,23 @@ export default function QuestionDetailPage() {
     },
   });
 
- const handleSetStance = React.useCallback(
+const handleSetStance = React.useCallback(
   (newVal: number | null) => {
+    // Drop the call entirely if a mutation is already in-flight.
+    // The slider is visually disabled but commits can still race on fast interactions.
+    if (stanceMutation.isPending) {
+      console.log("[qdp:handleSetStance] dropped — mutation already pending", { newVal });
+      return;
+    }
     console.log("[qdp:handleSetStance]", {
       qid: debugQid,
       newVal,
       queryMyStanceBefore: queryClient.getQueryData(["my-stance", questionId]),
       mutationPending: stanceMutation.isPending,
     });
-
     stanceMutation.mutate(newVal);
   },
-  [stanceMutation]
+  [stanceMutation, debugQid, queryClient, questionId]
 );
 
   const handleRequireLogin = React.useCallback(() => {
