@@ -646,12 +646,9 @@ export default function QuestionDetailPage() {
       // navigation, accumulating stale replication connections that cause
       // the next RPC call to hang during the new subscription handshake.
       sb.removeChannel(channel).then(() => {
-        const remaining = sb.getChannels();
-        if (remaining.length === 0) {
-          console.log(`[qdp:realtime] no channels remaining — disconnecting transport`);
-          sb.realtime.disconnect();
-        }
-      });
+  console.log(`[qdp:realtime] disconnecting realtime transport on unmount`);
+  sb.realtime.disconnect();
+});
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sb, questionId]);
