@@ -55,6 +55,9 @@ export type QuestionStanceSliderProps = {
   stats?: QuestionStats | null;
   // Point 17: pulse thumb + decision-oriented copy for hero/featured slots
   pulseThumb?: boolean;
+  // When true, the prop-sync effect is suppressed so an in-flight save
+  // does not snap the slider back to the stale server value mid-drag.
+  mutationPending?: boolean;
 };
 
 const STANCE_LABELS: Record<number, string> = {
@@ -179,6 +182,7 @@ export function QuestionStanceSlider({
   disabled,
   stats,
   pulseThumb,
+  mutationPending = false,
 }: QuestionStanceSliderProps) {
   const [value, setValue] = React.useState<number>(clampStance(initialValue));
   const [committed, setCommitted] = React.useState(
@@ -187,7 +191,13 @@ export function QuestionStanceSlider({
   // Keep local slider state aligned with the parent/server truth.
   // Without this, the slider can keep showing the last dragged value
   // while surrounding QDP UI reflects a different saved stance.
+  //
+  // Guard: do NOT sync while a mutation is in-flight. If a React Query
+  // refetch resolves during the save (e.g. triggered by the realtime channel),
+  // initialValue changes to the *old* value and this effect would snap the
+  // slider back to the stale position while "Saving…" is still showing.
   React.useEffect(() => {
+    if (mutationPending) return;
     if (typeof initialValue === "number" && initialValue !== null) {
       setValue(clampStance(initialValue));
       setCommitted(true);
@@ -195,7 +205,7 @@ export function QuestionStanceSlider({
       setValue(0);
       setCommitted(false);
     }
-  }, [initialValue, questionId]);
+  }, [initialValue, questionId, mutationPending]);
 
   const { data: aiData, isLoading: aiLoading } = useDebouncedAiStanceTip(
     questionId,
