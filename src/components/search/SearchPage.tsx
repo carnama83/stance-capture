@@ -151,7 +151,7 @@ function SearchResultCard({ result }: { result: SearchResult }) {
             <div className="flex items-center gap-4 text-sm text-gray-600">
               <span className="flex items-center gap-1">
                 <MessageSquare className="h-4 w-4" />
-                {result.response_count} {result.response_count === 1 ? 'response' : 'responses'}
+                {result.response_count} {result.response_count === 1 ? 'stance recorded' : 'stances recorded'}
               </span>
               
               <span>
