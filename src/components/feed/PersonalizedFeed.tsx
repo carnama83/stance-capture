@@ -255,7 +255,7 @@ export function PersonalizedFeed() {
               <div className="flex items-center gap-4">
                 <span className="flex items-center gap-1">
                   <MessageSquare className="h-3.5 w-3.5" />
-                  {q.response_count} {q.response_count === 1 ? 'response' : 'responses'}
+                  {q.response_count} {q.response_count === 1 ? 'stance recorded' : 'stances recorded'}
                 </span>
                 {q.user_has_answered && (
                   <span className="text-blue-600">✓ You answered</span>
