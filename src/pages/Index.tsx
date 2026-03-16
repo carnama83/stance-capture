@@ -1962,20 +1962,34 @@ export default function IndexPage() {
         return;
       }
 
+      // Raw fetch with JWT from React session state — avoids sb.rpc() which
+      // calls getSession() internally and can block on background token refresh.
+      const jwt = session?.access_token;
+      if (!jwt) throw new Error("No active session");
+      const supabaseUrl = (sb as any).supabaseUrl as string;
+      const anonKey    = (sb as any).supabaseKey as string;
+
       console.log(
         `[home:submit] START qId=${questionId.slice(0, 8)} userId=${userId.slice(0, 8)} value=${value}`
       );
 
-      const { data, error } = await sb.rpc("set_question_stance", {
-        p_question_id: questionId,
-        p_score: value,
+      const res = await fetch(`${supabaseUrl}/rest/v1/rpc/set_question_stance`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": anonKey,
+          "Authorization": `Bearer ${jwt}`,
+        },
+        body: JSON.stringify({ p_question_id: questionId, p_score: value }),
       });
 
-      if (error) {
-        console.error("[home:submit] RPC ERROR", error);
-        throw error;
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        console.error("[home:submit] HTTP ERROR", res.status, body);
+        throw new Error(body?.message ?? `HTTP ${res.status}`);
       }
 
+      const data = await res.json().catch(() => null);
       console.log("[home:submit] RPC OK", { questionId, value, data });
 
       // Same-tab fast path — hero/QDP listeners can react immediately.
@@ -2003,7 +2017,7 @@ export default function IndexPage() {
 
       console.log(`[home:submit] DONE qId=${questionId.slice(0, 8)} value=${value}`);
     },
-    [sb, userId, qc, navigate, regionLabel, fetchDistribution]
+    [sb, session, userId, qc, navigate, regionLabel, fetchDistribution]
   );
 
   const redirectToLogin = React.useCallback(
