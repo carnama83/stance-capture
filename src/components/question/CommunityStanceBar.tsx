@@ -51,7 +51,7 @@ function formatPct(val: number | null | undefined): string {
 }
 
 function formatNum(val: number): string {
-  return val === 1 ? "1 response" : `${val} responses`;
+  return val === 1 ? "1 stance recorded" : `${val} stances recorded`;
 }
 
 // ── Skeleton ──────────────────────────────────────────────────────────────────
@@ -100,7 +100,7 @@ export function CommunityStanceBar({
       <div>
         <Header compact={compact} onRefresh={onRefresh} isLoading={false} />
         <p className={`text-slate-500 ${compact ? "text-[11px]" : "text-xs"}`}>
-          No responses yet. Be the first to signal your stance.
+          No stances recorded yet.
         </p>
       </div>
     );
