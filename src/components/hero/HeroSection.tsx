@@ -328,10 +328,27 @@ function SectionAError({
 // ─── Section A — Waiting for next ─────────────────────────────────────────────
 
 function SectionAWaiting() {
+  // Show a brief spinner, then switch to a friendly "all caught up" message
+  // to avoid an infinite loading state when no new questions are available yet.
+  const [showSpinner, setShowSpinner] = React.useState(true);
+  React.useEffect(() => {
+    const t = setTimeout(() => setShowSpinner(false), 3000);
+    return () => clearTimeout(t);
+  }, []);
+
   return (
-    <div className="flex flex-col items-center justify-center h-full min-h-[240px] p-6 gap-3">
-      <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-200 border-t-slate-600" />
-      <p className="text-sm text-slate-400">Loading next question…</p>
+    <div className="flex flex-col items-center justify-center h-full min-h-[240px] p-6 gap-3 text-center">
+      {showSpinner ? (
+        <>
+          <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-200 border-t-slate-600" />
+          <p className="text-sm text-slate-400">Loading next question…</p>
+        </>
+      ) : (
+        <>
+          <p className="text-sm font-medium text-slate-600">You're all caught up!</p>
+          <p className="text-xs text-slate-400">New questions are on their way. Check back shortly.</p>
+        </>
+      )}
     </div>
   );
 }
