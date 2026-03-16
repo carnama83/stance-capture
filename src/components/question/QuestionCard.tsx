@@ -97,7 +97,7 @@ export function QuestionCard({
         <div className="flex items-center gap-4 text-sm text-gray-500 border-t pt-2">
           <div className="flex items-center gap-1">
             <MessageSquare className="w-4 h-4" />
-            <span>{question.engagement.responses_total} responses</span>
+            <span>{question.engagement.responses_total} {question.engagement.responses_total === 1 ? "stance recorded" : "stances recorded"}</span>
           </div>
           
           {question.engagement.response_rate_24h > 0 && (
