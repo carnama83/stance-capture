@@ -515,13 +515,25 @@ export function useHeroController({
   React.useEffect(() => {
     if (status !== "hero_loading") {
       if (status === "hero_waiting_next" && allQuestions.length > 0) {
-        const eligible = allQuestions.filter(
+        // First pass: unanswered questions not yet shown this session
+        let eligible = allQuestions.filter(
           (q) => !usedQuestionIds.current.has(q.question_id) && !q.user_has_answered
         );
+        // Second pass: if nothing new, reset session history and try unanswered again
+        if (eligible.length === 0) {
+          const unanswered = allQuestions.filter((q) => !q.user_has_answered);
+          if (unanswered.length > 0) {
+            console.log("[hero:waiting] resetting session history — recycling unanswered questions");
+            usedQuestionIds.current.clear();
+            eligible = unanswered;
+          }
+        }
         if (eligible.length > 0) {
           const [next, ...rest] = eligible;
           doTransition(next, rest);
         }
+        // If still nothing: truly no unanswered questions — stay in waiting state
+        // and let onRequestReplenish eventually bring new ones.
       }
       return;
     }
