@@ -126,6 +126,7 @@ function SectionAQuestion({
   submittedStance,
   distribution,
   isAuthed,
+  hasQueue,
   onSubmit,
   onLoginRedirect,
   onNavigateToQuestion,
@@ -137,6 +138,7 @@ function SectionAQuestion({
   submittedStance: number | null;
   distribution: HeroDistribution | null;
   isAuthed: boolean;
+  hasQueue: boolean;
   onSubmit: (v: number) => Promise<void>;
   onLoginRedirect: () => void;
   onNavigateToQuestion: (id: string) => void;
@@ -236,8 +238,8 @@ function SectionAQuestion({
             compact={true}
           />
 
-          {/* Next question nudge — only after user has answered */}
-          {status === "hero_answered_result" && (
+          {/* Next question nudge — only when answered AND queue has items to advance to */}
+          {status === "hero_answered_result" && hasQueue && (
             <button
               type="button"
               onClick={onAdvanceNow}
@@ -657,6 +659,7 @@ export function HeroSection({
                   submittedStance={submittedStance}
                   distribution={distribution}
                   isAuthed={isAuthed}
+                  hasQueue={queuedQuestions.length > 0}
                   onSubmit={submitHeroStance}
                   onLoginRedirect={onLoginRedirect}
                   onNavigateToQuestion={onNavigateToQuestion}
