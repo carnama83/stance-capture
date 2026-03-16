@@ -444,9 +444,13 @@ function RegionComparison({ stats }: { stats: QuestionStats | null }) {
             <div key={scope} className="flex items-center justify-between text-xs border border-slate-200 rounded-lg p-2 bg-white">
               <span className="text-slate-700 font-medium">{label}</span>
               <div className="text-slate-600 space-x-2">
-                {r.pct_agree != null && <span className="text-slate-700 font-medium">{Math.round(r.pct_agree)}% agree</span>}
-                {r.pct_disagree != null && <span>· {Math.round(r.pct_disagree)}% disagree</span>}
-                <span className="text-[10px] text-slate-500">({r.total_responses})</span>
+                {(r.pct_agree ?? 0) > 0 && <span className="text-slate-700 font-medium">{Math.round(r.pct_agree!)}% agree</span>}
+                {(r.pct_disagree ?? 0) > 0 && <span>· {Math.round(r.pct_disagree!)}% disagree</span>}
+                {(r.pct_neutral ?? 0) > 0 && <span className="text-slate-500">· {Math.round(r.pct_neutral!)}% neutral</span>}
+                {(r.pct_agree ?? 0) === 0 && (r.pct_disagree ?? 0) === 0 && (r.pct_neutral ?? 0) === 0 && (
+                  <span className="text-slate-400">No directional data</span>
+                )}
+                <span className="text-[10px] text-slate-500">({r.total_responses} {r.total_responses === 1 ? "stance" : "stances"})</span>
               </div>
             </div>
           );
