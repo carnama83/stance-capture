@@ -653,7 +653,7 @@ export default function TopicDetailPage() {
                 <div className="flex flex-col items-end">
                   <span className="text-[10px] text-slate-500">7-day activity</span>
                   <span className="text-xs font-semibold">
-                    {activity} response{activity === 1 ? "" : "s"}
+                    {activity} {activity === 1 ? "stance recorded" : "stances recorded"}
                   </span>
                 </div>
               </div>
