@@ -251,8 +251,7 @@ function SectionAQuestion({
         {/* Divider between community bar and user's slider */}
         <div className="border-t border-slate-100 mb-4" />
 
-        {/* Slider — hidden once user has answered */}
-        {!isResultMode && (
+        {/* Slider — always visible so user can change their stance after answering */}
         <>
         {isAuthed ? (
           <QuestionStanceSlider
@@ -260,9 +259,9 @@ function SectionAQuestion({
             questionId={question.question_id}
             questionText={question.question_text}
             summary={question.summary}
-            initialValue={null}
+            initialValue={isResultMode ? (submittedStance ?? null) : null}
             disabled={isSubmitting}
-            pulseThumb={!isSubmitting}
+            pulseThumb={!isSubmitting && !isResultMode}
             onSubmit={onSubmit}
           />
         ) : (
@@ -296,7 +295,6 @@ function SectionAQuestion({
           </>
         )}
         </>
-        )}
       </div>
     </div>
   );
