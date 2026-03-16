@@ -586,7 +586,9 @@ export function useHeroController({
     async (value: number) => {
       if (!currentHeroQuestion) return;
 
-      if (status === 'hero_answered_result' || status === 'hero_transitioning' || status === 'hero_submitting') return;
+      // Block during transition or already-submitting, but allow re-submission
+      // when in hero_answered_result so the user can change their stance.
+      if (status === 'hero_transitioning' || status === 'hero_submitting') return;
 
       if (!isAuthed) {
         onLoginRedirect();
@@ -594,25 +596,31 @@ export function useHeroController({
       }
 
       const questionId = currentHeroQuestion.question_id;
+      const isResubmit = status === 'hero_answered_result';
 
-      setStatus("hero_submitting");
+      if (!isResubmit) setStatus("hero_submitting");
       setSubmittedStance(value);
       setErrorMessage(null);
 
       try {
         await onSubmitSuccess(questionId, value);
-        await fetchDistributionFresh(questionId);
+        // Refresh community bar after a short delay to let DB trigger complete
+        setTimeout(() => fetchDistributionFresh(questionId), 700);
 
-        setStatus("hero_answered_result");
-        fireAnalytics("hero_stance_submitted", { questionId, value });
-        fireAnalytics("hero_alignment_viewed", { questionId });
-
-        console.log(`[hero:submit] ✓ stance saved qId=${questionId.slice(0,8)} — poll chain will continue in hero_answered_result`);
+        if (!isResubmit) {
+          setStatus("hero_answered_result");
+          fireAnalytics("hero_stance_submitted", { questionId, value });
+          fireAnalytics("hero_alignment_viewed", { questionId });
+        } else {
+          console.log(`[hero:submit] ✓ stance updated qId=${questionId.slice(0,8)}`);
+        }
       } catch (err) {
         console.error("[hero] submitHeroStance failed", err);
-        setStatus("hero_error");
-        setErrorMessage("Failed to submit stance. Please try again.");
-        setSubmittedStance(null);
+        if (!isResubmit) {
+          setStatus("hero_error");
+          setErrorMessage("Failed to submit stance. Please try again.");
+          setSubmittedStance(null);
+        }
       }
     },
     [
