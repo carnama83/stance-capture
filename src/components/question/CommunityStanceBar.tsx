@@ -94,12 +94,33 @@ export function CommunityStanceBar({
     );
   }
 
-  // ── Empty state ──
+  // ── Empty state — show bar frame so layout is stable, just with no segments ──
   if (isEmpty || responses === 0) {
     return (
-      <div>
+      <div className="space-y-2">
         <Header compact={compact} onRefresh={onRefresh} isLoading={false} />
-        <p className={`text-slate-500 ${compact ? "text-[11px]" : "text-xs"}`}>
+        {/* Empty bar frame — same height as populated bar */}
+        <div
+          className="w-full rounded-full bg-slate-100"
+          style={{ height: compact ? 8 : 10 }}
+          role="img"
+          aria-label="No stances recorded yet"
+        />
+        <div className={`flex items-center justify-between ${compact ? "text-[11px]" : "text-xs"} text-slate-400`}>
+          <span>
+            <span className="inline-block h-2 w-2 rounded-full bg-slate-200 mr-1 align-middle" />
+            Oppose 0%
+          </span>
+          <span>
+            <span className="inline-block h-2 w-2 rounded-full bg-slate-200 mr-1 align-middle" />
+            Neutral 0%
+          </span>
+          <span>
+            <span className="inline-block h-2 w-2 rounded-full bg-slate-200 mr-1 align-middle" />
+            Support 0%
+          </span>
+        </div>
+        <p className={`${compact ? "text-[11px]" : "text-xs"} text-slate-400`}>
           No stances recorded yet.
         </p>
       </div>
