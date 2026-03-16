@@ -443,14 +443,18 @@ function RegionComparison({ stats }: { stats: QuestionStats | null }) {
           return (
             <div key={scope} className="flex items-center justify-between text-xs border border-slate-200 rounded-lg p-2 bg-white">
               <span className="text-slate-700 font-medium">{label}</span>
-              <div className="text-slate-600 space-x-2">
-                {(r.pct_agree ?? 0) > 0 && <span className="text-slate-700 font-medium">{Math.round(r.pct_agree!)}% agree</span>}
-                {(r.pct_disagree ?? 0) > 0 && <span>· {Math.round(r.pct_disagree!)}% disagree</span>}
-                {(r.pct_neutral ?? 0) > 0 && <span className="text-slate-500">· {Math.round(r.pct_neutral!)}% neutral</span>}
-                {(r.pct_agree ?? 0) === 0 && (r.pct_disagree ?? 0) === 0 && (r.pct_neutral ?? 0) === 0 && (
-                  <span className="text-slate-400">No directional data</span>
-                )}
-                <span className="text-[10px] text-slate-500">({r.total_responses} {r.total_responses === 1 ? "stance" : "stances"})</span>
+              <div className="text-slate-600 flex items-center gap-1.5">
+                {(() => {
+                  const parts: React.ReactNode[] = [];
+                  if ((r.pct_agree ?? 0) > 0)    parts.push(<span key="a" className="text-slate-700 font-medium">{Math.round(r.pct_agree!)}% agree</span>);
+                  if ((r.pct_disagree ?? 0) > 0)  parts.push(<span key="d">{Math.round(r.pct_disagree!)}% disagree</span>);
+                  if ((r.pct_neutral ?? 0) > 0)   parts.push(<span key="n" className="text-slate-500">{Math.round(r.pct_neutral!)}% neutral</span>);
+                  if (parts.length === 0) return <span className="text-slate-400">No data yet</span>;
+                  return parts.reduce<React.ReactNode[]>((acc, el, i) =>
+                    i === 0 ? [el] : [...acc, <span key={`sep-${i}`} className="text-slate-300">·</span>, el], []
+                  );
+                })()}
+                <span className="text-[10px] text-slate-400">({r.total_responses} {r.total_responses === 1 ? "stance" : "stances"})</span>
               </div>
             </div>
           );
@@ -781,13 +785,16 @@ export default function QuestionDetailPage() {
       const savedScore = resolvedScore;
       console.log("[qdp:mutation] post-save cache updated", { qid: debugQid, savedScore });
 
-      // Invalidate community-stats after 600ms — gives the DB trigger time to
-      // write the updated aggregates before we refetch. Both setMyStance and
-      // fetchCommunityStats now use raw fetch (no supabase-js getSession() lock),
-      // so this refetch is safe even immediately after a save.
+      // Invalidate both community-stats and question-stats after a short delay,
+      // giving the DB trigger time to write updated aggregates first.
+      // community-stats → updates the community bar (fetchCommunityStats, raw fetch)
+      // question-stats  → updates Compare by Region (get_question_stats_for_user RPC)
+      // Both are safe to fire concurrently since fetchCommunityStats uses raw fetch
+      // and the PostgREST pool is no longer contended.
       setTimeout(() => {
         queryClient.invalidateQueries({ queryKey: communityStatsKey(questionId) });
-      }, 600);
+        queryClient.invalidateQueries({ queryKey: ["question-stats", questionId] });
+      }, 700);
 
       // Broadcast for hero bar and other components.
       // communityStats: null → hero controller fetches fresh via its own path.
