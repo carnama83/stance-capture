@@ -180,7 +180,7 @@ function SectionAQuestion({
           {/* Eyebrow */}
           <div className="flex items-center gap-1.5 mb-0.5">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-sm font-semibold" style={{ color: "#7C5CBF" }}>One big shifting question</span>
+            <span className="text-sm font-semibold" style={{ color: "#5E3D9E" }}>One big shifting question</span>
           </div>
           <p className="text-xs text-slate-500 mb-4">
             Answer in seconds — see where society stands.
