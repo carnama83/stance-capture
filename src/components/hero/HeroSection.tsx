@@ -253,23 +253,6 @@ function SectionAQuestion({
         {/* Divider between community bar and user's slider */}
         <div className="border-t border-slate-100 mb-4" />
 
-        {/* Share Your Stance CTA — guests only, between community bar and slider */}
-        {!isAuthed && (
-          <div className="mb-4">
-            <button
-              type="button"
-              onClick={onLoginRedirect}
-              className="w-full flex items-center justify-center gap-2 rounded-xl py-3 px-5 text-sm font-semibold text-white transition-all duration-200 hover:brightness-110 active:scale-[0.98]"
-              style={{ backgroundColor: "#5E3D9E" }}
-            >
-              Share Your Stance <span className="text-base">→</span>
-            </button>
-            <p className="mt-2 flex items-center justify-center gap-1.5 text-xs text-slate-400">
-              <span>👁</span> See how society stands after you answer.
-            </p>
-          </div>
-        )}
-
         {/* Slider — always visible so user can change their stance after answering */}
         <>
         {isAuthed ? (
@@ -285,6 +268,7 @@ function SectionAQuestion({
           />
         ) : (
           <>
+            {/* Slider first for guests */}
             <div
               onPointerUpCapture={onLoginRedirect}
               onPointerCancelCapture={onLoginRedirect}
@@ -301,15 +285,20 @@ function SectionAQuestion({
                 onSubmit={onLoginRedirect}
               />
             </div>
-            <div className="mt-3 flex items-center gap-3">
-              <p className="text-xs text-slate-400">Log in to record your stance</p>
+
+            {/* Share Your Stance CTA — half-width, centered, below slider */}
+            <div className="mt-4 flex flex-col items-center gap-2">
               <button
                 type="button"
                 onClick={onLoginRedirect}
-                className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-700 transition-colors"
+                className="flex items-center justify-center gap-2 rounded-xl py-3 px-8 text-sm font-semibold text-white transition-all duration-200 hover:brightness-110 active:scale-[0.98]"
+                style={{ backgroundColor: "#5E3D9E", minWidth: "260px" }}
               >
-                Log in
+                Share Your Stance <span className="text-base">→</span>
               </button>
+              <p className="flex items-center gap-1.5 text-xs text-slate-400">
+                <span>👁</span> See how society stands after you answer.
+              </p>
             </div>
           </>
         )}
