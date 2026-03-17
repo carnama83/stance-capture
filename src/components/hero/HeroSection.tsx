@@ -223,52 +223,47 @@ function SectionAQuestion({
       {/* ── Slider / Result section ── */}
       <div className="flex-1 px-5 pb-5 pt-4 border-t border-slate-100">
 
-        {/* Community distribution bar — uses shared CommunityStanceBar with normalized field names */}
-        <div className="mb-4">
-          <CommunityStanceBar
-            responses={distribution?.responses ?? 0}
-            supportPct={distribution?.supportPct ?? null}
-            opposePct={distribution?.opposePct ?? null}
-            neutralPct={distribution?.neutralPct ?? null}
-            regionLabel={distribution?.regionLabel ?? "Global"}
-            avgScore={distribution?.avgScore ?? null}
-            isLoading={false}
-            isEmpty={!distribution || (distribution.responses ?? 0) === 0}
-            onRefresh={onRefreshDistribution}
-            compact={true}
-          />
-
-          {/* Next question nudge — only when answered AND queue has items to advance to */}
-          {status === "hero_answered_result" && hasQueue && (
-            <button
-              type="button"
-              onClick={onAdvanceNow}
-              className="mt-2 text-xs font-medium text-slate-400 hover:text-slate-700 transition-colors underline underline-offset-2"
-            >
-              Next question →
-            </button>
-          )}
-        </div>
-
-        {/* Divider between community bar and user's slider */}
-        <div className="border-t border-slate-100 mb-4" />
-
-        {/* Slider — always visible so user can change their stance after answering */}
-        <>
         {isAuthed ? (
-          <QuestionStanceSlider
-            key={`hero-${question.question_id}`}
-            questionId={question.question_id}
-            questionText={question.question_text}
-            summary={question.summary}
-            initialValue={isResultMode ? (submittedStance ?? null) : null}
-            disabled={isSubmitting}
-            pulseThumb={!isSubmitting && !isResultMode}
-            onSubmit={onSubmit}
-          />
+          <>
+            {/* Authed: Community bar first, then divider, then slider */}
+            <div className="mb-4">
+              <CommunityStanceBar
+                responses={distribution?.responses ?? 0}
+                supportPct={distribution?.supportPct ?? null}
+                opposePct={distribution?.opposePct ?? null}
+                neutralPct={distribution?.neutralPct ?? null}
+                regionLabel={distribution?.regionLabel ?? "Global"}
+                avgScore={distribution?.avgScore ?? null}
+                isLoading={false}
+                isEmpty={!distribution || (distribution.responses ?? 0) === 0}
+                onRefresh={onRefreshDistribution}
+                compact={true}
+              />
+              {status === "hero_answered_result" && hasQueue && (
+                <button
+                  type="button"
+                  onClick={onAdvanceNow}
+                  className="mt-2 text-xs font-medium text-slate-400 hover:text-slate-700 transition-colors underline underline-offset-2"
+                >
+                  Next question →
+                </button>
+              )}
+            </div>
+            <div className="border-t border-slate-100 mb-4" />
+            <QuestionStanceSlider
+              key={`hero-${question.question_id}`}
+              questionId={question.question_id}
+              questionText={question.question_text}
+              summary={question.summary}
+              initialValue={isResultMode ? (submittedStance ?? null) : null}
+              disabled={isSubmitting}
+              pulseThumb={!isSubmitting && !isResultMode}
+              onSubmit={onSubmit}
+            />
+          </>
         ) : (
           <>
-            {/* Slider first for guests */}
+            {/* Guest: slider first, then pill CTA button, then community teaser message */}
             <div
               onPointerUpCapture={onLoginRedirect}
               onPointerCancelCapture={onLoginRedirect}
@@ -286,23 +281,37 @@ function SectionAQuestion({
               />
             </div>
 
-            {/* Share Your Stance CTA — half-width, centered, below slider */}
-            <div className="mt-4 flex flex-col items-center gap-2">
+            {/* Share Your Stance pill CTA — between slider and community teaser */}
+            <div className="mt-5 flex flex-col items-center gap-2">
               <button
                 type="button"
                 onClick={onLoginRedirect}
-                className="flex items-center justify-center gap-2 rounded-xl py-3 px-8 text-sm font-semibold text-white transition-all duration-200 hover:brightness-110 active:scale-[0.98]"
-                style={{ backgroundColor: "#5E3D9E", minWidth: "260px" }}
+                className="inline-flex items-center justify-center gap-2 rounded-full py-2.5 px-10 text-sm font-semibold text-white shadow-md transition-all duration-200 hover:brightness-110 active:scale-[0.98]"
+                style={{ backgroundColor: "#6048C0" }}
               >
-                Share Your Stance <span className="text-base">→</span>
+                Share Your Stance →
               </button>
               <p className="flex items-center gap-1.5 text-xs text-slate-400">
                 <span>👁</span> See how society stands after you answer.
               </p>
             </div>
+
+            {/* Community teaser — replaces Community Stance Bar for guests */}
+            <div className="mt-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-center">
+              <p className="text-xs font-medium text-slate-500">
+                💬 State your opinion to unlock how the community is thinking —{" "}
+                <button
+                  type="button"
+                  onClick={onLoginRedirect}
+                  className="font-semibold underline underline-offset-2 transition-colors"
+                  style={{ color: "#6048C0" }}
+                >
+                  sign in to see the full picture.
+                </button>
+              </p>
+            </div>
           </>
         )}
-        </>
       </div>
     </div>
   );
