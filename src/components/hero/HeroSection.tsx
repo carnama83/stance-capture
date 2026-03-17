@@ -253,6 +253,27 @@ function SectionAQuestion({
         {/* Divider between community bar and user's slider */}
         <div className="border-t border-slate-100 mb-4" />
 
+        {/* Share Your Stance CTA — shown before user answers */}
+        {isAuthed && !isResultMode && !isSubmitting && (
+          <div className="mb-4">
+            <button
+              type="button"
+              onClick={() => {
+                // Scroll/focus the slider — the slider is right below
+                const el = document.getElementById(`hero-slider-${question.question_id}`);
+                if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+              }}
+              className="w-full flex items-center justify-center gap-2 rounded-xl py-3 px-5 text-sm font-semibold text-white transition-all duration-200 hover:brightness-110 active:scale-[0.98]"
+              style={{ backgroundColor: "#5E3D9E" }}
+            >
+              Share Your Stance <span className="text-base">→</span>
+            </button>
+            <p className="mt-2 flex items-center justify-center gap-1.5 text-xs text-slate-400">
+              <span>👁</span> See how society stands after you answer.
+            </p>
+          </div>
+        )}
+
         {/* Slider — always visible so user can change their stance after answering */}
         <>
         {isAuthed ? (
