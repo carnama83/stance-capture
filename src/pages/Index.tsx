@@ -235,17 +235,22 @@ type QuestionStats = {
 function useSupabaseSession() {
   const sb = React.useMemo(getSupabase, []);
   const [session, setSession] = React.useState<Session | null>(null);
+  const [sessionResolved, setSessionResolved] = React.useState(false);
 
   React.useEffect(() => {
     if (!sb) return;
-    sb.auth.getSession().then(({ data }) => setSession(data.session ?? null));
-    const { data: sub } = sb.auth.onAuthStateChange((_e, s) =>
-      setSession(s ?? null)
-    );
+    sb.auth.getSession().then(({ data }) => {
+      setSession(data.session ?? null);
+      setSessionResolved(true);
+    });
+    const { data: sub } = sb.auth.onAuthStateChange((_e, s) => {
+      setSession(s ?? null);
+      setSessionResolved(true);
+    });
     return () => sub.subscription?.unsubscribe();
   }, [sb]);
 
-  return session;
+  return { session, sessionResolved };
 }
 
 // ─────────────────────────── Display name helper (unchanged) ─────────────────
@@ -1367,7 +1372,7 @@ function GridQuestionCardAnon({
 export default function IndexPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const session = useSupabaseSession();
+  const { session, sessionResolved } = useSupabaseSession();
   const isAuthed = !!session;
   const sb = React.useMemo(getSupabase, []);
   const userId = session?.user?.id ?? null;
@@ -1844,7 +1849,10 @@ export default function IndexPage() {
     : anonTrendingQuery.fetchNextPage;
 
   // ── Loading states ──
-  const anonIsLoading = anonTrendingQuery.isLoading;
+  // Wait for session to resolve before trusting isLoading for anon users.
+  // Without this, the hero stays in hero_loading forever when the session
+  // check hasn't completed yet and the anonTrendingQuery fires then gets disabled.
+  const anonIsLoading = !sessionResolved || anonTrendingQuery.isLoading;
   const anonIsError = anonTrendingQuery.isError;
   const authedIsLoading =
     locationIdsLoading ||
