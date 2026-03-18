@@ -16,12 +16,18 @@
 // Spec rules enforced:
 //   - Section A container stays mounted; only inner content swaps (fade)
 //   - Slider key={currentHeroQuestion.id} — remounts on question change
-//   - Section B min-height: 280px desktop / 220px mobile — no layout shift
+//   - Section B min-height: 300px desktop / flexible mobile — no layout shift
 //   - Timer lives in useHeroController (outside this tree)
 //   - "Up Next" label on first queue card only after answer
 //   - Queue card click → promoteQuestion (works from both ready + answered_result)
 //   - hero_error shows inline retry in Section A
-//   - Section B mobile CTA: direction-neutral "Answer above"
+//   - Section B guest panel: two states (locked / engaged) driven by slider interaction
+//   - guestHasEngaged resets on question change and auth transition
+//   - distribution data (real community stats) feeds guest preview card
+//
+// TODO (mobile): Section B stacks below Section A on mobile, so the locked→engaged
+//   panel transition is below the fold. Future enhancement: add an inline cue near
+//   the guest slider after first interaction so mobile users get immediate feedback.
 
 import * as React from "react";
 import { Link } from "react-router-dom";
@@ -60,7 +66,7 @@ export interface AlignmentSnapshotShape {
   most_divergent_question_text: string | null;
 }
 
-// ─── Shared atoms (self-contained — no import from Index.tsx) ────────────────
+// ─── Shared atoms ─────────────────────────────────────────────────────────────
 
 const card = "bg-white rounded-xl shadow-sm ring-1 ring-slate-900/5";
 
@@ -118,6 +124,367 @@ function SectionBSkeleton() {
   );
 }
 
+// ─── Guest preview card — shared between locked + engaged ─────────────────────
+//
+// Shows real community distribution data when available (responses > 0).
+// Falls back to skeleton pulse while data is loading (distribution === null).
+// The "locked" vs "engaged" visual state is controlled by the parent.
+
+function GuestPreviewCard({
+  distribution,
+  state,
+}: {
+  distribution: HeroDistribution | null;
+  state: "locked" | "engaged";
+}) {
+  const hasData = distribution != null && (distribution.responses ?? 0) > 0;
+  const isLocked = state === "locked";
+
+  return (
+    <div
+      className={[
+        "rounded-xl border p-3 transition-all duration-300",
+        isLocked
+          ? "bg-slate-50 border-slate-200"
+          : "bg-white border-violet-200 shadow-sm",
+      ].join(" ")}
+    >
+      {/* Card header */}
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+          {isLocked ? "Community view" : "Your comparison"}
+        </p>
+        {!isLocked && (
+          <span
+            className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold text-white"
+            style={{ backgroundColor: "#6048C0" }}
+          >
+            Ready to compare
+          </span>
+        )}
+      </div>
+
+      {/* Distribution bar — real data or skeleton */}
+      {!hasData ? (
+        // Loading skeleton or no data yet
+        <div className="space-y-1.5 animate-pulse">
+          <div className="h-2 w-full rounded-full bg-slate-200" />
+          <div className="flex justify-between">
+            <div className="h-2 w-12 rounded bg-slate-200" />
+            <div className="h-2 w-12 rounded bg-slate-200" />
+            <div className="h-2 w-12 rounded bg-slate-200" />
+          </div>
+        </div>
+      ) : (
+        // Real segmented bar
+        <div className="space-y-1.5">
+          <div className="flex h-2 w-full overflow-hidden rounded-full gap-px">
+            {(distribution.opposePct ?? 0) > 0 && (
+              <div
+                className="bg-red-400 rounded-l-full transition-all duration-500"
+                style={{ width: `${distribution.opposePct}%` }}
+              />
+            )}
+            {(distribution.neutralPct ?? 0) > 0 && (
+              <div
+                className="bg-slate-300 transition-all duration-500"
+                style={{ width: `${distribution.neutralPct}%` }}
+              />
+            )}
+            {(distribution.supportPct ?? 0) > 0 && (
+              <div
+                className="bg-emerald-400 rounded-r-full transition-all duration-500"
+                style={{ width: `${distribution.supportPct}%` }}
+              />
+            )}
+          </div>
+          <div className="flex justify-between text-[10px] text-slate-400">
+            <span>
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-red-400 mr-1" />
+              Oppose {formatPct(distribution.opposePct)}
+            </span>
+            <span>
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-slate-300 mr-1" />
+              Neutral {formatPct(distribution.neutralPct)}
+            </span>
+            <span>
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400 mr-1" />
+              Support {formatPct(distribution.supportPct)}
+            </span>
+          </div>
+          <p className="text-[10px] text-slate-400">
+            {distribution.responses.toLocaleString()} stance{distribution.responses === 1 ? "" : "s"} recorded
+          </p>
+        </div>
+      )}
+
+      {/* Supporting line */}
+      <p className="mt-2 text-[11px] text-slate-500 leading-snug">
+        {isLocked
+          ? "See where your stance lands after you respond."
+          : "See whether your stance is closer to the majority or the minority."}
+      </p>
+
+      {/* Lock chip — locked state only */}
+      {isLocked && (
+        <div className="mt-2 flex justify-center">
+          <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-medium text-slate-500">
+            🔒 Answer to compare
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Section B — Guest locked state ──────────────────────────────────────────
+
+function SectionBGuestLocked({
+  distribution,
+  onLogin,
+  onSignup,
+}: {
+  distribution: HeroDistribution | null;
+  onLogin: () => void;
+  onSignup: () => void;
+}) {
+  return (
+    <div className="flex flex-col justify-between h-full p-5">
+      <div>
+        {/* Eyebrow */}
+        <div className="flex items-center gap-1.5 mb-3">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          <span className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">
+            Live insight
+          </span>
+        </div>
+
+        <h3 className="text-base font-semibold text-slate-900 leading-snug mb-1">
+          See where you stand
+        </h3>
+        <p className="text-xs text-slate-500 leading-relaxed mb-3">
+          Answer the question to reveal how your stance compares with society.
+        </p>
+
+        {/* Preview card with real community data */}
+        <GuestPreviewCard distribution={distribution} state="locked" />
+
+        {/* Value bullets */}
+        <ul className="mt-3 space-y-1.5">
+          {[
+            "Compare with your region, country, and globally",
+            "Track how opinions shift over time",
+            "Build your personal stance profile",
+          ].map((item) => (
+            <li key={item} className="flex items-start gap-2 text-xs text-slate-500">
+              <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-indigo-400" />
+              {item}
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {/* CTAs */}
+      <div className="mt-4 flex flex-col gap-2">
+        <button
+          type="button"
+          onClick={onSignup}
+          className="w-full rounded-lg bg-slate-900 px-4 py-2.5 text-xs font-semibold text-white hover:bg-slate-700 transition-colors"
+        >
+          Create free account
+        </button>
+        <button
+          type="button"
+          onClick={onLogin}
+          className="w-full rounded-lg border border-slate-200 px-4 py-2.5 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+        >
+          Log in
+        </button>
+        <p className="text-center text-[10px] text-slate-400 mt-1">
+          Join others tracking how society is thinking in real time
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ─── Section B — Guest engaged state ─────────────────────────────────────────
+
+function SectionBGuestEngaged({
+  distribution,
+  onLogin,
+  onSignup,
+}: {
+  distribution: HeroDistribution | null;
+  onLogin: () => void;
+  onSignup: () => void;
+}) {
+  return (
+    <div className="flex flex-col justify-between h-full p-5">
+      <div>
+        {/* Eyebrow */}
+        <div className="flex items-center gap-1.5 mb-3">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          <span className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">
+            Live insight
+          </span>
+        </div>
+
+        <h3 className="text-base font-semibold text-slate-900 leading-snug mb-1">
+          See how your stance compares
+        </h3>
+        <p className="text-xs text-slate-500 leading-relaxed mb-3">
+          Create an account to compare your stance with society and keep tracking how it changes.
+        </p>
+
+        {/* Engaged preview card — same data, stronger visual */}
+        <GuestPreviewCard distribution={distribution} state="engaged" />
+
+        {/* Engaged-specific bullets */}
+        <ul className="mt-3 space-y-1.5">
+          {[
+            "Save your stance history",
+            "Compare across regions",
+            "Follow issues that matter to you",
+          ].map((item) => (
+            <li key={item} className="flex items-start gap-2 text-xs text-slate-500">
+              <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-violet-400" />
+              {item}
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {/* CTAs — more prominent in engaged state */}
+      <div className="mt-4 flex flex-col gap-2">
+        <button
+          type="button"
+          onClick={onSignup}
+          className="w-full rounded-lg px-4 py-2.5 text-xs font-semibold text-white transition-colors hover:brightness-110"
+          style={{ backgroundColor: "#6048C0" }}
+        >
+          Create free account
+        </button>
+        <button
+          type="button"
+          onClick={onLogin}
+          className="w-full rounded-lg border border-slate-200 px-4 py-2.5 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+        >
+          Log in
+        </button>
+        <p className="text-center text-[10px] text-slate-400 mt-1">
+          Unlock your stance profile in seconds
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ─── Section B — Guest (state router) ────────────────────────────────────────
+
+function SectionBGuest({
+  guestPanelState,
+  distribution,
+  onLogin,
+  onSignup,
+}: {
+  guestPanelState: "locked" | "engaged";
+  distribution: HeroDistribution | null;
+  onLogin: () => void;
+  onSignup: () => void;
+}) {
+  if (guestPanelState === "engaged") {
+    return (
+      <SectionBGuestEngaged
+        distribution={distribution}
+        onLogin={onLogin}
+        onSignup={onSignup}
+      />
+    );
+  }
+  return (
+    <SectionBGuestLocked
+      distribution={distribution}
+      onLogin={onLogin}
+      onSignup={onSignup}
+    />
+  );
+}
+
+// ─── Section B — Logged-in content ───────────────────────────────────────────
+
+function SectionBAuthed({
+  snap,
+  isLoading,
+}: {
+  snap: AlignmentSnapshotShape | null;
+  isLoading: boolean;
+}) {
+  if (isLoading) {
+    return <SectionBSkeleton />;
+  }
+
+  if (!snap) {
+    return (
+      <div className="flex flex-col justify-center h-full p-5">
+        <div className="flex items-center gap-1.5 mb-3">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          <span className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">
+            Your profile
+          </span>
+        </div>
+        <p className="text-sm text-slate-600 leading-relaxed">
+          Start answering questions to build your stance profile.
+        </p>
+        <p className="mt-2 text-xs text-slate-400">
+          Answer the question on the left to compare your position here.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col justify-between h-full p-5">
+      <div>
+        <div className="flex items-center gap-1.5 mb-4">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          <span className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">
+            Where you stand
+          </span>
+        </div>
+
+        <div className="mb-1">
+          <span className="text-3xl font-bold text-slate-900">
+            {formatPct(snap.alignment_pct)}
+          </span>
+          <span className="ml-2 text-sm text-slate-500">overall alignment</span>
+        </div>
+
+        <p className="text-xs text-slate-500 mb-4">
+          You hold the minority view on{" "}
+          <strong className="text-slate-700">{snap.minority_count}</strong>{" "}
+          question{snap.minority_count === 1 ? "" : "s"}.
+        </p>
+
+        {snap.most_divergent_question_text && (
+          <div className="rounded-lg bg-slate-50 border border-slate-100 p-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-1">
+              Most divergent view
+            </p>
+            <p className="text-xs text-slate-600 line-clamp-3 leading-relaxed">
+              {snap.most_divergent_question_text}
+            </p>
+          </div>
+        )}
+      </div>
+
+      <p className="mt-4 text-xs text-slate-400 leading-relaxed">
+        Answer the question above to update your profile.
+      </p>
+    </div>
+  );
+}
+
 // ─── Section A inner content ──────────────────────────────────────────────────
 
 function SectionAQuestion({
@@ -132,6 +499,7 @@ function SectionAQuestion({
   onNavigateToQuestion,
   onAdvanceNow,
   onRefreshDistribution,
+  onGuestEngage,
 }: {
   question: HeroQuestion;
   status: HeroStatus;
@@ -144,6 +512,8 @@ function SectionAQuestion({
   onNavigateToQuestion: (id: string) => void;
   onAdvanceNow: () => void;
   onRefreshDistribution: () => void;
+  // Guest-only: fires once on first slider interaction to transition right panel
+  onGuestEngage: () => void;
 }) {
   const isResultMode =
     status === "hero_answered_result" || status === "hero_transitioning";
@@ -155,7 +525,6 @@ function SectionAQuestion({
       {/* ── Split layout: text left on white, image right with fade ── */}
       <div className="relative overflow-hidden">
 
-        {/* Image — absolute, right-aligned, fills full height of this section */}
         {question.cover_image_url && (
           <>
             <img
@@ -174,7 +543,6 @@ function SectionAQuestion({
           </>
         )}
 
-        {/* Text content */}
         <div className="relative z-10 p-5 pb-4" style={{ maxWidth: "68%" }}>
 
           {/* Eyebrow */}
@@ -225,7 +593,7 @@ function SectionAQuestion({
 
         {isAuthed ? (
           <>
-            {/* Authed: Community bar first, then divider, then slider */}
+            {/* Authed: Community bar → divider → slider */}
             <div className="mb-4">
               <CommunityStanceBar
                 responses={distribution?.responses ?? 0}
@@ -263,7 +631,8 @@ function SectionAQuestion({
           </>
         ) : (
           <>
-            {/* Guest: slider first, then pill CTA button, then community teaser message */}
+            {/* Guest: slider first, then pill CTA, then community teaser */}
+            {/* onGuestEngage is wired only to the guest slider — NOT the authed path */}
             <div
               onPointerUpCapture={onLoginRedirect}
               onPointerCancelCapture={onLoginRedirect}
@@ -278,10 +647,11 @@ function SectionAQuestion({
                 summary={question.summary}
                 initialValue={null}
                 onSubmit={onLoginRedirect}
+                onInteractionStart={onGuestEngage}
               />
             </div>
 
-            {/* Share Your Stance pill CTA — between slider and community teaser */}
+            {/* Share Your Stance pill CTA */}
             <div className="mt-5 flex flex-col items-center gap-2">
               <button
                 type="button"
@@ -296,7 +666,7 @@ function SectionAQuestion({
               </p>
             </div>
 
-            {/* Community teaser — replaces Community Stance Bar for guests */}
+            {/* Community teaser — replaces CommunityStanceBar for guests */}
             <div className="mt-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-center">
               <p className="text-xs font-medium text-slate-500">
                 💬 State your opinion to unlock how the community is thinking —{" "}
@@ -343,8 +713,6 @@ function SectionAError({
 // ─── Section A — Waiting for next ─────────────────────────────────────────────
 
 function SectionAWaiting() {
-  // Show a brief spinner, then switch to a friendly "all caught up" message
-  // to avoid an infinite loading state when no new questions are available yet.
   const [showSpinner, setShowSpinner] = React.useState(true);
   React.useEffect(() => {
     const t = setTimeout(() => setShowSpinner(false), 3000);
@@ -364,135 +732,6 @@ function SectionAWaiting() {
           <p className="text-xs text-slate-400">New questions are on their way. Check back shortly.</p>
         </>
       )}
-    </div>
-  );
-}
-
-// ─── Section B — Guest content ────────────────────────────────────────────────
-
-function SectionBGuest({ onLogin, onSignup }: { onLogin: () => void; onSignup: () => void }) {
-  return (
-    <div className="flex flex-col justify-between h-full p-5">
-      <div>
-        <div className="flex items-center gap-1.5 mb-4">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-          <span className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">
-            Live
-          </span>
-        </div>
-
-        <h3 className="text-base font-semibold text-slate-900 leading-snug mb-2">
-          See where you stand
-        </h3>
-        <p className="text-sm text-slate-500 leading-relaxed">
-          Answer the question above to compare your stance with society. See whether
-          you align with the majority or minority view.
-        </p>
-
-        <ul className="mt-4 space-y-2">
-          {[
-            "Compare with your region, country, and globally",
-            "Track how opinions shift over time",
-            "Build your personal stance profile",
-          ].map((item) => (
-            <li key={item} className="flex items-start gap-2 text-xs text-slate-500">
-              <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-indigo-400" />
-              {item}
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      <div className="mt-5 flex flex-col gap-2">
-        <button
-          type="button"
-          onClick={onSignup}
-          className="w-full rounded-lg bg-slate-900 px-4 py-2.5 text-xs font-semibold text-white hover:bg-slate-700 transition-colors"
-        >
-          Get started free
-        </button>
-        <button
-          type="button"
-          onClick={onLogin}
-          className="w-full rounded-lg border border-slate-200 px-4 py-2.5 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors"
-        >
-          Log in
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ─── Section B — Logged-in content ───────────────────────────────────────────
-
-function SectionBAuthed({
-  snap,
-  isLoading,
-}: {
-  snap: AlignmentSnapshotShape | null;
-  isLoading: boolean;
-}) {
-  if (isLoading) {
-    return <SectionBSkeleton />;
-  }
-
-  if (!snap) {
-    return (
-      <div className="flex flex-col justify-center h-full p-5">
-        <div className="flex items-center gap-1.5 mb-3">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-          <span className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">
-            Your profile
-          </span>
-        </div>
-        <p className="text-sm text-slate-600 leading-relaxed">
-          Start answering questions to build your stance profile.
-        </p>
-        <p className="mt-2 text-xs text-slate-400">
-          Answer the question above to compare your position here.
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex flex-col justify-between h-full p-5">
-      <div>
-        <div className="flex items-center gap-1.5 mb-4">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-          <span className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">
-            Where you stand
-          </span>
-        </div>
-
-        <div className="mb-1">
-          <span className="text-3xl font-bold text-slate-900">
-            {formatPct(snap.alignment_pct)}
-          </span>
-          <span className="ml-2 text-sm text-slate-500">overall alignment</span>
-        </div>
-
-        <p className="text-xs text-slate-500 mb-4">
-          You hold the minority view on{" "}
-          <strong className="text-slate-700">{snap.minority_count}</strong>{" "}
-          question{snap.minority_count === 1 ? "" : "s"}.
-        </p>
-
-        {snap.most_divergent_question_text && (
-          <div className="rounded-lg bg-slate-50 border border-slate-100 p-3">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-1">
-              Most divergent view
-            </p>
-            <p className="text-xs text-slate-600 line-clamp-3 leading-relaxed">
-              {snap.most_divergent_question_text}
-            </p>
-          </div>
-        )}
-      </div>
-
-      <p className="mt-4 text-xs text-slate-400 leading-relaxed">
-        Answer the question above to update your profile.
-      </p>
     </div>
   );
 }
@@ -646,6 +885,27 @@ export function HeroSection({
     onLoginRedirect,
   });
 
+  // ── Guest engagement state ──
+  // Flips to true when a logged-out user first interacts with the hero slider.
+  // Drives the locked → engaged transition in the right panel.
+  // Reset when: (a) hero question changes, (b) user becomes authenticated.
+  const [guestHasEngaged, setGuestHasEngaged] = React.useState(false);
+
+  // Reset on question change
+  const currentQuestionId = currentHeroQuestion?.question_id;
+  React.useEffect(() => {
+    setGuestHasEngaged(false);
+  }, [currentQuestionId]);
+
+  // Reset on auth transition (false → true only, no-op if already authed)
+  React.useEffect(() => {
+    if (isAuthed) setGuestHasEngaged(false);
+  }, [isAuthed]);
+
+  const guestPanelState: "locked" | "engaged" =
+    !isAuthed && guestHasEngaged ? "engaged" : "locked";
+
+  // ── Content visibility (fade on question transition) ──
   const [contentVisible, setContentVisible] = React.useState(true);
 
   React.useEffect(() => {
@@ -662,6 +922,7 @@ export function HeroSection({
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-stretch">
 
+        {/* ── Section A — Hero question ── */}
         <div
           className={`${card} overflow-hidden lg:flex-[65]`}
           style={{ minHeight: 380 }}
@@ -697,14 +958,16 @@ export function HeroSection({
                   onNavigateToQuestion={onNavigateToQuestion}
                   onAdvanceNow={advanceNow}
                   onRefreshDistribution={refreshDistribution}
+                  onGuestEngage={() => setGuestHasEngaged(true)}
                 />
               )}
           </div>
         </div>
 
+        {/* ── Section B — Right panel ── */}
         <div
           className={`${card} overflow-hidden lg:flex-[35]`}
-          style={{ minHeight: 280 }}
+          style={{ minHeight: 300 }}
         >
           {isAuthed ? (
             <SectionBAuthed
@@ -712,11 +975,17 @@ export function HeroSection({
               isLoading={alignmentSnapLoading}
             />
           ) : (
-            <SectionBGuest onLogin={onLogin} onSignup={onSignup} />
+            <SectionBGuest
+              guestPanelState={guestPanelState}
+              distribution={distribution}
+              onLogin={onLogin}
+              onSignup={onSignup}
+            />
           )}
         </div>
       </div>
 
+      {/* ── Section C — Queue ── */}
       <div>
         <div className="flex items-center justify-between mb-2 px-0.5">
           <p className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">
