@@ -201,6 +201,26 @@ type ReopenedRow = {
   reason: string | null;
 };
 
+// RecentStanceRaw — raw supabase-js join result from question_stances → questions → topics
+type RecentStanceRaw = {
+  score: number;
+  updated_at: string;
+  questions: {
+    id: string;
+    question: string;
+    topics: { title: string } | null;
+  } | null;
+};
+
+// RecentStanceItem — clean mapped shape passed to HeroSection right panel
+export type RecentStanceItem = {
+  questionId: string;
+  questionText: string;
+  topicTitle: string | null;
+  score: number;
+  label: "support" | "neutral" | "oppose";
+};
+
 // QuestionStats — passed to slider for alignment messaging (Rule 4)
 type RegionalStat = {
   region_scope: string;
@@ -1721,6 +1741,33 @@ export default function IndexPage() {
     staleTime: 30_000,
   });
 
+  // ── Recent stances — direct table query, no RPC needed ──
+  // question_stances has RLS: SELECT USING (auth.uid() = user_id)
+  // Joins to questions + topics for text. Ordered by updated_at DESC, limit 3.
+  const recentStancesQuery = useQuery({
+    enabled: !!sb && !!userId,
+    queryKey: ["home-recent-stances", userId],
+    queryFn: async (): Promise<RecentStanceItem[]> => {
+      const { data, error } = await sb!
+        .from("question_stances")
+        .select("score, updated_at, questions(id, question, topics(title))")
+        .order("updated_at", { ascending: false })
+        .limit(3);
+      if (error) throw error;
+      return ((data ?? []) as RecentStanceRaw[])
+        .filter((r) => r.questions != null)
+        .map((r) => ({
+          questionId: r.questions!.id,
+          questionText: r.questions!.question,
+          topicTitle: r.questions!.topics?.title ?? null,
+          score: r.score,
+          label:
+            r.score > 0 ? "support" : r.score < 0 ? "oppose" : "neutral",
+        }));
+    },
+    staleTime: 60_000,
+  });
+
   // ── Infinite queries (all preserved exactly) ──
   // NOTE: heroStatsQuery and featuredStatsQuery are defined after trendingQuestions
   // is available (below the infinite queries), using derived heroQ / featuredQ IDs.
@@ -2019,6 +2066,7 @@ export default function IndexPage() {
         qc.invalidateQueries({ queryKey: ["home-society-pulse", regionLabel] }),
         qc.invalidateQueries({ queryKey: ["home-media-surge", regionLabel] }),
         qc.invalidateQueries({ queryKey: ["home-trending-questions"] }),
+        qc.invalidateQueries({ queryKey: ["home-recent-stances", userId] }),
       ]).then((results) => {
         console.log("[home:submit] background invalidations settled", results);
       });
@@ -2112,6 +2160,8 @@ export default function IndexPage() {
             regionLabel={regionLabel}
             alignmentSnap={whereYouStandQuery.data ?? null}
             alignmentSnapLoading={whereYouStandQuery.isLoading}
+            societalPulseChips={societyPulseQuery.data?.chips ?? []}
+            recentStances={recentStancesQuery.data ?? []}
             onRequestReplenish={fetchNextPage}
             onSubmitSuccess={submitStance}
             onLoginRedirect={loginRedirect}
