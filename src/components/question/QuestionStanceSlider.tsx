@@ -58,6 +58,10 @@ export type QuestionStanceSliderProps = {
   // When true, the prop-sync effect is suppressed so an in-flight save
   // does not snap the slider back to the stale server value mid-drag.
   mutationPending?: boolean;
+  // Fires once on first meaningful slider interaction (guest engagement signal).
+  // Used by HeroSection to transition the right panel from locked → engaged.
+  // Only passed in the guest hero context — optional, never called on authed path.
+  onInteractionStart?: () => void;
 };
 
 const STANCE_LABELS: Record<number, string> = {
@@ -183,6 +187,7 @@ export function QuestionStanceSlider({
   stats,
   pulseThumb,
   mutationPending = false,
+  onInteractionStart,
 }: QuestionStanceSliderProps) {
   const [value, setValue] = React.useState<number>(clampStance(initialValue));
   const [committed, setCommitted] = React.useState(
@@ -218,7 +223,15 @@ export function QuestionStanceSlider({
   const fallbackTip = STANCE_TIPS_FALLBACK[value] ?? "";
   const tip = aiData?.tip || fallbackTip;
 
+  // Ref guard: fires onInteractionStart exactly once per mount.
+  // The slider remounts on question change (key prop), so this resets naturally.
+  const hasFiredInteractionRef = React.useRef(false);
+
   const handleChange = (vals: number[]) => {
+    if (!hasFiredInteractionRef.current) {
+      hasFiredInteractionRef.current = true;
+      onInteractionStart?.();
+    }
     const v = clampStance(vals[0] ?? 0);
     setValue(v);
   };
