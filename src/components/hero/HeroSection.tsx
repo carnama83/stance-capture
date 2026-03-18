@@ -43,6 +43,23 @@ import {
 
 // ─── Types passed in from IndexPage ──────────────────────────────────────────
 
+// Societal pulse chip — mirrors SocietalPulseOutput chips from Index.tsx
+export interface SocietalPulseChip {
+  topic_id: string;
+  title: string;
+  icon: "up" | "reawakening" | "polarized" | "steady";
+  href: string;
+}
+
+// Recent stance item — mapped from question_stances join in Index.tsx
+export interface RecentStanceItem {
+  questionId: string;
+  questionText: string;
+  topicTitle: string | null;
+  score: number;
+  label: "support" | "neutral" | "oppose";
+}
+
 export interface HeroSectionProps {
   allQuestions: HeroQuestion[];
   isLoading: boolean;
@@ -50,6 +67,8 @@ export interface HeroSectionProps {
   regionLabel: string;
   alignmentSnap: AlignmentSnapshotShape | null;
   alignmentSnapLoading: boolean;
+  societalPulseChips: SocietalPulseChip[];
+  recentStances: RecentStanceItem[];
   onRequestReplenish: () => void;
   onSubmitSuccess: (questionId: string, value: number) => Promise<void>;
   onLoginRedirect: () => void;
@@ -411,20 +430,172 @@ function SectionBGuest({
   );
 }
 
+// ─── Section B — Alignment ring meter ────────────────────────────────────────
+
+function AlignmentRing({ pct }: { pct: number }) {
+  const size = 72;
+  const stroke = 6;
+  const r = (size - stroke) / 2;
+  const circ = 2 * Math.PI * r;
+  const clamped = Math.max(0, Math.min(100, pct));
+  const dash = (clamped / 100) * circ;
+  const gap = circ - dash;
+
+  // Color: < 40 red-ish, 40-65 amber, > 65 emerald
+  const trackColor =
+    clamped >= 65 ? "#10b981" : clamped >= 40 ? "#f59e0b" : "#f87171";
+
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      {/* Background track */}
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={r}
+        fill="none"
+        stroke="#e2e8f0"
+        strokeWidth={stroke}
+      />
+      {/* Progress arc — starts at top (rotate -90deg) */}
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={r}
+        fill="none"
+        stroke={trackColor}
+        strokeWidth={stroke}
+        strokeDasharray={`${dash} ${gap}`}
+        strokeLinecap="round"
+        transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        style={{ transition: "stroke-dasharray 0.5s ease" }}
+      />
+      {/* Center label */}
+      <text
+        x="50%"
+        y="50%"
+        dominantBaseline="middle"
+        textAnchor="middle"
+        fontSize="14"
+        fontWeight="700"
+        fill="#0f172a"
+      >
+        {Math.round(clamped)}%
+      </text>
+    </svg>
+  );
+}
+
+// ─── Section B — Societal pulse row ──────────────────────────────────────────
+
+function PulseRow({ chip }: { chip: SocietalPulseChip }) {
+  const momentumLabel =
+    chip.icon === "up"
+      ? "Rising"
+      : chip.icon === "reawakening"
+      ? "Reawakening"
+      : chip.icon === "polarized"
+      ? "Polarizing"
+      : "Steady";
+
+  const momentumColor =
+    chip.icon === "polarized"
+      ? "text-red-500"
+      : chip.icon === "steady"
+      ? "text-slate-400"
+      : "text-emerald-600";
+
+  const bgColor =
+    chip.icon === "up"
+      ? "bg-emerald-50"
+      : chip.icon === "reawakening"
+      ? "bg-amber-50"
+      : chip.icon === "polarized"
+      ? "bg-red-50"
+      : "bg-slate-100";
+
+  const iconGlyph =
+    chip.icon === "up"
+      ? "↑"
+      : chip.icon === "reawakening"
+      ? "↺"
+      : chip.icon === "polarized"
+      ? "⇄"
+      : "→";
+
+  return (
+    <Link
+      to={chip.href}
+      className="flex items-center gap-2.5 rounded-lg p-2 hover:bg-slate-50 transition-colors group"
+    >
+      {/* Icon badge */}
+      <div
+        className={`flex-shrink-0 h-8 w-8 rounded-lg ${bgColor} flex items-center justify-center text-sm font-semibold text-slate-600`}
+      >
+        {iconGlyph}
+      </div>
+
+      {/* Text */}
+      <div className="min-w-0 flex-1">
+        <p className="text-xs font-semibold text-slate-800 truncate group-hover:text-slate-900">
+          {chip.title}
+        </p>
+        <p className={`text-[10px] font-medium ${momentumColor}`}>
+          Momentum · {momentumLabel}
+        </p>
+      </div>
+    </Link>
+  );
+}
+
+// ─── Section B — Logged-in content ───────────────────────────────────────────
+
+// ─── Section B — Recent stance pill ──────────────────────────────────────────
+
+function StancePill({ label }: { label: "support" | "neutral" | "oppose" }) {
+  if (label === "support") {
+    return (
+      <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 border border-emerald-200">
+        Support
+      </span>
+    );
+  }
+  if (label === "oppose") {
+    return (
+      <span className="inline-flex items-center rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-600 border border-red-200">
+        Oppose
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700 border border-amber-200">
+      Neutral
+    </span>
+  );
+}
+
 // ─── Section B — Logged-in content ───────────────────────────────────────────
 
 function SectionBAuthed({
   snap,
   isLoading,
+  pulseChips,
+  recentStances,
 }: {
   snap: AlignmentSnapshotShape | null;
   isLoading: boolean;
+  pulseChips: SocietalPulseChip[];
+  recentStances: RecentStanceItem[];
 }) {
   if (isLoading) {
     return <SectionBSkeleton />;
   }
 
-  if (!snap) {
+  const hasSnap = snap != null;
+  const hasPulse = pulseChips.length > 0;
+  const hasStances = recentStances.length > 0;
+
+  if (!hasSnap && !hasPulse && !hasStances) {
+    // Empty state — user hasn't answered enough yet
     return (
       <div className="flex flex-col justify-center h-full p-5">
         <div className="flex items-center gap-1.5 mb-3">
@@ -444,43 +615,123 @@ function SectionBAuthed({
   }
 
   return (
-    <div className="flex flex-col justify-between h-full p-5">
-      <div>
-        <div className="flex items-center gap-1.5 mb-4">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-          <span className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">
-            Where you stand
-          </span>
-        </div>
+    <div className="flex flex-col h-full p-5 gap-4 overflow-y-auto">
 
-        <div className="mb-1">
-          <span className="text-3xl font-bold text-slate-900">
-            {formatPct(snap.alignment_pct)}
-          </span>
-          <span className="ml-2 text-sm text-slate-500">overall alignment</span>
-        </div>
-
-        <p className="text-xs text-slate-500 mb-4">
-          You hold the minority view on{" "}
-          <strong className="text-slate-700">{snap.minority_count}</strong>{" "}
-          question{snap.minority_count === 1 ? "" : "s"}.
-        </p>
-
-        {snap.most_divergent_question_text && (
-          <div className="rounded-lg bg-slate-50 border border-slate-100 p-3">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-1">
-              Most divergent view
-            </p>
-            <p className="text-xs text-slate-600 line-clamp-3 leading-relaxed">
-              {snap.most_divergent_question_text}
-            </p>
+      {/* ── Block 1: Where you stand ── */}
+      {hasSnap && (
+        <div>
+          <div className="flex items-center gap-1.5 mb-3">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">
+              Where you stand
+            </span>
           </div>
-        )}
-      </div>
 
-      <p className="mt-4 text-xs text-slate-400 leading-relaxed">
-        Answer the question above to update your profile.
-      </p>
+          {/* Ring + label row */}
+          <div className="flex items-center gap-3 mb-3">
+            <AlignmentRing pct={snap.alignment_pct} />
+            <div>
+              <p className="text-sm font-semibold text-slate-900 leading-snug">
+                Overall Alignment
+              </p>
+              <p className="text-xs text-slate-500 mt-0.5">
+                You hold the minority view on{" "}
+                <strong className="text-slate-700">{snap.minority_count}</strong>{" "}
+                question{snap.minority_count === 1 ? "" : "s"}
+              </p>
+            </div>
+          </div>
+
+          {/* Recent stances list — shown when available, replaces divergent card */}
+          {hasStances ? (
+            <div className="space-y-1">
+              {recentStances.map((s) => (
+                <div
+                  key={s.questionId}
+                  className="flex items-center justify-between gap-2 py-1"
+                >
+                  <div className="min-w-0 flex-1">
+                    <Link
+                      to={`/q/${s.questionId}`}
+                      className="text-xs text-slate-700 font-medium line-clamp-1 hover:underline leading-snug"
+                    >
+                      {s.questionText}
+                    </Link>
+                    {s.topicTitle && (
+                      <p className="text-[10px] text-slate-400 mt-0.5 truncate">
+                        {s.topicTitle}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex-shrink-0">
+                    <StancePill label={s.label} />
+                  </div>
+                </div>
+              ))}
+              <Link
+                to="/my-stances"
+                className="mt-1 block text-[11px] font-medium text-violet-600 hover:text-violet-800 transition-colors"
+              >
+                See all →
+              </Link>
+            </div>
+          ) : (
+            // Fallback: most divergent card when no recent stances yet
+            snap.most_divergent_question_text && (
+              <div className="rounded-lg bg-slate-50 border border-slate-100 p-2.5">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-1">
+                  Most divergent view
+                </p>
+                {snap.most_divergent_question_id ? (
+                  <Link
+                    to={`/q/${snap.most_divergent_question_id}`}
+                    className="text-xs text-slate-600 line-clamp-2 leading-relaxed hover:underline"
+                  >
+                    {snap.most_divergent_question_text}
+                  </Link>
+                ) : (
+                  <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed">
+                    {snap.most_divergent_question_text}
+                  </p>
+                )}
+              </div>
+            )
+          )}
+        </div>
+      )}
+
+      {/* ── Divider ── */}
+      {(hasSnap || hasStances) && hasPulse && (
+        <div className="border-t border-slate-100" />
+      )}
+
+      {/* ── Block 2: Societal pulse ── */}
+      {hasPulse && (
+        <div>
+          <div className="flex items-center gap-1.5 mb-2">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">
+              Societal Pulse
+            </span>
+          </div>
+
+          <div className="space-y-0.5">
+            {pulseChips.slice(0, 3).map((chip) => (
+              <PulseRow key={chip.topic_id} chip={chip} />
+            ))}
+          </div>
+
+          {pulseChips.length > 3 && (
+            <Link
+              to="/topics"
+              className="mt-2 flex items-center gap-1 text-[11px] font-medium text-slate-400 hover:text-slate-700 transition-colors px-2"
+            >
+              {pulseChips.length - 3} more <span className="text-slate-300">›</span>
+            </Link>
+          )}
+        </div>
+      )}
+
     </div>
   );
 }
@@ -856,6 +1107,8 @@ export function HeroSection({
   regionLabel,
   alignmentSnap,
   alignmentSnapLoading,
+  societalPulseChips,
+  recentStances,
   onRequestReplenish,
   onSubmitSuccess,
   onLoginRedirect,
@@ -973,6 +1226,8 @@ export function HeroSection({
             <SectionBAuthed
               snap={alignmentSnap}
               isLoading={alignmentSnapLoading}
+              pulseChips={societalPulseChips}
+              recentStances={recentStances}
             />
           ) : (
             <SectionBGuest
