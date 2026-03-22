@@ -69,6 +69,9 @@ export interface HeroSectionProps {
   alignmentSnapLoading: boolean;
   societalPulseChips: SocietalPulseChip[];
   recentStances: RecentStanceItem[];
+  // True when hero is showing questions outside the user's normal region scope
+  // (fallback feed active). Surfaces a subtle "broader view" chip on the hero card.
+  isFallbackMode?: boolean;
   onRequestReplenish: () => void;
   onSubmitSuccess: (questionId: string, value: number) => Promise<void>;
   onLoginRedirect: () => void;
@@ -669,7 +672,7 @@ function SectionBAuthed({
                 </div>
               ))}
               <Link
-                to="/my-stances"
+                to="/me/stances"
                 className="mt-1 block text-[11px] font-medium text-violet-600 hover:text-violet-800 transition-colors"
               >
                 See all →
@@ -751,6 +754,7 @@ function SectionAQuestion({
   onAdvanceNow,
   onRefreshDistribution,
   onGuestEngage,
+  isFallbackMode = false,
 }: {
   question: HeroQuestion;
   status: HeroStatus;
@@ -765,6 +769,8 @@ function SectionAQuestion({
   onRefreshDistribution: () => void;
   // Guest-only: fires once on first slider interaction to transition right panel
   onGuestEngage: () => void;
+  // True when showing fallback-scope content — surfaces a subtle chip on the card
+  isFallbackMode?: boolean;
 }) {
   const isResultMode =
     status === "hero_answered_result" || status === "hero_transitioning";
@@ -818,6 +824,11 @@ function SectionAQuestion({
             ))}
             {question.trend_micro_signal && (
               <Pill>{question.trend_micro_signal.toUpperCase()}</Pill>
+            )}
+            {isFallbackMode && (
+              <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-500 gap-1">
+                🌐 Global conversation
+              </span>
             )}
           </div>
 
@@ -1109,6 +1120,7 @@ export function HeroSection({
   alignmentSnapLoading,
   societalPulseChips,
   recentStances,
+  isFallbackMode = false,
   onRequestReplenish,
   onSubmitSuccess,
   onLoginRedirect,
@@ -1212,6 +1224,7 @@ export function HeroSection({
                   onAdvanceNow={advanceNow}
                   onRefreshDistribution={refreshDistribution}
                   onGuestEngage={() => setGuestHasEngaged(true)}
+                  isFallbackMode={isFallbackMode}
                 />
               )}
           </div>
