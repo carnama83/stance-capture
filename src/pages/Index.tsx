@@ -216,24 +216,20 @@ type ReopenedRow = {
   reason: string | null;
 };
 
-// RecentStanceRaw — raw supabase-js join result from question_stances → questions → topics
-type RecentStanceRaw = {
-  score: number;
-  updated_at: string;
-  questions: {
-    id: string;
-    question: string;
-    topics: { title: string } | null;
-  } | null;
+// TopicStanceItem — topic-level stance history for the WhereYouStandCard
+// Sourced from get_my_stance_snapshot RPC.
+export type TopicStanceItem = {
+  topicTitle: string;
+  avgScore: number;
+  answerCount: number;
+  scorePct: number; // Math.round((avgScore / 2) * 100), range -100..+100
 };
 
-// RecentStanceItem — clean mapped shape passed to HeroSection right panel
-export type RecentStanceItem = {
-  questionId: string;
-  questionText: string;
-  topicTitle: string | null;
-  score: number;
-  label: "support" | "neutral" | "oppose";
+// MyStanceSnapshot — full shape from get_my_stance_snapshot
+export type MyStanceSnapshot = {
+  totalAnswered: number;
+  topics: TopicStanceItem[];
+  alignmentLabel: string; // pre-computed backend label, e.g. "Your views generally align..."
 };
 
 // QuestionStats — passed to slider for alignment messaging (Rule 4)
@@ -1759,26 +1755,30 @@ export default function IndexPage() {
   // ── Recent stances — direct table query, no RPC needed ──
   // question_stances has RLS: SELECT USING (auth.uid() = user_id)
   // Joins to questions + topics for text. Ordered by updated_at DESC, limit 3.
-  const recentStancesQuery = useQuery({
+  // ── My stance snapshot — topic-level aggregation for WhereYouStandCard ─────
+  // Uses get_my_stance_snapshot (SECURITY DEFINER, auth.uid() scoped).
+  // Returns total_answered, up to 5 topics with avg_score, and a pre-computed
+  // regional alignment label. Invalidated after any stance submit.
+  const myStanceSnapshotQuery = useQuery({
     enabled: !!sb && !!userId,
-    queryKey: ["home-recent-stances", userId],
-    queryFn: async (): Promise<RecentStanceItem[]> => {
-      const { data, error } = await sb!
-        .from("question_stances")
-        .select("score, updated_at, questions(id, question, topics(title))")
-        .order("updated_at", { ascending: false })
-        .limit(3);
+    queryKey: ["home-my-stance-snapshot", userId],
+    queryFn: async (): Promise<MyStanceSnapshot> => {
+      const { data, error } = await sb!.rpc("get_my_stance_snapshot", {
+        p_limit_topics: 5,
+      });
       if (error) throw error;
-      return ((data ?? []) as RecentStanceRaw[])
-        .filter((r) => r.questions != null)
-        .map((r) => ({
-          questionId: r.questions!.id,
-          questionText: r.questions!.question,
-          topicTitle: r.questions!.topics?.title ?? null,
-          score: r.score,
-          label:
-            r.score > 0 ? "support" : r.score < 0 ? "oppose" : "neutral",
-        }));
+      const raw = data as any;
+      const topics: TopicStanceItem[] = ((raw?.topics ?? []) as any[]).map((t) => ({
+        topicTitle: t.topic_title ?? "General",
+        avgScore: typeof t.avg_score === "number" ? t.avg_score : 0,
+        answerCount: t.n ?? 0,
+        scorePct: Math.round(((typeof t.avg_score === "number" ? t.avg_score : 0) / 2) * 100),
+      }));
+      return {
+        totalAnswered: raw?.total_answered ?? 0,
+        topics,
+        alignmentLabel: raw?.region?.alignment_label ?? "",
+      };
     },
     staleTime: 60_000,
   });
@@ -2166,7 +2166,7 @@ export default function IndexPage() {
         qc.invalidateQueries({ queryKey: ["home-society-pulse", regionLabel] }),
         qc.invalidateQueries({ queryKey: ["home-media-surge", regionLabel] }),
         qc.invalidateQueries({ queryKey: ["home-trending-questions"] }),
-        qc.invalidateQueries({ queryKey: ["home-recent-stances", userId] }),
+        qc.invalidateQueries({ queryKey: ["home-my-stance-snapshot", userId] }),
       ]).then((results) => {
         console.log("[home:submit] background invalidations settled", results);
       });
@@ -2262,7 +2262,7 @@ export default function IndexPage() {
             alignmentSnap={whereYouStandQuery.data ?? null}
             alignmentSnapLoading={whereYouStandQuery.isLoading}
             societalPulseChips={societyPulseQuery.data?.chips ?? []}
-            recentStances={recentStancesQuery.data ?? []}
+            myStanceSnapshot={myStanceSnapshotQuery.data ?? null}
             onRequestReplenish={fetchNextPage}
             onSubmitSuccess={submitStance}
             onLoginRedirect={loginRedirect}
