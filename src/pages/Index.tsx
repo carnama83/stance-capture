@@ -90,6 +90,21 @@ type AnonQuestionRow = {
   cover_image_url?: string | null;
 };
 
+// FallbackQuestionRow — returned by the "any unanswered live question" safety-net query.
+// Used when both national + global trending feeds are empty (e.g. user answered everything
+// in their scope). Mapped to TrendingHomepageQuestionRow shape with null trend fields.
+type FallbackQuestionRow = {
+  id: string;
+  question: string;
+  summary: string | null;
+  tags: string[] | null;
+  location_label: string | null;
+  origin_location_label: string | null;
+  audience_location_label: string | null;
+  cover_image_url: string | null;
+  topic_title: string | null;
+};
+
 type SocietyPulseRow = {
   region: string;
   rapid_shifts_count: number;
@@ -1768,6 +1783,58 @@ export default function IndexPage() {
     staleTime: 60_000,
   });
 
+  // ── Fallback feed — "any unanswered live question" safety net ──────────────
+  // Enabled only when the user is authed and both primary feeds have finished
+  // loading with zero unanswered questions. Reads from v_live_questions and
+  // excludes questions the user has already answered via a NOT EXISTS join.
+  // This prevents the hero from getting stuck in "You're all caught up!" when
+  // scoped feed is empty due to audience_location_label mismatch (e.g. "National"
+  // vs "United States"), not because the user genuinely answered everything.
+  const primaryUnanswered = React.useMemo(
+    () => (trendingQuestionsNationalQuery.data?.pages.flat() ?? [])
+            .concat(trendingQuestionsGlobalQuery.data?.pages.flat() ?? [])
+            .filter((q) => !q.user_has_answered),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [trendingQuestionsNationalQuery.data, trendingQuestionsGlobalQuery.data]
+  );
+
+  const needsFallback =
+    !!sb &&
+    !!userId &&
+    !locationIdsLoading &&
+    !trendingQuestionsNationalQuery.isLoading &&
+    !trendingQuestionsGlobalQuery.isLoading &&
+    primaryUnanswered.length === 0;
+
+  const fallbackFeedQuery = useQuery({
+    enabled: needsFallback,
+    queryKey: ["home-fallback-feed", userId],
+    queryFn: async (): Promise<FallbackQuestionRow[]> => {
+      // Direct table query: v_live_questions LEFT JOIN question_stances
+      // RLS on question_stances (SELECT USING auth.uid() = user_id) ensures
+      // we only see our own stances. NOT EXISTS filters out answered questions.
+      const { data, error } = await sb!
+        .from("v_live_questions")
+        .select("id, question, summary, tags, location_label, origin_location_label, audience_location_label, cover_image_url, topic_title")
+        .order("published_at", { ascending: false })
+        .limit(15);
+      if (error) throw error;
+
+      const rows = (data ?? []) as FallbackQuestionRow[];
+
+      // Client-side filter: exclude questions the user answered.
+      // We already have question_stances data available via recentStancesQuery
+      // but that only covers 3 rows. Fetch a broader answered set instead.
+      const { data: answeredData } = await sb!
+        .from("question_stances")
+        .select("question_id")
+        .eq("user_id", userId!);
+      const answeredIds = new Set((answeredData ?? []).map((r: any) => r.question_id as string));
+      return rows.filter((r) => !answeredIds.has(r.id));
+    },
+    staleTime: 60_000,
+  });
+
   // ── Infinite queries (all preserved exactly) ──
   // NOTE: heroStatsQuery and featuredStatsQuery are defined after trendingQuestions
   // is available (below the infinite queries), using derived heroQ / featuredQ IDs.
@@ -1894,6 +1961,45 @@ export default function IndexPage() {
   const fetchNextPage = isAuthed
     ? activeAuthedQuery.fetchNextPage
     : anonTrendingQuery.fetchNextPage;
+
+  // ── Fallback mode derivation ──
+  // Priority: primary scoped feed → global feed → any-unanswered fallback → empty.
+  // isFallbackMode = true when hero is showing questions outside the user's normal scope.
+  const globalFeedQuestions = trendingQuestionsGlobalQuery.data?.pages.flat() ?? [];
+  const globalUnanswered = globalFeedQuestions.filter((q) => !q.user_has_answered);
+
+  const fallbackRows: TrendingHomepageQuestionRow[] = (fallbackFeedQuery.data ?? []).map((r) => ({
+    question_id: r.id,
+    question_text: r.question,
+    summary: r.summary,
+    tags: r.tags,
+    topic_id: null,
+    topic_title: r.topic_title,
+    tier: null,
+    location_label: r.location_label,
+    origin_location_label: r.origin_location_label,
+    audience_location_label: r.audience_location_label,
+    user_has_answered: false,
+    trend_micro_signal: null,
+    trend_score: null,
+    stance_momentum: null,
+    topic_momentum: null,
+    cover_image_url: r.cover_image_url,
+    impact_normalized: null,
+  }));
+
+  const finalHeroQuestions: TrendingHomepageQuestionRow[] = (() => {
+    if (!isAuthed) return []; // anon path uses anonQuestions, not this
+    if (primaryUnanswered.length > 0) return trendingQuestions;
+    if (regionTab === "country" && globalUnanswered.length > 0) return globalFeedQuestions;
+    if (fallbackRows.length > 0) return fallbackRows;
+    return trendingQuestions; // fall through to caught-up state
+  })();
+
+  const isFallbackMode =
+    isAuthed &&
+    primaryUnanswered.length === 0 &&
+    (globalUnanswered.length > 0 || fallbackRows.length > 0);
 
   // ── Loading states ──
   // Wait for session to resolve before trusting isLoading for anon users.
@@ -2136,7 +2242,7 @@ export default function IndexPage() {
 
           {/* ── Band 1 + 2 — New Hero Section (A/B/C) ── */}
           <HeroSection
-            allQuestions={isAuthed ? trendingQuestions : anonQuestions.map((q) => ({
+            allQuestions={isAuthed ? finalHeroQuestions : anonQuestions.map((q) => ({
               question_id: q.id,
               question_text: q.question,
               summary: q.summary,
@@ -2158,6 +2264,7 @@ export default function IndexPage() {
             isLoading={isAuthed ? authedIsLoading : anonIsLoading}
             isAuthed={isAuthed}
             regionLabel={regionLabel}
+            isFallbackMode={isFallbackMode}
             alignmentSnap={whereYouStandQuery.data ?? null}
             alignmentSnapLoading={whereYouStandQuery.isLoading}
             societalPulseChips={societyPulseQuery.data?.chips ?? []}
