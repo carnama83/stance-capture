@@ -1563,12 +1563,37 @@ export default function IndexPage() {
               : null;
           if (row?.narrative?.sentence_1) {
             // Normalise chips href if missing
-            const chips = Array.isArray(row.chips)
+            let chips = Array.isArray(row.chips)
               ? row.chips.map((c) => ({
                   ...c,
                   href: c.href || `/topics/${c.topic_id}`,
                 }))
               : [];
+
+            // If the RPC returned no chips (e.g. topic_pulse_metrics_mv stale or empty
+            // for this region), build them from topic_region_trends which is always
+            // publicly readable and populated independently of the MV refresh schedule.
+            if (chips.length === 0) {
+              const { data: trData } = await sb
+                .from("topic_region_trends")
+                .select("topic_id, movement_score, delta_24h_per_hour, polarization_score, momentum_24h, topics(title)")
+                .order("movement_score", { ascending: false })
+                .limit(5);
+              chips = ((trData ?? []) as any[])
+                .filter((r) => r.topics?.title)
+                .map((r) => ({
+                  topic_id: String(r.topic_id),
+                  title: String(r.topics.title),
+                  icon: (
+                    r.polarization_score >= 0.6 ? "polarized"
+                    : r.delta_24h_per_hour >= 0.4 ? "up"
+                    : r.momentum_24h >= 0.5 ? "up"
+                    : "steady"
+                  ) as "up" | "reawakening" | "polarized" | "steady",
+                  href: `/topics/${r.topic_id}`,
+                }));
+            }
+
             return { ...row, chips } as SocietalPulseOutput;
           }
         }
