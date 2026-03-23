@@ -1632,20 +1632,55 @@ export default function IndexPage() {
         if (!isNotFound(e)) throw e;
       }
 
-      // Tier 3: Legacy pulse
-      const { data: legacyData, error: legacyError } = await sb.rpc(
-        "get_society_pulse",
-        { p_region: regionLabel, p_shift_threshold: 0.08 }
-      );
-      if (legacyError) throw legacyError;
+      // Tier 3: Legacy pulse — also builds chips from topic_region_trends
+      // topic_region_trends is publicly readable (policy: public_read_trends).
+      // We use it as a last-resort chip source when Tier 1 + 2 produce no chips.
+      const [legacyResult, trendsResult] = await Promise.allSettled([
+        sb.rpc("get_society_pulse", { p_region: regionLabel, p_shift_threshold: 0.08 }),
+        sb
+          .from("topic_region_trends")
+          .select("topic_id, movement_score, delta_24h_per_hour, polarization_score, momentum_24h, topics(title)")
+          .order("movement_score", { ascending: false })
+          .limit(6),
+      ]);
+
       const legacyRow =
-        Array.isArray(legacyData) && legacyData.length > 0
-          ? (legacyData[0] as SocietyPulseRow)
+        legacyResult.status === "fulfilled" &&
+        !legacyResult.value.error &&
+        Array.isArray(legacyResult.value.data) &&
+        legacyResult.value.data.length > 0
+          ? (legacyResult.value.data[0] as SocietyPulseRow)
           : null;
-      if (!legacyRow) return null;
+
+      // Build chips from topic_region_trends — classify icon by momentum signals
+      const trendRows =
+        trendsResult.status === "fulfilled" && !trendsResult.value.error
+          ? ((trendsResult.value.data ?? []) as any[])
+          : [];
+
+      const trendChips = trendRows
+        .filter((r) => r.topics?.title)
+        .slice(0, 5)
+        .map((r) => ({
+          topic_id: String(r.topic_id),
+          title: String(r.topics.title),
+          icon: (
+            r.polarization_score >= 0.6
+              ? "polarized"
+              : r.delta_24h_per_hour >= 0.4
+              ? "up"
+              : r.momentum_24h >= 0.5
+              ? "up"
+              : "steady"
+          ) as "up" | "reawakening" | "polarized" | "steady",
+          href: `/topics/${r.topic_id}`,
+        }));
+
+      if (!legacyRow && trendChips.length === 0) return null;
+
       return {
         region_label: regionLabel,
-        updated_at: legacyRow.generated_at ?? new Date().toISOString(),
+        updated_at: legacyRow?.generated_at ?? new Date().toISOString(),
         state: "FOCUSED" as const,
         narrative: {
           title: "Societal Pulse",
@@ -1653,12 +1688,12 @@ export default function IndexPage() {
             "Signals are updating. Explore shifting topics to see where public sentiment is moving right now.",
           sentence_2: null,
         },
-        chips: [],
-        micro_metrics: [
+        chips: trendChips,
+        micro_metrics: legacyRow ? [
           { label: "topics shifting rapidly", value: Number(legacyRow.rapid_shifts_count ?? 0) },
           { label: "polarized", value: Number(legacyRow.polarized_count ?? 0) },
           { label: "reawakening", value: Number(legacyRow.reawakening_count ?? 0) },
-        ],
+        ] : [],
       } as SocietalPulseOutput;
     },
     staleTime: 30_000,
