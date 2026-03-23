@@ -521,63 +521,178 @@ function AlignmentRing({
 
 // ─── Section B — Societal pulse row ──────────────────────────────────────────
 
+// ─── Section B — Mini sparkline ──────────────────────────────────────────────
+// Static point arrays per momentum type — conveys direction honestly.
+// "up" = rising line, "polarized" = jagged flat, "reawakening" = dip then rise,
+// "steady" = gentle flat. No time-series data needed.
+
+const SPARKLINE_POINTS: Record<SocietalPulseChip["icon"], number[]> = {
+  up:          [2, 3, 3, 5, 6, 7, 9],
+  reawakening: [7, 5, 3, 2, 4, 6, 8],
+  polarized:   [5, 7, 4, 8, 3, 7, 5],
+  steady:      [5, 5, 6, 5, 6, 5, 6],
+};
+
+function MiniSparkline({
+  icon,
+  color,
+}: {
+  icon: SocietalPulseChip["icon"];
+  color: string;
+}) {
+  const pts = SPARKLINE_POINTS[icon];
+  const W = 80;
+  const H = 24;
+  const minV = Math.min(...pts);
+  const maxV = Math.max(...pts);
+  const range = maxV - minV || 1;
+  const xStep = W / (pts.length - 1);
+
+  const coords = pts.map((v, i) => {
+    const x = i * xStep;
+    const y = H - ((v - minV) / range) * (H - 4) - 2;
+    return `${x},${y}`;
+  });
+  const polyline = coords.join(" ");
+
+  return (
+    <svg
+      width={W}
+      height={H}
+      viewBox={`0 0 ${W} ${H}`}
+      className="flex-shrink-0"
+      aria-hidden
+    >
+      <polyline
+        points={polyline}
+        fill="none"
+        stroke={color}
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        opacity="0.8"
+      />
+    </svg>
+  );
+}
+
+// ─── Section B — Societal pulse row ──────────────────────────────────────────
+
+// Per-icon config: badge colors, momentum label, text color, sparkline color
+const PULSE_CONFIG: Record<
+  SocietalPulseChip["icon"],
+  {
+    label: string;
+    labelColor: string;
+    badgeBg: string;
+    badgeText: string;
+    badgeGlyph: string;
+    sparkColor: string;
+  }
+> = {
+  up: {
+    label: "Rising",
+    labelColor: "#10b981",
+    badgeBg: "#ecfdf5",
+    badgeText: "#059669",
+    badgeGlyph: "↑",
+    sparkColor: "#10b981",
+  },
+  reawakening: {
+    label: "Reawakening",
+    labelColor: "#f59e0b",
+    badgeBg: "#fffbeb",
+    badgeText: "#d97706",
+    badgeGlyph: "↺",
+    sparkColor: "#f59e0b",
+  },
+  polarized: {
+    label: "Polarizing",
+    labelColor: "#ef4444",
+    badgeBg: "#fef2f2",
+    badgeText: "#dc2626",
+    badgeGlyph: "⇄",
+    sparkColor: "#ef4444",
+  },
+  steady: {
+    label: "Steady",
+    labelColor: "#94a3b8",
+    badgeBg: "#f8fafc",
+    badgeText: "#64748b",
+    badgeGlyph: "→",
+    sparkColor: "#94a3b8",
+  },
+};
+
 function PulseRow({ chip }: { chip: SocietalPulseChip }) {
-  const momentumLabel =
-    chip.icon === "up"
-      ? "Rising"
-      : chip.icon === "reawakening"
-      ? "Reawakening"
-      : chip.icon === "polarized"
-      ? "Polarizing"
-      : "Steady";
-
-  const momentumColor =
-    chip.icon === "polarized"
-      ? "text-red-500"
-      : chip.icon === "steady"
-      ? "text-slate-400"
-      : "text-emerald-600";
-
-  const bgColor =
-    chip.icon === "up"
-      ? "bg-emerald-50"
-      : chip.icon === "reawakening"
-      ? "bg-amber-50"
-      : chip.icon === "polarized"
-      ? "bg-red-50"
-      : "bg-slate-100";
-
-  const iconGlyph =
-    chip.icon === "up"
-      ? "↑"
-      : chip.icon === "reawakening"
-      ? "↺"
-      : chip.icon === "polarized"
-      ? "⇄"
-      : "→";
+  const cfg = PULSE_CONFIG[chip.icon];
 
   return (
     <Link
       to={chip.href}
-      className="flex items-center gap-2.5 rounded-lg p-2 hover:bg-slate-50 transition-colors group"
+      className="flex items-center gap-2.5 rounded-lg px-1.5 py-2 hover:bg-slate-50 transition-colors group"
     >
-      {/* Icon badge */}
+      {/* Circular icon badge */}
       <div
-        className={`flex-shrink-0 h-8 w-8 rounded-lg ${bgColor} flex items-center justify-center text-sm font-semibold text-slate-600`}
+        className="flex-shrink-0 h-8 w-8 rounded-full flex items-center justify-center text-sm font-bold"
+        style={{ backgroundColor: cfg.badgeBg, color: cfg.badgeText }}
       >
-        {iconGlyph}
+        {cfg.badgeGlyph}
       </div>
 
-      {/* Text */}
+      {/* Topic name + momentum label */}
       <div className="min-w-0 flex-1">
-        <p className="text-xs font-semibold text-slate-800 truncate group-hover:text-slate-900">
+        <p className="text-xs font-semibold text-slate-800 truncate group-hover:text-slate-900 leading-snug">
           {chip.title}
         </p>
-        <p className={`text-[10px] font-medium ${momentumColor}`}>
-          Momentum · {momentumLabel}
+        <p className="text-[10px] leading-snug mt-0.5">
+          <span className="text-slate-400">Momentum </span>
+          <span className="font-semibold" style={{ color: cfg.labelColor }}>
+            {cfg.label}
+          </span>
         </p>
       </div>
+
+      {/* Mini sparkline */}
+      <MiniSparkline icon={chip.icon} color={cfg.sparkColor} />
     </Link>
+  );
+}
+
+// ─── Section B — Societal pulse card ─────────────────────────────────────────
+
+function SocietalPulseCard({ chips }: { chips: SocietalPulseChip[] }) {
+  if (chips.length === 0) {
+    return (
+      <div className="px-1">
+        <p className="text-[11px] text-slate-400 italic">
+          Trending topic shifts will appear here.
+        </p>
+      </div>
+    );
+  }
+
+  const visible = chips.slice(0, 3);
+  const remaining = chips.length - visible.length;
+
+  return (
+    <div>
+      {/* Skeleton rows shown via parent loading state — card always renders when called */}
+      <div className="space-y-0">
+        {visible.map((chip) => (
+          <PulseRow key={chip.topic_id} chip={chip} />
+        ))}
+      </div>
+
+      {remaining > 0 && (
+        <Link
+          to="/topics"
+          className="mt-1 flex items-center gap-1 text-[11px] font-medium text-slate-400 hover:text-slate-600 transition-colors px-1.5"
+        >
+          {remaining} more <span className="text-slate-300 ml-0.5">›</span>
+        </Link>
+      )}
+    </div>
   );
 }
 
@@ -728,30 +843,16 @@ function SectionBAuthed({
       {/* ── Divider ── */}
       {hasPulse && <div className="border-t border-slate-100" />}
 
-      {/* ── Block 3: Societal pulse (unchanged) ── */}
+      {/* ── Block 3: Societal Pulse card ── */}
       {hasPulse && (
         <div>
-          <div className="flex items-center gap-1.5 mb-2">
+          <div className="flex items-center gap-1.5 mb-1">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
             <span className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">
               Societal Pulse
             </span>
           </div>
-
-          <div className="space-y-0.5">
-            {pulseChips.slice(0, 3).map((chip) => (
-              <PulseRow key={chip.topic_id} chip={chip} />
-            ))}
-          </div>
-
-          {pulseChips.length > 3 && (
-            <Link
-              to="/topics"
-              className="mt-2 flex items-center gap-1 text-[11px] font-medium text-slate-400 hover:text-slate-700 transition-colors"
-            >
-              {pulseChips.length - 3} more <span className="text-slate-300">›</span>
-            </Link>
-          )}
+          <SocietalPulseCard chips={pulseChips} />
         </div>
       )}
 
