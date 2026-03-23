@@ -2321,7 +2321,28 @@ export default function IndexPage() {
             isFallbackMode={isFallbackMode}
             alignmentSnap={whereYouStandQuery.data ?? null}
             alignmentSnapLoading={whereYouStandQuery.isLoading}
-            societalPulseChips={societyPulseQuery.data?.chips ?? []}
+            societalPulseChips={(() => {
+              // Use RPC chips if available
+              const rpcChips = societyPulseQuery.data?.chips ?? [];
+              if (rpcChips.length > 0) return rpcChips;
+              // Fallback: derive chips from myStanceSnapshot topics (already fetched)
+              // This works whenever the user has answered questions.
+              const snapshotTopics = myStanceSnapshotQuery.data?.topics ?? [];
+              if (snapshotTopics.length > 0) {
+                return snapshotTopics.slice(0, 5).map((t, i) => ({
+                  topic_id: `local-${i}`,
+                  title: t.topicTitle,
+                  icon: (
+                    t.scorePct >= 50 ? "up"
+                    : t.scorePct <= -30 ? "polarized"
+                    : t.avgScore > 0 ? "up"
+                    : "steady"
+                  ) as "up" | "reawakening" | "polarized" | "steady",
+                  href: "/topics",
+                }));
+              }
+              return [];
+            })()}
             myStanceSnapshot={myStanceSnapshotQuery.data ?? null}
             onRequestReplenish={fetchNextPage}
             onSubmitSuccess={submitStance}
