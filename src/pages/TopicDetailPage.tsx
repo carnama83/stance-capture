@@ -723,6 +723,46 @@ export default function TopicDetailPage() {
           </div>
         </section>
 
+        {/* ── Trending in this topic ── */}
+        {top5Contributors.length > 0 && (
+          <section className="rounded-lg border border-violet-100 bg-violet-50/40 p-4">
+            <div className="flex items-center gap-1.5 mb-3">
+              <span className="h-1.5 w-1.5 rounded-full bg-violet-400 animate-pulse" />
+              <h2 className="text-[11px] font-semibold uppercase tracking-widest text-violet-500">
+                Trending in this topic
+              </h2>
+            </div>
+            <div className="space-y-2">
+              {top5Contributors.slice(0, 3).map((r, i) => (
+                <Link
+                  key={r.question_id}
+                  to={`/q/${r.question_id}`}
+                  className="flex items-start justify-between gap-3 rounded-lg bg-white border border-slate-100 px-3 py-2.5 hover:border-violet-200 hover:shadow-sm transition group"
+                >
+                  <div className="flex items-start gap-2 min-w-0">
+                    <span className="flex-shrink-0 mt-0.5 h-4 w-4 rounded-full bg-violet-100 text-violet-600 text-[10px] font-bold flex items-center justify-center">
+                      {i + 1}
+                    </span>
+                    <p className="text-xs font-medium text-slate-800 leading-snug line-clamp-2 group-hover:text-slate-900">
+                      {r.question}
+                    </p>
+                  </div>
+                  <div className="flex-shrink-0 text-right">
+                    <span className="text-[10px] font-semibold text-violet-600">
+                      {(r.latest_question_score ?? 0).toFixed(1)}
+                    </span>
+                    {typeof r.response_count === "number" && r.response_count > 0 && (
+                      <p className="text-[10px] text-slate-400 mt-0.5">
+                        {r.response_count} {r.response_count === 1 ? "stance" : "stances"}
+                      </p>
+                    )}
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
+
         {/* Questions under this topic */}
         <section className="rounded-lg border p-4">
           <div className="flex items-center justify-between mb-2">
