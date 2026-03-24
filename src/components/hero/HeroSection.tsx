@@ -53,6 +53,7 @@ export interface SocietalPulseChip {
 
 // TopicStanceItem + MyStanceSnapshot — mirrored from Index.tsx export types
 export interface TopicStanceItem {
+  topicId: string | null;  // null for "General" catch-all bucket
   topicTitle: string;
   avgScore: number;
   answerCount: number;
@@ -726,10 +727,19 @@ function StanceHistoryRow({
         className="h-2 w-2 flex-shrink-0 rounded-full"
         style={{ backgroundColor: color }}
       />
-      {/* Topic label */}
-      <span className="flex-1 text-xs text-slate-700 font-medium truncate min-w-0">
-        {topic.topicTitle}
-      </span>
+      {/* Topic label — linked if topicId available */}
+      {topic.topicId ? (
+        <Link
+          to={`/topics/${topic.topicId}`}
+          className="flex-1 text-xs text-slate-700 font-medium truncate min-w-0 hover:underline"
+        >
+          {topic.topicTitle}
+        </Link>
+      ) : (
+        <span className="flex-1 text-xs text-slate-700 font-medium truncate min-w-0">
+          {topic.topicTitle}
+        </span>
+      )}
       {/* Mini bar */}
       <div className="flex-shrink-0" style={{ width: 48 }}>
         <div
