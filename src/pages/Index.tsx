@@ -219,6 +219,7 @@ type ReopenedRow = {
 // TopicStanceItem — topic-level stance history for the WhereYouStandCard
 // Sourced from get_my_stance_snapshot RPC.
 export type TopicStanceItem = {
+  topicId: string | null;  // null for the "General" catch-all bucket
   topicTitle: string;
   avgScore: number;
   answerCount: number;
@@ -1829,6 +1830,7 @@ export default function IndexPage() {
       if (error) throw error;
       const raw = data as any;
       const topics: TopicStanceItem[] = ((raw?.topics ?? []) as any[]).map((t) => ({
+        topicId: t.topic_id ?? null,  // null for "General" catch-all (no topic FK)
         topicTitle: t.topic_title ?? "General",
         avgScore: typeof t.avg_score === "number" ? t.avg_score : 0,
         answerCount: t.n ?? 0,
@@ -2328,9 +2330,12 @@ export default function IndexPage() {
               // Fallback: derive chips from myStanceSnapshot topics (already fetched)
               // This works whenever the user has answered questions.
               const snapshotTopics = myStanceSnapshotQuery.data?.topics ?? [];
-              if (snapshotTopics.length > 0) {
-                return snapshotTopics.slice(0, 5).map((t, i) => ({
-                  topic_id: `local-${i}`,
+              // Only use snapshot topics that have a real topic UUID — skip the
+              // "General" catch-all bucket (topicId === null) which has no route target.
+              const routableTopics = snapshotTopics.filter((t) => t.topicId != null);
+              if (routableTopics.length > 0) {
+                return routableTopics.slice(0, 5).map((t) => ({
+                  topic_id: t.topicId!,
                   title: t.topicTitle,
                   icon: (
                     t.scorePct >= 50 ? "up"
@@ -2338,7 +2343,7 @@ export default function IndexPage() {
                     : t.avgScore > 0 ? "up"
                     : "steady"
                   ) as "up" | "reawakening" | "polarized" | "steady",
-                  href: "/topics",
+                  href: `/topics/${t.topicId}`,
                 }));
               }
               return [];
