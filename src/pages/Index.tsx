@@ -271,6 +271,185 @@ type UserStreak = {
 
 // ─── End Epic Q types ─────────────────────────────────────────────────────────
 
+// ─── Epic E — Personal Analytics types ───────────────────────────────────────
+
+type PersonalAnalyticsTrendPoint = {
+  bucketStart: string;
+  alignmentScore: number | null;
+  answeredCount: number;
+};
+
+type AlignmentTrendDirection = "up" | "down" | "flat" | "insufficient";
+type DivergenceDirection = "more_supportive" | "more_opposed" | "mixed" | null;
+type OpinionFingerprintTag =
+  | "Strong convictions"
+  | "Moderate convictions"
+  | "Nuanced responses"
+  | "Often diverges from consensus"
+  | "Sometimes diverges from consensus"
+  | "Often aligns with consensus"
+  | "Focused on a few topics"
+  | "Broad across topics"
+  | "Consistent stance pattern"
+  | "Varied stance pattern";
+
+type PersonalAnalyticsResponse = {
+  totalAnswered: number;
+  topicsAnswered: number;
+  firstAnsweredAt: string | null;
+  lastAnsweredAt: string | null;
+  alignmentTrend: {
+    windowDays: number;
+    points: PersonalAnalyticsTrendPoint[];
+    currentAlignmentScore: number | null;
+    previousAlignmentScore: number | null;
+    delta: number | null;
+    direction: AlignmentTrendDirection;
+  };
+  mostDivergentTopic: {
+    topicId: string | null;
+    topicTitle: string | null;
+    userAvgScore: number | null;
+    communityAvgScore: number | null;
+    divergenceScore: number | null;
+    answeredCount: number;
+    direction: DivergenceDirection;
+  } | null;
+  opinionFingerprint: {
+    avgScore: number | null;
+    absoluteAvgScore: number | null;
+    consistencyScore: number | null;
+    divergenceRate: number | null;
+    concentrationScore: number | null;
+    strongestTopicId: string | null;
+    strongestTopicTitle: string | null;
+    strongestTopicAvgScore: number | null;
+    summaryTags: OpinionFingerprintTag[];
+  };
+};
+
+type PersonalAnalyticsTier = "empty" | "sparse" | "basic" | "mature";
+
+// ─── Epic E helpers ───────────────────────────────────────────────────────────
+
+function buildPersonalAnalyticsResponse(raw: unknown): PersonalAnalyticsResponse {
+  const r = raw as any;
+  const trend = r?.alignment_trend ?? {};
+  const fp = r?.opinion_fingerprint ?? {};
+  const div = r?.most_divergent_topic ?? null;
+
+  const points: PersonalAnalyticsTrendPoint[] = (trend?.points ?? []).map((p: any) => ({
+    bucketStart: p.bucket_start ?? "",
+    alignmentScore: p.alignment_score ?? null,
+    answeredCount: p.answered_count ?? 0,
+  }));
+
+  return {
+    totalAnswered: r?.total_answered ?? 0,
+    topicsAnswered: r?.topics_answered ?? 0,
+    firstAnsweredAt: r?.first_answered_at ?? null,
+    lastAnsweredAt: r?.last_answered_at ?? null,
+    alignmentTrend: {
+      windowDays: trend?.window_days ?? 90,
+      points,
+      currentAlignmentScore: trend?.current_alignment_score ?? null,
+      previousAlignmentScore: trend?.previous_alignment_score ?? null,
+      delta: trend?.delta ?? null,
+      direction: (trend?.direction ?? "insufficient") as AlignmentTrendDirection,
+    },
+    mostDivergentTopic: div ? {
+      topicId: div.topic_id ?? null,
+      topicTitle: div.topic_title ?? null,
+      userAvgScore: div.user_avg_score ?? null,
+      communityAvgScore: div.community_avg_score ?? null,
+      divergenceScore: div.divergence_score ?? null,
+      answeredCount: div.answered_count ?? 0,
+      direction: (div.direction ?? null) as DivergenceDirection,
+    } : null,
+    opinionFingerprint: {
+      avgScore: fp?.avg_score ?? null,
+      absoluteAvgScore: fp?.absolute_avg_score ?? null,
+      consistencyScore: fp?.consistency_score ?? null,
+      divergenceRate: fp?.divergence_rate ?? null,
+      concentrationScore: fp?.concentration_score ?? null,
+      strongestTopicId: fp?.strongest_topic_id ?? null,
+      strongestTopicTitle: fp?.strongest_topic_title ?? null,
+      strongestTopicAvgScore: fp?.strongest_topic_avg_score ?? null,
+      summaryTags: buildFingerprintTags(fp, r?.topics_answered ?? 0),
+    },
+  };
+}
+
+function getPersonalAnalyticsTier(totalAnswered: number): PersonalAnalyticsTier {
+  if (totalAnswered === 0) return "empty";
+  if (totalAnswered <= 4) return "sparse";
+  if (totalAnswered <= 11) return "basic";
+  return "mature";
+}
+
+function buildFingerprintTags(
+  fp: Record<string, number | null>,
+  topicsAnswered: number
+): OpinionFingerprintTag[] {
+  const tags: OpinionFingerprintTag[] = [];
+  const abs = fp?.absolute_avg_score ?? null;
+  const divRate = fp?.divergence_rate ?? null;
+  const conc = fp?.concentration_score ?? null;
+  const cons = fp?.consistency_score ?? null;
+
+  // Conviction
+  if (abs !== null) {
+    if (abs >= 1.35) tags.push("Strong convictions");
+    else if (abs >= 0.75) tags.push("Moderate convictions");
+    else tags.push("Nuanced responses");
+  }
+
+  // Divergence from consensus
+  if (divRate !== null) {
+    if (divRate >= 0.45) tags.push("Often diverges from consensus");
+    else if (divRate >= 0.20) tags.push("Sometimes diverges from consensus");
+    else tags.push("Often aligns with consensus");
+  }
+
+  // Topic breadth
+  if (conc !== null) {
+    if (conc >= 0.60) tags.push("Focused on a few topics");
+    else if (topicsAnswered >= 4) tags.push("Broad across topics");
+  }
+
+  // Consistency
+  if (cons !== null) {
+    if (cons >= 0.70) tags.push("Consistent stance pattern");
+    else if (cons < 0.45) tags.push("Varied stance pattern");
+  }
+
+  return tags.slice(0, 3); // max 3 tags
+}
+
+function getAlignmentTrendCopy(direction: AlignmentTrendDirection): string {
+  switch (direction) {
+    case "up":   return "You've been aligning a bit more with community sentiment lately.";
+    case "down": return "You've been diverging a bit more in recent responses.";
+    case "flat": return "Your alignment has stayed fairly stable lately.";
+    default:     return "Answer a few more questions to see your alignment trend.";
+  }
+}
+
+function getDivergenceCopy(direction: DivergenceDirection): string {
+  switch (direction) {
+    case "more_supportive": return "Your responses here are more supportive than the current community average.";
+    case "more_opposed":    return "Your responses here are more opposed than the current community average.";
+    default:                return "Your responses here differ from the current community average.";
+  }
+}
+
+function clamp01(v: number | null | undefined): number {
+  if (v == null || isNaN(v)) return 0;
+  return Math.max(0, Math.min(1, v));
+}
+
+// ─── End Epic E helpers ───────────────────────────────────────────────────────
+
 // QuestionStats — passed to slider for alignment messaging (Rule 4)
 type RegionalStat = {
   region_scope: string;
@@ -769,6 +948,219 @@ function HeroQuestionModule({
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+// ─────────────────────────── Epic E — Personal Analytics Card ────────────────
+
+// ─── PersonalAnalyticsSparkline — tiny inline SVG, no library ────────────────
+function PersonalAnalyticsSparkline({
+  points,
+}: {
+  points: PersonalAnalyticsTrendPoint[];
+}) {
+  const valid = points.filter((p) => p.alignmentScore !== null && p.answeredCount > 0);
+  if (valid.length < 2) return null;
+
+  const W = 88;
+  const H = 28;
+  const scores = valid.map((p) => p.alignmentScore as number);
+  const minV = Math.min(...scores);
+  const maxV = Math.max(...scores);
+  const range = maxV - minV || 0.01;
+  const xStep = W / (valid.length - 1);
+
+  const coords = valid.map((p, i) => {
+    const x = i * xStep;
+    const y = H - ((( p.alignmentScore as number) - minV) / range) * (H - 4) - 2;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+
+  // Color by trend direction
+  const first = scores[0];
+  const last = scores[scores.length - 1];
+  const color = last > first + 0.03 ? "#10b981" : last < first - 0.03 ? "#f43f5e" : "#94a3b8";
+
+  return (
+    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} aria-hidden className="flex-shrink-0">
+      <polyline
+        points={coords.join(" ")}
+        fill="none"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        opacity="0.85"
+      />
+    </svg>
+  );
+}
+
+// ─── PersonalAnalyticsCard ────────────────────────────────────────────────────
+function PersonalAnalyticsCard({
+  data,
+  isLoading,
+  isError,
+}: {
+  data: PersonalAnalyticsResponse | null;
+  isLoading: boolean;
+  isError: boolean;
+}) {
+  // Loading skeleton
+  if (isLoading) {
+    return (
+      <div className={`${card} p-5`}>
+        <Eyebrow>Your opinion profile</Eyebrow>
+        <div className="space-y-3 animate-pulse mt-3">
+          <div className="h-3 w-2/3 bg-slate-100 rounded" />
+          <div className="h-3 w-full bg-slate-100 rounded" />
+          <div className="h-3 w-4/5 bg-slate-100 rounded" />
+          <div className="h-3 w-1/2 bg-slate-100 rounded" />
+        </div>
+      </div>
+    );
+  }
+
+  // Error — soft fail
+  if (isError) {
+    return (
+      <div className={`${card} p-5`}>
+        <Eyebrow>Your opinion profile</Eyebrow>
+        <p className="text-sm text-slate-400 mt-2">
+          Your analytics are unavailable right now.
+        </p>
+      </div>
+    );
+  }
+
+  // No data
+  if (!data) return null;
+
+  const tier = getPersonalAnalyticsTier(data.totalAnswered);
+
+  // Empty state
+  if (tier === "empty") {
+    return (
+      <div className={`${card} p-5`}>
+        <Eyebrow>Your opinion profile</Eyebrow>
+        <p className="text-sm text-slate-500 mt-2 leading-relaxed">
+          Answer a few questions to unlock your personal analytics.
+        </p>
+      </div>
+    );
+  }
+
+  const { alignmentTrend, mostDivergentTopic, opinionFingerprint } = data;
+
+  return (
+    <div className={`${card} p-5 space-y-4`}>
+      <Eyebrow>Your opinion profile</Eyebrow>
+
+      {/* Sparse state — condensed message */}
+      {tier === "sparse" && (
+        <p className="text-xs text-slate-500 leading-relaxed">
+          You've started building a stance history. As you answer more questions,
+          we'll show how your alignment changes over time.
+        </p>
+      )}
+
+      {/* ── Section 1: Alignment Trend ── */}
+      {(tier === "basic" || tier === "mature") && (
+        <div>
+          <p className="text-xs font-semibold text-slate-700 mb-1">Alignment trend</p>
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-[11px] text-slate-500 leading-snug flex-1">
+              {getAlignmentTrendCopy(alignmentTrend.direction)}
+            </p>
+            <PersonalAnalyticsSparkline points={alignmentTrend.points} />
+          </div>
+          {alignmentTrend.currentAlignmentScore !== null && (
+            <div className="mt-1.5 flex items-center gap-1.5">
+              <div
+                className="h-1.5 rounded-full bg-slate-100 flex-1 overflow-hidden"
+                style={{ maxWidth: 80 }}
+              >
+                <div
+                  className="h-full rounded-full bg-emerald-400 transition-all"
+                  style={{
+                    width: `${Math.round(clamp01(alignmentTrend.currentAlignmentScore) * 100)}%`,
+                  }}
+                />
+              </div>
+              <span className="text-[10px] text-slate-500 tabular-nums">
+                {Math.round(clamp01(alignmentTrend.currentAlignmentScore) * 100)}% aligned
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Divider ── */}
+      {mostDivergentTopic && tier !== "sparse" && (
+        <div className="border-t border-slate-100" />
+      )}
+
+      {/* ── Section 2: Most Divergent Topic ── */}
+      {mostDivergentTopic && tier !== "sparse" && (
+        <div>
+          <p className="text-xs font-semibold text-slate-700 mb-1">Most divergent topic</p>
+          {mostDivergentTopic.topicId ? (
+            <Link
+              to={`/topics/${mostDivergentTopic.topicId}`}
+              className="text-[11px] font-semibold text-violet-600 hover:underline"
+            >
+              {mostDivergentTopic.topicTitle}
+            </Link>
+          ) : (
+            <span className="text-[11px] font-semibold text-slate-700">
+              {mostDivergentTopic.topicTitle}
+            </span>
+          )}
+          <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
+            {getDivergenceCopy(mostDivergentTopic.direction)}
+          </p>
+        </div>
+      )}
+
+      {/* ── Divider ── */}
+      {opinionFingerprint.summaryTags.length > 0 && (
+        <div className="border-t border-slate-100" />
+      )}
+
+      {/* ── Section 3: Opinion Fingerprint ── */}
+      {opinionFingerprint.summaryTags.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-slate-700 mb-2">Opinion fingerprint</p>
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {opinionFingerprint.summaryTags.map((tag) => (
+              <span
+                key={tag}
+                className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] text-slate-600"
+              >
+                {tag}
+              </span>
+            ))}
+          </div>
+          {opinionFingerprint.strongestTopicTitle && (
+            <p className="text-[11px] text-slate-500">
+              Strongest lean:{" "}
+              {opinionFingerprint.strongestTopicId ? (
+                <Link
+                  to={`/topics/${opinionFingerprint.strongestTopicId}`}
+                  className="font-semibold text-slate-700 hover:underline"
+                >
+                  {opinionFingerprint.strongestTopicTitle}
+                </Link>
+              ) : (
+                <span className="font-semibold text-slate-700">
+                  {opinionFingerprint.strongestTopicTitle}
+                </span>
+              )}
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -1959,6 +2351,29 @@ export default function IndexPage() {
     };
   }, [streakQuery.data]);
 
+  // ── Epic E: Personal analytics query ─────────────────────────────────────────
+  // Derives regionScope/regionKey from existing regionLabel state.
+  // regionLabel = "Global" → scope='global', key='Global'
+  // regionLabel = "United States" → scope='country', key='United States'
+  const paRegionScope = regionLabel === "Global" ? "global" : "country";
+  const paRegionKey   = regionLabel; // matches question_stance_stats_region.region_key
+
+  const personalAnalyticsQuery = useQuery({
+    enabled: !!sb && !!userId,
+    queryKey: ["home-personal-analytics", userId, paRegionScope, paRegionKey],
+    queryFn: async (): Promise<PersonalAnalyticsResponse> => {
+      const { data, error } = await sb!.rpc("get_my_personal_analytics", {
+        p_region_scope: paRegionScope,
+        p_region_key:   paRegionKey,
+        p_days: 90,
+      }).single();
+      if (error) throw error;
+      return buildPersonalAnalyticsResponse(data);
+    },
+    staleTime: 2 * 60_000,
+    retry: false, // fail silently — card hides on error
+  });
+
   // ── Q2: Return nudge derivation (client-side, zero new queries) ───────────────
   // Derives single highest-priority nudge from already-running queries.
   // Priority: minority_shift > opinion_shift > new_in_topics > answer_more.
@@ -2421,6 +2836,7 @@ export default function IndexPage() {
         qc.invalidateQueries({ queryKey: ["home-trending-questions"] }),
         qc.invalidateQueries({ queryKey: ["home-my-stance-snapshot", userId] }),
         qc.invalidateQueries({ queryKey: ["home-streak", userId] }),
+        qc.invalidateQueries({ queryKey: ["home-personal-analytics", userId, paRegionScope, paRegionKey] }),
         // Note: home-since-last-visit intentionally NOT invalidated on submit.
         // Last visit timestamp hasn't changed from answering — let staleTime expire.
       ]).then((results) => {
@@ -2598,6 +3014,15 @@ export default function IndexPage() {
               {/* Where you stand (authed) */}
               {isAuthed && (
                 <WhereYouStandCard snap={whereYouStandQuery.data ?? null} />
+              )}
+
+              {/* ── Epic E — Personal Analytics (authed only) ── */}
+              {isAuthed && (
+                <PersonalAnalyticsCard
+                  data={personalAnalyticsQuery.data ?? null}
+                  isLoading={personalAnalyticsQuery.isLoading}
+                  isError={personalAnalyticsQuery.isError}
+                />
               )}
 
               {/* ── Band 5 — Add Your Voice ── */}
