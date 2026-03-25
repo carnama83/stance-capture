@@ -53,7 +53,6 @@ export interface SocietalPulseChip {
 
 // TopicStanceItem + MyStanceSnapshot — mirrored from Index.tsx export types
 export interface TopicStanceItem {
-  topicId: string | null;  // null for "General" catch-all bucket
   topicTitle: string;
   avgScore: number;
   answerCount: number;
@@ -66,6 +65,38 @@ export interface MyStanceSnapshot {
   alignmentLabel: string;
 }
 
+// ─── Epic Q types (mirrored from Index.tsx) ──────────────────────────────────
+
+type SinceLastVisitChange = {
+  topic_id: string;
+  topic_title: string;
+  change_type: "shifted_positive" | "shifted_negative" | "gaining_attention" | "stable";
+  delta: number;
+  new_responses: number;
+};
+
+type SinceLastVisitData = {
+  last_seen_at: string;
+  days_away: number;
+  has_changes: boolean;
+  changes: SinceLastVisitChange[];
+  region: { scope: string; label: string };
+};
+
+type ReturnNudge = {
+  type: "minority_shift" | "opinion_shift" | "new_in_topics" | "answer_more";
+  title: string;
+  body: string;
+  ctaLabel: string;
+  href: string;
+};
+
+type UserStreak = {
+  currentStreak: number;
+  answeredToday: boolean;
+  isAtRisk: boolean;
+};
+
 export interface HeroSectionProps {
   allQuestions: HeroQuestion[];
   isLoading: boolean;
@@ -75,8 +106,10 @@ export interface HeroSectionProps {
   alignmentSnapLoading: boolean;
   societalPulseChips: SocietalPulseChip[];
   myStanceSnapshot: MyStanceSnapshot | null;
-  // True when hero is showing questions outside the user's normal region scope
-  // (fallback feed active). Surfaces a subtle "broader view" chip on the hero card.
+  sinceLastVisit: SinceLastVisitData | null;
+  sinceLastVisitLoading: boolean;
+  returnNudge: ReturnNudge | null;
+  streak: UserStreak | null;
   isFallbackMode?: boolean;
   onRequestReplenish: () => void;
   onSubmitSuccess: (questionId: string, value: number) => Promise<void>;
@@ -727,19 +760,10 @@ function StanceHistoryRow({
         className="h-2 w-2 flex-shrink-0 rounded-full"
         style={{ backgroundColor: color }}
       />
-      {/* Topic label — linked if topicId available */}
-      {topic.topicId ? (
-        <Link
-          to={`/topics/${topic.topicId}`}
-          className="flex-1 text-xs text-slate-700 font-medium truncate min-w-0 hover:underline"
-        >
-          {topic.topicTitle}
-        </Link>
-      ) : (
-        <span className="flex-1 text-xs text-slate-700 font-medium truncate min-w-0">
-          {topic.topicTitle}
-        </span>
-      )}
+      {/* Topic label */}
+      <span className="flex-1 text-xs text-slate-700 font-medium truncate min-w-0">
+        {topic.topicTitle}
+      </span>
       {/* Mini bar */}
       <div className="flex-shrink-0" style={{ width: 48 }}>
         <div
@@ -763,6 +787,164 @@ function StanceHistoryRow({
   );
 }
 
+// ─── Epic Q — Since Last Visit block ─────────────────────────────────────────
+
+function SinceLastVisitBlock({
+  data,
+  isLoading,
+}: {
+  data: SinceLastVisitData | null;
+  isLoading: boolean;
+}) {
+  if (isLoading) {
+    return (
+      <div className="space-y-2 animate-pulse">
+        <div className="h-2.5 w-1/2 bg-slate-100 rounded" />
+        <div className="h-2.5 w-full bg-slate-100 rounded" />
+        <div className="h-2.5 w-4/5 bg-slate-100 rounded" />
+        <div className="h-2.5 w-3/5 bg-slate-100 rounded" />
+      </div>
+    );
+  }
+  if (!data || data.days_away === 0 || !data.has_changes) return null;
+
+  const changeIcon = (type: SinceLastVisitChange["change_type"]) =>
+    type === "shifted_positive" ? "↑"
+    : type === "shifted_negative" ? "↓"
+    : type === "gaining_attention" ? "↻"
+    : "→";
+
+  const changeColor = (type: SinceLastVisitChange["change_type"]) =>
+    type === "shifted_positive" ? "#10b981"
+    : type === "shifted_negative" ? "#f43f5e"
+    : type === "gaining_attention" ? "#3b82f6"
+    : "#94a3b8";
+
+  const daysText =
+    data.days_away === 1 ? "yesterday"
+    : data.days_away < 7 ? `${data.days_away} days ago`
+    : data.days_away < 30 ? `${Math.floor(data.days_away / 7)} weeks ago`
+    : `${Math.floor(data.days_away / 30)} months ago`;
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-1.5">
+          <span className="h-1.5 w-1.5 rounded-full bg-blue-400" />
+          <span className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">
+            Since your last visit
+          </span>
+        </div>
+        <span className="text-[10px] text-slate-400">{daysText}</span>
+      </div>
+      <div className="space-y-1.5">
+        {data.changes.slice(0, 3).map((c) => (
+          <Link
+            key={c.topic_id}
+            to={`/topics/${c.topic_id}`}
+            className="flex items-center gap-2 rounded-lg px-1.5 py-1 hover:bg-slate-50 transition-colors group"
+          >
+            <span
+              className="flex-shrink-0 text-sm font-bold w-4 text-center"
+              style={{ color: changeColor(c.change_type) }}
+            >
+              {changeIcon(c.change_type)}
+            </span>
+            <span className="text-[11px] text-slate-700 truncate group-hover:text-slate-900 leading-snug">
+              {c.topic_title}
+              {c.change_type === "gaining_attention" && c.new_responses > 0 && (
+                <span className="text-slate-400 ml-1">· {c.new_responses} new</span>
+              )}
+              {c.change_type !== "gaining_attention" && c.delta !== 0 && (
+                <span className="text-slate-400 ml-1">
+                  · {c.delta > 0 ? "+" : ""}{c.delta.toFixed(1)}
+                </span>
+              )}
+            </span>
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Epic Q — Return Nudge block ──────────────────────────────────────────────
+
+function ReturnNudgeBlock({ nudge }: { nudge: ReturnNudge | null }) {
+  if (!nudge) return null;
+
+  const icons: Record<ReturnNudge["type"], string> = {
+    minority_shift: "💡",
+    opinion_shift:  "📊",
+    new_in_topics:  "✨",
+    answer_more:    "→",
+  };
+
+  return (
+    <div className="rounded-lg border border-violet-100 bg-violet-50/50 px-3 py-2.5">
+      <div className="flex items-start gap-2">
+        <span className="flex-shrink-0 text-sm mt-0.5">{icons[nudge.type]}</span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] font-semibold text-slate-800 leading-snug">
+            {nudge.title}
+          </p>
+          <p className="text-[10px] text-slate-500 mt-0.5 leading-snug">
+            {nudge.body}
+          </p>
+          <Link
+            to={nudge.href}
+            className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold text-violet-600 hover:text-violet-800 transition-colors"
+          >
+            {nudge.ctaLabel} →
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Epic Q — Streak block ────────────────────────────────────────────────────
+
+function StreakBlock({ streak }: { streak: UserStreak | null }) {
+  if (!streak || (streak.currentStreak === 0 && !streak.isAtRisk)) return null;
+
+  if (streak.isAtRisk) {
+    return (
+      <div className="rounded-lg border border-amber-100 bg-amber-50/50 px-3 py-2.5">
+        <div className="flex items-center gap-2">
+          <span className="text-base">⚠️</span>
+          <div>
+            <p className="text-[11px] font-semibold text-amber-800">
+              Keep your {streak.currentStreak} day streak alive
+            </p>
+            <p className="text-[10px] text-amber-600 mt-0.5">
+              Answer one question today
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-orange-100 bg-orange-50/40 px-3 py-2.5">
+      <div className="flex items-center gap-2">
+        <span className="text-base">🔥</span>
+        <div>
+          <p className="text-[11px] font-semibold text-orange-800">
+            {streak.currentStreak} day streak
+          </p>
+          <p className="text-[10px] text-orange-600 mt-0.5">
+            {streak.answeredToday
+              ? "You've answered today — keep it up"
+              : "You've shared a stance every day recently"}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Section B — Logged-in content ───────────────────────────────────────────
 
 function SectionBAuthed({
@@ -770,11 +952,19 @@ function SectionBAuthed({
   isLoading,
   pulseChips,
   myStanceSnapshot,
+  sinceLastVisit,
+  sinceLastVisitLoading,
+  returnNudge,
+  streak,
 }: {
   snap: AlignmentSnapshotShape | null;
   isLoading: boolean;
   pulseChips: SocietalPulseChip[];
   myStanceSnapshot: MyStanceSnapshot | null;
+  sinceLastVisit: SinceLastVisitData | null;
+  sinceLastVisitLoading: boolean;
+  returnNudge: ReturnNudge | null;
+  streak: UserStreak | null;
 }) {
   if (isLoading) {
     return <SectionBSkeleton />;
@@ -850,10 +1040,21 @@ function SectionBAuthed({
         )}
       </div>
 
-      {/* ── Divider ── */}
+      {/* ── Block 3: Since Your Last Visit (Q1) ── */}
+      {(sinceLastVisitLoading || (sinceLastVisit?.has_changes && (sinceLastVisit?.days_away ?? 0) >= 1)) && (
+        <>
+          <div className="border-t border-slate-100" />
+          <SinceLastVisitBlock data={sinceLastVisit} isLoading={sinceLastVisitLoading} />
+        </>
+      )}
+
+      {/* ── Block 4: Return Nudge (Q2) ── */}
+      {returnNudge && <ReturnNudgeBlock nudge={returnNudge} />}
+
+      {/* ── Divider before Societal Pulse ── */}
       {hasPulse && <div className="border-t border-slate-100" />}
 
-      {/* ── Block 3: Societal Pulse card ── */}
+      {/* ── Block 5: Societal Pulse ── */}
       {hasPulse && (
         <div>
           <div className="flex items-center gap-1.5 mb-1">
@@ -864,6 +1065,14 @@ function SectionBAuthed({
           </div>
           <SocietalPulseCard chips={pulseChips} />
         </div>
+      )}
+
+      {/* ── Block 6: Streak (Q3) ── */}
+      {streak && (streak.currentStreak > 0 || streak.isAtRisk) && (
+        <>
+          <div className="border-t border-slate-100" />
+          <StreakBlock streak={streak} />
+        </>
       )}
 
     </div>
@@ -1251,6 +1460,10 @@ export function HeroSection({
   alignmentSnapLoading,
   societalPulseChips,
   myStanceSnapshot,
+  sinceLastVisit,
+  sinceLastVisitLoading,
+  returnNudge,
+  streak,
   isFallbackMode = false,
   onRequestReplenish,
   onSubmitSuccess,
@@ -1372,6 +1585,10 @@ export function HeroSection({
               isLoading={alignmentSnapLoading}
               pulseChips={societalPulseChips}
               myStanceSnapshot={myStanceSnapshot}
+              sinceLastVisit={sinceLastVisit}
+              sinceLastVisitLoading={sinceLastVisitLoading}
+              returnNudge={returnNudge}
+              streak={streak}
             />
           ) : (
             <SectionBGuest
