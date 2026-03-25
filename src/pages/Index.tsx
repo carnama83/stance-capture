@@ -219,7 +219,6 @@ type ReopenedRow = {
 // TopicStanceItem — topic-level stance history for the WhereYouStandCard
 // Sourced from get_my_stance_snapshot RPC.
 export type TopicStanceItem = {
-  topicId: string | null;  // null for the "General" catch-all bucket
   topicTitle: string;
   avgScore: number;
   answerCount: number;
@@ -232,6 +231,45 @@ export type MyStanceSnapshot = {
   topics: TopicStanceItem[];
   alignmentLabel: string; // pre-computed backend label, e.g. "Your views generally align..."
 };
+
+// ─── Epic Q — Habit/Retention types ──────────────────────────────────────────
+
+// Q1: Since Your Last Visit — mirrors get_since_last_visited() RPC output
+type SinceLastVisitChange = {
+  topic_id: string;
+  topic_title: string;
+  change_type: "shifted_positive" | "shifted_negative" | "gaining_attention" | "stable";
+  delta: number;
+  new_responses: number;
+};
+
+type SinceLastVisitData = {
+  last_seen_at: string;
+  days_away: number;
+  has_changes: boolean;
+  changes: SinceLastVisitChange[];
+  region: { scope: string; label: string };
+};
+
+// Q2: Return Nudge — derived client-side from existing queries
+type ReturnNudgeType = "minority_shift" | "opinion_shift" | "new_in_topics" | "answer_more";
+
+type ReturnNudge = {
+  type: ReturnNudgeType;
+  title: string;
+  body: string;
+  ctaLabel: string;
+  href: string;
+};
+
+// Q3: Streak — computed client-side from question_stances dates
+type UserStreak = {
+  currentStreak: number;
+  answeredToday: boolean;
+  isAtRisk: boolean; // had streak yesterday, nothing today — streak needs protecting
+};
+
+// ─── End Epic Q types ─────────────────────────────────────────────────────────
 
 // QuestionStats — passed to slider for alignment messaging (Rule 4)
 type RegionalStat = {
@@ -1830,7 +1868,6 @@ export default function IndexPage() {
       if (error) throw error;
       const raw = data as any;
       const topics: TopicStanceItem[] = ((raw?.topics ?? []) as any[]).map((t) => ({
-        topicId: t.topic_id ?? null,  // null for "General" catch-all (no topic FK)
         topicTitle: t.topic_title ?? "General",
         avgScore: typeof t.avg_score === "number" ? t.avg_score : 0,
         answerCount: t.n ?? 0,
@@ -1844,6 +1881,160 @@ export default function IndexPage() {
     },
     staleTime: 60_000,
   });
+
+  // ── Q1: Since Last Visit query ───────────────────────────────────────────────
+  // Uses get_since_last_visited() SECURITY DEFINER RPC — reads profiles.last_seen_at,
+  // computes topic sentiment shifts before/after, returns changes[].
+  // retry:false so errors fail silently and hide the block (right rail stays clean).
+  const sinceLastVisitQuery = useQuery({
+    enabled: !!sb && !!userId,
+    queryKey: ["home-since-last-visit", userId],
+    queryFn: async (): Promise<SinceLastVisitData> => {
+      const { data, error } = await sb!.rpc("get_since_last_visited").single();
+      if (error) throw error;
+      return data as SinceLastVisitData;
+    },
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+
+  // ── Q3: Streak query ──────────────────────────────────────────────────────────
+  // Reads raw created_at dates from question_stances; streak computed client-side.
+  // Limited to 60 rows — enough for ~2 months of daily answers.
+  const streakQuery = useQuery({
+    enabled: !!sb && !!userId,
+    queryKey: ["home-streak", userId],
+    queryFn: async (): Promise<{ created_at: string }[]> => {
+      const { data, error } = await sb!
+        .from("question_stances")
+        .select("created_at")
+        .eq("user_id", userId!)
+        .order("created_at", { ascending: false })
+        .limit(60);
+      if (error) throw error;
+      return (data ?? []) as { created_at: string }[];
+    },
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+
+  // ── Q3: Streak computation (client-side) ──────────────────────────────────────
+  // v1 uses browser-local day boundaries via toDateString().
+  // Multiple stances on the same local calendar day count as 1 streak day.
+  // Known edge case: answering at 11:59pm then 12:01am = 2 streak days — acceptable.
+  // Future enhancement: use profile timezone if available.
+  const userStreak = React.useMemo((): UserStreak | null => {
+    const rows = streakQuery.data;
+    if (!rows || rows.length === 0) return null;
+
+    const today = new Date().toDateString();
+    const yesterday = new Date(Date.now() - 86_400_000).toDateString();
+
+    const distinctDays = [
+      ...new Set(rows.map((r) => new Date(r.created_at).toDateString())),
+    ].sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+
+    const answeredToday = distinctDays[0] === today;
+    const answeredYesterday = distinctDays.includes(yesterday);
+
+    // Count consecutive days backwards from today or yesterday
+    let streak = 0;
+    const startDay = answeredToday ? today : answeredYesterday ? yesterday : null;
+    if (!startDay) return { currentStreak: 0, answeredToday: false, isAtRisk: false };
+
+    let cursor = new Date(startDay);
+    for (const day of distinctDays) {
+      if (new Date(day).toDateString() === cursor.toDateString()) {
+        streak++;
+        cursor = new Date(cursor.getTime() - 86_400_000);
+      } else {
+        break;
+      }
+    }
+
+    return {
+      currentStreak: streak,
+      answeredToday,
+      isAtRisk: !answeredToday && answeredYesterday && streak > 1,
+    };
+  }, [streakQuery.data]);
+
+  // ── Q2: Return nudge derivation (client-side, zero new queries) ───────────────
+  // Derives single highest-priority nudge from already-running queries.
+  // Priority: minority_shift > opinion_shift > new_in_topics > answer_more.
+  // Zero-answer users: all nudges gated out ("Where You Stand" handles onboarding).
+  const returnNudge = React.useMemo((): ReturnNudge | null => {
+    const totalAnswered = myStanceSnapshotQuery.data?.totalAnswered ?? 0;
+    if (totalAnswered === 0) return null;
+
+    // Priority 1: user holds minority view
+    const snap = whereYouStandQuery.data;
+    if (snap?.minority_count > 0 && snap.most_divergent_question_id) {
+      return {
+        type: "minority_shift",
+        title: "You may be in the minority",
+        body: "Public opinion moved away from your position on a question you answered.",
+        ctaLabel: "See question",
+        href: `/q/${snap.most_divergent_question_id}`,
+      };
+    }
+
+    // Priority 2: community opinion shifted on an answered question
+    const reopened = (reopenedQuery.data ?? [])[0];
+    if (reopened) {
+      return {
+        type: "opinion_shift",
+        title: "Public opinion moved since you answered",
+        body: "The community balance changed on one of your questions.",
+        ctaLabel: "See update",
+        href: `/q/${reopened.question_id}`,
+      };
+    }
+
+    // Priority 3: new questions in engaged topics
+    const continuing = (continuingQuery.data ?? [])[0];
+    if (continuing) {
+      return {
+        type: "new_in_topics",
+        title: "New questions in your topics",
+        body: "Fresh questions appeared in areas where you've already shared your stance.",
+        ctaLabel: "Explore",
+        href: continuing.topic_id
+          ? `/topics/${continuing.topic_id}`
+          : `/q/${continuing.question_id}`,
+      };
+    }
+
+    // Priority 4: answer-more fallback (only for low-data, non-zero users)
+    if (totalAnswered < 3) {
+      return {
+        type: "answer_more",
+        title: "Build your stance profile",
+        body: "Answer a few more questions to unlock stronger insight about where you stand.",
+        ctaLabel: "Answer more",
+        href: "/",
+      };
+    }
+
+    return null;
+  }, [
+    whereYouStandQuery.data,
+    reopenedQuery.data,
+    continuingQuery.data,
+    myStanceSnapshotQuery.data,
+  ]);
+
+  // ── update_last_seen on homepage mount ────────────────────────────────────────
+  // Called 2s after mount so the sinceLastVisitQuery fires and renders first.
+  // update_last_seen() writes profiles.last_seen_at, which get_since_last_visited()
+  // reads on next visit — must run AFTER the query, not before.
+  React.useEffect(() => {
+    if (!sb || !userId) return;
+    const t = setTimeout(async () => {
+      try { await sb.rpc("update_last_seen"); } catch { /* silent */ }
+    }, 2000);
+    return () => clearTimeout(t);
+  }, [sb, userId]);
 
   // ── Infinite queries (all preserved exactly) ──
   // NOTE: heroStatsQuery and featuredStatsQuery are defined after trendingQuestions
@@ -2229,6 +2420,9 @@ export default function IndexPage() {
         qc.invalidateQueries({ queryKey: ["home-media-surge", regionLabel] }),
         qc.invalidateQueries({ queryKey: ["home-trending-questions"] }),
         qc.invalidateQueries({ queryKey: ["home-my-stance-snapshot", userId] }),
+        qc.invalidateQueries({ queryKey: ["home-streak", userId] }),
+        // Note: home-since-last-visit intentionally NOT invalidated on submit.
+        // Last visit timestamp hasn't changed from answering — let staleTime expire.
       ]).then((results) => {
         console.log("[home:submit] background invalidations settled", results);
       });
@@ -2330,12 +2524,9 @@ export default function IndexPage() {
               // Fallback: derive chips from myStanceSnapshot topics (already fetched)
               // This works whenever the user has answered questions.
               const snapshotTopics = myStanceSnapshotQuery.data?.topics ?? [];
-              // Only use snapshot topics that have a real topic UUID — skip the
-              // "General" catch-all bucket (topicId === null) which has no route target.
-              const routableTopics = snapshotTopics.filter((t) => t.topicId != null);
-              if (routableTopics.length > 0) {
-                return routableTopics.slice(0, 5).map((t) => ({
-                  topic_id: t.topicId!,
+              if (snapshotTopics.length > 0) {
+                return snapshotTopics.slice(0, 5).map((t, i) => ({
+                  topic_id: `local-${i}`,
                   title: t.topicTitle,
                   icon: (
                     t.scorePct >= 50 ? "up"
@@ -2343,12 +2534,16 @@ export default function IndexPage() {
                     : t.avgScore > 0 ? "up"
                     : "steady"
                   ) as "up" | "reawakening" | "polarized" | "steady",
-                  href: `/topics/${t.topicId}`,
+                  href: "/topics",
                 }));
               }
               return [];
             })()}
             myStanceSnapshot={myStanceSnapshotQuery.data ?? null}
+            sinceLastVisit={sinceLastVisitQuery.data ?? null}
+            sinceLastVisitLoading={sinceLastVisitQuery.isLoading}
+            returnNudge={returnNudge}
+            streak={userStreak}
             onRequestReplenish={fetchNextPage}
             onSubmitSuccess={submitStance}
             onLoginRedirect={loginRedirect}
