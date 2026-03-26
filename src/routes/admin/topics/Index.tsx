@@ -443,6 +443,96 @@ function TopicRowItem({
   );
 }
 
+// ─── Classify Micro Topics Button ────────────────────────────────────────────
+
+type ClassifyResult = {
+  ok: boolean;
+  classified?: number;
+  assigned?: number;
+  skipped?: number;
+  message?: string;
+  error?: string;
+};
+
+function ClassifyMicroTopicsButton({ onDone }: { onDone: () => void }) {
+  const supabase = getSupabase()!;
+  const { toast } = useToast();
+  const [running, setRunning] = React.useState(false);
+  const [lastResult, setLastResult] = React.useState<ClassifyResult | null>(null);
+
+  const handleClassify = async () => {
+    setRunning(true);
+    setLastResult(null);
+
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        "classify-topic-drafts",
+        { body: { limit: 50 } }
+      );
+
+      if (error) {
+        const result: ClassifyResult = { ok: false, error: error.message };
+        setLastResult(result);
+        toast({
+          title: "Classification failed",
+          description: error.message,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const result = data as ClassifyResult;
+      setLastResult(result);
+
+      if (result.ok) {
+        toast({
+          title: `Classified ${result.classified ?? 0} micro-topics`,
+          description: `${result.assigned ?? 0} assigned to parents · ${result.skipped ?? 0} need manual review`,
+        });
+        onDone(); // reload the topic list
+      } else {
+        toast({
+          title: "Classification error",
+          description: result.error ?? "Unknown error",
+          variant: "destructive",
+        });
+      }
+    } catch (err: any) {
+      const msg = err?.message ?? String(err);
+      setLastResult({ ok: false, error: msg });
+      toast({ title: "Classification failed", description: msg, variant: "destructive" });
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={handleClassify}
+        disabled={running}
+        className="border-violet-200 text-violet-700 hover:bg-violet-50"
+      >
+        {running ? (
+          <>
+            <span className="mr-1.5 h-3 w-3 rounded-full border-2 border-violet-400 border-t-transparent animate-spin inline-block" />
+            Classifying…
+          </>
+        ) : (
+          "⚡ Classify micro-topics"
+        )}
+      </Button>
+      {lastResult && lastResult.ok && (
+        <p className="text-[10px] text-slate-400">
+          {lastResult.assigned} assigned · {lastResult.skipped} manual
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function AdminTopicsPage() {
@@ -537,6 +627,7 @@ export default function AdminTopicsPage() {
         </div>
         <div className="flex items-center gap-2 mt-2 sm:mt-0 flex-wrap">
           <CreateParentTopicForm onCreated={load} />
+          <ClassifyMicroTopicsButton onDone={load} />
           <Input
             placeholder="Filter by title, location, tags…"
             className="h-8 w-52"
