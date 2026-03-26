@@ -447,9 +447,11 @@ function TopicRowItem({
 
 type ClassifyResult = {
   ok: boolean;
+  phase1_created?: number; // parent topics auto-generated in bootstrap phase
   classified?: number;
   assigned?: number;
   skipped?: number;
+  remaining?: number;      // orphans still unprocessed (run again to continue)
   message?: string;
   error?: string;
 };
@@ -458,52 +460,65 @@ function ClassifyMicroTopicsButton({ onDone }: { onDone: () => void }) {
   const supabase = getSupabase()!;
   const { toast } = useToast();
   const [running, setRunning] = React.useState(false);
+  const [phase, setPhase] = React.useState<"idle" | "bootstrap" | "classifying">("idle");
   const [lastResult, setLastResult] = React.useState<ClassifyResult | null>(null);
 
   const handleClassify = async () => {
     setRunning(true);
     setLastResult(null);
+    setPhase("bootstrap"); // optimistic — will show "Classifying…" once bootstrap done
 
     try {
       const { data, error } = await supabase.functions.invoke(
         "classify-topic-drafts",
-        { body: { limit: 50 } }
+        { body: { limit: 100 } }
       );
 
       if (error) {
-        const result: ClassifyResult = { ok: false, error: error.message };
-        setLastResult(result);
-        toast({
-          title: "Classification failed",
-          description: error.message,
-          variant: "destructive",
-        });
+        setLastResult({ ok: false, error: error.message });
+        toast({ title: "Classification failed", description: error.message, variant: "destructive" });
         return;
       }
 
       const result = data as ClassifyResult;
       setLastResult(result);
 
-      if (result.ok) {
-        toast({
-          title: `Classified ${result.classified ?? 0} micro-topics`,
-          description: `${result.assigned ?? 0} assigned to parents · ${result.skipped ?? 0} need manual review`,
-        });
-        onDone(); // reload the topic list
-      } else {
-        toast({
-          title: "Classification error",
-          description: result.error ?? "Unknown error",
-          variant: "destructive",
-        });
+      if (!result.ok) {
+        toast({ title: "Classification error", description: result.error ?? "Unknown error", variant: "destructive" });
+        return;
       }
+
+      // Build a descriptive toast based on what happened
+      const didBootstrap = (result.phase1_created ?? 0) > 0;
+      const hasRemaining = (result.remaining ?? 0) > 0;
+
+      toast({
+        title: didBootstrap
+          ? `✅ Created ${result.phase1_created} parent topics`
+          : `✅ Classified ${result.classified ?? 0} micro-topics`,
+        description: [
+          didBootstrap && `Auto-generated from your ${(result.classified ?? 0) + (result.remaining ?? 0)} micro-topics.`,
+          `${result.assigned ?? 0} assigned to parents.`,
+          (result.skipped ?? 0) > 0 && `${result.skipped} below confidence threshold — assign manually.`,
+          hasRemaining && `${result.remaining} remaining — click again to continue.`,
+        ].filter(Boolean).join(" "),
+      });
+
+      onDone(); // reload topic list to show new groupings
     } catch (err: any) {
       const msg = err?.message ?? String(err);
       setLastResult({ ok: false, error: msg });
       toast({ title: "Classification failed", description: msg, variant: "destructive" });
     } finally {
       setRunning(false);
+      setPhase("idle");
     }
+  };
+
+  const buttonLabel = () => {
+    if (!running) return "⚡ Classify micro-topics";
+    if (phase === "bootstrap") return "Building taxonomy…";
+    return "Classifying…";
   };
 
   return (
@@ -513,20 +528,31 @@ function ClassifyMicroTopicsButton({ onDone }: { onDone: () => void }) {
         variant="outline"
         onClick={handleClassify}
         disabled={running}
-        className="border-violet-200 text-violet-700 hover:bg-violet-50"
+        className="border-violet-200 text-violet-700 hover:bg-violet-50 min-w-[160px]"
       >
-        {running ? (
-          <>
-            <span className="mr-1.5 h-3 w-3 rounded-full border-2 border-violet-400 border-t-transparent animate-spin inline-block" />
-            Classifying…
-          </>
-        ) : (
-          "⚡ Classify micro-topics"
+        {running && (
+          <span className="mr-1.5 h-3 w-3 rounded-full border-2 border-violet-400 border-t-transparent animate-spin inline-block" />
         )}
+        {buttonLabel()}
       </Button>
-      {lastResult && lastResult.ok && (
-        <p className="text-[10px] text-slate-400">
-          {lastResult.assigned} assigned · {lastResult.skipped} manual
+
+      {/* Last run summary */}
+      {lastResult?.ok && (
+        <div className="text-[10px] text-slate-400 text-right space-y-0.5">
+          {(lastResult.phase1_created ?? 0) > 0 && (
+            <p className="text-violet-500 font-medium">
+              {lastResult.phase1_created} parents created
+            </p>
+          )}
+          <p>{lastResult.assigned ?? 0} assigned · {lastResult.skipped ?? 0} manual</p>
+          {(lastResult.remaining ?? 0) > 0 && (
+            <p className="text-amber-500">{lastResult.remaining} remaining — run again</p>
+          )}
+        </div>
+      )}
+      {lastResult && !lastResult.ok && (
+        <p className="text-[10px] text-red-400 text-right max-w-[160px] truncate">
+          {lastResult.error}
         </p>
       )}
     </div>
