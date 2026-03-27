@@ -59,6 +59,7 @@ import MyStancesPage from "./pages/MyStancesPage";
 import SettingsLayout from "./pages/SettingsLayout";
 import SettingsLocation from "./pages/SettingsLocation";
 import SettingsNotifications from "./pages/SettingsNotifications";
+import CommunityPulsePage from "./pages/CommunityPulsePage";
 
 import RouteDebug from "./components/RouteDebug";
 
@@ -114,6 +115,7 @@ const App: React.FC = () => {
 
               <Route path="/search" element={<SearchResultsPage />} />
               <Route path="/for-you" element={<Protected><ForYouFeedPage /></Protected>} />
+              <Route path="/pulse" element={<CommunityPulsePage />} />
               
               <Route
                 path={ROUTES.SIGNUP}
