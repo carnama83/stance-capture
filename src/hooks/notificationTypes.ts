@@ -6,7 +6,14 @@
 // Enums
 // ---------------------------------------------------------------------------
 
-export type NotificationType = 'stance_change' | 'weekly_digest' | 'topic_follow';
+export type NotificationType =
+  | 'stance_change'
+  | 'weekly_digest'
+  | 'topic_follow'
+  | 'reminder'
+  | 'new_local_topic';
+
+export type DigestFrequency = 'daily' | 'weekly' | 'off';
 
 // ---------------------------------------------------------------------------
 // Core notification row
@@ -33,21 +40,39 @@ export interface UserNotification {
 
 export interface NotificationPreferences {
   userId: string;
+  // Per-type toggles
   stanceChangeEnabled: boolean;
   weeklyDigestEnabled: boolean;
   topicFollowEnabled: boolean;
-  digestDayOfWeek: number;   // 0 = Sunday … 6 = Saturday
-  digestHourLocal: number;   // 0–23
+  reminderEnabled: boolean;
+  newLocalTopicEnabled: boolean;
+  // Per-channel toggles
+  emailEnabled: boolean;
+  inapEnabled: boolean;
+  // Digest schedule
+  digestFrequency: DigestFrequency;
+  digestDayOfWeek: number;
+  digestHourLocal: number;
   timezone: string;
+  // Quiet hours (null = disabled)
+  quietHoursStart: number | null;
+  quietHoursEnd: number | null;
 }
 
 export type UpdateNotificationPreferencesInput = Partial<{
   stanceChangeEnabled: boolean;
   weeklyDigestEnabled: boolean;
   topicFollowEnabled: boolean;
+  reminderEnabled: boolean;
+  newLocalTopicEnabled: boolean;
+  emailEnabled: boolean;
+  inapEnabled: boolean;
+  digestFrequency: DigestFrequency;
   digestDayOfWeek: number;
   digestHourLocal: number;
   timezone: string;
+  quietHoursStart: number | null;
+  quietHoursEnd: number | null;
 }>;
 
 // ---------------------------------------------------------------------------
@@ -118,9 +143,16 @@ export interface RawNotificationPreferences {
   stance_change_enabled: boolean;
   weekly_digest_enabled: boolean;
   topic_follow_enabled: boolean;
+  reminder_enabled: boolean;
+  new_local_topic_enabled: boolean;
+  email_enabled: boolean;
+  inapp_enabled: boolean;
+  digest_frequency: DigestFrequency;
   digest_day_of_week: number;
   digest_hour_local: number;
   timezone: string;
+  quiet_hours_start: number | null;
+  quiet_hours_end: number | null;
 }
 
 export interface RawWeeklyDigest {
@@ -129,26 +161,15 @@ export interface RawWeeklyDigest {
   week_end: string;
   summary: {
     followed_topic_updates?: Array<{
-      topic_id: string;
-      topic_title: string;
-      summary: string;
-      href: string;
+      topic_id: string; topic_title: string; summary: string; href: string;
     }>;
     answered_question_shifts?: Array<{
-      question_id: string;
-      question_title: string;
-      summary: string;
-      href: string;
+      question_id: string; question_title: string; summary: string; href: string;
     }>;
     recommended_questions?: Array<{
-      question_id: string;
-      question_title: string;
-      href: string;
+      question_id: string; question_title: string; href: string;
     }>;
-    alignment_note?: {
-      title: string;
-      body: string;
-    } | null;
+    alignment_note?: { title: string; body: string; } | null;
   };
   created_at: string;
 }
@@ -180,9 +201,16 @@ export function mapPreferences(raw: RawNotificationPreferences): NotificationPre
     stanceChangeEnabled: raw.stance_change_enabled,
     weeklyDigestEnabled: raw.weekly_digest_enabled,
     topicFollowEnabled: raw.topic_follow_enabled,
+    reminderEnabled: raw.reminder_enabled ?? true,
+    newLocalTopicEnabled: raw.new_local_topic_enabled ?? true,
+    emailEnabled: raw.email_enabled ?? false,
+    inapEnabled: raw.inapp_enabled ?? true,
+    digestFrequency: raw.digest_frequency ?? 'weekly',
     digestDayOfWeek: raw.digest_day_of_week,
     digestHourLocal: raw.digest_hour_local,
     timezone: raw.timezone,
+    quietHoursStart: raw.quiet_hours_start ?? null,
+    quietHoursEnd: raw.quiet_hours_end ?? null,
   };
 }
 
@@ -195,21 +223,13 @@ export function mapWeeklyDigest(raw: RawWeeklyDigest): LatestWeeklyDigest {
     createdAt: raw.created_at,
     summary: {
       followedTopicUpdates: (s.followed_topic_updates ?? []).map((t) => ({
-        topicId: t.topic_id,
-        topicTitle: t.topic_title,
-        summary: t.summary,
-        href: t.href,
+        topicId: t.topic_id, topicTitle: t.topic_title, summary: t.summary, href: t.href,
       })),
       answeredQuestionShifts: (s.answered_question_shifts ?? []).map((q) => ({
-        questionId: q.question_id,
-        questionTitle: q.question_title,
-        summary: q.summary,
-        href: q.href,
+        questionId: q.question_id, questionTitle: q.question_title, summary: q.summary, href: q.href,
       })),
       recommendedQuestions: (s.recommended_questions ?? []).map((q) => ({
-        questionId: q.question_id,
-        questionTitle: q.question_title,
-        href: q.href,
+        questionId: q.question_id, questionTitle: q.question_title, href: q.href,
       })),
       alignmentNote: s.alignment_note
         ? { title: s.alignment_note.title, body: s.alignment_note.body }
