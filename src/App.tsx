@@ -58,6 +58,7 @@ import MyStancesPage from "./pages/MyStancesPage";
 
 import SettingsLayout from "./pages/SettingsLayout";
 import SettingsLocation from "./pages/SettingsLocation";
+import SettingsNotifications from "./pages/SettingsNotifications";
 
 import RouteDebug from "./components/RouteDebug";
 
@@ -159,6 +160,7 @@ const App: React.FC = () => {
                 <Route path="security" element={<SettingsSecurity />} />
                 <Route path="sessions" element={<SettingsSessions />} />
                 <Route path="location" element={<SettingsLocation />} />
+                <Route path="notifications" element={<SettingsNotifications />} />
               </Route>
 
               <Route
