@@ -29,6 +29,7 @@ export default function SettingsLayout() {
               <SettingsLink to={ROUTES.SETTINGS_SECURITY} label="Security" />
               <SettingsLink to={ROUTES.SETTINGS_SESSIONS} label="Sessions" />
               <SettingsLink to="/settings/location" label="Location" />
+              <SettingsLink to="/settings/notifications" label="Notifications" />
             </nav>
             
             {/* Divider */}
