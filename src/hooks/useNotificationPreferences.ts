@@ -36,8 +36,6 @@ export function useMyNotificationPreferences(
       const { data, error } = await sb.rpc('get_my_notification_preferences');
 
       if (error) throw error;
-
-      // RPC returns a single row object or null when no row exists
       if (!data) return null;
 
       return mapPreferences(data as RawNotificationPreferences);
@@ -71,12 +69,20 @@ export function useUpsertNotificationPreferences(): UseUpsertNotificationPrefere
       if (!sb) throw new Error('Supabase client not available');
 
       const { data, error } = await sb.rpc('upsert_my_notification_preferences', {
-        p_stance_change_enabled: input.stanceChangeEnabled ?? null,
-        p_weekly_digest_enabled: input.weeklyDigestEnabled ?? null,
-        p_topic_follow_enabled:  input.topicFollowEnabled  ?? null,
-        p_digest_day_of_week:    input.digestDayOfWeek     ?? null,
-        p_digest_hour_local:     input.digestHourLocal     ?? null,
-        p_timezone:              input.timezone             ?? null,
+        p_stance_change_enabled:   input.stanceChangeEnabled   ?? null,
+        p_weekly_digest_enabled:   input.weeklyDigestEnabled   ?? null,
+        p_topic_follow_enabled:    input.topicFollowEnabled    ?? null,
+        p_digest_day_of_week:      input.digestDayOfWeek       ?? null,
+        p_digest_hour_local:       input.digestHourLocal       ?? null,
+        p_timezone:                input.timezone              ?? null,
+        p_email_enabled:           input.emailEnabled          ?? null,
+        p_inapp_enabled:           input.inapEnabled           ?? null,
+        p_digest_frequency:        input.digestFrequency       ?? null,
+        // quiet hours: pass -1 to clear (mapped in RPC), null to leave unchanged
+        p_quiet_hours_start:       input.quietHoursStart !== undefined ? input.quietHoursStart : null,
+        p_quiet_hours_end:         input.quietHoursEnd   !== undefined ? input.quietHoursEnd   : null,
+        p_reminder_enabled:        input.reminderEnabled        ?? null,
+        p_new_local_topic_enabled: input.newLocalTopicEnabled   ?? null,
       });
 
       if (error) throw error;
@@ -84,7 +90,6 @@ export function useUpsertNotificationPreferences(): UseUpsertNotificationPrefere
       return mapPreferences(data as RawNotificationPreferences);
     },
     onSuccess: (updated) => {
-      // Update cache directly so settings UI reflects instantly
       queryClient.setQueryData(['my-notification-preferences'], updated);
     },
   });
