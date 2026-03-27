@@ -15,6 +15,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ChevronDown, Plus, Search, Compass } from "lucide-react";
+import { NotificationsBell } from "@/components/notifications/NotificationsBell";
 
 type Profile = {
   random_id: string;
@@ -287,6 +288,9 @@ export default function AppTopBar({
               >
                 <Plus className="h-5 w-5" />
               </button>
+
+              {/* Notifications */}
+              <NotificationsBell />
 
               {/* User Dropdown */}
               <DropdownMenu>
