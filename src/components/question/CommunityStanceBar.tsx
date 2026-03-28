@@ -43,6 +43,34 @@ export interface CommunityStanceBarProps {
   compact?: boolean;
 }
 
+// ── S3: Conviction vs noise indicator ────────────────────────────────────────
+// Derived from the distribution itself — no extra data needed.
+// "High conviction" = dominant side ≥ 65% and neutral < 20%
+// "Strongly polarised" = both sides ≥ 30% and neutral < 25%
+// "Mixed views" = everything else
+function convictionLabel(
+  supportPct: number | null,
+  opposePct: number | null,
+  neutralPct: number | null,
+  responses: number,
+): { label: string; color: string } | null {
+  if (responses < 10) return null; // not enough data to classify
+  const s = supportPct ?? 0;
+  const o = opposePct  ?? 0;
+  const n = neutralPct ?? 0;
+  const dominant = Math.max(s, o);
+  if (dominant >= 65 && n < 20) {
+    return { label: "Strong conviction", color: "#27500A" };
+  }
+  if (s >= 30 && o >= 30 && n < 25) {
+    return { label: "Strongly polarised", color: "#791F1F" };
+  }
+  if (n >= 40) {
+    return { label: "Genuinely uncertain", color: "#633806" };
+  }
+  return null; // default — no label needed
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function formatPct(val: number | null | undefined): string {
@@ -140,6 +168,9 @@ export function CommunityStanceBar({
   const nW = neutralW * norm;
   const sW = supportW * norm;
 
+  // S3: conviction vs noise label
+  const conviction = convictionLabel(supportPct, opposePct, neutralPct, responses);
+
   return (
     <div className="space-y-2">
       {/* Label row */}
@@ -209,6 +240,22 @@ export function CommunityStanceBar({
           </span>
         )}
       </div>
+
+      {/* S3: conviction vs noise indicator */}
+      {conviction && !compact && (
+        <div className="flex items-center gap-1.5 pt-0.5">
+          <span
+            className="inline-block h-1.5 w-1.5 rounded-full"
+            style={{ background: conviction.color }}
+          />
+          <span
+            className="text-[10px] font-medium"
+            style={{ color: conviction.color }}
+          >
+            {conviction.label}
+          </span>
+        </div>
+      )}
     </div>
   );
 }
