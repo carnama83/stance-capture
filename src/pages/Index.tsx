@@ -571,6 +571,41 @@ function Pill({ children }: { children: React.ReactNode }) {
   );
 }
 
+// S3 — Signal quality pill: enriches trend_micro_signal with descriptive copy + colour
+function SignalPill({ signal }: { signal: string }) {
+  const s = signal.toLowerCase();
+  if (s.includes("media") || s.includes("surge")) {
+    return (
+      <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-amber-50 text-amber-700 border border-amber-200">
+        Media-driven
+      </span>
+    );
+  }
+  if (s.includes("polar")) {
+    return (
+      <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-red-50 text-red-700 border border-red-200">
+        Polarising
+      </span>
+    );
+  }
+  if (s.includes("organic") || s.includes("momentum")) {
+    return (
+      <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-green-50 text-green-700 border border-green-200">
+        Organic
+      </span>
+    );
+  }
+  if (s.includes("trend") || s.includes("surging")) {
+    return (
+      <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-orange-50 text-orange-700 border border-orange-200">
+        Trending
+      </span>
+    );
+  }
+  // fallback — render raw signal as plain pill
+  return <Pill>{signal.toUpperCase()}</Pill>;
+}
+
 function Eyebrow({ children }: { children: React.ReactNode }) {
   return (
     <div className="text-[11px] font-semibold uppercase tracking-widest text-slate-400 mb-2">
@@ -873,7 +908,7 @@ function HeroQuestionModule({
                 <Tag key={t}>{t}</Tag>
               ))}
               {heroQuestion.trend_micro_signal && (
-                <Pill>{heroQuestion.trend_micro_signal.toUpperCase()}</Pill>
+                <SignalPill signal={heroQuestion.trend_micro_signal} />
               )}
               {heroQuestion.user_has_answered && <Pill>ANSWERED</Pill>}
               {heroQuestion.origin_location_label &&
@@ -1540,7 +1575,7 @@ function FeaturedQuestionCard({
         <div className="flex flex-wrap items-center gap-1.5 mb-3">
           {q.tags && q.tags.length > 0 && <Tag primary>{q.tags[0]}</Tag>}
           {q.tags && q.tags.slice(1, 3).map((t) => <Tag key={t}>{t}</Tag>)}
-          {q.trend_micro_signal && <Pill>{q.trend_micro_signal.toUpperCase()}</Pill>}
+          {q.trend_micro_signal && <SignalPill signal={q.trend_micro_signal} />}
           {q.user_has_answered && <Pill>ANSWERED</Pill>}
           {q.origin_location_label && q.origin_location_label !== q.audience_location_label && (
             <Pill>📍 {q.origin_location_label}</Pill>
@@ -1703,7 +1738,7 @@ function GridQuestionCard({
         <div className="flex flex-wrap items-center gap-1.5 mb-2">
           {q.tags && q.tags.length > 0 && <Tag primary>{q.tags[0]}</Tag>}
           {q.tags && q.tags.slice(1, 2).map((t) => <Tag key={t}>{t}</Tag>)}
-          {q.trend_micro_signal && <Pill>{q.trend_micro_signal.toUpperCase()}</Pill>}
+          {q.trend_micro_signal && <SignalPill signal={q.trend_micro_signal} />}
           {q.user_has_answered && <Pill>ANSWERED</Pill>}
           {q.origin_location_label && q.origin_location_label !== q.audience_location_label && (
             <Pill>📍 {q.origin_location_label}</Pill>
