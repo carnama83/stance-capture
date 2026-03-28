@@ -9,8 +9,6 @@ import YouVsCommunityCard from "./MyStances/YouVsCommunityCard";
 import SinceLastVisitCard from "./MyStances/SinceLastVisitCard";
 import QuickTakesCard from "./MyStances/QuickTakesCard";
 import TrendingAnsweredCard from "./MyStances/TrendingAnsweredCard";
-import QuickTakesCard from "./MyStances/QuickTakesCard";
-import TrendingAnsweredCard from "./MyStances/TrendingAnsweredCard";
 
 import * as React from "react";
 import { QuestionPhaseBadge } from "@/components/question/QuestionPhaseBadge";
@@ -327,12 +325,6 @@ export default function MyStancesPage() {
 
         {/* Contribution acknowledgement */}
         <ContributionBanner />
-
-        {/* Phase 2a — Quick takes: 3 personalised unanswered questions */}
-        <QuickTakesCard />
-
-        {/* Phase 2b — Questions user answered that are now trending/shifting */}
-        <TrendingAnsweredCard userId={userId} />
 
         {/* Summary cards */}
         <section className="space-y-3">
