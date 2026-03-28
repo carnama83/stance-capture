@@ -41,8 +41,9 @@ export default function QuickTakesCard() {
     queryFn: async () => {
       const supabase = getSupabase();
       if (!supabase) throw new Error("Supabase not available");
+      // Match exactly how ForYouFeedPage calls it — p_limit only, .single()
       const { data, error } = await supabase
-        .rpc("get_for_you_feed", { p_limit: 3, p_offset: 0 })
+        .rpc("get_for_you_feed", { p_limit: 3 })
         .single();
       if (error) throw error;
       return data as ForYouFeed;
@@ -51,7 +52,6 @@ export default function QuickTakesCard() {
 
   const questions = (data?.questions ?? []).slice(0, 3);
 
-  // Track when all 3 have been answered (user clicked through to a question)
   const markAnswered = (id: string) => {
     setAnsweredIds((prev) => new Set([...prev, id]));
   };
