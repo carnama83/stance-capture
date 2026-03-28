@@ -44,7 +44,15 @@ export default function QuickTakesCard({ userId }: QuickTakesCardProps) {
       const { data, error } = await supabase
         .rpc("get_for_you_feed", { p_limit: 3 })
         .single();
-      if (error) throw error;
+      if (error) {
+        console.error("[QuickTakes] get_for_you_feed error:", {
+          message: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+        });
+        throw error;
+      }
       return data as ForYouFeed;
     },
   });
