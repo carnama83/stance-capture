@@ -1,18 +1,13 @@
 // src/pages/MyStances/QuickTakesCard.tsx
-// Phase 2a — Q4: Three personalized unanswered questions from topics the user
-// has already engaged with. Uses get_for_you_feed (excludes answered, prioritizes
-// followed topics and user region). Non-pressuring, fully skippable.
+// Phase 2a — Q4: Three personalized unanswered questions.
+// Uses get_for_you_feed — excludes answered, prioritizes followed topics + region.
 
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { getSupabase } from "@/lib/supabaseClient";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
+  Card, CardContent, CardDescription, CardHeader, CardTitle,
 } from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
 
@@ -29,19 +24,23 @@ type ForYouFeed = {
   count: number;
 };
 
-export default function QuickTakesCard() {
-  const sb = React.useMemo(getSupabase, []);
+interface QuickTakesCardProps {
+  userId: string | null;
+}
+
+export default function QuickTakesCard({ userId }: QuickTakesCardProps) {
   const [skipped, setSkipped] = React.useState(false);
   const [answeredIds, setAnsweredIds] = React.useState<Set<string>>(new Set());
 
   const { data, isLoading } = useQuery<ForYouFeed>({
-    queryKey: ["quick-takes"],
-    enabled: !!sb && !skipped,
+    queryKey: ["quick-takes", userId],
+    // Only fire when we have a confirmed authenticated userId
+    enabled: !!userId && !skipped,
     staleTime: 5 * 60_000,
+    retry: false,
     queryFn: async () => {
       const supabase = getSupabase();
       if (!supabase) throw new Error("Supabase not available");
-      // Match exactly how ForYouFeedPage calls it — p_limit only, .single()
       const { data, error } = await supabase
         .rpc("get_for_you_feed", { p_limit: 3 })
         .single();
@@ -51,12 +50,11 @@ export default function QuickTakesCard() {
   });
 
   const questions = (data?.questions ?? []).slice(0, 3);
+  const allDone = questions.length > 0 && questions.every((q) => answeredIds.has(q.id));
 
   const markAnswered = (id: string) => {
     setAnsweredIds((prev) => new Set([...prev, id]));
   };
-
-  const allDone = questions.length > 0 && questions.every((q) => answeredIds.has(q.id));
 
   if (skipped) return null;
 
@@ -122,9 +120,7 @@ export default function QuickTakesCard() {
                       onClick={() => markAnswered(q.id)}
                       className={[
                         "text-sm leading-snug hover:underline transition-colors",
-                        done
-                          ? "text-slate-400 line-through"
-                          : "text-slate-900 font-medium",
+                        done ? "text-slate-400 line-through" : "text-slate-900 font-medium",
                       ].join(" ")}
                     >
                       {q.question}
