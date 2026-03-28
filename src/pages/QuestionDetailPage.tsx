@@ -25,6 +25,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { FollowTopicButton } from "@/components/FollowTopicButton";
 import { fetchCommunityStats, communityStatsKey } from "@/lib/fetchCommunityStats";
 import { CommunityStanceBar } from "@/components/question/CommunityStanceBar";
+import WhyIsTrendingPanel from "@/components/insights/WhyIsTrendingPanel";
 import {
 
 } from "@/types/communityStance";
@@ -1103,6 +1104,12 @@ export default function QuestionDetailPage() {
                 </>
               )}
             </section>
+
+            {/* S3: Why is this trending? */}
+            <WhyIsTrendingPanel
+              questionId={question.id}
+              topicId={question.topic_id}
+            />
 
             {threadSentimentLoading && !threadSentiment && (
               <section className="rounded-xl border border-slate-200 bg-white p-4 md:p-5 shadow-sm">
