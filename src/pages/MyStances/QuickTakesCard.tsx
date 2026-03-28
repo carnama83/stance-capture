@@ -1,6 +1,5 @@
 // src/pages/MyStances/QuickTakesCard.tsx
-// Phase 2a — Q4: Three personalized unanswered questions rendered as tiles,
-// matching the homepage GridQuestionCard format exactly.
+// Phase 2a — Q4: Three personalized unanswered questions as homepage-style tiles.
 
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -25,7 +24,6 @@ type ForYouFeed = {
   count: number;
 };
 
-// Matches homepage card + tag styles exactly
 const card = "bg-white rounded-xl shadow-sm ring-1 ring-slate-900/5";
 
 function Tag({ children, primary }: { children: React.ReactNode; primary?: boolean }) {
@@ -50,24 +48,25 @@ interface QuickTileProps {
 
 function QuickTile({ q, onAnswered }: QuickTileProps) {
   const qc = useQueryClient();
+  const [savedScore, setSavedScore] = React.useState<number | null>(null);
 
   const mutation = useMutation({
     mutationFn: async (score: number) => {
       const sb = getSupabase();
       if (!sb) throw new Error("Supabase not available");
-      const { error } = await sb
-        .from("question_stances")
-        .upsert(
-          { question_id: q.id, score, updated_at: new Date().toISOString() },
-          { onConflict: "user_id,question_id" }
-        );
+      // Use set_question_stance RPC — handles user_id, conflict, and history logging
+      const { error } = await sb.rpc("set_question_stance", {
+        p_question_id: q.id,
+        p_score: score,
+      });
       if (error) throw error;
       return score;
     },
-    onSuccess: () => {
-      onAnswered(q.id);
-      qc.invalidateQueries({ queryKey: ["quick-takes"] });
+    onSuccess: (score) => {
+      setSavedScore(score);
       qc.invalidateQueries({ queryKey: ["my-stances"] });
+      // Short delay so user sees the saved state before tile disappears
+      setTimeout(() => onAnswered(q.id), 800);
     },
   });
 
@@ -80,7 +79,6 @@ function QuickTile({ q, onAnswered }: QuickTileProps) {
         bannerHeight={130}
       />
       <div className="p-4 flex flex-col flex-1">
-        {/* Tags */}
         {q.tags && q.tags.length > 0 && (
           <div className="flex flex-wrap items-center gap-1.5 mb-2">
             <Tag primary>{q.tags[0]}</Tag>
@@ -88,7 +86,6 @@ function QuickTile({ q, onAnswered }: QuickTileProps) {
           </div>
         )}
 
-        {/* Question text */}
         <Link
           to={`/q/${q.id}`}
           className="text-sm font-semibold text-slate-900 leading-snug hover:underline line-clamp-3 mb-1 flex-1"
@@ -96,23 +93,21 @@ function QuickTile({ q, onAnswered }: QuickTileProps) {
           {q.question}
         </Link>
 
-        {/* Topic label */}
         {q.topic_title && (
           <p className="text-[11px] text-slate-400 mt-1 mb-3">
             Topic: {q.topic_title}
           </p>
         )}
 
-        {/* Stance slider */}
         <div className="mt-auto pt-2">
           <QuestionStanceSlider
             questionId={q.id}
             questionText={q.question}
             summary={q.summary ?? null}
-            initialValue={null}
+            initialValue={savedScore}
             disabled={mutation.isPending}
             mutationPending={mutation.isPending}
-            onSubmit={(v) => mutation.mutateAsync(v)}
+            onSubmit={async (v) => { await mutation.mutateAsync(v); }}
           />
           <div className="mt-2 flex justify-end">
             <Link
@@ -142,9 +137,9 @@ export default function QuickTakesCard({ userId }: QuickTakesCardProps) {
     staleTime: 5 * 60_000,
     retry: false,
     queryFn: async () => {
-      const supabase = getSupabase();
-      if (!supabase) throw new Error("Supabase not available");
-      const { data, error } = await supabase
+      const sb = getSupabase();
+      if (!sb) throw new Error("Supabase not available");
+      const { data, error } = await sb
         .rpc("get_for_you_feed", { p_limit: 3 })
         .single();
       if (error) throw error;
@@ -161,15 +156,10 @@ export default function QuickTakesCard({ userId }: QuickTakesCardProps) {
 
   return (
     <div className="mb-4">
-      {/* Header */}
       <div className="flex items-baseline justify-between mb-3">
         <div>
-          <h2 className="text-sm font-semibold text-slate-900">
-            Today's 3 quick takes
-          </h2>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Optional. Takes less than a minute.
-          </p>
+          <h2 className="text-sm font-semibold text-slate-900">Today's 3 quick takes</h2>
+          <p className="text-xs text-slate-500 mt-0.5">Optional. Takes less than a minute.</p>
         </div>
         {!allDone && (
           <button
@@ -182,7 +172,6 @@ export default function QuickTakesCard({ userId }: QuickTakesCardProps) {
         )}
       </div>
 
-      {/* Loading */}
       {isLoading && (
         <div className="flex items-center gap-2 py-4 text-xs text-slate-500">
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -190,23 +179,19 @@ export default function QuickTakesCard({ userId }: QuickTakesCardProps) {
         </div>
       )}
 
-      {/* Done state */}
       {allDone && (
         <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 text-xs text-slate-600">
           Thanks. You can come back anytime.
         </div>
       )}
 
-      {/* Tile grid — matches homepage 2-col grid */}
       {!isLoading && !allDone && unanswered.length > 0 && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {unanswered.map((q) => (
             <QuickTile
               key={q.id}
               q={q}
-              onAnswered={(id) =>
-                setAnsweredIds((prev) => new Set([...prev, id]))
-              }
+              onAnswered={(id) => setAnsweredIds((prev) => new Set([...prev, id]))}
             />
           ))}
         </div>
