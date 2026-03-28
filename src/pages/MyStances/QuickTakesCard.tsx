@@ -1,7 +1,6 @@
 // src/pages/MyStances/QuickTakesCard.tsx
-// Phase 2a — Q4: Unlimited replacement pool. Always shows 3 tiles.
-// Option B post-answer feedback: stacked distribution bar + regional comparison.
-// Uses a minimal inline slider — no AI tip, no internal saving state.
+// Phase 2a — Q4: Unlimited replacement pool. Always 3 unanswered tiles.
+// Option 2 feedback: header area transforms into community stats after each answer.
 
 import * as React from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -9,10 +8,10 @@ import { Link } from "react-router-dom";
 import { getSupabase } from "@/lib/supabaseClient";
 import { QuestionCoverImage } from "@/components/question/QuestionCoverImage";
 import { getStanceColorHex } from "@/lib/stanceColors";
-import { Loader2 } from "lucide-react";
+import { Loader2, X } from "lucide-react";
 
-const BATCH    = 6;
-const VISIBLE  = 3;
+const BATCH     = 6;
+const VISIBLE   = 3;
 const REFILL_AT = 1;
 
 type ForYouQuestion = {
@@ -31,23 +30,17 @@ type ForYouFeed = {
 };
 
 type FeedbackStats = {
+  questionText: string;
+  score: number;
   support_pct: number;
   neutral_pct: number;
   oppose_pct: number;
   responses: number;
   city_label: string | null;
   city_support_pct: number | null;
-  city_oppose_pct: number | null;
-  city_neutral_pct: number | null;
 };
 
-const STANCE_LABEL: Record<number, string> = {
-  [-2]: "Strongly disagreed",
-  [-1]: "Disagreed",
-  [0]:  "Were neutral",
-  [1]:  "Agreed",
-  [2]:  "Strongly agreed",
-};
+// ── Small UI atoms ────────────────────────────────────────────────────────────
 
 const card = "bg-white rounded-xl shadow-sm ring-1 ring-slate-900/5";
 
@@ -66,13 +59,22 @@ function Tag({ children, primary }: { children: React.ReactNode; primary?: boole
   );
 }
 
-// Minimal stance slider — no AI tip, no saving state, just value + commit
+// ── Minimal stance slider — no AI tip, no internal saving state ───────────────
+
 const STANCE_LABELS: Record<number, string> = {
   [-2]: "Strongly disagree",
   [-1]: "Disagree",
   [0]:  "Neutral",
   [1]:  "Agree",
   [2]:  "Strongly agree",
+};
+
+const STANCE_LABELS_PAST: Record<number, string> = {
+  [-2]: "Strongly disagreed",
+  [-1]: "Disagreed",
+  [0]:  "Were neutral",
+  [1]:  "Agreed",
+  [2]:  "Strongly agreed",
 };
 
 function QuickSlider({ onCommit, disabled }: {
@@ -123,65 +125,118 @@ function QuickSlider({ onCommit, disabled }: {
     </div>
   );
 }
-function FeedbackPanel({ score, stats }: { score: number; stats: FeedbackStats | null }) {
-  if (!stats) {
+
+// ── Header: either description or community feedback ──────────────────────────
+
+function HeaderArea({
+  feedback,
+  loadingFeedback,
+  onDismiss,
+  onSkip,
+  allDone,
+}: {
+  feedback: FeedbackStats | null;
+  loadingFeedback: boolean;
+  onDismiss: () => void;
+  onSkip: () => void;
+  allDone: boolean;
+}) {
+  if (!feedback && !loadingFeedback) {
+    // Default header
     return (
-      <div className="mt-2 rounded-lg bg-slate-50 border border-slate-100 px-3 py-3">
-        <p className="text-xs text-slate-500">Stance saved. Community data loading…</p>
+      <div className="flex items-baseline justify-between mb-3">
+        <div>
+          <h2 className="text-sm font-semibold text-slate-900">Today's quick takes</h2>
+          <p className="text-xs text-slate-500 mt-0.5">Optional. Takes less than a minute.</p>
+        </div>
+        {!allDone && (
+          <button
+            type="button"
+            onClick={onSkip}
+            className="text-xs text-slate-400 hover:text-slate-600 transition-colors"
+          >
+            Skip for now
+          </button>
+        )}
       </div>
     );
   }
 
-  const agree   = Math.round(stats.support_pct ?? 0);
-  const neutral = Math.round(stats.neutral_pct ?? 0);
-  const disagree = Math.round(stats.oppose_pct ?? 0);
-  const stanceLabel = STANCE_LABEL[score] ?? "Responded";
+  if (loadingFeedback) {
+    return (
+      <div className="mb-3 rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 flex items-center gap-2">
+        <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400 shrink-0" />
+        <span className="text-xs text-slate-500">Loading community response…</span>
+      </div>
+    );
+  }
 
-  // Dominant direction for headline
+  if (!feedback) return null;
+
+  const agree    = Math.round(feedback.support_pct ?? 0);
+  const neutral  = Math.round(feedback.neutral_pct ?? 0);
+  const disagree = Math.round(feedback.oppose_pct ?? 0);
+
   const dominant =
     agree >= disagree && agree >= neutral
       ? { pct: agree, label: "lean toward agreement" }
-      : disagree >= agree && disagree >= neutral
+      : disagree > agree && disagree >= neutral
       ? { pct: disagree, label: "lean toward disagreement" }
       : { pct: neutral, label: "are neutral" };
 
-  // City comparison sentence
   let citySentence: string | null = null;
-  if (stats.city_label && stats.city_support_pct !== null) {
-    const cityAgree = Math.round(stats.city_support_pct);
+  if (feedback.city_label && feedback.city_support_pct !== null) {
+    const cityAgree = Math.round(feedback.city_support_pct);
     const diff = cityAgree - agree;
     if (Math.abs(diff) <= 5) {
-      citySentence = `In ${stats.city_label}, ${cityAgree}% agree — similar to the national picture.`;
+      citySentence = `In ${feedback.city_label}, ${cityAgree}% agree — similar to the national picture.`;
     } else if (diff > 0) {
-      citySentence = `In ${stats.city_label}, ${cityAgree}% agree — slightly above the national average.`;
+      citySentence = `In ${feedback.city_label}, ${cityAgree}% agree — above the national average.`;
     } else {
-      citySentence = `In ${stats.city_label}, ${cityAgree}% agree — slightly below the national average.`;
+      citySentence = `In ${feedback.city_label}, ${cityAgree}% agree — below the national average.`;
     }
   }
 
   return (
-    <div className="mt-2 rounded-lg bg-slate-50 border border-slate-100 px-3 py-3 space-y-2.5">
-      {/* Your stance */}
-      <div className="flex items-center gap-1.5">
-        <span className="inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-medium text-slate-700">
-          You {stanceLabel}
-        </span>
+    <div className="mb-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+      <div className="flex items-start justify-between gap-3 mb-2">
+        <div className="flex-1 min-w-0">
+          {/* Question snippet + your stance */}
+          <p className="text-[11px] text-slate-500 line-clamp-1 mb-0.5">
+            "{feedback.questionText.slice(0, 70)}{feedback.questionText.length > 70 ? "…" : ""}"
+          </p>
+          <div className="flex items-center gap-2">
+            <span
+              className="text-xs font-medium"
+              style={{ color: getStanceColorHex(feedback.score) }}
+            >
+              You {STANCE_LABELS_PAST[feedback.score] ?? "responded"}
+            </span>
+            <span className="text-slate-300 text-xs">·</span>
+            <span className="text-xs text-slate-600">
+              {dominant.pct}% of respondents {dominant.label}
+            </span>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="shrink-0 text-slate-400 hover:text-slate-600 transition-colors mt-0.5"
+          aria-label="Dismiss"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
       </div>
 
-      {/* Headline */}
-      <p className="text-xs font-medium text-slate-800 leading-snug">
-        {dominant.pct}% of respondents {dominant.label}
-      </p>
-
       {/* Stacked distribution bar */}
-      <div className="flex h-2 w-full overflow-hidden rounded-full">
+      <div className="flex h-2 w-full overflow-hidden rounded-full mb-1.5">
         <div style={{ width: `${agree}%`, background: "#639922" }} />
         <div style={{ width: `${neutral}%`, background: "#B4B2A9" }} />
         <div style={{ width: `${disagree}%`, background: "#D85A30" }} />
       </div>
 
-      {/* Legend */}
-      <div className="flex items-center gap-3 text-[10px] text-slate-500">
+      {/* Legend + city note in one row */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] text-slate-400">
         <span className="flex items-center gap-1">
           <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#639922]" />
           Agree {agree}%
@@ -194,87 +249,33 @@ function FeedbackPanel({ score, stats }: { score: number; stats: FeedbackStats |
           <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#D85A30]" />
           Disagree {disagree}%
         </span>
+        {citySentence && (
+          <>
+            <span className="text-slate-200">·</span>
+            <span className="text-slate-400">{citySentence}</span>
+          </>
+        )}
+        {feedback.responses > 0 && (
+          <>
+            <span className="text-slate-200">·</span>
+            <span>{feedback.responses.toLocaleString()} respondents</span>
+          </>
+        )}
       </div>
-
-      {/* Regional comparison */}
-      {citySentence && (
-        <p className="text-[11px] text-slate-500 border-t border-slate-200 pt-2 leading-snug">
-          {citySentence}
-        </p>
-      )}
-
-      {/* Respondent count */}
-      {stats.responses > 0 && (
-        <p className="text-[10px] text-slate-400">
-          Based on {stats.responses.toLocaleString()} respondents.
-        </p>
-      )}
     </div>
   );
 }
 
+// ── QuickTile — purely a question display + slider, no feedback state ─────────
+
 interface QuickTileProps {
   q: ForYouQuestion;
-  isAnswered: boolean;
-  isFading: boolean;
-  onAnswered: (id: string) => void;
+  onAnswered: (id: string, score: number) => void;
 }
 
-function QuickTile({ q, isAnswered, isFading, onAnswered }: QuickTileProps) {
+function QuickTile({ q, onAnswered }: QuickTileProps) {
   const qc = useQueryClient();
-  const [savedScore, setSavedScore] = React.useState<number | null>(null);
-  const [stats, setStats] = React.useState<FeedbackStats | null>(null);
-  const [loadingStats, setLoadingStats] = React.useState(false);
-
-  const fetchStats = React.useCallback(async (questionId: string) => {
-    setLoadingStats(true);
-    try {
-      const sb = getSupabase();
-      if (!sb) return;
-
-      // Fetch global distribution
-      const { data: distData } = await sb
-        .rpc("get_question_distribution", {
-          p_question_id: questionId,
-          p_region: "Global",
-          p_window_hours: 168,
-        });
-
-      const dist = Array.isArray(distData) && distData.length > 0 ? distData[0] : null;
-
-      // Fetch regional (city-level) comparison
-      const { data: regionData } = await sb
-        .rpc("get_regional_comparison", { p_question_id: questionId });
-
-      // Pick best available region (city first)
-      const regionRows = (regionData ?? []) as Array<{
-        region_scope: string;
-        region_label: string;
-        pct_support: number | null;
-        pct_neutral: number | null;
-        pct_oppose: number | null;
-      }>;
-      const cityRow = regionRows.find((r) => r.region_scope === "city")
-        ?? regionRows.find((r) => r.region_scope === "county")
-        ?? regionRows.find((r) => r.region_scope === "state")
-        ?? null;
-
-      setStats({
-        support_pct:      dist?.support_pct  ?? 0,
-        neutral_pct:      dist?.neutral_pct  ?? 0,
-        oppose_pct:       dist?.oppose_pct   ?? 0,
-        responses:        dist?.responses    ?? 0,
-        city_label:       cityRow?.region_label ?? null,
-        city_support_pct: cityRow?.pct_support  ?? null,
-        city_neutral_pct: cityRow?.pct_neutral  ?? null,
-        city_oppose_pct:  cityRow?.pct_oppose   ?? null,
-      });
-    } catch (e) {
-      console.error("[QuickTile] fetchStats error:", e);
-    } finally {
-      setLoadingStats(false);
-    }
-  }, []);
+  const [submitted, setSubmitted] = React.useState(false);
 
   const mutation = useMutation({
     mutationFn: async (score: number) => {
@@ -287,21 +288,15 @@ function QuickTile({ q, isAnswered, isFading, onAnswered }: QuickTileProps) {
       if (error) throw error;
       return score;
     },
-    onSuccess: async (score) => {
-      setSavedScore(score);
+    onSuccess: (score) => {
+      setSubmitted(true);
       qc.invalidateQueries({ queryKey: ["my-stances"] });
-      // Fetch community stats immediately after save
-      await fetchStats(q.id);
-      // Notify parent — tile stays visible (parent manages when it fades)
-      onAnswered(q.id);
+      onAnswered(q.id, score);
     },
   });
 
   return (
-    <div
-      className={`${card} overflow-hidden flex flex-col transition-opacity duration-300`}
-      style={{ opacity: isFading ? 0 : 1 }}
-    >
+    <div className={`${card} overflow-hidden flex flex-col`}>
       <QuestionCoverImage
         imageUrl={q.cover_image_url ?? null}
         tags={q.tags ?? []}
@@ -330,61 +325,48 @@ function QuickTile({ q, isAnswered, isFading, onAnswered }: QuickTileProps) {
         )}
 
         <div className="mt-auto pt-2">
-          {/* Show slider before answer, feedback panel after */}
-          {!isAnswered ? (
-            <>
-              <QuickSlider
-                disabled={mutation.isPending}
-                onCommit={(v) => { mutation.mutate(v); }}
-              />
-              <div className="mt-2 flex justify-end">
-                <Link
-                  to={`/q/${q.id}`}
-                  className="text-[11px] text-slate-400 hover:text-slate-700 transition-colors"
-                >
-                  Open →
-                </Link>
-              </div>
-            </>
+          {submitted ? (
+            <div className="flex items-center gap-2 py-2 text-xs text-slate-400">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Saved
+            </div>
           ) : (
-            <>
-              {loadingStats ? (
-                <div className="mt-2 rounded-lg bg-slate-50 border border-slate-100 px-3 py-3 flex items-center gap-2 text-xs text-slate-500">
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                  Loading community data…
-                </div>
-              ) : (
-                <FeedbackPanel score={savedScore!} stats={stats} />
-              )}
-              <div className="mt-2 flex justify-end">
-                <Link
-                  to={`/q/${q.id}`}
-                  className="text-[11px] text-slate-400 hover:text-slate-700 transition-colors"
-                >
-                  Open →
-                </Link>
-              </div>
-            </>
+            <QuickSlider
+              disabled={mutation.isPending}
+              onCommit={(v) => mutation.mutate(v)}
+            />
           )}
+          <div className="mt-2 flex justify-end">
+            <Link
+              to={`/q/${q.id}`}
+              className="text-[11px] text-slate-400 hover:text-slate-700 transition-colors"
+            >
+              Open →
+            </Link>
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
+// ── QuickTakesCard — orchestrates pool, header transformation, grid ───────────
+
 interface QuickTakesCardProps {
   userId: string | null;
 }
 
 export default function QuickTakesCard({ userId }: QuickTakesCardProps) {
-  const [skipped, setSkipped]           = React.useState(false);
-  const [pool, setPool]                 = React.useState<ForYouQuestion[]>([]);
-  const [answeredIds, setAnsweredIds]   = React.useState<Set<string>>(new Set());
-  const [fadingId, setFadingId]         = React.useState<string | null>(null);
-  const [offset, setOffset]             = React.useState(0);
-  const [loading, setLoading]           = React.useState(false);
-  const [exhausted, setExhausted]       = React.useState(false);
-  const lastAnsweredRef                 = React.useRef<string | null>(null);
+  const [skipped, setSkipped]               = React.useState(false);
+  const [pool, setPool]                     = React.useState<ForYouQuestion[]>([]);
+  const [answeredIds, setAnsweredIds]       = React.useState<Set<string>>(new Set());
+  const [offset, setOffset]                 = React.useState(0);
+  const [loading, setLoading]               = React.useState(false);
+  const [exhausted, setExhausted]           = React.useState(false);
+  const [feedback, setFeedback]             = React.useState<FeedbackStats | null>(null);
+  const [loadingFeedback, setLoadingFeedback] = React.useState(false);
+
+  // ── Pool fetching ─────────────────────────────────────────────────────────
 
   const fetchBatch = React.useCallback(async (fetchOffset: number) => {
     if (!userId || skipped) return;
@@ -416,73 +398,101 @@ export default function QuickTakesCard({ userId }: QuickTakesCardProps) {
     }
   }, [userId, skipped]);
 
-  // Initial load
   React.useEffect(() => {
-    if (userId && !skipped && pool.length === 0 && !exhausted) {
-      fetchBatch(0);
-    }
+    if (userId && !skipped && pool.length === 0 && !exhausted) fetchBatch(0);
   }, [userId, skipped]);
 
   const unanswered = pool.filter((q) => !answeredIds.has(q.id));
 
-  // Refill when pool runs low
   React.useEffect(() => {
     if (!loading && !exhausted && !skipped && pool.length > 0 && unanswered.length <= REFILL_AT) {
       fetchBatch(offset);
     }
   }, [unanswered.length, loading, exhausted, skipped]);
 
-  // Visible = up to 3 unanswered + the last answered tile (showing feedback)
-  const visibleUnanswered = unanswered.slice(0, VISIBLE);
-  const lastAnsweredQ = lastAnsweredRef.current
-    ? pool.find((q) => q.id === lastAnsweredRef.current) ?? null
-    : null;
+  // ── Stats fetch (fires after each answer, populates header feedback) ──────
 
-  // Build the display list: answered tile (with feedback) + up to 2 unanswered
-  // After answer: [answered, unanswered1, unanswered2]
-  // When next answer comes: answered fades out, new unanswered slides in
-  const displayTiles: ForYouQuestion[] = lastAnsweredQ
-    ? [lastAnsweredQ, ...unanswered.slice(0, VISIBLE - 1)]
-    : visibleUnanswered;
+  const fetchFeedback = React.useCallback(async (
+    questionText: string,
+    score: number,
+    questionId: string,
+  ) => {
+    setLoadingFeedback(true);
+    try {
+      const sb = getSupabase();
+      if (!sb) return;
 
-  const handleAnswered = React.useCallback((id: string) => {
-    const prev = lastAnsweredRef.current;
-    // Fade out the previously answered tile
-    if (prev) {
-      setFadingId(prev);
-      setTimeout(() => {
-        setAnsweredIds((s) => new Set([...s, prev]));
-        setFadingId(null);
-      }, 350);
+      const [distRes, regionRes] = await Promise.all([
+        sb.rpc("get_question_distribution", {
+          p_question_id: questionId,
+          p_region: "Global",
+          p_window_hours: 168,
+        }),
+        sb.rpc("get_regional_comparison", { p_question_id: questionId }),
+      ]);
+
+      const dist = Array.isArray(distRes.data) && distRes.data.length > 0
+        ? distRes.data[0]
+        : null;
+
+      const regionRows = (regionRes.data ?? []) as Array<{
+        region_scope: string;
+        region_label: string;
+        pct_support: number | null;
+      }>;
+      const cityRow =
+        regionRows.find((r) => r.region_scope === "city") ??
+        regionRows.find((r) => r.region_scope === "county") ??
+        regionRows.find((r) => r.region_scope === "state") ??
+        null;
+
+      setFeedback({
+        questionText,
+        score,
+        support_pct:      dist?.support_pct ?? 0,
+        neutral_pct:      dist?.neutral_pct ?? 0,
+        oppose_pct:       dist?.oppose_pct  ?? 0,
+        responses:        dist?.responses   ?? 0,
+        city_label:       cityRow?.region_label    ?? null,
+        city_support_pct: cityRow?.pct_support     ?? null,
+      });
+    } catch (e) {
+      console.error("[QuickTakes] fetchFeedback error:", e);
+      setFeedback(null);
+    } finally {
+      setLoadingFeedback(false);
     }
-    lastAnsweredRef.current = id;
-    // Force re-render to show feedback on newly answered tile
-    setAnsweredIds((s) => new Set(s)); // trigger rerender without adding id yet
   }, []);
 
-  const allDone = !loading && pool.length > 0 && unanswered.length === 0 && exhausted && !lastAnsweredQ;
+  // ── Answer handler ────────────────────────────────────────────────────────
+
+  const handleAnswered = React.useCallback((id: string, score: number) => {
+    const q = pool.find((q) => q.id === id);
+    setAnsweredIds((prev) => new Set([...prev, id]));
+    if (q) fetchFeedback(q.question, score, id);
+  }, [pool, fetchFeedback]);
+
+  // ── Derived state ─────────────────────────────────────────────────────────
+
+  const visible   = unanswered.slice(0, VISIBLE);
+  const allDone   = !loading && pool.length > 0 && unanswered.length === 0 && exhausted;
 
   if (skipped) return null;
   if (!loading && pool.length === 0 && exhausted) return null;
 
   return (
     <div className="mb-4">
-      <div className="flex items-baseline justify-between mb-3">
-        <div>
-          <h2 className="text-sm font-semibold text-slate-900">Today's quick takes</h2>
-          <p className="text-xs text-slate-500 mt-0.5">Optional. Takes less than a minute.</p>
-        </div>
-        {!allDone && (
-          <button
-            type="button"
-            onClick={() => setSkipped(true)}
-            className="text-xs text-slate-400 hover:text-slate-600 transition-colors"
-          >
-            Skip for now
-          </button>
-        )}
-      </div>
 
+      {/* Header — transforms into feedback panel after each answer */}
+      <HeaderArea
+        feedback={feedback}
+        loadingFeedback={loadingFeedback}
+        onDismiss={() => setFeedback(null)}
+        onSkip={() => setSkipped(true)}
+        allDone={allDone}
+      />
+
+      {/* Initial loading */}
       {loading && pool.length === 0 && (
         <div className="flex items-center gap-2 py-4 text-xs text-slate-500">
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -490,25 +500,25 @@ export default function QuickTakesCard({ userId }: QuickTakesCardProps) {
         </div>
       )}
 
+      {/* All done */}
       {allDone && (
         <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 text-xs text-slate-600">
           Thanks. You can come back anytime.
         </div>
       )}
 
-      {!allDone && displayTiles.length > 0 && (
+      {/* Always 3 unanswered tiles */}
+      {!allDone && visible.length > 0 && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {displayTiles.map((q) => (
+          {visible.map((q) => (
             <QuickTile
               key={q.id}
               q={q}
-              isAnswered={lastAnsweredRef.current === q.id}
-              isFading={fadingId === q.id}
               onAnswered={handleAnswered}
             />
           ))}
-          {loading && displayTiles.length < VISIBLE && (
-            Array.from({ length: VISIBLE - displayTiles.length }).map((_, i) => (
+          {loading && visible.length < VISIBLE &&
+            Array.from({ length: VISIBLE - visible.length }).map((_, i) => (
               <div
                 key={`ghost-${i}`}
                 className={`${card} min-h-[280px] flex items-center justify-center`}
@@ -516,7 +526,7 @@ export default function QuickTakesCard({ userId }: QuickTakesCardProps) {
                 <Loader2 className="h-4 w-4 animate-spin text-slate-300" />
               </div>
             ))
-          )}
+          }
         </div>
       )}
     </div>
