@@ -43,6 +43,8 @@ import { QuestionStanceSlider } from "@/components/question/QuestionStanceSlider
 import { QuestionCoverImage } from "@/components/question/QuestionCoverImage";
 import { useGlobalAndCountryIds } from "@/hooks/useLocationIds";
 import { HeroSection } from "@/components/hero/HeroSection";
+import { useContributionAcknowledgement } from "@/hooks/useContributionAcknowledgement";
+import { toast } from "sonner";
 
 // ─────────────────────────── Types (all preserved) ───────────────────────────
 
@@ -1839,6 +1841,9 @@ export default function IndexPage() {
   const sb = React.useMemo(getSupabase, []);
   const userId = session?.user?.id ?? null;
 
+  // Q5 — contribution acknowledgement check (Phase 4)
+  const { checkForAcknowledgement } = useContributionAcknowledgement();
+
   // Infinite scroll sentinel
   const sentinelRef = React.useRef<HTMLDivElement | null>(null);
 
@@ -2844,6 +2849,17 @@ export default function IndexPage() {
       });
 
       console.log(`[home:submit] DONE qId=${questionId.slice(0, 8)} value=${value}`);
+
+      // Q5 — check if this stance triggers a contribution acknowledgement
+      // Fire-and-forget: runs in background, shows toast if threshold met
+      void checkForAcknowledgement().then((ack?: any) => {
+        if (ack && ack.should_show && ack.message) {
+          toast(ack.message, {
+            description: ack.secondary_text ?? undefined,
+            duration: 4000,
+          });
+        }
+      }).catch(() => { /* silent — ack is non-critical */ });
     },
     [sb, session, userId, qc, navigate, regionLabel, fetchDistribution]
   );
