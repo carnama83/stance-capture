@@ -52,6 +52,7 @@ import ScoringConfigPage from "@/routes/admin/ScoringConfigPage";
 // Cognitive State Pages
 import AdminCognitiveStatesPage from '@/routes/admin/cognitive-states';
 import CognitiveInsightsPage from '@/routes/me/cognitive-insights';
+import PersonalInsightsPage from '@/pages/PersonalInsightsPage';
 
 // My stances
 import MyStancesPage from "./pages/MyStancesPage";
@@ -190,6 +191,16 @@ const App: React.FC = () => {
                 element={
                   <Protected>
                     <CognitiveInsightsPage />
+                  </Protected>
+                }
+              />
+
+              {/* S1: Personal Opinion Intelligence dashboard */}
+              <Route
+                path="/me/insights"
+                element={
+                  <Protected>
+                    <PersonalInsightsPage />
                   </Protected>
                 }
               />
