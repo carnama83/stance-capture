@@ -26,6 +26,7 @@ import { FollowTopicButton } from "@/components/FollowTopicButton";
 import { fetchCommunityStats, communityStatsKey } from "@/lib/fetchCommunityStats";
 import { CommunityStanceBar } from "@/components/question/CommunityStanceBar";
 import WhyIsTrendingPanel from "@/components/insights/WhyIsTrendingPanel";
+import TradeoffExplorer from "@/components/insights/TradeoffExplorer";
 import {
 
 } from "@/types/communityStance";
@@ -517,6 +518,16 @@ function StanceCard({
           <p className="text-sm font-medium text-slate-700 mb-3">
             Where do you stand on this issue?
           </p>
+
+          {/* S4: Trade-off explorer — shown before user commits stance */}
+          {myStance == null && (
+            <TradeoffExplorer
+              questionId={questionId}
+              questionText={question.question}
+              summary={question.summary ?? null}
+              avgScore={stats?.avgScore ?? null}
+            />
+          )}
 
           <div className="mb-2">
             {/*
