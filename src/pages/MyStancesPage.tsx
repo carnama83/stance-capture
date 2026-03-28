@@ -1,16 +1,20 @@
 // src/pages/MyStancesPage.tsx
-// Updated for Epic E: stance history sparkline, rationale editor,
-// topic filter, date range filter, CSV/JSON export.
+// Updated: Phase 2 (QuickTakesCard + TrendingAnsweredCard),
+//          Phase 3 (StanceSnapshotCard + YouVsCommunityCard natural language),
+//          Rationale removed per Epic D decision.
 
 import ContributionBanner from "./MyStances/ContributionBanner";
 import StanceSnapshotCard from "./MyStances/StanceSnapshotCard";
 import YouVsCommunityCard from "./MyStances/YouVsCommunityCard";
 import SinceLastVisitCard from "./MyStances/SinceLastVisitCard";
+import QuickTakesCard from "./MyStances/QuickTakesCard";
+import TrendingAnsweredCard from "./MyStances/TrendingAnsweredCard";
+import QuickTakesCard from "./MyStances/QuickTakesCard";
+import TrendingAnsweredCard from "./MyStances/TrendingAnsweredCard";
 
 import * as React from "react";
 import { QuestionPhaseBadge } from "@/components/question/QuestionPhaseBadge";
 import { StanceSparkline } from "@/components/StanceSparkline";
-import { RationaleEditor } from "@/components/RationaleEditor";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getSupabase } from "../lib/supabaseClient";
@@ -315,8 +319,20 @@ export default function MyStancesPage() {
           </div>
         </div>
 
+        {/* Phase 2a — Quick takes: 3 personalized unanswered questions */}
+        <QuickTakesCard />
+
+        {/* Phase 2b — Trending signal: answered questions now trending/shifting */}
+        <TrendingAnsweredCard userId={userId} />
+
         {/* Contribution acknowledgement */}
         <ContributionBanner />
+
+        {/* Phase 2a — Quick takes: 3 personalised unanswered questions */}
+        <QuickTakesCard />
+
+        {/* Phase 2b — Questions user answered that are now trending/shifting */}
+        <TrendingAnsweredCard userId={userId} />
 
         {/* Summary cards */}
         <section className="space-y-3">
@@ -454,9 +470,6 @@ function MyStanceCard({ row }: { row: MyStanceRow }) {
               ))}
             </div>
           )}
-
-          {/* E2: Rationale editor */}
-          <RationaleEditor questionId={row.question_id} />
 
           {/* E1: Stance history sparkline */}
           <StanceSparkline questionId={row.question_id} currentScore={row.score} />
