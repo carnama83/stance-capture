@@ -1,13 +1,14 @@
 // src/pages/MyStances/QuickTakesCard.tsx
 // Phase 2a — Q4: Unlimited replacement pool. Always shows 3 tiles.
 // Option B post-answer feedback: stacked distribution bar + regional comparison.
+// Uses a minimal inline slider — no AI tip, no internal saving state.
 
 import * as React from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { getSupabase } from "@/lib/supabaseClient";
 import { QuestionCoverImage } from "@/components/question/QuestionCoverImage";
-import { QuestionStanceSlider } from "@/components/question/QuestionStanceSlider";
+import { getStanceColorHex } from "@/lib/stanceColors";
 import { Loader2 } from "lucide-react";
 
 const BATCH    = 6;
@@ -65,7 +66,63 @@ function Tag({ children, primary }: { children: React.ReactNode; primary?: boole
   );
 }
 
-// Option B feedback panel — replaces slider after answer
+// Minimal stance slider — no AI tip, no saving state, just value + commit
+const STANCE_LABELS: Record<number, string> = {
+  [-2]: "Strongly disagree",
+  [-1]: "Disagree",
+  [0]:  "Neutral",
+  [1]:  "Agree",
+  [2]:  "Strongly agree",
+};
+
+function QuickSlider({ onCommit, disabled }: {
+  onCommit: (value: number) => void;
+  disabled?: boolean;
+}) {
+  const [value, setValue] = React.useState(0);
+  const color = getStanceColorHex(value);
+  const fillPct = Math.max(8, ((value + 2) / 4) * 100);
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">
+          Your stance
+        </span>
+        <span className="text-[11px] font-medium" style={{ color }}>
+          {STANCE_LABELS[value]}
+        </span>
+      </div>
+      <div className="relative h-5 flex items-center mb-1">
+        <div className="absolute inset-x-0 h-1.5 rounded-full bg-slate-100" />
+        <div
+          className="absolute left-0 h-1.5 rounded-full transition-all"
+          style={{ width: `${fillPct}%`, background: color }}
+        />
+        <input
+          type="range"
+          min={-2}
+          max={2}
+          step={1}
+          value={value}
+          disabled={disabled}
+          onChange={(e) => setValue(Number(e.target.value))}
+          onMouseUp={() => !disabled && onCommit(value)}
+          onTouchEnd={() => !disabled && onCommit(value)}
+          className="absolute inset-x-0 w-full appearance-none bg-transparent cursor-pointer disabled:cursor-default"
+          style={{ height: "20px" }}
+        />
+      </div>
+      <div className="flex justify-between text-[9px] text-slate-400 px-0.5">
+        <span>Strongly disagree</span>
+        <span>Disagree</span>
+        <span>Neutral</span>
+        <span>Agree</span>
+        <span>Strongly agree</span>
+      </div>
+    </div>
+  );
+}
 function FeedbackPanel({ score, stats }: { score: number; stats: FeedbackStats | null }) {
   if (!stats) {
     return (
@@ -276,14 +333,9 @@ function QuickTile({ q, isAnswered, isFading, onAnswered }: QuickTileProps) {
           {/* Show slider before answer, feedback panel after */}
           {!isAnswered ? (
             <>
-              <QuestionStanceSlider
-                questionId={q.id}
-                questionText={q.question}
-                summary={q.summary ?? null}
-                initialValue={null}
+              <QuickSlider
                 disabled={mutation.isPending}
-                mutationPending={mutation.isPending}
-                onSubmit={async (v) => { await mutation.mutateAsync(v); }}
+                onCommit={(v) => { mutation.mutate(v); }}
               />
               <div className="mt-2 flex justify-end">
                 <Link
