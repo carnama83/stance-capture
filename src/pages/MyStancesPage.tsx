@@ -77,13 +77,17 @@ const STANCE_LABELS: Record<number, { label: string; short: string; tone: "pos" 
 function useSupabaseSession() {
   const sb = React.useMemo(getSupabase, []);
   const [session, setSession] = React.useState<Session | null>(null);
+  const [ready, setReady] = React.useState(false);
   React.useEffect(() => {
     if (!sb) return;
-    sb.auth.getSession().then(({ data }) => setSession(data.session ?? null));
+    sb.auth.getSession().then(({ data }) => {
+      setSession(data.session ?? null);
+      setReady(true);
+    });
     const { data: { subscription } } = sb.auth.onAuthStateChange((_e, s) => setSession(s ?? null));
     return () => subscription?.unsubscribe();
   }, [sb]);
-  return session;
+  return { session, ready };
 }
 
 // ---------- Data fetcher ----------
@@ -165,7 +169,7 @@ async function runExport(format: "csv" | "json") {
 
 // ---------- Page ----------
 export default function MyStancesPage() {
-  const session = useSupabaseSession();
+  const { session, ready } = useSupabaseSession();
   const navigate = useNavigate();
   const isAuthed = !!session;
   const userId = session?.user?.id ?? null;
@@ -246,6 +250,16 @@ export default function MyStancesPage() {
 
   const totalCount = rows.length;
   const visibleCount = filteredAndSorted.length;
+
+  if (!ready) {
+    return (
+      <PageLayout>
+        <div className="max-w-3xl mx-auto py-4">
+          <div className="text-xs text-slate-500">Loading…</div>
+        </div>
+      </PageLayout>
+    );
+  }
 
   if (!isAuthed || !userId) {
     return (
