@@ -1,5 +1,8 @@
 // src/hooks/useContributionAcknowledgement.ts
-import { useEffect, useState } from "react";
+// Phase 4 — expose checkForAcknowledgement so it can be called imperatively
+// after a stance is saved on the homepage, not just on page mount.
+
+import { useEffect, useState, useCallback } from "react";
 import { getSupabase } from "@/lib/supabaseClient";
 
 type AcknowledgementData = {
@@ -18,17 +21,11 @@ export function useContributionAcknowledgement() {
   const [acknowledgement, setAcknowledgement] = useState<AcknowledgementData | null>(null);
   const [isChecking, setIsChecking] = useState(false);
 
-  useEffect(() => {
-    checkForAcknowledgement();
-  }, []);
-
-  const checkForAcknowledgement = async () => {
+  const checkForAcknowledgement = useCallback(async () => {
     setIsChecking(true);
     try {
       const supabase = getSupabase();
-      if (!supabase) return;
-
-      console.log("[Q5] Checking for acknowledgement...");
+      if (!supabase) return null;
 
       const { data, error } = await supabase
         .rpc("check_for_acknowledgement")
@@ -36,48 +33,52 @@ export function useContributionAcknowledgement() {
 
       if (error) {
         console.error("[Q5] Error checking acknowledgement:", error);
-        return;
+        return null;
       }
-
-      console.log("[Q5] Acknowledgement check result:", data);
 
       if (data && data.should_show) {
         setAcknowledgement(data as AcknowledgementData);
 
-        // Mark as shown
+        // Mark as shown immediately so cooldown activates
         await supabase.rpc("mark_acknowledgement_shown", {
           p_trigger_type: data.trigger_type,
           p_context: data.context || {},
         });
 
-        console.log("[Q5] Marked acknowledgement as shown");
+        return data as AcknowledgementData;
       }
+
+      return null;
     } catch (err) {
       console.error("[Q5] Failed to check acknowledgement:", err);
+      return null;
     } finally {
       setIsChecking(false);
     }
-  };
+  }, []);
 
-  const dismiss = async (ackId?: string) => {
+  // Still check on mount for MyStancesPage fallback
+  useEffect(() => {
+    checkForAcknowledgement();
+  }, [checkForAcknowledgement]);
+
+  const dismiss = useCallback(async (ackId?: string) => {
     if (ackId) {
       try {
         const supabase = getSupabase();
         if (!supabase) return;
-
         await supabase.rpc("dismiss_acknowledgement", { p_ack_id: ackId });
-        console.log("[Q5] Dismissed acknowledgement");
       } catch (err) {
         console.error("[Q5] Failed to dismiss:", err);
       }
     }
-
     setAcknowledgement(null);
-  };
+  }, []);
 
   return {
     acknowledgement,
     isChecking,
+    checkForAcknowledgement,  // exposed for imperative use post-save
     dismiss,
   };
 }
