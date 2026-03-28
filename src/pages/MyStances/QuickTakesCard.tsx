@@ -1,7 +1,6 @@
 // src/pages/MyStances/QuickTakesCard.tsx
-// Phase 2a — Q4: Unlimited replacement pool — always shows 3 tiles, fetching
-// more when the pool runs low. Stops when there are genuinely no more unanswered
-// questions for this user.
+// Phase 2a — Q4: Unlimited replacement pool. Always shows 3 tiles.
+// Option B post-answer feedback: stacked distribution bar + regional comparison.
 
 import * as React from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -11,9 +10,9 @@ import { QuestionCoverImage } from "@/components/question/QuestionCoverImage";
 import { QuestionStanceSlider } from "@/components/question/QuestionStanceSlider";
 import { Loader2 } from "lucide-react";
 
-const BATCH = 6;    // questions fetched per request
-const VISIBLE = 3;  // tiles shown at once
-const REFILL_AT = 1; // fetch next batch when pool drops to this many unanswered
+const BATCH    = 6;
+const VISIBLE  = 3;
+const REFILL_AT = 1;
 
 type ForYouQuestion = {
   id: string;
@@ -28,6 +27,25 @@ type ForYouQuestion = {
 type ForYouFeed = {
   questions: ForYouQuestion[];
   count: number;
+};
+
+type FeedbackStats = {
+  support_pct: number;
+  neutral_pct: number;
+  oppose_pct: number;
+  responses: number;
+  city_label: string | null;
+  city_support_pct: number | null;
+  city_oppose_pct: number | null;
+  city_neutral_pct: number | null;
+};
+
+const STANCE_LABEL: Record<number, string> = {
+  [-2]: "Strongly disagreed",
+  [-1]: "Disagreed",
+  [0]:  "Were neutral",
+  [1]:  "Agreed",
+  [2]:  "Strongly agreed",
 };
 
 const card = "bg-white rounded-xl shadow-sm ring-1 ring-slate-900/5";
@@ -47,14 +65,159 @@ function Tag({ children, primary }: { children: React.ReactNode; primary?: boole
   );
 }
 
+// Option B feedback panel — replaces slider after answer
+function FeedbackPanel({ score, stats }: { score: number; stats: FeedbackStats | null }) {
+  if (!stats) {
+    return (
+      <div className="mt-2 rounded-lg bg-slate-50 border border-slate-100 px-3 py-3">
+        <p className="text-xs text-slate-500">Stance saved. Community data loading…</p>
+      </div>
+    );
+  }
+
+  const agree   = Math.round(stats.support_pct ?? 0);
+  const neutral = Math.round(stats.neutral_pct ?? 0);
+  const disagree = Math.round(stats.oppose_pct ?? 0);
+  const stanceLabel = STANCE_LABEL[score] ?? "Responded";
+
+  // Dominant direction for headline
+  const dominant =
+    agree >= disagree && agree >= neutral
+      ? { pct: agree, label: "lean toward agreement" }
+      : disagree >= agree && disagree >= neutral
+      ? { pct: disagree, label: "lean toward disagreement" }
+      : { pct: neutral, label: "are neutral" };
+
+  // City comparison sentence
+  let citySentence: string | null = null;
+  if (stats.city_label && stats.city_support_pct !== null) {
+    const cityAgree = Math.round(stats.city_support_pct);
+    const diff = cityAgree - agree;
+    if (Math.abs(diff) <= 5) {
+      citySentence = `In ${stats.city_label}, ${cityAgree}% agree — similar to the national picture.`;
+    } else if (diff > 0) {
+      citySentence = `In ${stats.city_label}, ${cityAgree}% agree — slightly above the national average.`;
+    } else {
+      citySentence = `In ${stats.city_label}, ${cityAgree}% agree — slightly below the national average.`;
+    }
+  }
+
+  return (
+    <div className="mt-2 rounded-lg bg-slate-50 border border-slate-100 px-3 py-3 space-y-2.5">
+      {/* Your stance */}
+      <div className="flex items-center gap-1.5">
+        <span className="inline-flex items-center rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-medium text-slate-700">
+          You {stanceLabel}
+        </span>
+      </div>
+
+      {/* Headline */}
+      <p className="text-xs font-medium text-slate-800 leading-snug">
+        {dominant.pct}% of respondents {dominant.label}
+      </p>
+
+      {/* Stacked distribution bar */}
+      <div className="flex h-2 w-full overflow-hidden rounded-full">
+        <div style={{ width: `${agree}%`, background: "#639922" }} />
+        <div style={{ width: `${neutral}%`, background: "#B4B2A9" }} />
+        <div style={{ width: `${disagree}%`, background: "#D85A30" }} />
+      </div>
+
+      {/* Legend */}
+      <div className="flex items-center gap-3 text-[10px] text-slate-500">
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#639922]" />
+          Agree {agree}%
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#B4B2A9]" />
+          Neutral {neutral}%
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#D85A30]" />
+          Disagree {disagree}%
+        </span>
+      </div>
+
+      {/* Regional comparison */}
+      {citySentence && (
+        <p className="text-[11px] text-slate-500 border-t border-slate-200 pt-2 leading-snug">
+          {citySentence}
+        </p>
+      )}
+
+      {/* Respondent count */}
+      {stats.responses > 0 && (
+        <p className="text-[10px] text-slate-400">
+          Based on {stats.responses.toLocaleString()} respondents.
+        </p>
+      )}
+    </div>
+  );
+}
+
 interface QuickTileProps {
   q: ForYouQuestion;
+  isAnswered: boolean;
+  isFading: boolean;
   onAnswered: (id: string) => void;
 }
 
-function QuickTile({ q, onAnswered }: QuickTileProps) {
+function QuickTile({ q, isAnswered, isFading, onAnswered }: QuickTileProps) {
   const qc = useQueryClient();
   const [savedScore, setSavedScore] = React.useState<number | null>(null);
+  const [stats, setStats] = React.useState<FeedbackStats | null>(null);
+  const [loadingStats, setLoadingStats] = React.useState(false);
+
+  const fetchStats = React.useCallback(async (questionId: string) => {
+    setLoadingStats(true);
+    try {
+      const sb = getSupabase();
+      if (!sb) return;
+
+      // Fetch global distribution
+      const { data: distData } = await sb
+        .rpc("get_question_distribution", {
+          p_question_id: questionId,
+          p_region: "Global",
+          p_window_hours: 168,
+        });
+
+      const dist = Array.isArray(distData) && distData.length > 0 ? distData[0] : null;
+
+      // Fetch regional (city-level) comparison
+      const { data: regionData } = await sb
+        .rpc("get_regional_comparison", { p_question_id: questionId });
+
+      // Pick best available region (city first)
+      const regionRows = (regionData ?? []) as Array<{
+        region_scope: string;
+        region_label: string;
+        pct_support: number | null;
+        pct_neutral: number | null;
+        pct_oppose: number | null;
+      }>;
+      const cityRow = regionRows.find((r) => r.region_scope === "city")
+        ?? regionRows.find((r) => r.region_scope === "county")
+        ?? regionRows.find((r) => r.region_scope === "state")
+        ?? null;
+
+      setStats({
+        support_pct:      dist?.support_pct  ?? 0,
+        neutral_pct:      dist?.neutral_pct  ?? 0,
+        oppose_pct:       dist?.oppose_pct   ?? 0,
+        responses:        dist?.responses    ?? 0,
+        city_label:       cityRow?.region_label ?? null,
+        city_support_pct: cityRow?.pct_support  ?? null,
+        city_neutral_pct: cityRow?.pct_neutral  ?? null,
+        city_oppose_pct:  cityRow?.pct_oppose   ?? null,
+      });
+    } catch (e) {
+      console.error("[QuickTile] fetchStats error:", e);
+    } finally {
+      setLoadingStats(false);
+    }
+  }, []);
 
   const mutation = useMutation({
     mutationFn: async (score: number) => {
@@ -67,16 +230,21 @@ function QuickTile({ q, onAnswered }: QuickTileProps) {
       if (error) throw error;
       return score;
     },
-    onSuccess: (score) => {
+    onSuccess: async (score) => {
       setSavedScore(score);
       qc.invalidateQueries({ queryKey: ["my-stances"] });
-      // Brief delay so user sees the saved confirmation before tile swaps out
-      setTimeout(() => onAnswered(q.id), 800);
+      // Fetch community stats immediately after save
+      await fetchStats(q.id);
+      // Notify parent — tile stays visible (parent manages when it fades)
+      onAnswered(q.id);
     },
   });
 
   return (
-    <div className={`${card} overflow-hidden flex flex-col`}>
+    <div
+      className={`${card} overflow-hidden flex flex-col transition-opacity duration-300`}
+      style={{ opacity: isFading ? 0 : 1 }}
+    >
       <QuestionCoverImage
         imageUrl={q.cover_image_url ?? null}
         tags={q.tags ?? []}
@@ -99,29 +267,53 @@ function QuickTile({ q, onAnswered }: QuickTileProps) {
         </Link>
 
         {q.topic_title && (
-          <p className="text-[11px] text-slate-400 mt-1 mb-3">
+          <p className="text-[11px] text-slate-400 mt-1 mb-2">
             Topic: {q.topic_title}
           </p>
         )}
 
         <div className="mt-auto pt-2">
-          <QuestionStanceSlider
-            questionId={q.id}
-            questionText={q.question}
-            summary={q.summary ?? null}
-            initialValue={savedScore}
-            disabled={mutation.isPending}
-            mutationPending={mutation.isPending}
-            onSubmit={async (v) => { await mutation.mutateAsync(v); }}
-          />
-          <div className="mt-2 flex justify-end">
-            <Link
-              to={`/q/${q.id}`}
-              className="text-[11px] text-slate-400 hover:text-slate-700 transition-colors"
-            >
-              Open →
-            </Link>
-          </div>
+          {/* Show slider before answer, feedback panel after */}
+          {!isAnswered ? (
+            <>
+              <QuestionStanceSlider
+                questionId={q.id}
+                questionText={q.question}
+                summary={q.summary ?? null}
+                initialValue={null}
+                disabled={mutation.isPending}
+                mutationPending={mutation.isPending}
+                onSubmit={async (v) => { await mutation.mutateAsync(v); }}
+              />
+              <div className="mt-2 flex justify-end">
+                <Link
+                  to={`/q/${q.id}`}
+                  className="text-[11px] text-slate-400 hover:text-slate-700 transition-colors"
+                >
+                  Open →
+                </Link>
+              </div>
+            </>
+          ) : (
+            <>
+              {loadingStats ? (
+                <div className="mt-2 rounded-lg bg-slate-50 border border-slate-100 px-3 py-3 flex items-center gap-2 text-xs text-slate-500">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Loading community data…
+                </div>
+              ) : (
+                <FeedbackPanel score={savedScore!} stats={stats} />
+              )}
+              <div className="mt-2 flex justify-end">
+                <Link
+                  to={`/q/${q.id}`}
+                  className="text-[11px] text-slate-400 hover:text-slate-700 transition-colors"
+                >
+                  Open →
+                </Link>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -133,14 +325,15 @@ interface QuickTakesCardProps {
 }
 
 export default function QuickTakesCard({ userId }: QuickTakesCardProps) {
-  const [skipped, setSkipped]         = React.useState(false);
-  const [pool, setPool]               = React.useState<ForYouQuestion[]>([]);
-  const [answeredIds, setAnsweredIds] = React.useState<Set<string>>(new Set());
-  const [offset, setOffset]           = React.useState(0);
-  const [loading, setLoading]         = React.useState(false);
-  const [exhausted, setExhausted]     = React.useState(false); // no more questions in DB
+  const [skipped, setSkipped]           = React.useState(false);
+  const [pool, setPool]                 = React.useState<ForYouQuestion[]>([]);
+  const [answeredIds, setAnsweredIds]   = React.useState<Set<string>>(new Set());
+  const [fadingId, setFadingId]         = React.useState<string | null>(null);
+  const [offset, setOffset]             = React.useState(0);
+  const [loading, setLoading]           = React.useState(false);
+  const [exhausted, setExhausted]       = React.useState(false);
+  const lastAnsweredRef                 = React.useRef<string | null>(null);
 
-  // Fetch a batch starting at `fetchOffset` and append to pool
   const fetchBatch = React.useCallback(async (fetchOffset: number) => {
     if (!userId || skipped) return;
     setLoading(true);
@@ -154,16 +347,14 @@ export default function QuickTakesCard({ userId }: QuickTakesCardProps) {
       const feed = data as ForYouFeed;
       const incoming = feed.questions ?? [];
       if (incoming.length === 0) {
-        setExhausted(true); // RPC returned nothing — truly no more questions
+        setExhausted(true);
       } else {
         setPool((prev) => {
-          // Deduplicate by id before appending
           const existingIds = new Set(prev.map((q) => q.id));
           const fresh = incoming.filter((q) => !existingIds.has(q.id));
           return [...prev, ...fresh];
         });
         setOffset(fetchOffset + incoming.length);
-        // If the batch was smaller than BATCH, no point fetching again
         if (incoming.length < BATCH) setExhausted(true);
       }
     } catch (e) {
@@ -180,29 +371,47 @@ export default function QuickTakesCard({ userId }: QuickTakesCardProps) {
     }
   }, [userId, skipped]);
 
-  // Refill when pool of unanswered drops to REFILL_AT and we're not exhausted
   const unanswered = pool.filter((q) => !answeredIds.has(q.id));
+
+  // Refill when pool runs low
   React.useEffect(() => {
-    if (
-      !loading &&
-      !exhausted &&
-      !skipped &&
-      pool.length > 0 &&
-      unanswered.length <= REFILL_AT
-    ) {
+    if (!loading && !exhausted && !skipped && pool.length > 0 && unanswered.length <= REFILL_AT) {
       fetchBatch(offset);
     }
   }, [unanswered.length, loading, exhausted, skipped]);
 
-  const visible = unanswered.slice(0, VISIBLE);
-  const allDone = !loading && pool.length > 0 && unanswered.length === 0 && exhausted;
+  // Visible = up to 3 unanswered + the last answered tile (showing feedback)
+  const visibleUnanswered = unanswered.slice(0, VISIBLE);
+  const lastAnsweredQ = lastAnsweredRef.current
+    ? pool.find((q) => q.id === lastAnsweredRef.current) ?? null
+    : null;
+
+  // Build the display list: answered tile (with feedback) + up to 2 unanswered
+  // After answer: [answered, unanswered1, unanswered2]
+  // When next answer comes: answered fades out, new unanswered slides in
+  const displayTiles: ForYouQuestion[] = lastAnsweredQ
+    ? [lastAnsweredQ, ...unanswered.slice(0, VISIBLE - 1)]
+    : visibleUnanswered;
 
   const handleAnswered = React.useCallback((id: string) => {
-    setAnsweredIds((prev) => new Set([...prev, id]));
+    const prev = lastAnsweredRef.current;
+    // Fade out the previously answered tile
+    if (prev) {
+      setFadingId(prev);
+      setTimeout(() => {
+        setAnsweredIds((s) => new Set([...s, prev]));
+        setFadingId(null);
+      }, 350);
+    }
+    lastAnsweredRef.current = id;
+    // Force re-render to show feedback on newly answered tile
+    setAnsweredIds((s) => new Set(s)); // trigger rerender without adding id yet
   }, []);
 
+  const allDone = !loading && pool.length > 0 && unanswered.length === 0 && exhausted && !lastAnsweredQ;
+
   if (skipped) return null;
-  if (!loading && pool.length === 0 && exhausted) return null; // no questions at all
+  if (!loading && pool.length === 0 && exhausted) return null;
 
   return (
     <div className="mb-4">
@@ -211,7 +420,7 @@ export default function QuickTakesCard({ userId }: QuickTakesCardProps) {
           <h2 className="text-sm font-semibold text-slate-900">Today's quick takes</h2>
           <p className="text-xs text-slate-500 mt-0.5">Optional. Takes less than a minute.</p>
         </div>
-        {!allDone && (visible.length > 0 || loading) && (
+        {!allDone && (
           <button
             type="button"
             onClick={() => setSkipped(true)}
@@ -222,7 +431,6 @@ export default function QuickTakesCard({ userId }: QuickTakesCardProps) {
         )}
       </div>
 
-      {/* Initial loading */}
       {loading && pool.length === 0 && (
         <div className="flex items-center gap-2 py-4 text-xs text-slate-500">
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -230,32 +438,33 @@ export default function QuickTakesCard({ userId }: QuickTakesCardProps) {
         </div>
       )}
 
-      {/* All done */}
       {allDone && (
         <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 text-xs text-slate-600">
           Thanks. You can come back anytime.
         </div>
       )}
 
-      {/* Tile grid — always 3, replaced as each is answered */}
-      {!allDone && visible.length > 0 && (
+      {!allDone && displayTiles.length > 0 && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {visible.map((q) => (
+          {displayTiles.map((q) => (
             <QuickTile
               key={q.id}
               q={q}
+              isAnswered={lastAnsweredRef.current === q.id}
+              isFading={fadingId === q.id}
               onAnswered={handleAnswered}
             />
           ))}
-          {/* Ghost tiles while fetching replacements */}
-          {loading && visible.length < VISIBLE && Array.from({ length: VISIBLE - visible.length }).map((_, i) => (
-            <div
-              key={`ghost-${i}`}
-              className={`${card} overflow-hidden flex flex-col min-h-[280px] items-center justify-center`}
-            >
-              <Loader2 className="h-4 w-4 animate-spin text-slate-300" />
-            </div>
-          ))}
+          {loading && displayTiles.length < VISIBLE && (
+            Array.from({ length: VISIBLE - displayTiles.length }).map((_, i) => (
+              <div
+                key={`ghost-${i}`}
+                className={`${card} min-h-[280px] flex items-center justify-center`}
+              >
+                <Loader2 className="h-4 w-4 animate-spin text-slate-300" />
+              </div>
+            ))
+          )}
         </div>
       )}
     </div>
