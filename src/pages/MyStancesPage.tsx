@@ -318,7 +318,7 @@ export default function MyStancesPage() {
         </div>
 
         {/* Phase 2a — Quick takes: 3 personalized unanswered questions */}
-        <QuickTakesCard />
+        <QuickTakesCard userId={userId} />
 
         {/* Phase 2b — Trending signal: answered questions now trending/shifting */}
         <TrendingAnsweredCard userId={userId} />
