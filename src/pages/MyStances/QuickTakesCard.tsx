@@ -1,13 +1,19 @@
 // src/pages/MyStances/QuickTakesCard.tsx
-// Phase 2a — Q4: Three personalized unanswered questions as homepage-style tiles.
+// Phase 2a — Q4: Unlimited replacement pool — always shows 3 tiles, fetching
+// more when the pool runs low. Stops when there are genuinely no more unanswered
+// questions for this user.
 
 import * as React from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { getSupabase } from "@/lib/supabaseClient";
 import { QuestionCoverImage } from "@/components/question/QuestionCoverImage";
 import { QuestionStanceSlider } from "@/components/question/QuestionStanceSlider";
 import { Loader2 } from "lucide-react";
+
+const BATCH = 6;    // questions fetched per request
+const VISIBLE = 3;  // tiles shown at once
+const REFILL_AT = 1; // fetch next batch when pool drops to this many unanswered
 
 type ForYouQuestion = {
   id: string;
@@ -54,7 +60,6 @@ function QuickTile({ q, onAnswered }: QuickTileProps) {
     mutationFn: async (score: number) => {
       const sb = getSupabase();
       if (!sb) throw new Error("Supabase not available");
-      // Use set_question_stance RPC — handles user_id, conflict, and history logging
       const { error } = await sb.rpc("set_question_stance", {
         p_question_id: q.id,
         p_score: score,
@@ -65,7 +70,7 @@ function QuickTile({ q, onAnswered }: QuickTileProps) {
     onSuccess: (score) => {
       setSavedScore(score);
       qc.invalidateQueries({ queryKey: ["my-stances"] });
-      // Short delay so user sees the saved state before tile disappears
+      // Brief delay so user sees the saved confirmation before tile swaps out
       setTimeout(() => onAnswered(q.id), 800);
     },
   });
@@ -128,40 +133,85 @@ interface QuickTakesCardProps {
 }
 
 export default function QuickTakesCard({ userId }: QuickTakesCardProps) {
-  const [skipped, setSkipped] = React.useState(false);
+  const [skipped, setSkipped]         = React.useState(false);
+  const [pool, setPool]               = React.useState<ForYouQuestion[]>([]);
   const [answeredIds, setAnsweredIds] = React.useState<Set<string>>(new Set());
+  const [offset, setOffset]           = React.useState(0);
+  const [loading, setLoading]         = React.useState(false);
+  const [exhausted, setExhausted]     = React.useState(false); // no more questions in DB
 
-  const { data, isLoading } = useQuery<ForYouFeed>({
-    queryKey: ["quick-takes", userId],
-    enabled: !!userId && !skipped,
-    staleTime: 5 * 60_000,
-    retry: false,
-    queryFn: async () => {
+  // Fetch a batch starting at `fetchOffset` and append to pool
+  const fetchBatch = React.useCallback(async (fetchOffset: number) => {
+    if (!userId || skipped) return;
+    setLoading(true);
+    try {
       const sb = getSupabase();
-      if (!sb) throw new Error("Supabase not available");
+      if (!sb) return;
       const { data, error } = await sb
-        .rpc("get_for_you_feed", { p_limit: 3 })
+        .rpc("get_for_you_feed", { p_limit: BATCH, p_offset: fetchOffset })
         .single();
       if (error) throw error;
-      return data as ForYouFeed;
-    },
-  });
+      const feed = data as ForYouFeed;
+      const incoming = feed.questions ?? [];
+      if (incoming.length === 0) {
+        setExhausted(true); // RPC returned nothing — truly no more questions
+      } else {
+        setPool((prev) => {
+          // Deduplicate by id before appending
+          const existingIds = new Set(prev.map((q) => q.id));
+          const fresh = incoming.filter((q) => !existingIds.has(q.id));
+          return [...prev, ...fresh];
+        });
+        setOffset(fetchOffset + incoming.length);
+        // If the batch was smaller than BATCH, no point fetching again
+        if (incoming.length < BATCH) setExhausted(true);
+      }
+    } catch (e) {
+      console.error("[QuickTakes] fetchBatch error:", e);
+    } finally {
+      setLoading(false);
+    }
+  }, [userId, skipped]);
 
-  const questions = (data?.questions ?? []).slice(0, 3);
-  const unanswered = questions.filter((q) => !answeredIds.has(q.id));
-  const allDone = questions.length > 0 && unanswered.length === 0;
+  // Initial load
+  React.useEffect(() => {
+    if (userId && !skipped && pool.length === 0 && !exhausted) {
+      fetchBatch(0);
+    }
+  }, [userId, skipped]);
+
+  // Refill when pool of unanswered drops to REFILL_AT and we're not exhausted
+  const unanswered = pool.filter((q) => !answeredIds.has(q.id));
+  React.useEffect(() => {
+    if (
+      !loading &&
+      !exhausted &&
+      !skipped &&
+      pool.length > 0 &&
+      unanswered.length <= REFILL_AT
+    ) {
+      fetchBatch(offset);
+    }
+  }, [unanswered.length, loading, exhausted, skipped]);
+
+  const visible = unanswered.slice(0, VISIBLE);
+  const allDone = !loading && pool.length > 0 && unanswered.length === 0 && exhausted;
+
+  const handleAnswered = React.useCallback((id: string) => {
+    setAnsweredIds((prev) => new Set([...prev, id]));
+  }, []);
 
   if (skipped) return null;
-  if (!isLoading && questions.length === 0) return null;
+  if (!loading && pool.length === 0 && exhausted) return null; // no questions at all
 
   return (
     <div className="mb-4">
       <div className="flex items-baseline justify-between mb-3">
         <div>
-          <h2 className="text-sm font-semibold text-slate-900">Today's 3 quick takes</h2>
+          <h2 className="text-sm font-semibold text-slate-900">Today's quick takes</h2>
           <p className="text-xs text-slate-500 mt-0.5">Optional. Takes less than a minute.</p>
         </div>
-        {!allDone && (
+        {!allDone && (visible.length > 0 || loading) && (
           <button
             type="button"
             onClick={() => setSkipped(true)}
@@ -172,27 +222,39 @@ export default function QuickTakesCard({ userId }: QuickTakesCardProps) {
         )}
       </div>
 
-      {isLoading && (
+      {/* Initial loading */}
+      {loading && pool.length === 0 && (
         <div className="flex items-center gap-2 py-4 text-xs text-slate-500">
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
           Loading questions…
         </div>
       )}
 
+      {/* All done */}
       {allDone && (
         <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 text-xs text-slate-600">
           Thanks. You can come back anytime.
         </div>
       )}
 
-      {!isLoading && !allDone && unanswered.length > 0 && (
+      {/* Tile grid — always 3, replaced as each is answered */}
+      {!allDone && visible.length > 0 && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {unanswered.map((q) => (
+          {visible.map((q) => (
             <QuickTile
               key={q.id}
               q={q}
-              onAnswered={(id) => setAnsweredIds((prev) => new Set([...prev, id]))}
+              onAnswered={handleAnswered}
             />
+          ))}
+          {/* Ghost tiles while fetching replacements */}
+          {loading && visible.length < VISIBLE && Array.from({ length: VISIBLE - visible.length }).map((_, i) => (
+            <div
+              key={`ghost-${i}`}
+              className={`${card} overflow-hidden flex flex-col min-h-[280px] items-center justify-center`}
+            >
+              <Loader2 className="h-4 w-4 animate-spin text-slate-300" />
+            </div>
           ))}
         </div>
       )}
