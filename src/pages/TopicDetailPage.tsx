@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { getSupabase } from "../lib/supabaseClient";
 import PageLayout from "../components/PageLayout";
 import { FollowTopicButton } from "@/components/FollowTopicButton";
+import TopicMomentumTimeline from "@/components/insights/TopicMomentumTimeline";
 
 type Session = import("@supabase/supabase-js").Session;
 
@@ -665,6 +666,9 @@ export default function TopicDetailPage() {
                   }}
                 />
               </div>
+
+              {/* S3: Momentum attribution timeline */}
+              <TopicMomentumTimeline topicId={topic.id} />
             </div>
           </div>
 
