@@ -100,12 +100,12 @@ function timeAgo(iso: string): string {
 
 // G3: Call OpenAI moderation API via our Edge Function proxy
 // Returns true if the text is flagged as potentially harmful
-async function checkCivility(text: string): Promise<boolean> {
+async function checkCivility(text: string, commentId?: string, userId?: string): Promise<boolean> {
   try {
     const sb = getSupabase();
     if (!sb) return false;
     const { data, error } = await sb.functions.invoke("check-comment-civility", {
-      body: { text },
+      body: { text, comment_id: commentId ?? null, user_id: userId ?? null },
     });
     if (error) return false;
     return data?.flagged === true;
@@ -500,7 +500,11 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
     try {
       const saved = await createCommentMutation.mutateAsync({ body, parentId: null });
       setNewComment("");
-      if (saved?.id) runSentimentWorkers(saved.id, body);
+      if (saved?.id) {
+        runSentimentWorkers(saved.id, body);
+        // H2: fire background toxicity score write with the real comment_id
+        checkCivility(body, saved.id, sessionUserId ?? undefined);
+      }
     } catch (err: any) {
       toast({ title: "Could not post comment", description: err?.message ?? "Please try again.", variant: "destructive" });
     } finally {
