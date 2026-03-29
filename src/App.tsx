@@ -53,6 +53,7 @@ import ScoringConfigPage from "@/routes/admin/ScoringConfigPage";
 import AdminCognitiveStatesPage from '@/routes/admin/cognitive-states';
 import CognitiveInsightsPage from '@/routes/me/cognitive-insights';
 import PersonalInsightsPage from '@/pages/PersonalInsightsPage';
+import InsightsPage from '@/pages/InsightsPage';
 
 // My stances
 import MyStancesPage from "./pages/MyStancesPage";
@@ -60,6 +61,7 @@ import MyStancesPage from "./pages/MyStancesPage";
 import SettingsLayout from "./pages/SettingsLayout";
 import SettingsLocation from "./pages/SettingsLocation";
 import SettingsNotifications from "./pages/SettingsNotifications";
+import SettingsPrivacy from "./pages/SettingsPrivacy";
 import CommunityPulsePage from "./pages/CommunityPulsePage";
 
 import RouteDebug from "./components/RouteDebug";
@@ -117,6 +119,7 @@ const App: React.FC = () => {
               <Route path="/search" element={<SearchResultsPage />} />
               <Route path="/for-you" element={<Protected><ForYouFeedPage /></Protected>} />
               <Route path="/pulse" element={<CommunityPulsePage />} />
+              <Route path="/insights" element={<InsightsPage />} />
               
               <Route
                 path={ROUTES.SIGNUP}
@@ -164,6 +167,7 @@ const App: React.FC = () => {
                 <Route path="sessions" element={<SettingsSessions />} />
                 <Route path="location" element={<SettingsLocation />} />
                 <Route path="notifications" element={<SettingsNotifications />} />
+                <Route path="privacy" element={<SettingsPrivacy />} />
               </Route>
 
               <Route
