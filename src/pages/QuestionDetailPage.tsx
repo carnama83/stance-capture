@@ -420,6 +420,82 @@ function EditorialHeroImage({
   );
 }
 
+// ---------- QuestionContextUpdates — C: lifecycle transparency ----------
+// Shows context update history when a question has moved past the initial phase.
+// Fetches from question_context_updates ordered newest-first.
+
+type ContextUpdateRow = {
+  id: string;
+  new_phase: string;
+  new_context: string;
+  supporting_links: string[] | null;
+  updated_at: string;
+};
+
+const PHASE_LABELS: Record<string, string> = {
+  update:     "Update",
+  resolution: "Resolved",
+  follow_up:  "Follow-up",
+};
+
+function QuestionContextUpdates({ questionId }: { questionId: string }) {
+  const sb = getSupabase();
+  const { data: updates, isLoading } = useQuery<ContextUpdateRow[]>({
+    queryKey: ["question-context-updates", questionId],
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      if (!sb) return [];
+      const { data, error } = await sb
+        .from("question_context_updates")
+        .select("id, new_phase, new_context, supporting_links, updated_at")
+        .eq("question_id", questionId)
+        .neq("new_phase", "initial")
+        .order("updated_at", { ascending: false })
+        .limit(5);
+      if (error) return [];
+      return (data ?? []) as ContextUpdateRow[];
+    },
+  });
+
+  if (isLoading || !updates || updates.length === 0) return null;
+
+  return (
+    <div className="mt-3 space-y-2">
+      {updates.map((u) => (
+        <div
+          key={u.id}
+          className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3"
+        >
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+              {PHASE_LABELS[u.new_phase] ?? u.new_phase}
+            </span>
+            <span className="text-[10px] text-slate-400">
+              {new Date(u.updated_at).toLocaleDateString(undefined, { dateStyle: "medium" })}
+            </span>
+          </div>
+          <p className="text-sm text-slate-700 leading-relaxed">{u.new_context}</p>
+          {u.supporting_links && u.supporting_links.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {u.supporting_links.map((link, i) => (
+                <a
+                  key={i}
+                  href={link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[11px] text-blue-600 hover:underline truncate max-w-[200px]"
+                >
+                  Source {i + 1} ↗
+                </a>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ---------- RegionComparison ----------
 function RegionComparison({ stats }: { stats: QuestionStats | null }) {
   if (!stats?.regions) return null;
@@ -997,6 +1073,11 @@ export default function QuestionDetailPage() {
             {/* Phase badge */}
             {question.phase && question.phase !== "initial" && (
               <div><QuestionPhaseBadge phase={question.phase} size="md" /></div>
+            )}
+
+            {/* C: Lifecycle context updates — shown when question has new developments */}
+            {question.phase && question.phase !== "initial" && (
+              <QuestionContextUpdates questionId={question.id} />
             )}
 
             {question.summary && (
