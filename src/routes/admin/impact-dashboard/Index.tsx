@@ -31,7 +31,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/components/ui/use-toast";
 import { cn } from "@/lib/utils";
-import { Loader2 } from "lucide-react";
+import { Loader2, Star } from "lucide-react";
 
 type QuestionVisibilityEnum =
   | "visible"
@@ -68,6 +68,7 @@ interface QuestionImpactRow {
   visibility: QuestionVisibilityEnum | null;
   visibility_reason: string | null;
   last_evaluated_at: string | null;
+  is_featured: boolean | null;
 }
 
 const visibilityOptions: QuestionVisibilityEnum[] = [
@@ -167,6 +168,24 @@ const { data, isLoading, isError, error, refetch } = useQuery<QuestionImpactRow[
         description: err?.message ?? "Unknown error",
         variant: "destructive",
       });
+    },
+  });
+
+  // P: Toggle is_featured
+  const setFeaturedMutation = useMutation({
+    mutationFn: async ({ question_id, featured }: { question_id: string; featured: boolean }) => {
+      const { error } = await supabase
+        .from("questions")
+        .update({ is_featured: featured })
+        .eq("id", question_id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast({ title: "Featured status updated" });
+      refetch();
+    },
+    onError: (err: any) => {
+      toast({ title: "Error updating featured", description: err?.message ?? "Unknown error", variant: "destructive" });
     },
   });
 
@@ -647,19 +666,35 @@ const handleRescoreSingle = async (questionId: string | null) => {
 
                         {/* Actions Column */}
                         <TableCell>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleRescoreSingle(row.question_id)}
-                            disabled={rescoringQuestion === row.question_id}
-                            title="Re-score this question with GPT-4"
-                          >
-                            {rescoringQuestion === row.question_id ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            ) : (
-                              <span className="text-base">↻</span>
-                            )}
-                          </Button>
+                          <div className="flex flex-col gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleRescoreSingle(row.question_id)}
+                              disabled={rescoringQuestion === row.question_id}
+                              title="Re-score this question with GPT-4"
+                            >
+                              {rescoringQuestion === row.question_id ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <span className="text-base">↻</span>
+                              )}
+                            </Button>
+                            {/* P: Featured toggle */}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => row.question_id && setFeaturedMutation.mutate({
+                                question_id: row.question_id,
+                                featured: !row.is_featured,
+                              })}
+                              disabled={setFeaturedMutation.isPending}
+                              title={row.is_featured ? "Unfeature question" : "Feature question"}
+                              className={row.is_featured ? "text-amber-500" : "text-slate-400"}
+                            >
+                              <Star className={`h-3.5 w-3.5 ${row.is_featured ? "fill-amber-500" : ""}`} />
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     );
