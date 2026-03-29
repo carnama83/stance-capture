@@ -1,6 +1,6 @@
 // src/pages/CommunityPulsePage.tsx
 // Epic F — Community Pulse & Aggregation
-// F1: Aggregated stance dashboard with region selector
+// F1: Aggregated stance dashboard with region selector (pre-populated from user region)
 // F2: Macro trends trendline chart with confidence bands
 // F3: Regional comparison + demographic breakdown
 
@@ -511,9 +511,42 @@ function DemographicSection({ questionId }: { questionId: string | null }) {
 
 export default function CommunityPulsePage() {
   const [regionScope, setRegionScope] = React.useState<RegionScope>("global");
-  const [regionKey, setRegionKey] = React.useState("global");
+  const [regionKey, setRegionKey] = React.useState("Global");
   const [trendDays, setTrendDays] = React.useState(30);
   const [selectedQuestionId, setSelectedQuestionId] = React.useState<string | null>(null);
+
+  // F improvement: load user's actual region labels to power the region selector
+  const { data: userRegion } = useQuery<{
+    city_label: string | null;
+    county_label: string | null;
+    state_label: string | null;
+    country_label: string | null;
+  } | null>({
+    queryKey: ["user-region-pulse"],
+    staleTime: 10 * 60_000,
+    queryFn: async () => {
+      const sb = getSupabase();
+      if (!sb) return null;
+      const { data: { user } } = await sb.auth.getUser();
+      if (!user) return null;
+      const { data, error } = await sb
+        .from("user_region_dimensions")
+        .select("city_label, county_label, state_label, country_label")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (error) return null;
+      return data;
+    },
+  });
+
+  // Build region options dynamically from user's actual labels
+  const regionOptions: Array<{ value: RegionScope; label: string; key: string }> = [
+    { value: "global",  label: "Global",                              key: "Global" },
+    ...(userRegion?.country_label ? [{ value: "country" as RegionScope, label: userRegion.country_label, key: userRegion.country_label }] : []),
+    ...(userRegion?.state_label   ? [{ value: "state"   as RegionScope, label: userRegion.state_label,   key: userRegion.state_label   }] : []),
+    ...(userRegion?.county_label  ? [{ value: "county"  as RegionScope, label: userRegion.county_label,  key: userRegion.county_label  }] : []),
+    ...(userRegion?.city_label    ? [{ value: "city"    as RegionScope, label: userRegion.city_label,    key: userRegion.city_label    }] : []),
+  ];
 
   // Fetch pulse data to populate question selector for F3
   const { data: pulseData } = useQuery<PulseRow[]>({
@@ -559,12 +592,13 @@ export default function CommunityPulsePage() {
               value={regionScope}
               onChange={(e) => {
                 const scope = e.target.value as RegionScope;
+                const opt = regionOptions.find((o) => o.value === scope);
                 setRegionScope(scope);
-                setRegionKey(scope === "global" ? "global" : scope);
+                setRegionKey(opt?.key ?? "Global");
               }}
               className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-400"
             >
-              {REGION_OPTIONS.map((o) => (
+              {regionOptions.map((o) => (
                 <option key={o.value} value={o.value}>{o.label}</option>
               ))}
             </select>
