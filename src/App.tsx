@@ -51,6 +51,7 @@ import ScoringConfigPage from "@/routes/admin/ScoringConfigPage";
 
 // Cognitive State Pages
 import AdminCognitiveStatesPage from '@/routes/admin/cognitive-states';
+import AdminModerationPage from '@/routes/admin/moderation/index';
 import CognitiveInsightsPage from '@/routes/me/cognitive-insights';
 import PersonalInsightsPage from '@/pages/PersonalInsightsPage';
 import InsightsPage from '@/pages/InsightsPage';
@@ -252,6 +253,9 @@ const App: React.FC = () => {
                 
                 {/* ✅ NEW: Cognitive States Admin */}
                 <Route path="cognitive-states" element={<AdminCognitiveStatesPage />} />
+
+                {/* H: Moderation queue */}
+                <Route path="moderation" element={<AdminModerationPage />} />
               </Route>
 
               {/* Admin special page */}
