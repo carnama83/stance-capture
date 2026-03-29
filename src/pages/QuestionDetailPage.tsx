@@ -25,6 +25,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { FollowTopicButton } from "@/components/FollowTopicButton";
 import { fetchCommunityStats, communityStatsKey } from "@/lib/fetchCommunityStats";
 import { CommunityStanceBar } from "@/components/question/CommunityStanceBar";
+import { CommunityTrendSparkline } from "@/components/question/CommunityTrendSparkline";
 import WhyIsTrendingPanel from "@/components/insights/WhyIsTrendingPanel";
 import TradeoffExplorer from "@/components/insights/TradeoffExplorer";
 import {
@@ -1114,6 +1115,9 @@ export default function QuestionDetailPage() {
                   <RegionComparison stats={stats ?? null} />
                 </>
               )}
+
+              {/* O3: 7-day inline trend */}
+              <CommunityTrendSparkline questionId={questionId} />
             </section>
 
             {/* S3: Why is this trending? */}
