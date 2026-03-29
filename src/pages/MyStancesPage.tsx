@@ -14,7 +14,7 @@ import * as React from "react";
 import { QuestionPhaseBadge } from "@/components/question/QuestionPhaseBadge";
 import { StanceSparkline } from "@/components/StanceSparkline";
 import { Link, useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getSupabase } from "../lib/supabaseClient";
 import PageLayout from "../components/PageLayout";
 import { Download } from "lucide-react";
@@ -470,6 +470,14 @@ export default function MyStancesPage() {
 }
 
 // ---------- Card ----------
+const SCORE_OPTIONS: { value: number; label: string; tone: "pos" | "neg" | "neu" }[] = [
+  { value:  2, label: "Strongly agree",    tone: "pos" },
+  { value:  1, label: "Agree",             tone: "pos" },
+  { value:  0, label: "Neutral",           tone: "neu" },
+  { value: -1, label: "Disagree",          tone: "neg" },
+  { value: -2, label: "Strongly disagree", tone: "neg" },
+];
+
 function MyStanceCard({ row }: { row: MyStanceRow }) {
   const q = row.question;
   const updatedAt = row.updated_at ?? row.created_at;
@@ -477,11 +485,37 @@ function MyStanceCard({ row }: { row: MyStanceRow }) {
     ? new Date(updatedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
     : "Unknown";
 
-  const stanceDef = STANCE_LABELS[row.score] ?? { label: "Unknown", short: String(row.score), tone: "neu" as const };
+  const [editing, setEditing] = React.useState(false);
+  const [selectedScore, setSelectedScore] = React.useState(row.score);
+  const [saving, setSaving] = React.useState(false);
+  const queryClient = useQueryClient();
+
+  const stanceDef = STANCE_LABELS[editing ? selectedScore : row.score] ??
+    { label: "Unknown", short: String(row.score), tone: "neu" as const };
   const stanceToneClass =
     stanceDef.tone === "pos" ? "bg-emerald-50 border-emerald-200 text-emerald-800" :
     stanceDef.tone === "neg" ? "bg-rose-50 border-rose-200 text-rose-800" :
     "bg-slate-50 border-slate-200 text-slate-800";
+
+  async function handleSave() {
+    if (selectedScore === row.score) { setEditing(false); return; }
+    setSaving(true);
+    try {
+      const sb = getSupabase();
+      if (!sb) throw new Error("Supabase not available");
+      const { error } = await sb.rpc("set_question_stance", {
+        p_question_id: row.question_id,
+        p_score: selectedScore,
+      });
+      if (error) throw error;
+      queryClient.invalidateQueries({ queryKey: ["my-stances"] });
+      setEditing(false);
+    } catch (err: any) {
+      alert(err?.message ?? "Failed to save stance");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <article className="rounded-lg border px-3 py-3">
@@ -520,12 +554,63 @@ function MyStanceCard({ row }: { row: MyStanceRow }) {
 
           {/* E1: Stance history sparkline */}
           <StanceSparkline questionId={row.question_id} currentScore={row.score} />
+
+          {/* E2: Inline stance editor */}
+          {editing && (
+            <div className="mt-2 space-y-2">
+              <div className="flex flex-wrap gap-1.5">
+                {SCORE_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setSelectedScore(opt.value)}
+                    className={[
+                      "rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors",
+                      selectedScore === opt.value
+                        ? opt.tone === "pos" ? "bg-emerald-100 border-emerald-300 text-emerald-800"
+                          : opt.tone === "neg" ? "bg-rose-100 border-rose-300 text-rose-800"
+                          : "bg-slate-200 border-slate-400 text-slate-800"
+                        : "border-slate-200 text-slate-600 hover:bg-slate-50",
+                    ].join(" ")}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="rounded-md bg-slate-900 px-3 py-1 text-[11px] font-medium text-white hover:bg-slate-700 disabled:opacity-50 transition-colors"
+                >
+                  {saving ? "Saving…" : "Save"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setEditing(false); setSelectedScore(row.score); }}
+                  className="rounded-md border px-3 py-1 text-[11px] text-slate-600 hover:bg-slate-50 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="flex flex-col items-end gap-1 shrink-0">
           <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] ${stanceToneClass}`}>
             {stanceDef.label}
           </span>
+          {!editing && (
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              className="text-[10px] text-slate-400 hover:text-slate-700 underline transition-colors"
+            >
+              Revise
+            </button>
+          )}
           {q?.location_label && (
             <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide text-slate-600 bg-slate-50">
               {q.location_label}
