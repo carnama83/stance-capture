@@ -17,6 +17,7 @@ type SourceRow = {
   last_error: string | null;
   success_count: number | null;
   failure_count: number | null;
+  polling_interval: string | null;
 };
 
 const adminNavItems = [
@@ -148,6 +149,7 @@ export default function AdminSourcesIndex() {
       "Enabled",
       "Success",
       "Failure",
+      "Cadence",
       "Last Status",
       "Last Run",
       "Actions",
@@ -398,6 +400,7 @@ export default function AdminSourcesIndex() {
         endpoint: canonical.endpoint ?? "",
         country_name: canonical.country_name ?? "",
         is_enabled: canonical.is_enabled ?? true,
+        polling_interval: (canonical as any).polling_interval ?? "daily",
       });
     } catch (e: any) {
       alert(`Failed to open edit: ${e?.message ?? e}`);
@@ -510,6 +513,7 @@ export default function AdminSourcesIndex() {
             kind: draft.kind,
             country_name: countryName,
             is_enabled: draft.is_enabled ?? true,
+            polling_interval: draft.polling_interval ?? "daily",
           })
           .eq("id", draft.id);
 
@@ -522,6 +526,7 @@ export default function AdminSourcesIndex() {
           kind: draft.kind,
           country_name: countryName,
           is_enabled: draft.is_enabled ?? true,
+          polling_interval: draft.polling_interval ?? "daily",
         });
 
         const { error } = await withTimeout(p, 15000);
@@ -729,6 +734,9 @@ export default function AdminSourcesIndex() {
                   </td>,
                   <td key="success">{r.success_count ?? 0}</td>,
                   <td key="failure">{r.failure_count ?? 0}</td>,
+                  <td key="cadence" style={{ fontSize: 12, color: "#64748b" }}>
+                    {r.polling_interval ?? "daily"}
+                  </td>,
                   <td key="status">
                     <StatusPill status={r.last_status} error={r.last_error} />
                   </td>,
@@ -776,7 +784,7 @@ export default function AdminSourcesIndex() {
               {!filtered.length ? (
                 <tr>
                   <td
-                    colSpan={11}
+                    colSpan={12}
                     style={{ padding: 24, textAlign: "center", color: "#666" }}
                   >
                     No sources found.
@@ -878,6 +886,23 @@ export default function AdminSourcesIndex() {
                   disabled={saving}
                 />
                 <span>Enabled</span>
+              </label>
+
+              <label>
+                <div>Polling cadence</div>
+                <select
+                  value={(editing as any).polling_interval ?? "daily"}
+                  onChange={(e) =>
+                    setEditing({ ...editing, polling_interval: e.target.value } as any)
+                  }
+                  style={{ width: "100%" }}
+                  disabled={saving}
+                >
+                  <option value="hourly">Hourly</option>
+                  <option value="6h">Every 6 hours</option>
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                </select>
               </label>
             </div>
 
