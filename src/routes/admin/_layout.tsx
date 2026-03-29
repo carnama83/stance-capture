@@ -13,7 +13,8 @@ import {
   BarChart3, 
   Clock,
   Brain,  // ✅ ADDED: Brain icon import
-  SlidersHorizontal
+  SlidersHorizontal,
+  Shield
 } from "lucide-react";
 
 import {
@@ -107,6 +108,18 @@ export default function AdminLayout() {
             label="News"
           />
           
+          <Separator className="my-2" />
+
+          {/* Moderation (Epic H) */}
+          <div className="px-2 text-[10px] font-medium tracking-wide text-muted-foreground uppercase mb-1">
+            Moderation
+          </div>
+          <AdminLink
+            to="/admin/moderation"
+            icon={<Shield className="h-4 w-4" />}
+            label="Report Queue"
+          />
+
           <Separator className="my-2" />
 
           {/* NEW: Impact & Curation (Epic P) */}
