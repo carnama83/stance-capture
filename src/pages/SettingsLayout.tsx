@@ -31,6 +31,7 @@ export default function SettingsLayout() {
               <SettingsLink to="/settings/location" label="Location" />
               <SettingsLink to="/settings/notifications" label="Notifications" />
               <SettingsLink to="/settings/privacy" label="Privacy" />
+              <SettingsLink to="/settings/account" label="Account & Data" />
             </nav>
             
             {/* Divider */}
