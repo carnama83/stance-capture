@@ -62,6 +62,7 @@ import SettingsLayout from "./pages/SettingsLayout";
 import SettingsLocation from "./pages/SettingsLocation";
 import SettingsNotifications from "./pages/SettingsNotifications";
 import SettingsPrivacy from "./pages/SettingsPrivacy";
+import SettingsAccount from "./pages/SettingsAccount";
 import CommunityPulsePage from "./pages/CommunityPulsePage";
 
 import RouteDebug from "./components/RouteDebug";
@@ -168,6 +169,7 @@ const App: React.FC = () => {
                 <Route path="location" element={<SettingsLocation />} />
                 <Route path="notifications" element={<SettingsNotifications />} />
                 <Route path="privacy" element={<SettingsPrivacy />} />
+                <Route path="account" element={<SettingsAccount />} />
               </Route>
 
               <Route
