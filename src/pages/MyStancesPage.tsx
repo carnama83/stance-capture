@@ -180,6 +180,7 @@ export default function MyStancesPage() {
   const [dateFrom, setDateFrom] = React.useState<string>("");
   const [dateTo, setDateTo] = React.useState<string>("");
   const [exportOpen, setExportOpen] = React.useState(false);
+  const [activeTab, setActiveTab] = React.useState<"overview" | "stances">("overview");
 
   const { data: rawRows, isLoading, isError, error } = useQuery<MyStanceRow[], Error>({
     enabled: !!userId,
@@ -331,97 +332,137 @@ export default function MyStancesPage() {
           </div>
         </div>
 
-        {/* Phase 2a — Quick takes: 3 personalized unanswered questions */}
-        <QuickTakesCard userId={userId} />
+        {/* Tab bar */}
+        <div className="flex gap-1 border-b border-slate-100">
+          {(["overview", "stances"] as const).map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => setActiveTab(tab)}
+              className={[
+                "px-3 py-1.5 text-xs font-medium rounded-t-md transition-colors border-b-2 -mb-px capitalize",
+                activeTab === tab
+                  ? "border-slate-900 text-slate-900"
+                  : "border-transparent text-slate-500 hover:text-slate-700",
+              ].join(" ")}
+            >
+              {tab === "overview" ? "Overview" : `My Stances${totalCount > 0 ? ` (${totalCount})` : ""}`}
+            </button>
+          ))}
+        </div>
 
-        {/* Phase 2b — Trending signal: answered questions now trending/shifting */}
-        <TrendingAnsweredCard userId={userId} />
+        {/* Overview tab */}
+        {activeTab === "overview" && (
+          <>
+            {/* Phase 2a — Quick takes: 3 personalized unanswered questions */}
+            <QuickTakesCard userId={userId} />
 
-        {/* Contribution acknowledgement */}
-        <ContributionBanner />
+            {/* Phase 2b — Trending signal: answered questions now trending/shifting */}
+            <TrendingAnsweredCard userId={userId} />
 
-        {/* Summary cards */}
-        <section className="space-y-3">
-          <StanceSnapshotCard />
-          <SinceLastVisitCard />
-          <YouVsCommunityCard />
-        </section>
+            {/* Contribution acknowledgement */}
+            <ContributionBanner />
 
-        {/* Controls */}
-        <section className="rounded-lg border p-3 space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <div className="text-xs text-slate-700">
-              Showing <span className="font-medium">{visibleCount} of {totalCount}</span> stances
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
+            {/* Summary cards */}
+            <section className="space-y-3">
+              <StanceSnapshotCard />
+              <SinceLastVisitCard />
+              <YouVsCommunityCard />
+            </section>
 
-              {/* Sort */}
-              <label className="flex items-center gap-1 text-[11px] text-slate-600">
-                <span>Sort</span>
-                <select value={sortBy} onChange={(e) => setSortBy(e.target.value as SortBy)} className="rounded border px-2 py-1 text-[11px]">
-                  <option value="recent">Most recent</option>
-                  <option value="oldest">Oldest first</option>
-                  <option value="strongest">Strongest opinions</option>
-                </select>
-              </label>
-
-              {/* Stance filter */}
-              <label className="flex items-center gap-1 text-[11px] text-slate-600">
-                <span>Stance</span>
-                <select value={filterBy} onChange={(e) => setFilterBy(e.target.value as FilterBy)} className="rounded border px-2 py-1 text-[11px]">
-                  <option value="all">All</option>
-                  <option value="sa">Strongly agree</option>
-                  <option value="a">Agree</option>
-                  <option value="n">Neutral</option>
-                  <option value="d">Disagree</option>
-                  <option value="sd">Strongly disagree</option>
-                  <option value="strong">Strong only (±2)</option>
-                </select>
-              </label>
-
-              {/* Topic filter */}
-              {topics.length > 0 && (
-                <label className="flex items-center gap-1 text-[11px] text-slate-600">
-                  <span>Topic</span>
-                  <select value={topicFilter} onChange={(e) => setTopicFilter(e.target.value)} className="rounded border px-2 py-1 text-[11px] max-w-[140px]">
-                    <option value="all">All topics</option>
-                    {topics.map((t) => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                </label>
-              )}
-            </div>
-          </div>
-
-          {/* Date range */}
-          <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
-            <span>Date range</span>
-            <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
-              className="rounded border px-2 py-1 text-[11px]" />
-            <span>to</span>
-            <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
-              className="rounded border px-2 py-1 text-[11px]" />
-            {(dateFrom || dateTo) && (
-              <button type="button" onClick={() => { setDateFrom(""); setDateTo(""); }}
-                className="text-slate-400 hover:text-slate-600 underline">
-                Clear
+            {/* CTA to stances list */}
+            {totalCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setActiveTab("stances")}
+                className="w-full rounded-lg border border-slate-200 px-4 py-3 text-xs text-slate-600 hover:bg-slate-50 transition-colors text-center"
+              >
+                View all {totalCount} stances →
               </button>
             )}
-          </div>
+          </>
+        )}
 
-          {isLoading && <p className="text-xs text-slate-500">Loading your stances…</p>}
-          {isError && !isLoading && <p className="text-xs text-red-600">Failed to load: {(error as Error)?.message}</p>}
-          {!isLoading && !isError && totalCount === 0 && (
-            <p className="text-xs text-slate-500">You haven't taken a stance on any question yet.</p>
-          )}
-        </section>
+        {/* Stances tab */}
+        {activeTab === "stances" && (
+          <>
+            {/* Controls */}
+            <section className="rounded-lg border p-3 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="text-xs text-slate-700">
+                  Showing <span className="font-medium">{visibleCount} of {totalCount}</span> stances
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
 
-        {/* List */}
-        {!isLoading && !isError && visibleCount > 0 && (
-          <section className="space-y-3">
-            {filteredAndSorted.map((row) => (
-              <MyStanceCard key={row.stance_id} row={row} />
-            ))}
-          </section>
+                  {/* Sort */}
+                  <label className="flex items-center gap-1 text-[11px] text-slate-600">
+                    <span>Sort</span>
+                    <select value={sortBy} onChange={(e) => setSortBy(e.target.value as SortBy)} className="rounded border px-2 py-1 text-[11px]">
+                      <option value="recent">Most recent</option>
+                      <option value="oldest">Oldest first</option>
+                      <option value="strongest">Strongest opinions</option>
+                    </select>
+                  </label>
+
+                  {/* Stance filter */}
+                  <label className="flex items-center gap-1 text-[11px] text-slate-600">
+                    <span>Stance</span>
+                    <select value={filterBy} onChange={(e) => setFilterBy(e.target.value as FilterBy)} className="rounded border px-2 py-1 text-[11px]">
+                      <option value="all">All</option>
+                      <option value="sa">Strongly agree</option>
+                      <option value="a">Agree</option>
+                      <option value="n">Neutral</option>
+                      <option value="d">Disagree</option>
+                      <option value="sd">Strongly disagree</option>
+                      <option value="strong">Strong only (±2)</option>
+                    </select>
+                  </label>
+
+                  {/* Topic filter */}
+                  {topics.length > 0 && (
+                    <label className="flex items-center gap-1 text-[11px] text-slate-600">
+                      <span>Topic</span>
+                      <select value={topicFilter} onChange={(e) => setTopicFilter(e.target.value)} className="rounded border px-2 py-1 text-[11px] max-w-[140px]">
+                        <option value="all">All topics</option>
+                        {topics.map((t) => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    </label>
+                  )}
+                </div>
+              </div>
+
+              {/* Date range */}
+              <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
+                <span>Date range</span>
+                <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
+                  className="rounded border px-2 py-1 text-[11px]" />
+                <span>to</span>
+                <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
+                  className="rounded border px-2 py-1 text-[11px]" />
+                {(dateFrom || dateTo) && (
+                  <button type="button" onClick={() => { setDateFrom(""); setDateTo(""); }}
+                    className="text-slate-400 hover:text-slate-600 underline">
+                    Clear
+                  </button>
+                )}
+              </div>
+
+              {isLoading && <p className="text-xs text-slate-500">Loading your stances…</p>}
+              {isError && !isLoading && <p className="text-xs text-red-600">Failed to load: {(error as Error)?.message}</p>}
+              {!isLoading && !isError && totalCount === 0 && (
+                <p className="text-xs text-slate-500">You haven't taken a stance on any question yet.</p>
+              )}
+            </section>
+
+            {/* List */}
+            {!isLoading && !isError && visibleCount > 0 && (
+              <section className="space-y-3">
+                {filteredAndSorted.map((row) => (
+                  <MyStanceCard key={row.stance_id} row={row} />
+                ))}
+              </section>
+            )}
+          </>
         )}
       </div>
     </PageLayout>
