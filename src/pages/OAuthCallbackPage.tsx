@@ -1,74 +1,70 @@
 // src/pages/OAuthCallbackPage.tsx
 // Epic V — Social Authentication
 //
-// Manually extracts OAuth tokens from the double-hash URL produced by HashRouter:
-//   /#/auth/callback#access_token=...
-// and calls sb.auth.setSession() directly since Supabase can't auto-parse it.
-//
-// Module-level flag prevents double-execution (guard against StrictMode or
-// any future re-mount scenarios).
+// Extracts OAuth tokens from the HashRouter double-hash URL and calls
+// setSession() manually. Uses a ref-based guard (not module-level) so
+// repeated navigations to this page always work correctly.
 
 import * as React from "react";
 import { useNavigate } from "react-router-dom";
 import { getSupabase } from "@/lib/supabaseClient";
 import { Loader2 } from "lucide-react";
 
-// Module-level: survives re-mounts within the same page load
-let callbackHandled = false;
-
-function extractAuthParams(): URLSearchParams | null {
+function extractAuthParams(): { params: URLSearchParams; source: string } | null {
   const href = window.location.href;
 
-  // Primary case: double-hash from HashRouter /#/auth/callback#access_token=...
-  const doubleHashIdx = href.indexOf("#/auth/callback#");
-  if (doubleHashIdx !== -1) {
-    const secondary = href.slice(doubleHashIdx + "#/auth/callback#".length);
-    return new URLSearchParams(secondary);
+  // HashRouter double-hash: /#/auth/callback#access_token=...
+  const idx = href.indexOf("#/auth/callback#");
+  if (idx !== -1) {
+    const secondary = href.slice(idx + "#/auth/callback#".length);
+    return { params: new URLSearchParams(secondary), source: "double-hash" };
   }
 
-  // Fallback: standard single hash (BrowserRouter)
+  // Single hash fallback
   const hash = window.location.hash.replace(/^#/, "");
   if (hash.includes("access_token=") || hash.includes("error=")) {
-    return new URLSearchParams(hash);
+    return { params: new URLSearchParams(hash), source: "hash" };
   }
 
-  // PKCE code flow: params in query string
+  // PKCE code in query string
   const search = window.location.search;
   if (search.includes("code=") || search.includes("error=")) {
-    return new URLSearchParams(search.slice(1));
+    return { params: new URLSearchParams(search.slice(1)), source: "query" };
   }
 
   return null;
 }
 
 export default function OAuthCallbackPage() {
-  const sb = React.useMemo(getSupabase, []);
   const navigate = useNavigate();
   const [error, setError] = React.useState<string | null>(null);
-  const [status, setStatus] = React.useState("Completing sign-in\u2026");
+  const [status, setStatus] = React.useState("Completing sign-in…");
+  const ranRef = React.useRef(false);
 
   React.useEffect(() => {
-    // Reset on fresh navigation to this page (new OAuth flow)
-    // but guard against StrictMode double-invoke within same render cycle
-    if (callbackHandled) {
-      return;
-    }
+    // Ref-based guard: prevents double-run within same mount cycle
+    if (ranRef.current) return;
+    ranRef.current = true;
+
+    const sb = getSupabase();
 
     if (!sb) {
-      setError("Supabase client not available.");
+      setError("Supabase client is not available. Check your environment variables.");
       return;
     }
 
-    callbackHandled = true;
-
     async function handleCallback() {
-      const params = extractAuthParams();
+      const extracted = extractAuthParams();
 
-      if (!params) {
+      if (!extracted) {
         setError("No authentication data found. Please try signing in again.");
         return;
       }
 
+      const { params, source } = extracted;
+      console.log("[OAuthCallback] params source:", source);
+
+      // Provider-level error (e.g. user denied access)
       const oauthError = params.get("error_description") || params.get("error");
       if (oauthError) {
         setError(decodeURIComponent(oauthError));
@@ -79,59 +75,59 @@ export default function OAuthCallbackPage() {
       const refreshToken = params.get("refresh_token");
       const code = params.get("code");
 
+      console.log("[OAuthCallback] access_token:", !!accessToken, "refresh_token:", !!refreshToken, "code:", !!code);
+
       // PKCE code flow
       if (code && (!accessToken || !refreshToken)) {
-        setStatus("Exchanging authorization code\u2026");
+        setStatus("Exchanging authorization code…");
         try {
-          const { data, error: exchError } = await sb!.auth.exchangeCodeForSession(window.location.href);
-          if (exchError || !data?.session) {
-            setError(exchError?.message ?? "Authorization code exchange failed.");
+          const { data, error: err } = await sb!.auth.exchangeCodeForSession(window.location.href);
+          if (err || !data?.session) {
+            setError(err?.message ?? "Code exchange failed.");
             return;
           }
           await finalize(sb!, data.session, navigate, setStatus);
         } catch (e: any) {
-          setError(e?.message ?? "Code exchange failed.");
+          setError(e?.message ?? "Code exchange threw an error.");
         }
         return;
       }
 
       // Implicit / token flow
       if (!accessToken || !refreshToken) {
-        setError("Incomplete authentication response. Please try again.");
+        setError("Incomplete authentication response — missing tokens. Please try again.");
         return;
       }
 
-      setStatus("Verifying your account\u2026");
+      setStatus("Verifying your account…");
+      console.log("[OAuthCallback] Calling setSession...");
 
       try {
-        const { data, error: sessionError } = await sb!.auth.setSession({
-          access_token: accessToken,
-          refresh_token: refreshToken,
+        const result = await sb!.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+        console.log("[OAuthCallback] setSession result:", {
+          error: result.error?.message ?? null,
+          hasSession: !!result.data?.session,
+          user: result.data?.session?.user?.email ?? null,
         });
 
-        if (sessionError) {
-          setError(sessionError.message);
+        if (result.error) {
+          setError(result.error.message);
           return;
         }
-
-        if (!data?.session) {
+        if (!result.data?.session) {
           setError("Session could not be established. Please try again.");
           return;
         }
 
-        await finalize(sb!, data.session, navigate, setStatus);
+        await finalize(sb!, result.data.session, navigate, setStatus);
       } catch (e: any) {
-        setError(e?.message ?? "setSession failed.");
+        console.error("[OAuthCallback] setSession threw:", e);
+        setError(e?.message ?? "setSession failed unexpectedly.");
       }
     }
 
     handleCallback();
-
-    // Reset flag when component unmounts (user navigated away then came back)
-    return () => {
-      callbackHandled = false;
-    };
-  }, [sb, navigate]);
+  }, [navigate]);
 
   if (error) {
     return (
@@ -140,10 +136,7 @@ export default function OAuthCallbackPage() {
           <div className="text-red-400 text-5xl">&times;</div>
           <h1 className="text-lg font-semibold text-slate-900">Sign-in failed</h1>
           <p className="text-sm text-slate-600">{error}</p>
-          <a
-            href="/#/login"
-            className="inline-block mt-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 transition-colors"
-          >
+          <a href="/#/login" className="inline-block mt-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 transition-colors">
             Back to login
           </a>
         </div>
@@ -161,44 +154,25 @@ export default function OAuthCallbackPage() {
   );
 }
 
-// ─── Finalize ─────────────────────────────────────────────────────────────────
-
-async function finalize(
-  sb: any,
-  session: any,
-  navigate: any,
-  setStatus: (s: string) => void
-) {
-  setStatus("Setting up your profile\u2026");
+async function finalize(sb: any, session: any, navigate: any, setStatus: (s: string) => void) {
+  setStatus("Setting up your profile…");
   await bootstrapSocialProfile(sb, session);
 
-  setStatus("Saving account connection\u2026");
+  setStatus("Saving account connection…");
   await persistProviderToken(sb, session);
 
   const returnTo = sessionStorage.getItem("return_to");
   sessionStorage.removeItem("return_to");
-  const dest =
-    returnTo && (returnTo.startsWith("/") || returnTo.startsWith("#/"))
-      ? returnTo
-      : "/";
-
+  const dest = returnTo && (returnTo.startsWith("/") || returnTo.startsWith("#/")) ? returnTo : "/";
   navigate(dest, { replace: true });
 }
-
-// ─── Bootstrap social profile ─────────────────────────────────────────────────
 
 async function bootstrapSocialProfile(sb: any, session: any) {
   try {
     const user = session.user;
     if (!user) return;
     const meta = user.user_metadata ?? {};
-
-    const { data: profile } = await sb
-      .from("profiles")
-      .select("username, avatar_url")
-      .eq("user_id", user.id)
-      .single();
-
+    const { data: profile } = await sb.from("profiles").select("username, avatar_url").eq("user_id", user.id).single();
     const updates: Record<string, string> = {};
     if (!profile?.avatar_url) {
       const avatar = meta.avatar_url || meta.picture || null;
@@ -211,46 +185,31 @@ async function bootstrapSocialProfile(sb: any, session: any) {
     if (!profile?.username) {
       const name = meta.full_name || meta.name || null;
       if (name) {
-        const suggestion = name
-          .toLowerCase()
-          .replace(/[^a-z0-9_.]/g, "_")
-          .replace(/_+/g, "_")
-          .slice(0, 20);
+        const suggestion = name.toLowerCase().replace(/[^a-z0-9_.]/g, "_").replace(/_+/g, "_").slice(0, 20);
         window.localStorage.setItem("oauth_username_suggestion", suggestion);
       }
     }
     const displayName = meta.full_name || meta.name || null;
     if (displayName) window.localStorage.setItem("oauth_display_name", displayName);
   } catch (e: any) {
-    console.warn("[OAuthCallback] Profile bootstrap failed (non-fatal):", e?.message);
+    console.warn("[OAuthCallback] Profile bootstrap (non-fatal):", e?.message);
   }
 }
-
-// ─── Persist provider token ───────────────────────────────────────────────────
 
 async function persistProviderToken(sb: any, session: any) {
   try {
     if (!session?.provider_token) return;
     const provider = session.user?.app_metadata?.provider;
     if (!provider || !["google", "facebook", "apple"].includes(provider)) return;
-
-    const identity = session.user?.identities?.find(
-      (i: any) => i.provider === provider
-    );
+    const identity = session.user?.identities?.find((i: any) => i.provider === provider);
     const providerUserId = identity?.id ?? session.user?.id;
-    const expiresAt = session.provider_token_expiry
-      ? new Date(session.provider_token_expiry * 1000).toISOString()
-      : null;
-
+    const expiresAt = session.provider_token_expiry ? new Date(session.provider_token_expiry * 1000).toISOString() : null;
     await sb.rpc("upsert_social_auth_token", {
-      p_provider: provider,
-      p_provider_user_id: providerUserId,
-      p_access_token: session.provider_token,
-      p_refresh_token: session.provider_refresh_token ?? null,
-      p_token_expires_at: expiresAt,
-      p_scopes: [],
+      p_provider: provider, p_provider_user_id: providerUserId,
+      p_access_token: session.provider_token, p_refresh_token: session.provider_refresh_token ?? null,
+      p_token_expires_at: expiresAt, p_scopes: [],
     });
   } catch (e: any) {
-    console.warn("[OAuthCallback] Token persistence failed (non-fatal):", e?.message);
+    console.warn("[OAuthCallback] Token persistence (non-fatal):", e?.message);
   }
 }
