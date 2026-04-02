@@ -14,6 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Loader2, Trash2, RotateCcw, Download, Shield, AlertTriangle, CheckCircle2, XCircle
 } from "lucide-react";
+import ConnectedAccountsSection from "@/components/auth/ConnectedAccountsSection";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -336,6 +337,14 @@ export default function SettingsAccount() {
           Manage your account, review consent history, and export or delete your data.
         </p>
       </div>
+
+      {/* V4: Connected social accounts */}
+      <Section
+        title="Connected social accounts"
+        description="Sign in faster using Google, Facebook, or Apple."
+      >
+        <ConnectedAccountsSection />
+      </Section>
 
       {/* N3: Data export — delegates to My Stances which has the full export UI */}
       <Section
