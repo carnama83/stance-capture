@@ -190,6 +190,26 @@ function isConflictError(err: any): boolean {
   return false;
 }
 
+async function applyOAuthStashIfPresent(sb: any) {
+  // Clear oauth suggestions that were set by OAuthCallbackPage
+  // These are consumed by Signup onboarding pre-fill, not applied directly here
+  // (the user needs to confirm their display name / username in onboarding)
+  // We only clean up stale entries if the user has already completed onboarding
+  try {
+    const { data: profile } = await sb
+      .from("profiles")
+      .select("username")
+      .single();
+    if (profile?.username) {
+      // Onboarding complete — clear any leftover oauth suggestions
+      window.localStorage.removeItem("oauth_username_suggestion");
+      window.localStorage.removeItem("oauth_display_name");
+    }
+  } catch {
+    // Non-fatal
+  }
+}
+
 async function runBootstrap(sb: any) {
   const r = await sb.rpc("bootstrap_user_after_login");
 
@@ -208,6 +228,7 @@ async function runBootstrap(sb: any) {
   }
 
   await applySignupStashIfPresent(sb);
+  await applyOAuthStashIfPresent(sb);
   await touchSessionAndDevice(sb);
 }
 
