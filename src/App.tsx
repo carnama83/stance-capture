@@ -10,6 +10,7 @@ import AuthReadyGate from "./components/AuthReadyGate";
 import { Protected, PublicOnly } from "./auth/route-guards";
 import AdminOnly from "./auth/AdminOnly";
 import { ROUTES } from "@/routes/paths";
+import { useShareClickTracker } from "@/hooks/useShareClickTracker";
 import AdminTopicsPage from "@/routes/admin/topics/Index";
 
 import TopicDetailPage from "./pages/TopicDetailPage";
@@ -42,6 +43,7 @@ import AdminSourcesPage from "@/routes/admin/sources/Index";
 import AdminIngestionPage from "@/routes/admin/ingestion/Index";
 import AdminDraftsPage from "@/routes/admin/drafts/Index";
 import AdminQuestionsPage from "@/routes/admin/questions/Index";
+import ShareAnalyticsPage from "@/routes/admin/share-analytics/Index";
 import AdminNewsIndex from "@/routes/admin/news/Index";
 import AdminLiveQuestionsPage from "@/routes/admin/live-questions/Index";
 import AdminLiveQuestionShowPage from "@/routes/admin/live-questions/Show";
@@ -103,6 +105,7 @@ const App: React.FC = () => {
         <Toaster />
         <Sonner />
         <Router>
+          <ShareClickTrackerMount />
           <AuthReadyGate>
             <RouteDebug />
             <Routes>
@@ -243,6 +246,7 @@ const App: React.FC = () => {
                 <Route path="drafts" element={<AdminDraftsPage />} />
                 <Route path="ai-drafts" element={<AdminAiDraftsPage />} />
                 <Route path="questions" element={<AdminQuestionsPage />} />
+                <Route path="share-analytics" element={<ShareAnalyticsPage />} />
                 <Route path="live-questions" element={<AdminLiveQuestionsPage />} />
                 <Route
                   path="live-questions/:id"
