@@ -22,6 +22,7 @@ import Index from "./pages/Index";
 import Signup from "./pages/Signup";
 import Login from "./pages/Login";
 import ResetPassword from "./pages/ResetPassword";
+import OAuthCallbackPage from "./pages/OAuthCallbackPage";
 // ✅ Option A: keep /profile route but redirect; Profile page no longer needed here
 import SettingsProfile from "./pages/SettingsProfile";
 import SettingsSecurity from "./pages/SettingsSecurity";
@@ -140,6 +141,9 @@ const App: React.FC = () => {
                   </PublicOnly>
                 }
               />
+
+              {/* Epic V: OAuth callback — no PublicOnly wrapper; handles both new and returning users */}
+              <Route path="/auth/callback" element={<OAuthCallbackPage />} />
 
               {/* Question detail (user-facing) */}
               <Route path="/q/:id" element={<QuestionDetailPage />} />
