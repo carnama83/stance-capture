@@ -210,6 +210,26 @@ async function applyOAuthStashIfPresent(sb: any) {
   }
 }
 
+async function mergeEmbeddedStancesIfPending(sb: any) {
+  // Epic T: Merge anonymous embedded stances to the newly created account
+  const fp = window.localStorage.getItem("sc_pending_merge_fp");
+  if (!fp) return;
+
+  try {
+    const { data: merged } = await sb.rpc("merge_embedded_stances", {
+      p_device_fingerprint: fp,
+    });
+    if (merged && merged > 0) {
+      console.info(`[bootstrap] Merged ${merged} embedded stance(s) to account`);
+    }
+    // Clear regardless of result
+    window.localStorage.removeItem("sc_pending_merge_fp");
+    window.localStorage.removeItem("sc_pending_merge_count");
+  } catch (e) {
+    console.warn("[bootstrap] Embedded stance merge failed (non-fatal):", e);
+  }
+}
+
 async function runBootstrap(sb: any) {
   const r = await sb.rpc("bootstrap_user_after_login");
 
@@ -229,6 +249,7 @@ async function runBootstrap(sb: any) {
 
   await applySignupStashIfPresent(sb);
   await applyOAuthStashIfPresent(sb);
+  await mergeEmbeddedStancesIfPending(sb);
   await touchSessionAndDevice(sb);
 }
 
