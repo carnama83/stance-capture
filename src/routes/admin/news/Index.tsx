@@ -1,9 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { getSupabase } from "@/lib/supabaseClient";
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL!;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY!;
-const sb = createClient(supabaseUrl, supabaseAnonKey);
+const sb = getSupabase();
 
 type Source = { id: string; name: string | null };
 type Item = {
