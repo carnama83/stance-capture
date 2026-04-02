@@ -915,6 +915,18 @@ export default function Signup() {
 
       if (sess.session) {
         await finalizeOnboarding();
+
+        // Epic T: Check for anonymous embedded stances to merge
+        const fp = window.localStorage.getItem("sc_embed_fp_v1");
+        if (fp && sb) {
+          const { data: mergeCount } = await sb.rpc("get_pending_merge_count", { p_device_fingerprint: fp });
+          if (mergeCount && mergeCount > 0) {
+            // Store merge prompt flag — read by useBootstrapUser on first login
+            window.localStorage.setItem("sc_pending_merge_fp", fp);
+            window.localStorage.setItem("sc_pending_merge_count", String(mergeCount));
+          }
+        }
+
         setMsg("Account created!");
         addLog("nav.profile");
         nav("/profile");
