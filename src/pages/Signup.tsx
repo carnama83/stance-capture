@@ -5,7 +5,7 @@ import { getSupabase } from "../lib/supabaseClient";
 import UsernameField from "../components/UsernameField";
 import { DobField } from "../components/DobField";
 import PageLayout from "../components/PageLayout";
-import SocialAuthButtons from "../components/auth/SocialAuthButtons";
+import SocialAuthButtons from "../auth/SocialAuthButtons";
 
 // ---------- Types ----------
 type Gender =
