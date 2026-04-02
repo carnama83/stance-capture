@@ -14,7 +14,8 @@ import {
   Clock,
   Brain,  // ✅ ADDED: Brain icon import
   SlidersHorizontal,
-  Shield
+  Shield,
+  Share2
 } from "lucide-react";
 
 import {
@@ -106,6 +107,11 @@ export default function AdminLayout() {
             to="/admin/news"
             icon={<FileText className="h-4 w-4" />}
             label="News"
+          />
+          <AdminLink
+            to="/admin/share-analytics"
+            icon={<Share2 className="h-4 w-4" />}
+            label="Share Analytics"
           />
           
           <Separator className="my-2" />
