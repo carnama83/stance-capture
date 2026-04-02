@@ -5,7 +5,7 @@ import * as React from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { getSupabase } from "../lib/supabaseClient";
 import PageLayout from "../components/PageLayout";
-import SocialAuthButtons from "../components/auth/SocialAuthButtons";
+import SocialAuthButtons from "../auth/SocialAuthButtons";
 
 export default function Login() {
   const sb = React.useMemo(getSupabase, []);
