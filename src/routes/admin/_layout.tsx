@@ -15,7 +15,8 @@ import {
   Brain,  // ✅ ADDED: Brain icon import
   SlidersHorizontal,
   Shield,
-  Share2
+  Share2,
+  LayoutTemplate
 } from "lucide-react";
 
 import {
@@ -112,6 +113,11 @@ export default function AdminLayout() {
             to="/admin/share-analytics"
             icon={<Share2 className="h-4 w-4" />}
             label="Share Analytics"
+          />
+          <AdminLink
+            to="/admin/embed-analytics"
+            icon={<LayoutTemplate className="h-4 w-4" />}
+            label="Embed Analytics"
           />
           
           <Separator className="my-2" />
