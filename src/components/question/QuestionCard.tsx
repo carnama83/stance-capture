@@ -8,6 +8,7 @@ import { QuestionCoverImage } from './QuestionCoverImage';
 import { formatAgeDays, calculateAgeDays } from '@/types/questionLifecycleTypes';
 import { Badge } from '@/components/ui/badge';
 import { MessageSquare } from 'lucide-react';
+import { ShareButton } from '@/components/share/ShareButton';
 
 interface QuestionCardProps {
   question: QuestionWithLifecycle & {
@@ -108,6 +109,15 @@ export function QuestionCard({
               <span className="ml-1">today</span>
             </div>
           )}
+
+          <div className="ml-auto">
+            <ShareButton
+              questionId={question.id}
+              questionText={question.question}
+              questionSummary={question.summary}
+              compact
+            />
+          </div>
         </div>
       )}
       
