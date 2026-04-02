@@ -1,4 +1,10 @@
 // src/main.tsx — drop-in
+import { handleOAuthHashRedirect } from "./lib/oauthHashHandler";
+
+// Must run before React renders — rewrites /auth/callback#access_token into
+// HashRouter-compatible /#/auth/callback#access_token so Supabase can parse it.
+handleOAuthHashRedirect();
+
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
