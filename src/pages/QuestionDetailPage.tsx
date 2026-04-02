@@ -23,6 +23,9 @@ import { QuestionPhaseBadge } from "@/components/question/QuestionPhaseBadge";
 import { useToast } from "@/components/ui/use-toast";
 
 import { FollowTopicButton } from "@/components/FollowTopicButton";
+import { ShareButton } from "@/components/share/ShareButton";
+import { PostStanceSharePrompt } from "@/components/share/PostStanceSharePrompt";
+import { useOgMeta } from "@/hooks/useOgMeta";
 import { fetchCommunityStats, communityStatsKey } from "@/lib/fetchCommunityStats";
 import { CommunityStanceBar } from "@/components/question/CommunityStanceBar";
 import { CommunityTrendSparkline } from "@/components/question/CommunityTrendSparkline";
@@ -632,6 +635,16 @@ function StanceCard({
             />
           </div>
 
+          {/* W1: Post-stance share prompt */}
+          {showSharePrompt && question && (
+            <PostStanceSharePrompt
+              questionId={questionId}
+              questionText={question.question}
+              questionSummary={question.summary}
+              onDismiss={() => setShowSharePrompt(false)}
+            />
+          )}
+
           <div className="text-[11px] text-slate-500 flex items-center gap-2 mt-1">
             {stanceLoading ? (
               <span>Loading your stance…</span>
@@ -661,6 +674,14 @@ function StanceCard({
 export default function QuestionDetailPage() {
   const { id } = useParams<{ id: string }>();
   const questionId = id ?? "";
+  const [showSharePrompt, setShowSharePrompt] = React.useState(false);
+
+  // W2: Dynamic OG meta for social share previews
+  useOgMeta({
+    title: question?.question ?? "A question for you",
+    description: question?.summary ?? "Share your stance on Stance Capture.",
+    questionId,
+  });
 
   const session = useSupabaseSession();
   const userId = session?.user?.id ?? null;
@@ -913,6 +934,11 @@ export default function QuestionDetailPage() {
             : `Your stance is now: ${label}.`,
         duration: 2200,
       });
+
+      // Show share prompt after first stance save
+      if (resolvedScore !== null) {
+        setShowSharePrompt(true);
+      }
     },
     onError: (err: any) => {
       mutationInFlight.current = false;
@@ -1166,7 +1192,12 @@ export default function QuestionDetailPage() {
                       {topicLite?.title ?? "View topic"}
                     </div>
                   </div>
-                  <div className="shrink-0">
+                  <div className="shrink-0 flex items-center gap-2">
+                    <ShareButton
+                      questionId={question.id}
+                      questionText={question.question}
+                      questionSummary={question.summary}
+                    />
                     <FollowTopicButton topicId={question.topic_id} />
                   </div>
                 </div>
