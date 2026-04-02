@@ -14,7 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Loader2, Trash2, RotateCcw, Download, Shield, AlertTriangle, CheckCircle2, XCircle
 } from "lucide-react";
-import ConnectedAccountsSection from "@/components/auth/ConnectedAccountsSection";
+import ConnectedAccountsSection from "@/auth/ConnectedAccountsSection";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
