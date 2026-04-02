@@ -1,38 +1,64 @@
 // src/pages/OAuthCallbackPage.tsx
 // Epic V — Social Authentication
 //
-// Extracts OAuth tokens from the HashRouter double-hash URL and calls
-// setSession() manually. Uses a ref-based guard (not module-level) so
-// repeated navigations to this page always work correctly.
+// setSession() hangs when the Supabase client has detectSessionInUrl:false
+// and hasn't been "warmed up" with a prior auth call. Instead we:
+//   1. Manually write the session to localStorage (same key Supabase uses)
+//   2. Call getSession() to have the client pick it up from storage
+//   3. Navigate on success
 
 import * as React from "react";
 import { useNavigate } from "react-router-dom";
 import { getSupabase } from "@/lib/supabaseClient";
 import { Loader2 } from "lucide-react";
 
-function extractAuthParams(): { params: URLSearchParams; source: string } | null {
+function extractAuthParams(): URLSearchParams | null {
   const href = window.location.href;
-
-  // HashRouter double-hash: /#/auth/callback#access_token=...
   const idx = href.indexOf("#/auth/callback#");
-  if (idx !== -1) {
-    const secondary = href.slice(idx + "#/auth/callback#".length);
-    return { params: new URLSearchParams(secondary), source: "double-hash" };
-  }
-
-  // Single hash fallback
+  if (idx !== -1) return new URLSearchParams(href.slice(idx + "#/auth/callback#".length));
   const hash = window.location.hash.replace(/^#/, "");
-  if (hash.includes("access_token=") || hash.includes("error=")) {
-    return { params: new URLSearchParams(hash), source: "hash" };
-  }
-
-  // PKCE code in query string
+  if (hash.includes("access_token=") || hash.includes("error=")) return new URLSearchParams(hash);
   const search = window.location.search;
-  if (search.includes("code=") || search.includes("error=")) {
-    return { params: new URLSearchParams(search.slice(1)), source: "query" };
-  }
-
+  if (search.includes("code=") || search.includes("error=")) return new URLSearchParams(search.slice(1));
   return null;
+}
+
+// Manually seed localStorage with the session so Supabase picks it up via getSession()
+function seedSessionToStorage(accessToken: string, refreshToken: string, expiresAt: string) {
+  try {
+    const url = import.meta.env.VITE_SUPABASE_URL as string;
+    // Supabase stores session under: sb-<project-ref>-auth-token
+    const ref = url.replace("https://", "").split(".")[0];
+    const storageKey = `sb-${ref}-auth-token`;
+
+    // Decode JWT payload to get user info
+    const payloadB64 = accessToken.split(".")[1];
+    const payload = JSON.parse(atob(payloadB64));
+
+    const sessionObj = {
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      expires_at: parseInt(expiresAt),
+      expires_in: parseInt(expiresAt) - Math.floor(Date.now() / 1000),
+      token_type: "bearer",
+      user: {
+        id: payload.sub,
+        aud: payload.aud,
+        role: payload.role,
+        email: payload.email,
+        app_metadata: payload.app_metadata ?? {},
+        user_metadata: payload.user_metadata ?? {},
+        created_at: new Date(payload.iat * 1000).toISOString(),
+      },
+    };
+
+    localStorage.setItem(storageKey, JSON.stringify(sessionObj));
+    console.log("[OAuthCallback] Seeded session to localStorage key:", storageKey);
+    return true;
+  } catch (e: any) {
+    console.warn("[OAuthCallback] seedSessionToStorage failed:", e?.message);
+    return false;
+  }
 }
 
 export default function OAuthCallbackPage() {
@@ -42,88 +68,74 @@ export default function OAuthCallbackPage() {
   const ranRef = React.useRef(false);
 
   React.useEffect(() => {
-    // Ref-based guard: prevents double-run within same mount cycle
     if (ranRef.current) return;
     ranRef.current = true;
 
     const sb = getSupabase();
-
     if (!sb) {
-      setError("Supabase client is not available. Check your environment variables.");
+      setError("Supabase client unavailable. Check environment variables.");
       return;
     }
 
     async function handleCallback() {
-      const extracted = extractAuthParams();
+      const params = extractAuthParams();
+      if (!params) { setError("No authentication data found. Please try signing in again."); return; }
 
-      if (!extracted) {
-        setError("No authentication data found. Please try signing in again.");
-        return;
-      }
-
-      const { params, source } = extracted;
-      console.log("[OAuthCallback] params source:", source);
-
-      // Provider-level error (e.g. user denied access)
       const oauthError = params.get("error_description") || params.get("error");
-      if (oauthError) {
-        setError(decodeURIComponent(oauthError));
-        return;
-      }
+      if (oauthError) { setError(decodeURIComponent(oauthError)); return; }
 
       const accessToken = params.get("access_token");
       const refreshToken = params.get("refresh_token");
+      const expiresAt = params.get("expires_at") ?? String(Math.floor(Date.now() / 1000) + 3600);
       const code = params.get("code");
 
-      console.log("[OAuthCallback] access_token:", !!accessToken, "refresh_token:", !!refreshToken, "code:", !!code);
+      console.log("[OAuthCallback] tokens present:", { accessToken: !!accessToken, refreshToken: !!refreshToken, code: !!code });
 
       // PKCE code flow
-      if (code && (!accessToken || !refreshToken)) {
+      if (code && !accessToken) {
         setStatus("Exchanging authorization code…");
         try {
           const { data, error: err } = await sb!.auth.exchangeCodeForSession(window.location.href);
-          if (err || !data?.session) {
-            setError(err?.message ?? "Code exchange failed.");
-            return;
-          }
+          if (err || !data?.session) { setError(err?.message ?? "Code exchange failed."); return; }
           await finalize(sb!, data.session, navigate, setStatus);
-        } catch (e: any) {
-          setError(e?.message ?? "Code exchange threw an error.");
-        }
+        } catch (e: any) { setError(e?.message ?? "Code exchange error."); }
         return;
       }
 
-      // Implicit / token flow
       if (!accessToken || !refreshToken) {
-        setError("Incomplete authentication response — missing tokens. Please try again.");
+        setError("Incomplete authentication response. Please try again.");
         return;
       }
 
+      // Seed session directly into localStorage, then let Supabase read it back
       setStatus("Verifying your account…");
-      console.log("[OAuthCallback] Calling setSession...");
+      const seeded = seedSessionToStorage(accessToken, refreshToken, expiresAt);
+      if (!seeded) { setError("Could not establish session. Please try again."); return; }
 
-      try {
-        const result = await sb!.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
-        console.log("[OAuthCallback] setSession result:", {
-          error: result.error?.message ?? null,
-          hasSession: !!result.data?.session,
-          user: result.data?.session?.user?.email ?? null,
-        });
+      // Give localStorage a tick to settle, then call getSession
+      await new Promise(r => setTimeout(r, 100));
 
-        if (result.error) {
-          setError(result.error.message);
-          return;
-        }
-        if (!result.data?.session) {
-          setError("Session could not be established. Please try again.");
-          return;
-        }
+      console.log("[OAuthCallback] Calling getSession after seed...");
+      const { data, error: sessionErr } = await sb!.auth.getSession();
+      console.log("[OAuthCallback] getSession result:", {
+        error: sessionErr?.message ?? null,
+        hasSession: !!data?.session,
+        user: data?.session?.user?.email ?? null,
+      });
 
-        await finalize(sb!, result.data.session, navigate, setStatus);
-      } catch (e: any) {
-        console.error("[OAuthCallback] setSession threw:", e);
-        setError(e?.message ?? "setSession failed unexpectedly.");
+      if (sessionErr || !data?.session) {
+        // Final fallback: try setSession now that storage is warm
+        console.log("[OAuthCallback] Falling back to setSession...");
+        try {
+          const { data: sd, error: se } = await sb!.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+          console.log("[OAuthCallback] setSession fallback result:", { error: se?.message ?? null, hasSession: !!sd?.session });
+          if (se || !sd?.session) { setError(se?.message ?? "Session could not be established."); return; }
+          await finalize(sb!, sd.session, navigate, setStatus);
+        } catch (e: any) { setError(e?.message ?? "setSession failed."); }
+        return;
       }
+
+      await finalize(sb!, data.session, navigate, setStatus);
     }
 
     handleCallback();
@@ -157,10 +169,8 @@ export default function OAuthCallbackPage() {
 async function finalize(sb: any, session: any, navigate: any, setStatus: (s: string) => void) {
   setStatus("Setting up your profile…");
   await bootstrapSocialProfile(sb, session);
-
   setStatus("Saving account connection…");
   await persistProviderToken(sb, session);
-
   const returnTo = sessionStorage.getItem("return_to");
   sessionStorage.removeItem("return_to");
   const dest = returnTo && (returnTo.startsWith("/") || returnTo.startsWith("#/")) ? returnTo : "/";
@@ -191,9 +201,7 @@ async function bootstrapSocialProfile(sb: any, session: any) {
     }
     const displayName = meta.full_name || meta.name || null;
     if (displayName) window.localStorage.setItem("oauth_display_name", displayName);
-  } catch (e: any) {
-    console.warn("[OAuthCallback] Profile bootstrap (non-fatal):", e?.message);
-  }
+  } catch (e: any) { console.warn("[OAuthCallback] profile bootstrap (non-fatal):", e?.message); }
 }
 
 async function persistProviderToken(sb: any, session: any) {
@@ -209,7 +217,5 @@ async function persistProviderToken(sb: any, session: any) {
       p_access_token: session.provider_token, p_refresh_token: session.provider_refresh_token ?? null,
       p_token_expires_at: expiresAt, p_scopes: [],
     });
-  } catch (e: any) {
-    console.warn("[OAuthCallback] Token persistence (non-fatal):", e?.message);
-  }
+  } catch (e: any) { console.warn("[OAuthCallback] token persistence (non-fatal):", e?.message); }
 }
