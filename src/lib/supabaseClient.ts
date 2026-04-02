@@ -1,22 +1,15 @@
-
 // src/lib/supabaseClient.ts
+// Singleton Supabase client — only ONE instance must exist in the app.
+// detectSessionInUrl is DISABLED because this app uses HashRouter, which
+// produces /#/auth/callback#access_token=... — a double-hash that Supabase
+// cannot auto-parse. OAuthCallbackPage handles token extraction manually.
+
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 console.log("[ENV CHECK]", {
   url: import.meta.env.VITE_SUPABASE_URL,
   keyPresent: Boolean(import.meta.env.VITE_SUPABASE_ANON_KEY),
 });
-
-
-
-/**
- * Vite expects env keys with the VITE_ prefix.
- * Required:
- *   VITE_SUPABASE_URL
- *   VITE_SUPABASE_ANON_KEY
- *
- * Replace your existing file with this one.
- */
 
 let cached: SupabaseClient | null = null;
 let warned = false;
@@ -41,7 +34,11 @@ export function getSupabase(): SupabaseClient | null {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
-      detectSessionInUrl: true,
+      // CRITICAL: must be false for HashRouter apps.
+      // Supabase cannot parse /#/auth/callback#access_token=... (double-hash).
+      // OAuthCallbackPage calls setSession() manually after extracting the token.
+      detectSessionInUrl: false,
+      flowType: "implicit",
     },
   });
 
