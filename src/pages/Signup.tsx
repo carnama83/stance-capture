@@ -5,6 +5,7 @@ import { getSupabase } from "../lib/supabaseClient";
 import UsernameField from "../components/UsernameField";
 import { DobField } from "../components/DobField";
 import PageLayout from "../components/PageLayout";
+import SocialAuthButtons from "../components/auth/SocialAuthButtons";
 
 // ---------- Types ----------
 type Gender =
@@ -1120,6 +1121,12 @@ export default function Signup() {
             </div>
           </div>
         )}
+
+        {/* Social sign-up */}
+        <SocialAuthButtons
+          mode="signup"
+          onError={(e) => setMsg(e)}
+        />
 
         <p className="text-sm">
           Already have an account?{" "}
