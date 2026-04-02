@@ -44,6 +44,9 @@ import AdminIngestionPage from "@/routes/admin/ingestion/Index";
 import AdminDraftsPage from "@/routes/admin/drafts/Index";
 import AdminQuestionsPage from "@/routes/admin/questions/Index";
 import ShareAnalyticsPage from "@/routes/admin/share-analytics/Index";
+import EmbedPage from "@/pages/EmbedPage";
+import PublisherPage from "@/pages/PublisherPage";
+import EmbedAnalyticsPage from "@/routes/admin/embed-analytics/Index";
 import AdminNewsIndex from "@/routes/admin/news/Index";
 import AdminLiveQuestionsPage from "@/routes/admin/live-questions/Index";
 import AdminLiveQuestionShowPage from "@/routes/admin/live-questions/Show";
@@ -109,6 +112,10 @@ const App: React.FC = () => {
           <AuthReadyGate>
             <RouteDebug />
             <Routes>
+              {/* Epic T: Embed — no auth gate, no app chrome */}
+              <Route path="/embed/:questionId" element={<EmbedPage />} />
+              <Route path="/publisher" element={<PublisherPage />} />
+
               {/* Public */}
               <Route path={ROUTES.HOME} element={<Index />} />
               <Route path={ROUTES.INDEX} element={<Index />} />
@@ -247,6 +254,7 @@ const App: React.FC = () => {
                 <Route path="ai-drafts" element={<AdminAiDraftsPage />} />
                 <Route path="questions" element={<AdminQuestionsPage />} />
                 <Route path="share-analytics" element={<ShareAnalyticsPage />} />
+                <Route path="embed-analytics" element={<EmbedAnalyticsPage />} />
                 <Route path="live-questions" element={<AdminLiveQuestionsPage />} />
                 <Route
                   path="live-questions/:id"
