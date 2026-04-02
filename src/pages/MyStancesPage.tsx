@@ -9,6 +9,7 @@ import YouVsCommunityCard from "./MyStances/YouVsCommunityCard";
 import SinceLastVisitCard from "./MyStances/SinceLastVisitCard";
 import QuickTakesCard from "./MyStances/QuickTakesCard";
 import TrendingAnsweredCard from "./MyStances/TrendingAnsweredCard";
+import { ShareStatsCard } from "./MyStances/ShareStatsCard";
 
 import * as React from "react";
 import { QuestionPhaseBadge } from "@/components/question/QuestionPhaseBadge";
@@ -362,6 +363,7 @@ export default function MyStancesPage() {
 
             {/* Contribution acknowledgement */}
             <ContributionBanner />
+            <ShareStatsCard />
 
             {/* Summary cards */}
             <section className="space-y-3">
