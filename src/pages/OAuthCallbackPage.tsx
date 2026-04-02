@@ -1,22 +1,44 @@
 // src/pages/OAuthCallbackPage.tsx
 // Epic V — Social Authentication
 //
-// Handles the OAuth provider redirect after user authenticates.
-// Works with HashRouter: the oauthHashHandler rewrites the URL to
-//   /#/auth/callback#access_token=...
-// so this component receives the token in a secondary hash fragment.
+// HashRouter creates a double-hash URL after OAuth redirect:
+//   localhost:8080/#/auth/callback#access_token=...
 //
-// Flow:
-//   1. Parse token/code from URL (Supabase does this automatically via setSession)
-//   2. Wait for SIGNED_IN auth event
-//   3. Bootstrap social profile (display name, avatar from provider)
-//   4. Persist provider token for Epic W
-//   5. Redirect to intended destination or home
+// Supabase JS SDK reads window.location.hash and sees "#/auth/callback#access_token=..."
+// which it cannot parse. We must manually extract the token params from the
+// secondary hash and call sb.auth.setSession() ourselves.
 
 import * as React from "react";
 import { useNavigate } from "react-router-dom";
 import { getSupabase } from "@/lib/supabaseClient";
 import { Loader2 } from "lucide-react";
+
+// Extract the token params from the secondary hash fragment.
+// URL looks like: /#/auth/callback#access_token=xxx&refresh_token=yyy&...
+function extractAuthParams(): URLSearchParams | null {
+  const href = window.location.href;
+
+  // Primary case: double-hash from HashRouter
+  const doubleHashIdx = href.indexOf("#/auth/callback#");
+  if (doubleHashIdx !== -1) {
+    const secondary = href.slice(doubleHashIdx + "#/auth/callback#".length);
+    return new URLSearchParams(secondary);
+  }
+
+  // Fallback: standard hash (BrowserRouter or direct landing)
+  const hash = window.location.hash.replace(/^#/, "");
+  if (hash.includes("access_token=") || hash.includes("error=")) {
+    return new URLSearchParams(hash);
+  }
+
+  // PKCE code flow: params in query string
+  const search = window.location.search;
+  if (search.includes("code=") || search.includes("error=")) {
+    return new URLSearchParams(search.slice(1));
+  }
+
+  return null;
+}
 
 export default function OAuthCallbackPage() {
   const sb = React.useMemo(getSupabase, []);
@@ -27,60 +49,68 @@ export default function OAuthCallbackPage() {
   React.useEffect(() => {
     if (!sb) return;
 
-    // Parse error from URL params (e.g. user denied access)
-    const rawHref = window.location.href;
-    const secondaryHash = rawHref.includes("#/auth/callback#")
-      ? rawHref.split("#/auth/callback#")[1] ?? ""
-      : window.location.hash.replace(/^#/, "");
+    let cancelled = false;
 
-    const params = new URLSearchParams(secondaryHash);
-    const urlError = params.get("error_description") || params.get("error");
-    if (urlError) {
-      setError(decodeURIComponent(urlError));
-      return;
+    async function handleCallback() {
+      const params = extractAuthParams();
+
+      if (!params) {
+        setError("No authentication data found. Please try signing in again.");
+        return;
+      }
+
+      // Check for OAuth error from provider (e.g. user denied access)
+      const oauthError =
+        params.get("error_description") || params.get("error");
+      if (oauthError) {
+        setError(decodeURIComponent(oauthError));
+        return;
+      }
+
+      const accessToken = params.get("access_token");
+      const refreshToken = params.get("refresh_token");
+
+      if (!accessToken || !refreshToken) {
+        // Could be PKCE code flow — let Supabase handle it via exchangeCodeForSession
+        const code = params.get("code");
+        if (code) {
+          setStatus("Exchanging authorization code\u2026");
+          const { data, error: exchError } =
+            await sb.auth.exchangeCodeForSession(window.location.href);
+          if (exchError || !data?.session) {
+            setError(exchError?.message ?? "Authorization code exchange failed.");
+            return;
+          }
+          if (cancelled) return;
+          await finalize(sb, data.session, navigate);
+          return;
+        }
+
+        setError("Incomplete authentication response. Please try again.");
+        return;
+      }
+
+      // Implicit flow: set session directly from access + refresh tokens
+      setStatus("Verifying your account\u2026");
+      const { data, error: sessionError } = await sb.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+      });
+
+      if (cancelled) return;
+
+      if (sessionError || !data?.session) {
+        setError(sessionError?.message ?? "Failed to establish session.");
+        return;
+      }
+
+      await finalize(sb, data.session, navigate);
     }
 
-    let handled = false;
-
-    const {
-      data: { subscription },
-    } = sb.auth.onAuthStateChange(async (event: string, session: any) => {
-      if (handled) return;
-
-      if (event === "SIGNED_IN" && session) {
-        handled = true;
-
-        setStatus("Setting up your profile\u2026");
-        await bootstrapSocialProfile(sb, session);
-
-        setStatus("Saving account connection\u2026");
-        await persistProviderToken(sb, session);
-
-        const returnTo = sessionStorage.getItem("return_to");
-        sessionStorage.removeItem("return_to");
-
-        if (returnTo && (returnTo.startsWith("/") || returnTo.startsWith("#/"))) {
-          navigate(returnTo, { replace: true });
-        } else {
-          navigate("/", { replace: true });
-        }
-      }
-
-      if (event === "SIGNED_OUT") {
-        navigate("/login", { replace: true });
-      }
-    });
-
-    // Safety timeout: if auth event never fires, bail
-    const timeout = setTimeout(() => {
-      if (!handled) {
-        setError("Sign-in timed out. Please try again.");
-      }
-    }, 15_000);
+    handleCallback();
 
     return () => {
-      subscription.unsubscribe();
-      clearTimeout(timeout);
+      cancelled = true;
     };
   }, [sb, navigate]);
 
@@ -88,7 +118,7 @@ export default function OAuthCallbackPage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
         <div className="max-w-md w-full rounded-xl border border-red-200 bg-white p-8 space-y-4 text-center shadow-sm">
-          <div className="text-5xl">&times;</div>
+          <div className="text-red-400 text-5xl">&times;</div>
           <h1 className="text-lg font-semibold text-slate-900">Sign-in failed</h1>
           <p className="text-sm text-slate-600">{error}</p>
           <a
@@ -112,7 +142,24 @@ export default function OAuthCallbackPage() {
   );
 }
 
-// Bootstrap social profile — pre-populate avatar + username suggestion from provider
+// ─── Finalize: bootstrap profile, persist token, redirect ─────────────────────
+
+async function finalize(sb: any, session: any, navigate: any) {
+  await bootstrapSocialProfile(sb, session);
+  await persistProviderToken(sb, session);
+
+  const returnTo = sessionStorage.getItem("return_to");
+  sessionStorage.removeItem("return_to");
+
+  if (returnTo && (returnTo.startsWith("/") || returnTo.startsWith("#/"))) {
+    navigate(returnTo, { replace: true });
+  } else {
+    navigate("/", { replace: true });
+  }
+}
+
+// ─── Bootstrap social profile ─────────────────────────────────────────────────
+
 async function bootstrapSocialProfile(sb: any, session: any) {
   try {
     const user = session.user;
@@ -139,7 +186,6 @@ async function bootstrapSocialProfile(sb: any, session: any) {
       await sb.from("profiles").update(updates).eq("user_id", user.id);
     }
 
-    // Stash suggestions for onboarding pre-fill
     if (!profile?.username) {
       const providerName =
         meta.full_name || meta.name || meta.given_name || null;
@@ -162,7 +208,8 @@ async function bootstrapSocialProfile(sb: any, session: any) {
   }
 }
 
-// Persist provider token to social_auth_tokens for Epic W downstream use
+// ─── Persist provider token ───────────────────────────────────────────────────
+
 async function persistProviderToken(sb: any, session: any) {
   try {
     if (!session?.provider_token) return;
