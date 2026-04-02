@@ -5,6 +5,7 @@ import * as React from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { getSupabase } from "../lib/supabaseClient";
 import PageLayout from "../components/PageLayout";
+import SocialAuthButtons from "../components/auth/SocialAuthButtons";
 
 export default function Login() {
   const sb = React.useMemo(getSupabase, []);
@@ -188,6 +189,12 @@ export default function Login() {
             Forgot password?
           </Link>
         </div>
+
+        {/* Social login */}
+        <SocialAuthButtons
+          mode="login"
+          onError={(e) => setMsg(e)}
+        />
 
         <div className="text-sm text-center text-slate-600">
           Don't have an account?{" "}
