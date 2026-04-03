@@ -17,7 +17,7 @@ import {
 import { getStanceColorHex } from "@/lib/stanceColors";
 import StanceEvolutionTimeline from "@/components/insights/StanceEvolutionTimeline";
 import TopicBeliefProfile from "@/components/insights/TopicBeliefProfile";
-import { Loader2, RefreshCw, ArrowLeft } from "lucide-react";
+import { Loader2, RefreshCw, ArrowLeft, MapPin, RotateCcw } from "lucide-react";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -140,7 +140,292 @@ function Section({
   );
 }
 
-// ── Revisit CTA ───────────────────────────────────────────────────────────────
+// ── S1: Revisit section — questions answered >30 days ago ordered by drift ────
+
+type RevisitRow = {
+  question_id: string;
+  question_text: string;
+  topic_title: string | null;
+  user_score: number;
+  community_avg_score: number | null;
+  drift: number; // |user_score - community_avg_score|
+  answered_at: string;
+};
+
+function useRevisitQuestions() {
+  return useQuery<RevisitRow[]>({
+    queryKey: ["s1-revisit-questions"],
+    staleTime: 10 * 60_000,
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return [];
+
+      const cutoff = new Date(Date.now() - 30 * 86_400_000).toISOString();
+
+      // Fetch stances answered >30 days ago joined to questions + community avg
+      const { data, error } = await supabase
+        .from("question_stances")
+        .select(`
+          question_id,
+          score,
+          updated_at,
+          questions!inner (
+            id,
+            question,
+            topic_id,
+            topics ( title ),
+            question_stance_stats ( avg_score )
+          )
+        `)
+        .eq("user_id", user.id)
+        .lt("updated_at", cutoff)
+        .order("updated_at", { ascending: true })
+        .limit(50);
+
+      if (error) throw error;
+
+      return (data ?? [])
+        .map((row: any) => {
+          const communityAvg = row.questions?.question_stance_stats?.[0]?.avg_score ?? null;
+          const drift = communityAvg !== null
+            ? Math.abs(row.score - communityAvg)
+            : 0;
+          return {
+            question_id:         row.question_id,
+            question_text:       row.questions?.question ?? "",
+            topic_title:         row.questions?.topics?.title ?? null,
+            user_score:          row.score,
+            community_avg_score: communityAvg,
+            drift,
+            answered_at:         row.updated_at,
+          } as RevisitRow;
+        })
+        .sort((a, b) => b.drift - a.drift)
+        .slice(0, 5);
+    },
+  });
+}
+
+function RevisitSection() {
+  const { data: rows, isLoading } = useRevisitQuestions();
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-2 py-4 text-xs text-slate-400">
+        <Loader2 className="h-3.5 w-3.5 animate-spin" /> Checking for questions to revisit…
+      </div>
+    );
+  }
+
+  if (!rows || rows.length === 0) {
+    // Fallback to generic CTA when no old questions exist yet
+    return (
+      <div className="rounded-xl border border-slate-200 bg-slate-50 px-5 py-4 flex items-start justify-between gap-4">
+        <div>
+          <p className="text-sm font-medium text-slate-900 mb-0.5">Revisit old answers</p>
+          <p className="text-xs text-slate-500 leading-relaxed">
+            Your views may have changed. Go back to questions you answered a while ago
+            and see if you still feel the same way.
+          </p>
+        </div>
+        <Link
+          to="/me/stances"
+          className="flex-shrink-0 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 transition-colors whitespace-nowrap"
+        >
+          My stances →
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between mb-1">
+        <div className="flex items-center gap-1.5">
+          <RotateCcw className="h-3.5 w-3.5 text-slate-400" />
+          <p className="text-xs font-medium text-slate-700">
+            Questions to revisit
+          </p>
+        </div>
+        <Link to="/me/stances" className="text-[11px] text-slate-400 hover:text-slate-600 hover:underline">
+          See all →
+        </Link>
+      </div>
+      <p className="text-[11px] text-slate-400 mb-2">
+        You answered these 30+ days ago. The community's view has since shifted away from yours.
+      </p>
+      {rows.map((row) => {
+        const userColor = getStanceColorHex(row.user_score);
+        const driftPct  = Math.min(100, Math.round((row.drift / 4) * 100));
+        return (
+          <Link
+            key={row.question_id}
+            to={`/q/${row.question_id}`}
+            className="flex items-start gap-3 rounded-lg border border-slate-100 px-3 py-2.5 hover:bg-slate-50 transition-colors"
+          >
+            <div
+              className="mt-1 h-2.5 w-2.5 rounded-full flex-shrink-0"
+              style={{ background: userColor }}
+            />
+            <div className="flex-1 min-w-0">
+              {row.topic_title && (
+                <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400 mb-0.5">
+                  {row.topic_title}
+                </p>
+              )}
+              <p className="text-xs font-medium text-slate-900 leading-snug line-clamp-2">
+                {row.question_text}
+              </p>
+              <div className="flex items-center gap-2 mt-1.5">
+                <div className="flex-1 h-1 rounded-full bg-slate-100 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-amber-400"
+                    style={{ width: `${driftPct}%` }}
+                  />
+                </div>
+                <span className="text-[10px] text-slate-400 flex-shrink-0">
+                  {row.drift.toFixed(1)} drift
+                </span>
+              </div>
+            </div>
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── S2: Region divergence alert ────────────────────────────────────────────────
+// Shows questions where the user's region's average stance diverges >0.75 from
+// global avg — signals the user may be in a local opinion bubble.
+
+type DivergenceRow = {
+  question_id: string;
+  question_text: string;
+  region_label: string;
+  region_avg: number;
+  global_avg: number;
+  divergence: number;
+};
+
+function useRegionDivergence() {
+  return useQuery<DivergenceRow[]>({
+    queryKey: ["s2-region-divergence"],
+    staleTime: 15 * 60_000,
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return [];
+
+      // Get questions the user has answered
+      const { data: stances, error: sErr } = await supabase
+        .from("question_stances")
+        .select("question_id")
+        .eq("user_id", user.id)
+        .limit(100);
+
+      if (sErr || !stances?.length) return [];
+
+      const qids = stances.map((s: any) => s.question_id);
+
+      // Get regional stats for those questions — look for country-level divergence
+      const { data: regionRows, error: rErr } = await supabase
+        .from("question_stance_stats_region")
+        .select("question_id, region_scope, region_label, avg_score, total_responses")
+        .in("question_id", qids)
+        .in("region_scope", ["country", "global"])
+        .gt("total_responses", 10);
+
+      if (rErr || !regionRows?.length) return [];
+
+      // Group by question_id: find pairs where country avg vs global avg diverge >0.75
+      const byQuestion = new Map<string, { global?: any; country?: any }>();
+      for (const row of regionRows as any[]) {
+        if (!byQuestion.has(row.question_id)) byQuestion.set(row.question_id, {});
+        const entry = byQuestion.get(row.question_id)!;
+        if (row.region_scope === "global")  entry.global  = row;
+        if (row.region_scope === "country") entry.country = row;
+      }
+
+      const divergent: DivergenceRow[] = [];
+      for (const [qid, pair] of byQuestion.entries()) {
+        if (!pair.global || !pair.country) continue;
+        const div = Math.abs(pair.country.avg_score - pair.global.avg_score);
+        if (div < 0.75) continue;
+
+        // Get question text
+        const { data: qRow } = await supabase
+          .from("questions")
+          .select("question")
+          .eq("id", qid)
+          .maybeSingle();
+
+        divergent.push({
+          question_id:   qid,
+          question_text: qRow?.question ?? "",
+          region_label:  pair.country.region_label,
+          region_avg:    pair.country.avg_score,
+          global_avg:    pair.global.avg_score,
+          divergence:    div,
+        });
+      }
+
+      return divergent.sort((a, b) => b.divergence - a.divergence).slice(0, 3);
+    },
+  });
+}
+
+function RegionDivergenceAlert() {
+  const { data: rows, isLoading } = useRegionDivergence();
+
+  if (isLoading || !rows?.length) return null;
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-1.5 mb-1">
+        <MapPin className="h-3.5 w-3.5 text-amber-500" />
+        <p className="text-xs font-medium text-slate-700">Your region thinks differently</p>
+      </div>
+      <p className="text-[11px] text-slate-400 mb-2">
+        On these questions, your region's view diverges significantly from the global average.
+      </p>
+      {rows.map((row) => {
+        const regionColor = getStanceColorHex(Math.round(row.region_avg));
+        const globalColor = getStanceColorHex(Math.round(row.global_avg));
+        return (
+          <Link
+            key={row.question_id}
+            to={`/q/${row.question_id}`}
+            className="block rounded-lg border border-amber-100 bg-amber-50 px-3 py-2.5 hover:bg-amber-100 transition-colors"
+          >
+            <p className="text-xs font-medium text-slate-900 leading-snug line-clamp-2 mb-2">
+              {row.question_text}
+            </p>
+            <div className="flex items-center gap-4 text-[11px]">
+              <span>
+                <span className="text-slate-400">Your region </span>
+                <span className="font-medium" style={{ color: regionColor }}>
+                  {row.region_avg > 0 ? "+" : ""}{row.region_avg.toFixed(1)}
+                </span>
+              </span>
+              <span className="text-slate-300">vs</span>
+              <span>
+                <span className="text-slate-400">Global </span>
+                <span className="font-medium" style={{ color: globalColor }}>
+                  {row.global_avg > 0 ? "+" : ""}{row.global_avg.toFixed(1)}
+                </span>
+              </span>
+              <span className="text-[10px] text-amber-600 font-medium ml-auto">
+                {row.divergence.toFixed(1)} gap
+              </span>
+            </div>
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── (legacy) simple revisit CTA — kept as fallback ────────────────────────────
 
 function RevisitCTA() {
   return (
@@ -284,8 +569,13 @@ export default function PersonalInsightsPage() {
               </Section>
             )}
 
-            {/* Revisit CTA — always visible */}
-            <RevisitCTA />
+            {/* Revisit section — drift-ordered questions answered 30+ days ago */}
+            <Section title="Questions to revisit">
+              <RevisitSection />
+            </Section>
+
+            {/* S2: Region divergence alerts */}
+            <RegionDivergenceAlert />
           </>
         )}
       </div>
