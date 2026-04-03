@@ -683,6 +683,11 @@ export default function QuestionDetailPage() {
     questionId,
   });
 
+  // W2: OG image URL passed to ShareButton for direct X post image cards
+  const ogImageUrl = supabaseUrl
+    ? `${supabaseUrl}/functions/v1/og-image?question_id=${questionId}`
+    : null;
+
   const session = useSupabaseSession();
   const userId = session?.user?.id ?? null;
   const isAuthed = !!session;
@@ -1197,6 +1202,7 @@ export default function QuestionDetailPage() {
                       questionId={question.id}
                       questionText={question.question}
                       questionSummary={question.summary}
+                      ogImageUrl={ogImageUrl}
                     />
                     <FollowTopicButton topicId={question.topic_id} />
                   </div>
