@@ -1,200 +1,199 @@
 /**
- * Stance Capture Embed Widget v1
- * https://stancecapture.com
+ * embed.js — Stance Capture Publisher Embed Script
+ * Epic T — T1: Single script tag deployment
  *
- * Drop one <script> tag on your page, then add divs like:
- *   <div data-sc-question="<question-uuid>" data-sc-theme="light"></div>
+ * Usage (publisher adds to their article page):
  *
- * The script auto-detects all data-sc-question divs and injects iframes.
- * Safe to load async. Multiple embeds per page are supported.
+ *   <div
+ *     data-sc-question="<question-uuid>"
+ *     data-sc-theme="light"
+ *     data-sc-cta="What do you think?"
+ *     data-sc-ref="my-publication"
+ *   ></div>
+ *   <script src="https://your-domain.com/embed.js" async></script>
+ *
+ * Attributes on the <div>:
+ *   data-sc-question  (required) UUID of the question to embed
+ *   data-sc-theme     light | dark | auto  (default: light)
+ *   data-sc-cta       Custom CTA text shown after submission (optional)
+ *   data-sc-ref       Publisher identifier for analytics (optional)
+ *   data-sc-height    Fixed height in px — disables auto-resize (optional)
+ *
+ * postMessage events emitted from the iframe:
+ *   { type: "sc:resize",          height: number }
+ *   { type: "sc:stance_submitted", questionId: string, stanceValue: number }
+ *   { type: "sc:signup_clicked" }
+ *
+ * The script is idempotent — running multiple times does not create
+ * duplicate iframes. Each container div is processed once.
  */
+
 (function () {
   "use strict";
 
-  var BASE_URL = "https://stancecapture.com";
-  var EMBED_PATH = "/#/embed/";
-  var MIN_HEIGHT = 280;
-  var MAX_HEIGHT = 480;
-
-  function getBaseUrl() {
-    // Allow override for self-hosted / dev environments
-    var scripts = document.querySelectorAll("script[src*='embed.js']");
-    if (scripts.length > 0) {
-      var src = scripts[scripts.length - 1].getAttribute("src") || "";
-      var match = src.match(/^(https?:\/\/[^/]+)/);
-      if (match) return match[1];
+  // ── Resolve the base URL from this script's own src attribute ───────────────
+  // Works whether the script is loaded sync or async.
+  var BASE_URL = (function () {
+    // Modern: document.currentScript
+    if (document.currentScript && document.currentScript.src) {
+      return document.currentScript.src.replace(/\/embed\.js(\?.*)?$/, "");
     }
-    return BASE_URL;
-  }
+    // Fallback: scan all script tags
+    var scripts = document.querySelectorAll("script[src]");
+    for (var i = 0; i < scripts.length; i++) {
+      var src = scripts[i].getAttribute("src") || "";
+      if (src.indexOf("embed.js") !== -1) {
+        return src.replace(/\/embed\.js(\?.*)?$/, "");
+      }
+    }
+    // Last resort: same origin
+    return window.location.origin;
+  }());
 
-  function buildEmbedUrl(questionId, theme, cta, ref) {
-    var base = getBaseUrl();
-    var params = new URLSearchParams();
-    if (theme) params.set("theme", theme);
-    if (cta) params.set("cta", cta);
-    if (ref) params.set("ref", ref);
-    var qs = params.toString() ? "?" + params.toString() : "";
-    return base + EMBED_PATH + questionId + qs;
-  }
+  var EMBED_ATTR      = "data-sc-question";
+  var MOUNTED_ATTR    = "data-sc-mounted";
+  var DEFAULT_HEIGHT  = 320; // px — used before first sc:resize message
 
-  function createIframe(src, containerId) {
-    var iframe = document.createElement("iframe");
-    iframe.src = src;
-    iframe.id = "sc-iframe-" + containerId;
-    iframe.setAttribute("frameborder", "0");
-    iframe.setAttribute("scrolling", "no");
-    iframe.setAttribute("allow", "forms");
-    iframe.setAttribute("title", "Stance Capture question");
-    iframe.style.width = "100%";
-    iframe.style.height = MIN_HEIGHT + "px";
-    iframe.style.border = "none";
-    iframe.style.borderRadius = "12px";
-    iframe.style.overflow = "hidden";
-    iframe.style.display = "block";
-    return iframe;
-  }
+  // ── Mount one container ────────────────────────────────────────────────────
 
-  function injectEmbed(div) {
-    var questionId = div.getAttribute("data-sc-question");
+  function mountContainer(container) {
+    // Skip if already mounted
+    if (container.getAttribute(MOUNTED_ATTR)) return;
+    container.setAttribute(MOUNTED_ATTR, "1");
+
+    var questionId  = container.getAttribute(EMBED_ATTR);
     if (!questionId) return;
 
-    // Avoid double-injection
-    if (div.getAttribute("data-sc-injected")) return;
-    div.setAttribute("data-sc-injected", "1");
+    var theme       = container.getAttribute("data-sc-theme")  || "light";
+    var ref         = container.getAttribute("data-sc-ref")    || "";
+    var cta         = container.getAttribute("data-sc-cta")    || "";
+    var fixedHeight = container.getAttribute("data-sc-height");
 
-    var theme = div.getAttribute("data-sc-theme") || "light";
-    var cta = div.getAttribute("data-sc-cta") || null;
-    var ref = div.getAttribute("data-sc-ref") || null;
+    // Build iframe src — app uses HashRouter so embed route is /#/embed/:id
+    var params = new URLSearchParams();
+    params.set("theme", theme);
+    if (ref) params.set("ref", ref);
+    if (cta) params.set("cta", cta);
 
-    var containerId = questionId.slice(0, 8);
-    var src = buildEmbedUrl(questionId, theme, cta, ref);
-    var iframe = createIframe(src, containerId);
+    var iframeSrc = BASE_URL + "/#/embed/" + encodeURIComponent(questionId) + "?" + params.toString();
 
-    // Preserve any existing styles on the container div
-    div.style.display = "block";
-    div.style.overflow = "hidden";
+    // ── Create iframe ────────────────────────────────────────────────────────
+    var iframe = document.createElement("iframe");
 
-    // Clear the div and inject the iframe
-    div.innerHTML = "";
-    div.appendChild(iframe);
+    iframe.setAttribute("src", iframeSrc);
+    iframe.setAttribute("frameborder", "0");
+    iframe.setAttribute("scrolling", "no");
+    iframe.setAttribute("allowtransparency", "true");
+    iframe.setAttribute("title", "Stance Capture — share your view");
 
-    // Track impression (fire-and-forget)
-    trackImpression(questionId, ref);
-  }
+    // Accessibility
+    iframe.setAttribute("aria-label", "Stance Capture interactive question");
 
-  function trackImpression(questionId, ref) {
-    try {
-      var fp = getFingerprint();
-      var supabaseUrl = window.SC_SUPABASE_URL || "https://yzxzpnomcarnxixhjlba.supabase.co";
-      var anonKey = window.SC_ANON_KEY || "";
+    // Sandbox — allow forms + scripts + same-origin; block popups except via user gesture
+    iframe.setAttribute(
+      "sandbox",
+      "allow-scripts allow-forms allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+    );
 
-      fetch(supabaseUrl + "/rest/v1/embed_impressions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "apikey": anonKey,
-          "Authorization": "Bearer " + anonKey,
-          "Prefer": "return=minimal",
-        },
-        body: JSON.stringify({
-          question_id: questionId,
-          publisher_ref: ref || null,
-          device_fingerprint: fp,
-        }),
-        keepalive: true,
-      }).catch(function () {}); // Silently ignore failures
-    } catch (e) {}
-  }
+    // Responsive width, initial height
+    iframe.style.cssText = [
+      "width:100%",
+      "border:none",
+      "display:block",
+      "overflow:hidden",
+      "transition:height 0.2s ease",
+      "height:" + (fixedHeight ? fixedHeight + "px" : DEFAULT_HEIGHT + "px"),
+    ].join(";");
 
-  function getFingerprint() {
-    var key = "sc_embed_fp_v1";
-    try {
-      var existing = localStorage.getItem(key);
-      if (existing) return existing;
-      var fp = (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now().toString(36));
-      localStorage.setItem(key, fp);
-      return fp;
-    } catch (e) {
-      return "unknown";
-    }
-  }
+    // Container sizing
+    container.style.cssText = [
+      "display:block",
+      "width:100%",
+      "max-width:680px",           // reasonable editorial column width
+      "margin:1.5rem auto",
+    ].join(";");
 
-  // Listen for postMessage events from embed iframes
-  function handleMessage(event) {
-    if (!event.data || typeof event.data !== "object") return;
-    var msg = event.data;
+    container.innerHTML = "";
+    container.appendChild(iframe);
 
-    switch (msg.type) {
-      case "sc:resize":
-        // Auto-resize the iframe to match content height
-        var iframes = document.querySelectorAll("iframe[id^='sc-iframe-']");
-        for (var i = 0; i < iframes.length; i++) {
-          var iframe = iframes[i];
-          if (iframe.contentWindow === event.source) {
-            var height = Math.min(Math.max(msg.height || MIN_HEIGHT, MIN_HEIGHT), MAX_HEIGHT);
-            iframe.style.height = height + "px";
-          }
-        }
-        break;
+    // ── Auto-resize via postMessage ──────────────────────────────────────────
+    if (!fixedHeight) {
+      window.addEventListener("message", function (event) {
+        // Security: only accept messages from our own origin
+        if (event.origin !== BASE_URL) return;
 
-      case "sc:stance_submitted":
-        // Call publisher callback if provided
-        if (typeof window.onStanceCaptureSubmit === "function") {
+        var data = event.data;
+        if (!data || typeof data !== "object") return;
+
+        if (data.type === "sc:resize" && typeof data.height === "number") {
+          // Only resize the iframe that sent the message
           try {
-            window.onStanceCaptureSubmit({
-              questionId: msg.questionId,
-              stanceValue: msg.stanceValue,
-            });
-          } catch (e) {}
-        }
-        break;
-
-      case "sc:signup_clicked":
-        // Optional: publishers can listen for this to show their own overlay
-        if (typeof window.onStanceCaptureSignupClick === "function") {
-          try {
-            window.onStanceCaptureSignupClick();
-          } catch (e) {}
-        }
-        break;
-    }
-  }
-
-  function init() {
-    window.addEventListener("message", handleMessage);
-
-    // Inject all existing data-sc-question divs
-    var divs = document.querySelectorAll("[data-sc-question]");
-    for (var i = 0; i < divs.length; i++) {
-      injectEmbed(divs[i]);
-    }
-
-    // Watch for dynamically added divs (e.g. in SPAs)
-    if (window.MutationObserver) {
-      var observer = new MutationObserver(function (mutations) {
-        for (var i = 0; i < mutations.length; i++) {
-          var added = mutations[i].addedNodes;
-          for (var j = 0; j < added.length; j++) {
-            var node = added[j];
-            if (node.nodeType !== 1) continue;
-            if (node.getAttribute && node.getAttribute("data-sc-question")) {
-              injectEmbed(node);
+            if (iframe.contentWindow === event.source) {
+              var newHeight = Math.max(200, Math.min(900, data.height + 16));
+              iframe.style.height = newHeight + "px";
             }
-            var children = node.querySelectorAll ? node.querySelectorAll("[data-sc-question]") : [];
-            for (var k = 0; k < children.length; k++) {
-              injectEmbed(children[k]);
-            }
+          } catch (e) {
+            // cross-origin safety — ignore
           }
         }
       });
-      observer.observe(document.body, { childList: true, subtree: true });
     }
   }
 
-  // Run on DOM ready
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", init);
-  } else {
-    init();
+  // ── Find and mount all containers ─────────────────────────────────────────
+
+  function mountAll() {
+    var containers = document.querySelectorAll("[" + EMBED_ATTR + "]");
+    for (var i = 0; i < containers.length; i++) {
+      mountContainer(containers[i]);
+    }
   }
-})();
+
+  // ── Observer for containers added after initial page load ─────────────────
+  // Handles CMS lazy-load, SPA navigation, and deferred article injection.
+
+  function startObserver() {
+    if (typeof MutationObserver === "undefined") return;
+
+    var observer = new MutationObserver(function (mutations) {
+      var found = false;
+      for (var i = 0; i < mutations.length; i++) {
+        var nodes = mutations[i].addedNodes;
+        for (var j = 0; j < nodes.length; j++) {
+          var node = nodes[j];
+          if (node.nodeType !== 1) continue; // Element nodes only
+
+          // Check if the added node itself is a container
+          if (node.getAttribute && node.getAttribute(EMBED_ATTR)) {
+            found = true;
+            break;
+          }
+          // Check descendants
+          if (node.querySelector && node.querySelector("[" + EMBED_ATTR + "]")) {
+            found = true;
+            break;
+          }
+        }
+        if (found) break;
+      }
+      if (found) mountAll();
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+
+  // ── Boot ───────────────────────────────────────────────────────────────────
+
+  function boot() {
+    mountAll();
+    startObserver();
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", boot);
+  } else {
+    // Already interactive or complete
+    boot();
+  }
+
+}());
