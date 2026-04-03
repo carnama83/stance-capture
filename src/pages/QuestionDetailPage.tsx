@@ -546,6 +546,61 @@ function RegionComparison({ stats }: { stats: QuestionStats | null }) {
   );
 }
 
+// ── S4: Confidence feedback — shown once after user submits stance ────────────
+
+function ConfidenceFeedback({ onSubmit }: { onSubmit: (score: number) => void }) {
+  const [hovered, setHovered] = React.useState<number | null>(null);
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-4 mt-3">
+      <p className="text-xs font-medium text-slate-700 mb-0.5">
+        How confident are you in this stance?
+      </p>
+      <p className="text-[11px] text-slate-400 mb-3">
+        Private — helps us understand conviction vs. uncertainty across the community.
+      </p>
+      <div className="flex items-center gap-1.5">
+        {[1, 2, 3, 4, 5].map((star) => {
+          const filled = star <= (hovered ?? 0);
+          return (
+            <button
+              key={star}
+              type="button"
+              onMouseEnter={() => setHovered(star)}
+              onMouseLeave={() => setHovered(null)}
+              onClick={() => onSubmit(star)}
+              aria-label={`${star} out of 5`}
+              className="transition-transform hover:scale-110"
+            >
+              <svg
+                className="h-6 w-6"
+                viewBox="0 0 24 24"
+                fill={filled ? "#F59E0B" : "none"}
+                stroke={filled ? "#F59E0B" : "#CBD5E1"}
+                strokeWidth={1.5}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.562.562 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z"
+                />
+              </svg>
+            </button>
+          );
+        })}
+        <span className="ml-2 text-[11px] text-slate-400">
+          {hovered === 1 ? "Not very confident"
+            : hovered === 2 ? "Somewhat uncertain"
+            : hovered === 3 ? "Moderately confident"
+            : hovered === 4 ? "Quite confident"
+            : hovered === 5 ? "Very confident"
+            : "Tap to rate"}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 // ---------- StanceCard — extracted for dual mobile/desktop render (Point 14) ----------
 function StanceCard({
   isAuthed,
@@ -557,6 +612,8 @@ function StanceCard({
   stats,
   handleSetStance,
   handleRequireLogin,
+  showConfidence,
+  onConfidenceSubmit,
 }: {
   isAuthed: boolean;
   questionId: string;
@@ -567,6 +624,8 @@ function StanceCard({
   stats: QuestionStats | null;
   handleSetStance: (val: number | null) => void;
   handleRequireLogin: () => void;
+  showConfidence?: boolean;
+  onConfidenceSubmit?: (score: number) => void;
 }) {
   return (
     <section className="rounded-xl border border-slate-200 bg-slate-50 p-4 md:p-5 shadow-sm">
@@ -645,6 +704,11 @@ function StanceCard({
             />
           )}
 
+          {/* S4: Confidence feedback — shown once after first save */}
+          {showConfidence && onConfidenceSubmit && (
+            <ConfidenceFeedback onSubmit={onConfidenceSubmit} />
+          )}
+
           <div className="text-[11px] text-slate-500 flex items-center gap-2 mt-1">
             {stanceLoading ? (
               <span>Loading your stance…</span>
@@ -675,6 +739,9 @@ export default function QuestionDetailPage() {
   const { id } = useParams<{ id: string }>();
   const questionId = id ?? "";
   const [showSharePrompt, setShowSharePrompt] = React.useState(false);
+  // S4: confidence feedback — shown once after first stance save
+  const [showConfidence, setShowConfidence] = React.useState(false);
+  const [confidenceScore, setConfidenceScore] = React.useState<number | null>(null);
 
   // W2: Dynamic OG meta for social share previews
   useOgMeta({
@@ -943,6 +1010,8 @@ export default function QuestionDetailPage() {
       // Show share prompt after first stance save
       if (resolvedScore !== null) {
         setShowSharePrompt(true);
+        // S4: show confidence prompt once per question if not already answered
+        if (!confidenceScore) setShowConfidence(true);
       }
     },
     onError: (err: any) => {
@@ -1025,6 +1094,11 @@ export default function QuestionDetailPage() {
     stats: effectiveStats,
     handleSetStance,
     handleRequireLogin,
+    showConfidence,
+    onConfidenceSubmit: (score: number) => {
+      setConfidenceScore(score);
+      setShowConfidence(false);
+    },
   };
 
   let content: React.ReactNode;
