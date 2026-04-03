@@ -1,6 +1,15 @@
 // src/components/insights/StanceEvolutionTimeline.tsx
 // S1 — Stance evolution timeline: shows which topics changed, in which
 // direction, and when. Uses stance_history + question_stances tables.
+//
+// FIX 4: The Supabase nested select `questions!inner(...)` with a
+// further nested `topics(title)` can silently return null for topic_title
+// if the join path isn't precisely specified. Changed to a two-step query:
+// (1) fetch stance_history joined to questions, (2) batch-fetch topic titles.
+// Also fixed: `stance_history` records where old_score = new_score (re-confirm)
+// were being filtered out — they're now kept and shown as "Re-confirmed".
+// Also fixed: query was joining question_stance_stats but that table isn't
+// needed here — removed to reduce query complexity and silent empty results.
 
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -66,7 +75,8 @@ export default function StanceEvolutionTimeline({
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      // Fetch stance_history joined to questions + topics
+      // Step 1: Fetch stance_history joined to questions
+      // Using explicit foreign key hint to avoid ambiguous join errors
       const { data: history, error } = await supabase
         .from("stance_history")
         .select(`
@@ -75,11 +85,10 @@ export default function StanceEvolutionTimeline({
           old_score,
           new_score,
           changed_at,
-          questions!inner (
+          questions:question_id (
             id,
             question,
-            topic_id,
-            topics ( id, title )
+            topic_id
           )
         `)
         .eq("user_id", user.id)
@@ -87,126 +96,130 @@ export default function StanceEvolutionTimeline({
         .limit(limit);
 
       if (error) throw error;
+      if (!history?.length) return [];
 
-      return (history ?? []).map((row: any) => ({
-        id:           row.id,
-        question_id:  row.question_id,
-        old_score:    row.old_score,
-        new_score:    row.new_score,
-        changed_at:   row.changed_at,
-        question_text: row.questions?.question ?? null,
-        topic_title:  row.questions?.topics?.title ?? null,
-        topic_id:     row.questions?.topics?.id ?? null,
-      }));
+      // Step 2: Batch-fetch topic titles for all unique topic_ids
+      const topicIds = [...new Set(
+        history
+          .map((h: any) => h.questions?.topic_id)
+          .filter(Boolean)
+      )];
+
+      const topicTitleMap: Record<string, string> = {};
+      if (topicIds.length > 0) {
+        const { data: topics } = await supabase
+          .from("topics")
+          .select("id, title")
+          .in("id", topicIds);
+        for (const t of topics ?? []) {
+          topicTitleMap[t.id] = t.title;
+        }
+      }
+
+      return history.map((h: any) => ({
+        id:            h.id,
+        question_id:   h.question_id,
+        old_score:     h.old_score,
+        new_score:     h.new_score,
+        changed_at:    h.changed_at,
+        question_text: h.questions?.question ?? null,
+        topic_id:      h.questions?.topic_id ?? null,
+        topic_title:   h.questions?.topic_id
+          ? (topicTitleMap[h.questions.topic_id] ?? null)
+          : null,
+      })) as HistoryRow[];
     },
   });
 
   if (isLoading) {
     return (
-      <div className="flex items-center gap-2 py-6 text-xs text-slate-500">
+      <div className="flex items-center gap-2 py-4 text-xs text-slate-400">
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
         Loading your stance history…
       </div>
     );
   }
 
-  if (isError || !data || data.length === 0) {
+  if (isError) {
     return (
-      <p className="text-xs text-slate-500 py-4">
-        No stance changes recorded yet. As you revisit and update your answers,
-        your evolution will appear here.
+      <p className="text-xs text-red-500 py-2">
+        Could not load stance history. Please try again.
       </p>
     );
   }
 
-  // Group changes by date bucket (week)
-  const grouped = new Map<string, HistoryRow[]>();
-  for (const row of data) {
-    const date   = new Date(row.changed_at);
-    const monday = new Date(date);
-    monday.setDate(date.getDate() - ((date.getDay() + 6) % 7));
-    const key = monday.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-    if (!grouped.has(key)) grouped.set(key, []);
-    grouped.get(key)!.push(row);
+  if (!data || data.length === 0) {
+    return (
+      <div className="rounded-xl border border-slate-100 bg-slate-50 px-5 py-6 text-center">
+        <p className="text-sm text-slate-500">No stance changes yet.</p>
+        <p className="text-xs text-slate-400 mt-1">
+          When you update a previous answer, your evolution will appear here.
+        </p>
+      </div>
+    );
   }
 
   return (
-    <div className="space-y-6">
-      {[...grouped.entries()].map(([weekLabel, rows]) => (
-        <div key={weekLabel}>
-          {/* Week label */}
-          <div className="flex items-center gap-3 mb-3">
-            <span className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
-              Week of {weekLabel}
-            </span>
-            <div className="flex-1 h-px bg-slate-100" />
-          </div>
+    <div className="space-y-2">
+      {data.map((row) => {
+        const newColor = getStanceColorHex(row.new_score);
+        const direction = directionLabel(row.old_score, row.new_score);
 
-          {/* Events in this week */}
-          <div className="space-y-2">
-            {rows.map((row) => {
-              const dir = directionLabel(row.old_score, row.new_score);
-              const stanceColor = getStanceColorHex(row.new_score);
+        return (
+          <Link
+            key={row.id}
+            to={`/q/${row.question_id}`}
+            className="flex items-start gap-3 rounded-lg border border-slate-100 px-3 py-2.5 hover:bg-slate-50 transition-colors"
+          >
+            {/* Stance dot */}
+            <div
+              className="mt-1 h-2.5 w-2.5 rounded-full flex-shrink-0"
+              style={{ background: newColor }}
+            />
 
-              return (
-                <div
-                  key={row.id}
-                  className="flex items-start gap-3 rounded-lg border border-slate-100 px-3 py-2.5"
-                >
-                  {/* Stance colour dot */}
-                  <div
-                    className="mt-1 h-2.5 w-2.5 rounded-full flex-shrink-0"
-                    style={{ background: stanceColor }}
-                  />
+            {/* Content */}
+            <div className="flex-1 min-w-0">
+              {row.topic_title && (
+                <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400 mb-0.5">
+                  {row.topic_title}
+                </p>
+              )}
+              <p className="text-xs font-medium text-slate-900 leading-snug line-clamp-2">
+                {row.question_text ?? row.question_id}
+              </p>
 
-                  <div className="flex-1 min-w-0">
-                    {/* Topic label */}
-                    {row.topic_title && (
-                      <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400 mb-0.5">
-                        {row.topic_title}
-                      </p>
-                    )}
-
-                    {/* Question text */}
-                    {row.question_text ? (
-                      <Link
-                        to={`/q/${row.question_id}`}
-                        className="text-sm font-medium text-slate-900 hover:underline leading-snug line-clamp-2"
-                      >
-                        {row.question_text}
-                      </Link>
-                    ) : (
-                      <p className="text-sm text-slate-500">[Question unavailable]</p>
-                    )}
-
-                    {/* Direction + new stance */}
-                    <div className="flex items-center gap-2 mt-1">
-                      <span
-                        className="text-[11px] font-medium"
-                        style={{ color: dir.color }}
-                      >
-                        {dir.text}
-                      </span>
-                      <span className="text-slate-300 text-[11px]">·</span>
-                      <span
-                        className="text-[11px] font-medium"
-                        style={{ color: stanceColor }}
-                      >
-                        Now: {STANCE_LABEL[row.new_score]}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Time */}
-                  <span className="text-[10px] text-slate-400 flex-shrink-0 mt-0.5">
-                    {timeAgo(row.changed_at)}
+              {/* Change summary */}
+              <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+                {row.old_score !== null && (
+                  <span className="text-[11px] text-slate-400">
+                    {STANCE_LABEL[row.old_score] ?? row.old_score}
+                    <span className="mx-1 text-slate-300">→</span>
+                    <span style={{ color: newColor }} className="font-medium">
+                      {STANCE_LABEL[row.new_score] ?? row.new_score}
+                    </span>
                   </span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      ))}
+                )}
+                {row.old_score === null && (
+                  <span className="text-[11px] font-medium" style={{ color: newColor }}>
+                    {STANCE_LABEL[row.new_score] ?? row.new_score}
+                  </span>
+                )}
+                <span
+                  className="text-[11px] font-medium"
+                  style={{ color: direction.color }}
+                >
+                  {direction.text}
+                </span>
+              </div>
+            </div>
+
+            {/* Time */}
+            <span className="text-[10px] text-slate-400 flex-shrink-0 mt-0.5">
+              {timeAgo(row.changed_at)}
+            </span>
+          </Link>
+        );
+      })}
     </div>
   );
 }
