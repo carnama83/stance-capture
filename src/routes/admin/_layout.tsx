@@ -95,9 +95,15 @@ export default function AdminLayout() {
             label="AI Pipeline Dashboard"
           />
           <AdminLink
+            to="/admin/prompts"
+            icon={<SlidersHorizontal className="h-4 w-4" />}
+            label="LLM Prompts"
+          />
+          <AdminLink
             to="/admin/questions"
             icon={<FileText className="h-4 w-4" />}
             label="Questions"
+
           />
           <AdminLink
             to="/admin/live-questions"
