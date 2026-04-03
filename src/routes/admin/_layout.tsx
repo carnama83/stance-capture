@@ -12,11 +12,12 @@ import {
   User, 
   BarChart3, 
   Clock,
-  Brain,  // ✅ ADDED: Brain icon import
+  Brain,
   SlidersHorizontal,
   Shield,
   Share2,
-  LayoutTemplate
+  LayoutTemplate,
+  Building2,     // FIX 3: Publishers nav icon
 } from "lucide-react";
 
 import {
@@ -103,7 +104,6 @@ export default function AdminLayout() {
             to="/admin/questions"
             icon={<FileText className="h-4 w-4" />}
             label="Questions"
-
           />
           <AdminLink
             to="/admin/live-questions"
@@ -125,6 +125,12 @@ export default function AdminLayout() {
             icon={<LayoutTemplate className="h-4 w-4" />}
             label="Embed Analytics"
           />
+          {/* FIX 3: Publisher approval queue */}
+          <AdminLink
+            to="/admin/publishers"
+            icon={<Building2 className="h-4 w-4" />}
+            label="Publishers"
+          />
           
           <Separator className="my-2" />
 
@@ -140,7 +146,7 @@ export default function AdminLayout() {
 
           <Separator className="my-2" />
 
-          {/* NEW: Impact & Curation (Epic P) */}
+          {/* Impact & Curation (Epic P) */}
           <div className="px-2 text-[10px] font-medium tracking-wide text-muted-foreground uppercase mb-1">
             Impact &amp; Curation (Epic P)
           </div>
@@ -170,8 +176,6 @@ export default function AdminLayout() {
             icon={<BarChart3 className="h-4 w-4" />}
             label="Stance Metrics"
           />
-          
-          {/* ✅ NEW: Cognitive States */}
           <AdminLink
             to="/admin/cognitive-states"
             icon={<Brain className="h-4 w-4" />}
