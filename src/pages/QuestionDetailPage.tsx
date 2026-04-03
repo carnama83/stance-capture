@@ -743,18 +743,6 @@ export default function QuestionDetailPage() {
   const [showConfidence, setShowConfidence] = React.useState(false);
   const [confidenceScore, setConfidenceScore] = React.useState<number | null>(null);
 
-  // W2: Dynamic OG meta for social share previews
-  useOgMeta({
-    title: question?.question ?? "A question for you",
-    description: question?.summary ?? "Share your stance on Stance Capture.",
-    questionId,
-  });
-
-  // W2: OG image URL passed to ShareButton for direct X post image cards
-  const ogImageUrl = supabaseUrl
-    ? `${supabaseUrl}/functions/v1/og-image?question_id=${questionId}`
-    : null;
-
   const session = useSupabaseSession();
   const userId = session?.user?.id ?? null;
   const isAuthed = !!session;
@@ -839,6 +827,18 @@ export default function QuestionDetailPage() {
   // Extract once — these never change for the lifetime of the client singleton.
   const supabaseUrl = React.useMemo(() => (sb as any)?.supabaseUrl as string ?? "", [sb]);
   const supabaseAnonKey = React.useMemo(() => (sb as any)?.supabaseKey as string ?? "", [sb]);
+
+  // W2: Dynamic OG meta for social share previews (must be after question + supabaseUrl)
+  useOgMeta({
+    title: question?.question ?? "A question for you",
+    description: question?.summary ?? "Share your stance on Stance Capture.",
+    questionId,
+  });
+
+  // W2: OG image URL passed to ShareButton for direct X post image cards
+  const ogImageUrl = supabaseUrl
+    ? `${supabaseUrl}/functions/v1/og-image?question_id=${questionId}`
+    : null;
 
   React.useEffect(() => {
     if (!sb || !questionId) return;
