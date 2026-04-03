@@ -82,6 +82,13 @@ import { useBootstrapUser } from "./hooks/useBootstrapUser";
 
 const queryClient = new QueryClient();
 
+// W1: Mounts the share click tracker hook inside the Router context
+// (hooks that use useLocation must be rendered inside <Router>)
+function ShareClickTrackerMount() {
+  useShareClickTracker();
+  return null;
+}
+
 const App: React.FC = () => {
   // ✅ ADD: run bootstrap on auth/session changes
   useBootstrapUser();
