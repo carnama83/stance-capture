@@ -32,6 +32,34 @@ function communityLeaning(avgScore: number | null): string | null {
   return "Community is fairly split";
 }
 
+// S4: Derive an outcome summary from the user's weight configuration.
+// Weights are 0 (side_a) to 100 (side_b). If the user has skewed weights,
+// describe which values they're prioritising and hint at the implied stance.
+function deriveOutcomeSummary(
+  tradeoffs: Tradeoff[],
+  weights: Record<number, number>,
+): string | null {
+  if (tradeoffs.length === 0) return null;
+
+  const dominated: string[] = [];
+  const balanced: string[] = [];
+
+  tradeoffs.forEach((t, i) => {
+    const w = weights[i] ?? 50;
+    if (w <= 25)       dominated.push(t.side_a);
+    else if (w >= 75)  dominated.push(t.side_b);
+    else               balanced.push(t.label);
+  });
+
+  if (dominated.length === 0) {
+    return "You're weighing the trade-offs evenly — your stance will reflect a balanced view.";
+  }
+
+  const prioritised = dominated.slice(0, 2).join(" and ");
+  const qualifier    = balanced.length > 0 ? ", with some nuance" : "";
+  return `Your priorities suggest you lean toward ${prioritised}${qualifier}. Consider how that shapes your stance below.`;
+}
+
 // Priority slider — 0 (value A) to 100 (value B)
 function PrioritySlider({
   tradeoff,
@@ -121,6 +149,7 @@ export default function TradeoffExplorer({
 
   const tradeoffs = data?.tradeoffs ?? [];
   const leaning = communityLeaning(avgScore);
+  const outcomeSummary = deriveOutcomeSummary(tradeoffs, weights);
 
   // Initialise weights at 50 when tradeoffs load
   React.useEffect(() => {
@@ -191,9 +220,18 @@ export default function TradeoffExplorer({
                   key={i}
                   tradeoff={t}
                   value={weights[i] ?? 50}
-                  onChange={(v) => setWeights((prev) => ({ ...prev, [i]: v }))}
+                  onChange={(v) => setWeights((prev) => ({ ...prev, [i]: v }))
+                  }
                 />
               ))}
+              {/* S4: Dynamic outcome summary derived from weight configuration */}
+              {outcomeSummary && (
+                <div className="rounded-lg bg-slate-50 border border-slate-100 px-3 py-2.5">
+                  <p className="text-[11px] text-slate-600 leading-snug">
+                    {outcomeSummary}
+                  </p>
+                </div>
+              )}
               <p className="text-[10px] text-slate-400">
                 Your priority weights are private — they help you think through the issue
                 before taking a stance.
