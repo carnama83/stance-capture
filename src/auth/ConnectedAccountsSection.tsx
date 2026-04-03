@@ -2,6 +2,15 @@
 // Epic V — Social Authentication (V4)
 // Shows connected social providers and allows linking/unlinking.
 // Rendered inside SettingsAccount.tsx
+//
+// CHANGES (Fix 2):
+//   - Added 'twitter' as a supported provider type
+//   - Added Twitter/X row with X branding and OAuth connect flow
+//   - Twitter connect uses signInWithOAuth (not linkIdentity) with
+//     provider_token scopes for tweet.write — this is the correct path
+//     for getting a token that post-to-x can use
+//   - useLinkedProviders already calls get_linked_providers RPC which reads
+//     social_auth_tokens — will now return twitter rows after Fix 1 enum migration
 
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -12,7 +21,7 @@ import { getSupabase } from "@/lib/supabaseClient";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Provider = "google" | "facebook" | "apple";
+type Provider = "google" | "facebook" | "apple" | "twitter";
 
 interface LinkedProvider {
   provider: Provider;
@@ -25,22 +34,31 @@ interface LinkedProvider {
 
 const PROVIDER_META: Record<
   Provider,
-  { label: string; color: string; iconBg: string }
+  { label: string; color: string; iconBg: string; description: string }
 > = {
   google: {
     label: "Google",
     color: "text-slate-700",
     iconBg: "bg-white border border-slate-200",
+    description: "Sign in with your Google account",
   },
   facebook: {
     label: "Facebook",
     color: "text-[#1877F2]",
     iconBg: "bg-[#1877F2]",
+    description: "Sign in with your Facebook account",
   },
   apple: {
     label: "Apple",
     color: "text-slate-900",
     iconBg: "bg-black",
+    description: "Sign in with your Apple ID",
+  },
+  twitter: {
+    label: "X (Twitter)",
+    color: "text-slate-900",
+    iconBg: "bg-black",
+    description: "Required for direct posting to X",
   },
 };
 
@@ -59,6 +77,14 @@ function ProviderIcon({ provider }: { provider: Provider }) {
     return (
       <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
         <path fill="white" d="M24 12.073C24 5.405 18.627 0 12 0S0 5.405 0 12.073C0 18.1 4.388 23.094 10.125 24v-8.437H7.078v-3.49h3.047V9.41c0-3.025 1.792-4.697 4.533-4.697 1.312 0 2.686.236 2.686.236v2.97h-1.513c-1.491 0-1.956.93-1.956 1.886v2.267h3.328l-.532 3.49h-2.796V24C19.612 23.094 24 18.1 24 12.073z"/>
+      </svg>
+    );
+  }
+  if (provider === "twitter") {
+    // X logo
+    return (
+      <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" fill="white">
+        <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
       </svg>
     );
   }
@@ -111,6 +137,29 @@ function ConnectButton({ provider }: { provider: Provider }) {
   async function handleConnect() {
     if (!sb) return;
     setLoading(true);
+
+    // Twitter/X uses signInWithOAuth (not linkIdentity) because we need
+    // provider_token with tweet.write scope — Supabase linkIdentity doesn't
+    // pass through provider scopes reliably for Twitter.
+    if (provider === "twitter") {
+      // Store current path so callback can return here
+      sessionStorage.setItem("return_to", window.location.hash || "/");
+      const { error } = await sb.auth.signInWithOAuth({
+        provider: "twitter",
+        options: {
+          redirectTo: `${window.location.origin}/#/auth/callback`,
+          scopes: "tweet.read tweet.write users.read offline.access",
+        },
+      });
+      if (error) {
+        toast({ title: "Connection failed", description: error.message, variant: "destructive" });
+        setLoading(false);
+      }
+      // On success: browser redirects to OAuth; setLoading stays true
+      return;
+    }
+
+    // Google / Facebook / Apple use linkIdentity for account linking
     const { error } = await sb.auth.linkIdentity({
       provider,
       options: {
@@ -179,7 +228,7 @@ function ProviderRow({
             })}
           </p>
         ) : (
-          <p className="text-xs text-slate-400 mt-0.5">Not connected</p>
+          <p className="text-xs text-slate-400 mt-0.5">{meta.description}</p>
         )}
       </div>
 
@@ -215,7 +264,10 @@ function ProviderRow({
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-const ALL_PROVIDERS: Provider[] = ["google", "facebook", "apple"];
+// Twitter is listed separately at the bottom with a divider and explanation
+// because its purpose (enabling direct X posting) differs from the others
+// (login convenience). This avoids confusion about why it asks for tweet.write.
+const LOGIN_PROVIDERS: Provider[] = ["google", "facebook", "apple"];
 
 export default function ConnectedAccountsSection() {
   const { data: linked, isLoading } = useLinkedProviders();
@@ -262,7 +314,7 @@ export default function ConnectedAccountsSection() {
       </p>
 
       <div className="divide-y divide-slate-100">
-        {ALL_PROVIDERS.map((provider) => (
+        {LOGIN_PROVIDERS.map((provider) => (
           <ProviderRow
             key={provider}
             provider={provider}
@@ -272,6 +324,22 @@ export default function ConnectedAccountsSection() {
             isLastMethod={isLastMethod(provider)}
           />
         ))}
+      </div>
+
+      {/* X / Twitter — separate section, different purpose */}
+      <div className="mt-4 pt-4 border-t border-slate-100">
+        <p className="text-xs font-medium text-slate-600 mb-1">X (Twitter) for sharing</p>
+        <p className="text-xs text-slate-400 mb-2">
+          Connect X to post your stances directly from Stance Capture.
+          Requires write permission to your X account.
+        </p>
+        <ProviderRow
+          provider="twitter"
+          linked={(linked ?? []).find((l) => l.provider === "twitter")}
+          onDisconnect={() => handleDisconnect("twitter")}
+          disconnecting={disconnecting && disconnectingProvider === "twitter"}
+          isLastMethod={false} // Twitter is never a login method — can always disconnect
+        />
       </div>
     </div>
   );
