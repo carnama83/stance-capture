@@ -1,6 +1,11 @@
 // src/pages/OAuthCallbackPage.tsx
 // Epic V — Social Authentication
 //
+// CHANGES (Fix 2):
+//   - persistProviderToken now includes 'twitter' in the allowed provider list
+//   - bootstrapSocialProfile correctly handles twitter provider
+//   - No other logic changed — the X OAuth flow uses the same PKCE path
+//
 // setSession() hangs when the Supabase client has detectSessionInUrl:false
 // and hasn't been "warmed up" with a prior auth call. Instead we:
 //   1. Manually write the session to localStorage (same key Supabase uses)
@@ -91,7 +96,7 @@ export default function OAuthCallbackPage() {
 
       console.log("[OAuthCallback] tokens present:", { accessToken: !!accessToken, refreshToken: !!refreshToken, code: !!code });
 
-      // PKCE code flow
+      // PKCE code flow (used by X/Twitter OAuth 2.0 and newer Google/Apple flows)
       if (code && !accessToken) {
         setStatus("Exchanging authorization code…");
         try {
@@ -193,7 +198,7 @@ async function bootstrapSocialProfile(sb: any, session: any) {
       await sb.from("profiles").update(updates).eq("user_id", user.id);
     }
     if (!profile?.username) {
-      const name = meta.full_name || meta.name || null;
+      const name = meta.full_name || meta.name || meta.preferred_username || null;
       if (name) {
         const suggestion = name.toLowerCase().replace(/[^a-z0-9_.]/g, "_").replace(/_+/g, "_").slice(0, 20);
         window.localStorage.setItem("oauth_username_suggestion", suggestion);
@@ -204,18 +209,42 @@ async function bootstrapSocialProfile(sb: any, session: any) {
   } catch (e: any) { console.warn("[OAuthCallback] profile bootstrap (non-fatal):", e?.message); }
 }
 
+// FIX 2: Added 'twitter' to the allowed provider list.
+// Previously ['google','facebook','apple'] — this blocked X token writes
+// and meant post-to-x never found a stored token for Twitter users.
+const SOCIAL_TOKEN_PROVIDERS = ["google", "facebook", "apple", "twitter"] as const;
+type SocialTokenProvider = typeof SOCIAL_TOKEN_PROVIDERS[number];
+
 async function persistProviderToken(sb: any, session: any) {
   try {
-    if (!session?.provider_token) return;
-    const provider = session.user?.app_metadata?.provider;
-    if (!provider || !["google", "facebook", "apple"].includes(provider)) return;
+    if (!session?.provider_token) {
+      console.log("[OAuthCallback] No provider_token in session — skipping token persistence");
+      return;
+    }
+    const provider = session.user?.app_metadata?.provider as string | undefined;
+    if (!provider || !(SOCIAL_TOKEN_PROVIDERS as readonly string[]).includes(provider)) {
+      console.log("[OAuthCallback] Provider not in allowed list:", provider);
+      return;
+    }
     const identity = session.user?.identities?.find((i: any) => i.provider === provider);
     const providerUserId = identity?.id ?? session.user?.id;
-    const expiresAt = session.provider_token_expiry ? new Date(session.provider_token_expiry * 1000).toISOString() : null;
+    const expiresAt = session.provider_token_expiry
+      ? new Date(session.provider_token_expiry * 1000).toISOString()
+      : null;
+
+    // For twitter, extract scopes from provider token if available
+    const scopes: string[] = provider === "twitter"
+      ? ["tweet.read", "tweet.write", "users.read", "offline.access"]
+      : [];
+
     await sb.rpc("upsert_social_auth_token", {
-      p_provider: provider, p_provider_user_id: providerUserId,
-      p_access_token: session.provider_token, p_refresh_token: session.provider_refresh_token ?? null,
-      p_token_expires_at: expiresAt, p_scopes: [],
+      p_provider: provider as SocialTokenProvider,
+      p_provider_user_id: providerUserId,
+      p_access_token: session.provider_token,
+      p_refresh_token: session.provider_refresh_token ?? null,
+      p_token_expires_at: expiresAt,
+      p_scopes: scopes,
     });
+    console.log("[OAuthCallback] Provider token persisted for:", provider);
   } catch (e: any) { console.warn("[OAuthCallback] token persistence (non-fatal):", e?.message); }
 }
