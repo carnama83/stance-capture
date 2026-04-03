@@ -614,6 +614,8 @@ function StanceCard({
   handleRequireLogin,
   showConfidence,
   onConfidenceSubmit,
+  showSharePrompt,
+  onShareDismiss,
 }: {
   isAuthed: boolean;
   questionId: string;
@@ -626,6 +628,8 @@ function StanceCard({
   handleRequireLogin: () => void;
   showConfidence?: boolean;
   onConfidenceSubmit?: (score: number) => void;
+  showSharePrompt?: boolean;
+  onShareDismiss?: () => void;
 }) {
   return (
     <section className="rounded-xl border border-slate-200 bg-slate-50 p-4 md:p-5 shadow-sm">
@@ -700,7 +704,7 @@ function StanceCard({
               questionId={questionId}
               questionText={question.question}
               questionSummary={question.summary}
-              onDismiss={() => setShowSharePrompt(false)}
+              onDismiss={onShareDismiss}
             />
           )}
 
@@ -1099,6 +1103,8 @@ export default function QuestionDetailPage() {
       setConfidenceScore(score);
       setShowConfidence(false);
     },
+    showSharePrompt,
+    onShareDismiss: () => setShowSharePrompt(false),
   };
 
   let content: React.ReactNode;
