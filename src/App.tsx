@@ -24,7 +24,6 @@ import Signup from "./pages/Signup";
 import Login from "./pages/Login";
 import ResetPassword from "./pages/ResetPassword";
 import OAuthCallbackPage from "./pages/OAuthCallbackPage";
-// ✅ Option A: keep /profile route but redirect; Profile page no longer needed here
 import SettingsProfile from "./pages/SettingsProfile";
 import SettingsSecurity from "./pages/SettingsSecurity";
 import SettingsSessions from "./pages/SettingsSessions";
@@ -56,6 +55,9 @@ import AdminImpactDashboardPage from "@/routes/admin/impact-dashboard/Index";
 import AdminCronJobsPage from "@/routes/admin/cron-jobs/Index";
 import ScoringConfigPage from "@/routes/admin/ScoringConfigPage";
 
+// FIX 3: Publisher approval queue
+import AdminPublishersPage from "@/routes/admin/publishers/Index";
+
 // Cognitive State Pages
 import AdminCognitiveStatesPage from '@/routes/admin/cognitive-states';
 import AdminModerationPage from '@/routes/admin/moderation/index';
@@ -78,23 +80,18 @@ import RouteDebug from "./components/RouteDebug";
 // Admin stance metrics page
 import AdminStanceMetricsPage from "./pages/AdminStanceMetricsPage";
 
-// ✅ ADD: Bootstrap hook
 import { useBootstrapUser } from "./hooks/useBootstrapUser";
 
 const queryClient = new QueryClient();
 
-// W1: Mounts the share click tracker hook inside the Router context
-// (hooks that use useLocation must be rendered inside <Router>)
 function ShareClickTrackerMount() {
   useShareClickTracker();
   return null;
 }
 
 const App: React.FC = () => {
-  // ✅ ADD: run bootstrap on auth/session changes
   useBootstrapUser();
 
-  // Dev expose Supabase once (unchanged)
   React.useEffect(() => {
     if (!import.meta.env.DEV) return;
     let cancelled = false;
@@ -214,7 +211,7 @@ const App: React.FC = () => {
                 }
               />
 
-              {/* ✅ NEW: Cognitive Insights (protected) */}
+              {/* Cognitive Insights (protected) */}
               <Route
                 path="/me/cognitive-insights"
                 element={
@@ -234,7 +231,7 @@ const App: React.FC = () => {
                 }
               />
 
-              {/* ✅ Option A: Profile route redirects to Settings Profile */}
+              {/* Profile route redirects to Settings Profile */}
               <Route
                 path={ROUTES.PROFILE}
                 element={
@@ -275,12 +272,10 @@ const App: React.FC = () => {
                 <Route path="stance-metrics" element={<AdminStanceMetricsPage />} />
                 <Route path="cron-jobs" element={<AdminCronJobsPage />} />
                 <Route path="scoring-config" element={<ScoringConfigPage />} />
-                
-                {/* ✅ NEW: Cognitive States Admin */}
                 <Route path="cognitive-states" element={<AdminCognitiveStatesPage />} />
-
-                {/* H: Moderation queue */}
                 <Route path="moderation" element={<AdminModerationPage />} />
+                {/* FIX 3: Publisher approval queue */}
+                <Route path="publishers" element={<AdminPublishersPage />} />
               </Route>
 
               {/* Admin special page */}
