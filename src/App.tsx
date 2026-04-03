@@ -51,6 +51,7 @@ import AdminNewsIndex from "@/routes/admin/news/Index";
 import AdminLiveQuestionsPage from "@/routes/admin/live-questions/Index";
 import AdminLiveQuestionShowPage from "@/routes/admin/live-questions/Show";
 import AdminAiDraftsPage from "@/routes/admin/ai-drafts/Index";
+import AdminPromptsPage from "@/routes/admin/prompts/Index";
 import AdminImpactDashboardPage from "@/routes/admin/impact-dashboard/Index";
 import AdminCronJobsPage from "@/routes/admin/cron-jobs/Index";
 import ScoringConfigPage from "@/routes/admin/ScoringConfigPage";
@@ -259,6 +260,7 @@ const App: React.FC = () => {
                 <Route path="ingestion" element={<AdminIngestionPage />} />
                 <Route path="drafts" element={<AdminDraftsPage />} />
                 <Route path="ai-drafts" element={<AdminAiDraftsPage />} />
+                <Route path="prompts" element={<AdminPromptsPage />} />
                 <Route path="questions" element={<AdminQuestionsPage />} />
                 <Route path="share-analytics" element={<ShareAnalyticsPage />} />
                 <Route path="embed-analytics" element={<EmbedAnalyticsPage />} />
