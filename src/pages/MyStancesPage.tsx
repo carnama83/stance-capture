@@ -1,7 +1,11 @@
-// src/pages/MyStancesPage.tsx
-// Updated: Phase 2 (QuickTakesCard + TrendingAnsweredCard),
-//          Phase 3 (StanceSnapshotCard + YouVsCommunityCard natural language),
-//          Rationale removed per Epic D decision.
+// src/pages/MyStancesPage.tsx — UPDATED
+// Change from previous version:
+//   Added TopicHistoryDrawer — when user selects a topic in the topic filter
+//   dropdown, a drawer opens above the stance list showing the per-topic
+//   stance evolution, sparkline, and change history.
+//   This is the E TopicHistoryDrawer integration.
+//
+// All other functionality unchanged.
 
 import ContributionBanner from "./MyStances/ContributionBanner";
 import StanceSnapshotCard from "./MyStances/StanceSnapshotCard";
@@ -10,6 +14,7 @@ import SinceLastVisitCard from "./MyStances/SinceLastVisitCard";
 import QuickTakesCard from "./MyStances/QuickTakesCard";
 import TrendingAnsweredCard from "./MyStances/TrendingAnsweredCard";
 import { ShareStatsCard } from "./MyStances/ShareStatsCard";
+import TopicHistoryDrawer from "@/components/insights/TopicHistoryDrawer";
 
 import * as React from "react";
 import { QuestionPhaseBadge } from "@/components/question/QuestionPhaseBadge";
@@ -18,7 +23,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getSupabase } from "../lib/supabaseClient";
 import PageLayout from "../components/PageLayout";
-import { Download } from "lucide-react";
+import { Download, BookOpen } from "lucide-react";
 
 type Session = import("@supabase/supabase-js").Session;
 
@@ -74,7 +79,6 @@ const STANCE_LABELS: Record<number, { label: string; short: string; tone: "pos" 
   [2]:  { label: "Strongly agree",    short: "Strongly agree",    tone: "pos" },
 };
 
-// ---------- Session hook ----------
 function useSupabaseSession() {
   const sb = React.useMemo(getSupabase, []);
   const [session, setSession] = React.useState<Session | null>(null);
@@ -91,7 +95,6 @@ function useSupabaseSession() {
   return { session, ready };
 }
 
-// ---------- Data fetcher ----------
 async function fetchMyStances(userId: string): Promise<MyStanceRow[]> {
   const sb = getSupabase();
   if (!sb) throw new Error("Supabase client not available");
@@ -132,7 +135,6 @@ async function fetchMyStances(userId: string): Promise<MyStanceRow[]> {
   }));
 }
 
-// ---------- Export helpers ----------
 function downloadFile(content: string, filename: string, mime: string) {
   const blob = new Blob([content], { type: mime });
   const url = URL.createObjectURL(blob);
@@ -157,7 +159,6 @@ async function runExport(format: "csv" | "json") {
     return;
   }
 
-  // CSV
   const headers = ["question_id", "question_text", "current_score", "first_answered", "last_updated", "change_count", "rationale", "links"];
   const escape = (v: string) => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const csvRows = rows.map((r) =>
@@ -168,7 +169,6 @@ async function runExport(format: "csv" | "json") {
   downloadFile([headers.join(","), ...csvRows].join("\n"), `stance-export-${date}.csv`, "text/csv");
 }
 
-// ---------- Page ----------
 export default function MyStancesPage() {
   const { session, ready } = useSupabaseSession();
   const navigate = useNavigate();
@@ -183,6 +183,10 @@ export default function MyStancesPage() {
   const [exportOpen, setExportOpen] = React.useState(false);
   const [activeTab, setActiveTab] = React.useState<"overview" | "stances">("overview");
 
+  // ── TopicHistoryDrawer state ─────────────────────────────────────────────
+  // When a topic is selected in the topic filter, the drawer opens.
+  const [drawerTopic, setDrawerTopic] = React.useState<string | null>(null);
+
   const { data: rawRows, isLoading, isError, error } = useQuery<MyStanceRow[], Error>({
     enabled: !!userId,
     queryKey: ["my-stances", userId],
@@ -192,7 +196,6 @@ export default function MyStancesPage() {
 
   const rows = rawRows ?? [];
 
-  // Derive unique topics for filter dropdown
   const topics = React.useMemo(() => {
     const seen = new Map<string, string>();
     rows.forEach((r) => {
@@ -202,10 +205,15 @@ export default function MyStancesPage() {
     return Array.from(seen.values()).sort();
   }, [rows]);
 
+  // ── When topic filter changes, open/close the drawer ────────────────────
+  function handleTopicFilterChange(value: string) {
+    setTopicFilter(value);
+    setDrawerTopic(value !== "all" ? value : null);
+  }
+
   const filteredAndSorted = React.useMemo(() => {
     let working = [...rows];
 
-    // Stance filter
     working = working.filter((row) => {
       const s = row.score;
       switch (filterBy) {
@@ -219,27 +227,24 @@ export default function MyStancesPage() {
       }
     });
 
-    // Topic filter
     if (topicFilter !== "all") {
       working = working.filter((r) => r.question?.topic_title === topicFilter);
     }
 
-    // Date range filter
     if (dateFrom) {
       const from = new Date(dateFrom).getTime();
       working = working.filter((r) => new Date(r.updated_at ?? r.created_at ?? 0).getTime() >= from);
     }
     if (dateTo) {
-      const to = new Date(dateTo).getTime() + 86400_000; // inclusive end
+      const to = new Date(dateTo).getTime() + 86400_000;
       working = working.filter((r) => new Date(r.updated_at ?? r.created_at ?? 0).getTime() <= to);
     }
 
-    // Sort
     working.sort((a, b) => {
       const dateA = new Date(a.updated_at ?? a.created_at ?? 0).getTime();
       const dateB = new Date(b.updated_at ?? b.created_at ?? 0).getTime();
-      if (sortBy === "recent")   return dateB - dateA;
-      if (sortBy === "oldest")   return dateA - dateB;
+      if (sortBy === "recent")    return dateB - dateA;
+      if (sortBy === "oldest")    return dateA - dateB;
       if (sortBy === "strongest") {
         const diff = Math.abs(b.score) - Math.abs(a.score);
         return diff !== 0 ? diff : dateB - dateA;
@@ -300,7 +305,6 @@ export default function MyStancesPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            {/* Export dropdown */}
             <div className="relative">
               <button
                 type="button"
@@ -312,18 +316,10 @@ export default function MyStancesPage() {
               </button>
               {exportOpen && (
                 <div className="absolute right-0 top-full mt-1 z-20 rounded-md border bg-white shadow-md text-xs overflow-hidden">
-                  <button
-                    type="button"
-                    className="block w-full px-4 py-2 text-left hover:bg-slate-50 text-slate-700"
-                    onClick={() => { runExport("csv"); setExportOpen(false); }}
-                  >
+                  <button type="button" className="block w-full px-4 py-2 text-left hover:bg-slate-50 text-slate-700" onClick={() => { runExport("csv"); setExportOpen(false); }}>
                     Download CSV
                   </button>
-                  <button
-                    type="button"
-                    className="block w-full px-4 py-2 text-left hover:bg-slate-50 text-slate-700"
-                    onClick={() => { runExport("json"); setExportOpen(false); }}
-                  >
+                  <button type="button" className="block w-full px-4 py-2 text-left hover:bg-slate-50 text-slate-700" onClick={() => { runExport("json"); setExportOpen(false); }}>
                     Download JSON
                   </button>
                 </div>
@@ -355,24 +351,15 @@ export default function MyStancesPage() {
         {/* Overview tab */}
         {activeTab === "overview" && (
           <>
-            {/* Phase 2a — Quick takes: 3 personalized unanswered questions */}
             <QuickTakesCard userId={userId} />
-
-            {/* Phase 2b — Trending signal: answered questions now trending/shifting */}
             <TrendingAnsweredCard userId={userId} />
-
-            {/* Contribution acknowledgement */}
             <ContributionBanner />
             <ShareStatsCard />
-
-            {/* Summary cards */}
             <section className="space-y-3">
               <StanceSnapshotCard />
               <SinceLastVisitCard />
               <YouVsCommunityCard />
             </section>
-
-            {/* CTA to stances list */}
             {totalCount > 0 && (
               <button
                 type="button"
@@ -395,8 +382,6 @@ export default function MyStancesPage() {
                   Showing <span className="font-medium">{visibleCount} of {totalCount}</span> stances
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-
-                  {/* Sort */}
                   <label className="flex items-center gap-1 text-[11px] text-slate-600">
                     <span>Sort</span>
                     <select value={sortBy} onChange={(e) => setSortBy(e.target.value as SortBy)} className="rounded border px-2 py-1 text-[11px]">
@@ -406,7 +391,6 @@ export default function MyStancesPage() {
                     </select>
                   </label>
 
-                  {/* Stance filter */}
                   <label className="flex items-center gap-1 text-[11px] text-slate-600">
                     <span>Stance</span>
                     <select value={filterBy} onChange={(e) => setFilterBy(e.target.value as FilterBy)} className="rounded border px-2 py-1 text-[11px]">
@@ -420,30 +404,48 @@ export default function MyStancesPage() {
                     </select>
                   </label>
 
-                  {/* Topic filter */}
+                  {/* Topic filter — now also opens the drawer */}
                   {topics.length > 0 && (
                     <label className="flex items-center gap-1 text-[11px] text-slate-600">
                       <span>Topic</span>
-                      <select value={topicFilter} onChange={(e) => setTopicFilter(e.target.value)} className="rounded border px-2 py-1 text-[11px] max-w-[140px]">
+                      <select
+                        value={topicFilter}
+                        onChange={(e) => handleTopicFilterChange(e.target.value)}
+                        className="rounded border px-2 py-1 text-[11px] max-w-[140px]"
+                      >
                         <option value="all">All topics</option>
                         {topics.map((t) => <option key={t} value={t}>{t}</option>)}
                       </select>
                     </label>
                   )}
+
+                  {/* Topic history drawer trigger (icon button) */}
+                  {topicFilter !== "all" && (
+                    <button
+                      type="button"
+                      onClick={() => setDrawerTopic(drawerTopic ? null : topicFilter)}
+                      className={[
+                        "flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] transition-colors",
+                        drawerTopic
+                          ? "bg-blue-50 border-blue-200 text-blue-700"
+                          : "border-slate-200 text-slate-600 hover:bg-slate-50",
+                      ].join(" ")}
+                      title={drawerTopic ? "Hide topic history" : "Show topic history"}
+                    >
+                      <BookOpen className="h-3 w-3" />
+                      {drawerTopic ? "Hide history" : "Topic history"}
+                    </button>
+                  )}
                 </div>
               </div>
 
-              {/* Date range */}
               <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
                 <span>Date range</span>
-                <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
-                  className="rounded border px-2 py-1 text-[11px]" />
+                <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="rounded border px-2 py-1 text-[11px]" />
                 <span>to</span>
-                <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
-                  className="rounded border px-2 py-1 text-[11px]" />
+                <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="rounded border px-2 py-1 text-[11px]" />
                 {(dateFrom || dateTo) && (
-                  <button type="button" onClick={() => { setDateFrom(""); setDateTo(""); }}
-                    className="text-slate-400 hover:text-slate-600 underline">
+                  <button type="button" onClick={() => { setDateFrom(""); setDateTo(""); }} className="text-slate-400 hover:text-slate-600 underline">
                     Clear
                   </button>
                 )}
@@ -456,7 +458,16 @@ export default function MyStancesPage() {
               )}
             </section>
 
-            {/* List */}
+            {/* ── TopicHistoryDrawer ─────────────────────────────────────── */}
+            {drawerTopic && userId && (
+              <TopicHistoryDrawer
+                topicTitle={drawerTopic}
+                userId={userId}
+                onClose={() => setDrawerTopic(null)}
+              />
+            )}
+
+            {/* Stance list */}
             {!isLoading && !isError && visibleCount > 0 && (
               <section className="space-y-3">
                 {filteredAndSorted.map((row) => (
@@ -471,7 +482,8 @@ export default function MyStancesPage() {
   );
 }
 
-// ---------- Card ----------
+// ── Card ─────────────────────────────────────────────────────────────────────
+
 const SCORE_OPTIONS: { value: number; label: string; tone: "pos" | "neg" | "neu" }[] = [
   { value:  2, label: "Strongly agree",    tone: "pos" },
   { value:  1, label: "Agree",             tone: "pos" },
@@ -554,10 +566,8 @@ function MyStanceCard({ row }: { row: MyStanceRow }) {
             </div>
           )}
 
-          {/* E1: Stance history sparkline */}
           <StanceSparkline questionId={row.question_id} currentScore={row.score} />
 
-          {/* E2: Inline stance editor */}
           {editing && (
             <div className="mt-2 space-y-2">
               <div className="flex flex-wrap gap-1.5">
