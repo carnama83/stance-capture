@@ -18,6 +18,7 @@ import {
   Share2,
   LayoutTemplate,
   Building2,     // FIX 3: Publishers nav icon
+  Scale,         // S4: Tradeoffs nav icon
 } from "lucide-react";
 
 import {
@@ -164,6 +165,11 @@ export default function AdminLayout() {
             to="/admin/scoring-config"
             icon={<SlidersHorizontal className="h-4 w-4" />}
             label="Scoring Config"
+          />
+          <AdminLink
+            to="/admin/tradeoffs"
+            icon={<Scale className="h-4 w-4" />}
+            label="Tradeoff Preview"
           />
           
           <Separator className="my-2" />
