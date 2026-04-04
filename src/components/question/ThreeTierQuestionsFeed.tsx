@@ -431,7 +431,10 @@ function QuestionCard({ question }: { question: ThreeTierQuestion }) {
           
           {/* Trending Badge */}
           {question.is_trending && (
-            <TrendingBadge trendingScore={question.trending_score} />
+            <TrendingBadge
+              trendingScore={question.trending_score}
+              responsesTotal={question.responses_total}
+            />
           )}
           
           {/* Featured Badge */}
