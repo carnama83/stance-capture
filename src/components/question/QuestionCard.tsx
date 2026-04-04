@@ -53,7 +53,10 @@ export function QuestionCard({
           <QuestionStateBadge state={question.state} size="sm" />
           
           {question.is_trending && (
-            <TrendingBadge trendingScore={question.trending_score} />
+            <TrendingBadge
+              trendingScore={question.trending_score}
+              responsesTotal={question.engagement?.responses_total}
+            />
           )}
           
           {question.is_featured && (
