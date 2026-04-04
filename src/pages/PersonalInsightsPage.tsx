@@ -1,7 +1,14 @@
 // src/pages/PersonalInsightsPage.tsx
 // S1 — Personal Opinion Intelligence dashboard.
-// Combines: cognitive profile summary, topic belief profiles (stable/volatile),
-// stance evolution timeline, and a "revisit old answers" CTA.
+//
+// FIXES (S1 backend contract audit):
+//   1. useRevisitQuestions: rewritten as two separate queries (stances + batch
+//      community stats) — eliminates brittle nested join on question_stance_stats
+//      which silently returned [] instead of null, making drift always 0.
+//   2. RegionDivergenceAlert: N+1 sequential question text fetches inside the
+//      divergence loop replaced with a single batch fetch before the loop.
+//   3. TopicBeliefProfile wired to TopicHistoryDrawer — clicking a topic row
+//      now opens the drawer inline on this page.
 
 import * as React from "react";
 import { Link } from "react-router-dom";
@@ -17,6 +24,7 @@ import {
 import { getStanceColorHex } from "@/lib/stanceColors";
 import StanceEvolutionTimeline from "@/components/insights/StanceEvolutionTimeline";
 import TopicBeliefProfile from "@/components/insights/TopicBeliefProfile";
+import TopicHistoryDrawer from "@/components/insights/TopicHistoryDrawer";
 import { Loader2, RefreshCw, ArrowLeft, MapPin, RotateCcw } from "lucide-react";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -36,7 +44,7 @@ function consistencyLabel(score: number): string {
   return "Actively evolving";
 }
 
-// ── Overall profile summary card ──────────────────────────────────────────────
+// ── Profile summary card ──────────────────────────────────────────────────────
 
 function ProfileSummary({ state }: { state: CognitiveState }) {
   const p = state.cognitive_profile;
@@ -45,19 +53,14 @@ function ProfileSummary({ state }: { state: CognitiveState }) {
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white px-5 py-4 space-y-4">
-      {/* Headline numbers */}
       <div className="grid grid-cols-3 gap-4">
         <div className="bg-slate-50 rounded-lg px-3 py-2.5">
           <p className="text-[11px] text-slate-400 mb-0.5">Questions answered</p>
-          <p className="text-2xl font-medium text-slate-900">
-            {state.total_questions_answered}
-          </p>
+          <p className="text-2xl font-medium text-slate-900">{state.total_questions_answered}</p>
         </div>
         <div className="bg-slate-50 rounded-lg px-3 py-2.5">
           <p className="text-[11px] text-slate-400 mb-0.5">Topics engaged</p>
-          <p className="text-2xl font-medium text-slate-900">
-            {state.active_topic_count}
-          </p>
+          <p className="text-2xl font-medium text-slate-900">{state.active_topic_count}</p>
         </div>
         <div className="bg-slate-50 rounded-lg px-3 py-2.5">
           <p className="text-[11px] text-slate-400 mb-0.5">Per week</p>
@@ -67,25 +70,19 @@ function ProfileSummary({ state }: { state: CognitiveState }) {
         </div>
       </div>
 
-      {/* Overall stance */}
       <div>
         <div className="flex items-center justify-between mb-1.5">
-          <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">
-            Overall lean
-          </p>
+          <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Overall lean</p>
           <span className="text-sm font-medium" style={{ color: stanceColor }}>
             {meanStanceLabel(state.overall_mean_stance)}
           </span>
         </div>
-        {/* Full distribution bar */}
         <div className="flex h-2 w-full rounded-full overflow-hidden bg-slate-100">
           {(["strong_disagree","disagree","neutral","agree","strong_agree"] as const).map((key, i) => {
             const count = p.stance_distribution[key] ?? 0;
             const pct = total > 0 ? (count / total) * 100 : 0;
             const colors = ["#D85A30","#EF9F27","#B4B2A9","#97C459","#639922"];
-            return pct > 0 ? (
-              <div key={key} style={{ width: `${pct}%`, background: colors[i] }} />
-            ) : null;
+            return pct > 0 ? <div key={key} style={{ width: `${pct}%`, background: colors[i] }} /> : null;
           })}
         </div>
         <div className="flex justify-between text-[10px] text-slate-400 mt-1 px-0.5">
@@ -95,7 +92,6 @@ function ProfileSummary({ state }: { state: CognitiveState }) {
         </div>
       </div>
 
-      {/* Consistency */}
       <div className="flex items-center justify-between pt-1 border-t border-slate-100">
         <p className="text-xs text-slate-500">Opinion consistency</p>
         <span className="text-xs font-medium text-slate-700">
@@ -106,11 +102,8 @@ function ProfileSummary({ state }: { state: CognitiveState }) {
         </span>
       </div>
 
-      {/* Last evaluated */}
       <p className="text-[10px] text-slate-400">
-        Profile last updated {new Date(state.evaluated_at).toLocaleDateString(undefined, {
-          dateStyle: "medium",
-        })}
+        Profile last updated {new Date(state.evaluated_at).toLocaleDateString(undefined, { dateStyle: "medium" })}
       </p>
     </div>
   );
@@ -118,11 +111,7 @@ function ProfileSummary({ state }: { state: CognitiveState }) {
 
 // ── Section wrapper ───────────────────────────────────────────────────────────
 
-function Section({
-  title,
-  description,
-  children,
-}: {
+function Section({ title, description, children }: {
   title: string;
   description?: string;
   children: React.ReactNode;
@@ -131,16 +120,17 @@ function Section({
     <div>
       <div className="mb-3">
         <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
-        {description && (
-          <p className="text-xs text-slate-500 mt-0.5">{description}</p>
-        )}
+        {description && <p className="text-xs text-slate-500 mt-0.5">{description}</p>}
       </div>
       {children}
     </div>
   );
 }
 
-// ── S1: Revisit section — questions answered >30 days ago ordered by drift ────
+// ── S1 FIX A: Revisit questions — two-step query, no nested stats join ────────
+// Previously used a single nested select with question_stance_stats embedded,
+// which silently returned [] when stats were missing, making avg_score always null
+// and drift always 0. Now: fetch stances first, then batch-fetch stats separately.
 
 type RevisitRow = {
   question_id: string;
@@ -148,7 +138,7 @@ type RevisitRow = {
   topic_title: string | null;
   user_score: number;
   community_avg_score: number | null;
-  drift: number; // |user_score - community_avg_score|
+  drift: number;
   answered_at: string;
 };
 
@@ -162,8 +152,8 @@ function useRevisitQuestions() {
 
       const cutoff = new Date(Date.now() - 30 * 86_400_000).toISOString();
 
-      // Fetch stances answered >30 days ago joined to questions + community avg
-      const { data, error } = await supabase
+      // Step 1: Fetch stances + question text + topic title (no stats join)
+      const { data: stances, error: sErr } = await supabase
         .from("question_stances")
         .select(`
           question_id,
@@ -173,8 +163,7 @@ function useRevisitQuestions() {
             id,
             question,
             topic_id,
-            topics ( title ),
-            question_stance_stats ( avg_score )
+            topics ( title )
           )
         `)
         .eq("user_id", user.id)
@@ -182,11 +171,26 @@ function useRevisitQuestions() {
         .order("updated_at", { ascending: true })
         .limit(50);
 
-      if (error) throw error;
+      if (sErr) throw sErr;
+      if (!stances?.length) return [];
 
-      return (data ?? [])
+      const questionIds = stances.map((s: any) => s.question_id);
+
+      // Step 2: Batch-fetch community avg for all those questions in one query
+      const { data: statsRows } = await supabase
+        .from("question_stance_stats")
+        .select("question_id, avg_score")
+        .in("question_id", questionIds);
+
+      const avgByQuestion: Record<string, number | null> = {};
+      for (const r of statsRows ?? []) {
+        avgByQuestion[(r as any).question_id] = (r as any).avg_score ?? null;
+      }
+
+      // Step 3: Assemble and sort by drift descending
+      return stances
         .map((row: any) => {
-          const communityAvg = row.questions?.question_stance_stats?.[0]?.avg_score ?? null;
+          const communityAvg = avgByQuestion[row.question_id] ?? null;
           const drift = communityAvg !== null
             ? Math.abs(row.score - communityAvg)
             : 0;
@@ -218,7 +222,6 @@ function RevisitSection() {
   }
 
   if (!rows || rows.length === 0) {
-    // Fallback to generic CTA when no old questions exist yet
     return (
       <div className="rounded-xl border border-slate-200 bg-slate-50 px-5 py-4 flex items-start justify-between gap-4">
         <div>
@@ -243,9 +246,7 @@ function RevisitSection() {
       <div className="flex items-center justify-between mb-1">
         <div className="flex items-center gap-1.5">
           <RotateCcw className="h-3.5 w-3.5 text-slate-400" />
-          <p className="text-xs font-medium text-slate-700">
-            Questions to revisit
-          </p>
+          <p className="text-xs font-medium text-slate-700">Questions to revisit</p>
         </div>
         <Link to="/me/stances" className="text-[11px] text-slate-400 hover:text-slate-600 hover:underline">
           See all →
@@ -263,10 +264,7 @@ function RevisitSection() {
             to={`/q/${row.question_id}`}
             className="flex items-start gap-3 rounded-lg border border-slate-100 px-3 py-2.5 hover:bg-slate-50 transition-colors"
           >
-            <div
-              className="mt-1 h-2.5 w-2.5 rounded-full flex-shrink-0"
-              style={{ background: userColor }}
-            />
+            <div className="mt-1 h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ background: userColor }} />
             <div className="flex-1 min-w-0">
               {row.topic_title && (
                 <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400 mb-0.5">
@@ -276,17 +274,16 @@ function RevisitSection() {
               <p className="text-xs font-medium text-slate-900 leading-snug line-clamp-2">
                 {row.question_text}
               </p>
-              <div className="flex items-center gap-2 mt-1.5">
-                <div className="flex-1 h-1 rounded-full bg-slate-100 overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-amber-400"
-                    style={{ width: `${driftPct}%` }}
-                  />
+              {row.community_avg_score !== null && (
+                <div className="flex items-center gap-2 mt-1.5">
+                  <div className="flex-1 h-1 rounded-full bg-slate-100 overflow-hidden">
+                    <div className="h-full rounded-full bg-amber-400" style={{ width: `${driftPct}%` }} />
+                  </div>
+                  <span className="text-[10px] text-slate-400 flex-shrink-0">
+                    {row.drift.toFixed(1)} drift
+                  </span>
                 </div>
-                <span className="text-[10px] text-slate-400 flex-shrink-0">
-                  {row.drift.toFixed(1)} drift
-                </span>
-              </div>
+              )}
             </div>
           </Link>
         );
@@ -295,9 +292,11 @@ function RevisitSection() {
   );
 }
 
-// ── S2: Region divergence alert ────────────────────────────────────────────────
-// Shows questions where the user's region's average stance diverges >0.75 from
-// global avg — signals the user may be in a local opinion bubble.
+// ── S1 FIX B: Region divergence — batch fetch question text ───────────────────
+// Previously did a sequential supabase call per question inside the loop.
+// For users with 100 answered questions, that's potentially 100 sequential DB
+// round-trips inside a single query function. Now: batch-fetch all question
+// texts upfront in one query.
 
 type DivergenceRow = {
   question_id: string;
@@ -316,7 +315,7 @@ function useRegionDivergence() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return [];
 
-      // Get questions the user has answered
+      // Step 1: Questions the user has answered
       const { data: stances, error: sErr } = await supabase
         .from("question_stances")
         .select("question_id")
@@ -324,10 +323,9 @@ function useRegionDivergence() {
         .limit(100);
 
       if (sErr || !stances?.length) return [];
-
       const qids = stances.map((s: any) => s.question_id);
 
-      // Get regional stats for those questions — look for country-level divergence
+      // Step 2: Regional stats for those questions
       const { data: regionRows, error: rErr } = await supabase
         .from("question_stance_stats_region")
         .select("question_id, region_scope, region_label, avg_score, total_responses")
@@ -337,7 +335,7 @@ function useRegionDivergence() {
 
       if (rErr || !regionRows?.length) return [];
 
-      // Group by question_id: find pairs where country avg vs global avg diverge >0.75
+      // Step 3: Find divergent question IDs (city/country vs global > 0.75)
       const byQuestion = new Map<string, { global?: any; country?: any }>();
       for (const row of regionRows as any[]) {
         if (!byQuestion.has(row.question_id)) byQuestion.set(row.question_id, {});
@@ -346,30 +344,43 @@ function useRegionDivergence() {
         if (row.region_scope === "country") entry.country = row;
       }
 
-      const divergent: DivergenceRow[] = [];
+      const divergentQids: string[] = [];
+      const divergentData: Record<string, { region_label: string; region_avg: number; global_avg: number; divergence: number }> = {};
+
       for (const [qid, pair] of byQuestion.entries()) {
         if (!pair.global || !pair.country) continue;
         const div = Math.abs(pair.country.avg_score - pair.global.avg_score);
         if (div < 0.75) continue;
-
-        // Get question text
-        const { data: qRow } = await supabase
-          .from("questions")
-          .select("question")
-          .eq("id", qid)
-          .maybeSingle();
-
-        divergent.push({
-          question_id:   qid,
-          question_text: qRow?.question ?? "",
-          region_label:  pair.country.region_label,
-          region_avg:    pair.country.avg_score,
-          global_avg:    pair.global.avg_score,
-          divergence:    div,
-        });
+        divergentQids.push(qid);
+        divergentData[qid] = {
+          region_label: pair.country.region_label,
+          region_avg:   pair.country.avg_score,
+          global_avg:   pair.global.avg_score,
+          divergence:   div,
+        };
       }
 
-      return divergent.sort((a, b) => b.divergence - a.divergence).slice(0, 3);
+      if (divergentQids.length === 0) return [];
+
+      // Step 4: Batch-fetch question text for all divergent questions (one query)
+      const { data: qRows } = await supabase
+        .from("questions")
+        .select("id, question")
+        .in("id", divergentQids);
+
+      const textByQid: Record<string, string> = {};
+      for (const q of qRows ?? []) {
+        textByQid[(q as any).id] = (q as any).question ?? "";
+      }
+
+      return divergentQids
+        .map((qid) => ({
+          question_id:   qid,
+          question_text: textByQid[qid] ?? "",
+          ...divergentData[qid],
+        }))
+        .sort((a, b) => b.divergence - a.divergence)
+        .slice(0, 3);
     },
   });
 }
@@ -425,38 +436,22 @@ function RegionDivergenceAlert() {
   );
 }
 
-// ── (legacy) simple revisit CTA — kept as fallback ────────────────────────────
-
-function RevisitCTA() {
-  return (
-    <div className="rounded-xl border border-slate-200 bg-slate-50 px-5 py-4 flex items-start justify-between gap-4">
-      <div>
-        <p className="text-sm font-medium text-slate-900 mb-0.5">
-          Revisit old answers
-        </p>
-        <p className="text-xs text-slate-500 leading-relaxed">
-          Your views may have changed. Go back to questions you answered
-          a while ago and see if you still feel the same way.
-        </p>
-      </div>
-      <Link
-        to="/me/stances"
-        className="flex-shrink-0 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 transition-colors whitespace-nowrap"
-      >
-        My stances →
-      </Link>
-    </div>
-  );
-}
-
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function PersonalInsightsPage() {
   const { data: cognitiveState, isLoading } = useCognitiveState();
   const { mutate: recalculate, isPending: isRecalculating } = useCalculateCognitiveState();
   const { data: shouldRecalculate } = useShouldRecalculateCognitiveState();
-
   const [activeTab, setActiveTab] = React.useState<"profile" | "evolution">("profile");
+
+  // S1 FIX B: TopicHistoryDrawer wired from TopicBeliefProfile
+  const [drawerTopic, setDrawerTopic] = React.useState<string | null>(null);
+
+  // Need userId for the drawer
+  const [userId, setUserId] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id ?? null));
+  }, []);
 
   return (
     <PageLayout>
@@ -465,9 +460,7 @@ export default function PersonalInsightsPage() {
         {/* Header */}
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h1 className="text-base font-semibold text-slate-900">
-              Your opinion profile
-            </h1>
+            <h1 className="text-base font-semibold text-slate-900">Your opinion profile</h1>
             <p className="text-xs text-slate-500 mt-0.5">
               How your views look across topics, and how they've changed over time.
             </p>
@@ -505,9 +498,7 @@ export default function PersonalInsightsPage() {
         {/* Empty state */}
         {!isLoading && !cognitiveState && (
           <div className="rounded-xl border border-slate-100 bg-slate-50 px-5 py-8 text-center">
-            <p className="text-sm font-medium text-slate-900 mb-1">
-              No profile yet
-            </p>
+            <p className="text-sm font-medium text-slate-900 mb-1">No profile yet</p>
             <p className="text-xs text-slate-500 mb-4">
               Answer at least 3 questions to generate your opinion profile.
             </p>
@@ -523,7 +514,6 @@ export default function PersonalInsightsPage() {
         {/* Content */}
         {!isLoading && cognitiveState && (
           <>
-            {/* Profile summary */}
             <Section title="Overview">
               <ProfileSummary state={cognitiveState} />
             </Section>
@@ -547,19 +537,35 @@ export default function PersonalInsightsPage() {
               ))}
             </div>
 
-            {/* Tab: Belief profile */}
+            {/* Belief profile tab */}
             {activeTab === "profile" && (
-              <Section
-                title="Your stance by topic"
-                description="How strongly you hold your views, and whether they're consistent or still forming."
-              >
-                <TopicBeliefProfile
-                  topicProfiles={cognitiveState.cognitive_profile.topic_profiles}
-                />
-              </Section>
+              <>
+                <Section
+                  title="Your stance by topic"
+                  description="Click a topic to explore your full history on it. Stability labels show how consistent your views have been."
+                >
+                  {/* S1 FIX B: Pass onTopicClick so TopicBeliefProfile can open the drawer */}
+                  <TopicBeliefProfile
+                    topicProfiles={cognitiveState.cognitive_profile.topic_profiles}
+                    onTopicClick={(topicName) =>
+                      setDrawerTopic(drawerTopic === topicName ? null : topicName)
+                    }
+                    activeTopic={drawerTopic}
+                  />
+                </Section>
+
+                {/* TopicHistoryDrawer renders inline below the belief profile */}
+                {drawerTopic && userId && (
+                  <TopicHistoryDrawer
+                    topicTitle={drawerTopic}
+                    userId={userId}
+                    onClose={() => setDrawerTopic(null)}
+                  />
+                )}
+              </>
             )}
 
-            {/* Tab: Evolution timeline */}
+            {/* Evolution timeline tab */}
             {activeTab === "evolution" && (
               <Section
                 title="Stance changes over time"
@@ -569,12 +575,12 @@ export default function PersonalInsightsPage() {
               </Section>
             )}
 
-            {/* Revisit section — drift-ordered questions answered 30+ days ago */}
+            {/* Revisit — fixed batch query */}
             <Section title="Questions to revisit">
               <RevisitSection />
             </Section>
 
-            {/* S2: Region divergence alerts */}
+            {/* Region divergence — fixed batch query */}
             <RegionDivergenceAlert />
           </>
         )}
