@@ -57,6 +57,7 @@ import ScoringConfigPage from "@/routes/admin/ScoringConfigPage";
 
 // FIX 3: Publisher approval queue
 import AdminPublishersPage from "@/routes/admin/publishers/Index";
+import AdminTradeoffsPage from "@/routes/admin/tradeoffs/Index";
 
 // Cognitive State Pages
 import AdminCognitiveStatesPage from '@/routes/admin/cognitive-states';
@@ -276,6 +277,7 @@ const App: React.FC = () => {
                 <Route path="moderation" element={<AdminModerationPage />} />
                 {/* FIX 3: Publisher approval queue */}
                 <Route path="publishers" element={<AdminPublishersPage />} />
+                <Route path="tradeoffs" element={<AdminTradeoffsPage />} />
               </Route>
 
               {/* Admin special page */}
