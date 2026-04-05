@@ -25,6 +25,7 @@ import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { getStanceColorHex } from "@/lib/stanceColors";
 import { X, Loader2, TrendingUp, TrendingDown, Minus, RotateCcw } from "lucide-react";
+import { RationaleEditor } from "@/components/RationaleEditor";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -286,6 +287,11 @@ function QuestionRow({ question }: { question: TopicQuestion }) {
           )}
         </div>
       )}
+
+      {/* S1: Rationale + supporting links — read/edit inline per question */}
+      <div className="pl-4 border-t border-slate-100 pt-2">
+        <RationaleEditor questionId={question.question_id} />
+      </div>
     </div>
   );
 }
