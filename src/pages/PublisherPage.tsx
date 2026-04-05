@@ -1,13 +1,15 @@
 // src/pages/PublisherPage.tsx
 // Epic T — T4: Publisher Landing & Registration
-// Explains the embed program and provides a self-serve registration form.
+// UPDATED: Added PublisherStats section — approved publishers see their
+// embed performance (impressions, submissions, conversion rate) after login.
 
 import * as React from "react";
 import { useNavigate } from "react-router-dom";
 import PageLayout from "@/components/PageLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Code2, BarChart3, Users, Zap, CheckCircle2, Loader2 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Code2, BarChart3, Users, Zap, CheckCircle2, Loader2, TrendingUp, Eye, Send, MousePointerClick } from "lucide-react";
 
 // ─── Embed code previewer ─────────────────────────────────────────────────────
 
@@ -174,6 +176,190 @@ function RegistrationForm() {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+// ─── Publisher stats ──────────────────────────────────────────────────────────
+// Shown to logged-in users whose publisher application is approved.
+// Pulls embed_impressions and embedded_stances filtered by publisher_ref.
+
+type PublisherRecord = {
+  id: string;
+  name: string;
+  publisher_ref: string;
+  status: string;
+  approved_at: string | null;
+};
+
+type QuestionStat = {
+  question_id: string;
+  question_text: string;
+  impressions: number;
+  submissions: number;
+  rate: number;
+};
+
+function usePublisherAccount() {
+  return useQuery<PublisherRecord | null>({
+    queryKey: ["publisher-account"],
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return null;
+      const { data } = await supabase
+        .from("publishers")
+        .select("id, name, publisher_ref, status, approved_at")
+        .eq("contact_email", user.email!)
+        .eq("status", "approved")
+        .maybeSingle();
+      return (data as PublisherRecord | null) ?? null;
+    },
+  });
+}
+
+function usePublisherStats(publisherRef: string | null) {
+  return useQuery<{ total_impressions: number; total_submissions: number; rate: number; by_question: QuestionStat[] }>({
+    queryKey: ["publisher-stats", publisherRef],
+    staleTime: 5 * 60_000,
+    enabled: !!publisherRef,
+    queryFn: async () => {
+      if (!publisherRef) return { total_impressions: 0, total_submissions: 0, rate: 0, by_question: [] };
+
+      // Fetch impressions and submissions in parallel
+      const [impRes, subRes] = await Promise.all([
+        supabase
+          .from("embed_impressions")
+          .select("question_id")
+          .eq("publisher_ref", publisherRef),
+        supabase
+          .from("embedded_stances")
+          .select("question_id")
+          .eq("publisher_ref", publisherRef),
+      ]);
+
+      const impressions = impRes.data ?? [];
+      const submissions = subRes.data ?? [];
+
+      const totalImpressions = impressions.length;
+      const totalSubmissions = submissions.length;
+      const rate = totalImpressions > 0 ? (totalSubmissions / totalImpressions) * 100 : 0;
+
+      // Group by question_id
+      const impByQ: Record<string, number> = {};
+      for (const r of impressions) {
+        impByQ[r.question_id] = (impByQ[r.question_id] ?? 0) + 1;
+      }
+      const subByQ: Record<string, number> = {};
+      for (const r of submissions) {
+        subByQ[r.question_id] = (subByQ[r.question_id] ?? 0) + 1;
+      }
+
+      const qids = [...new Set([...Object.keys(impByQ), ...Object.keys(subByQ)])];
+      if (qids.length === 0) return { total_impressions: totalImpressions, total_submissions: totalSubmissions, rate, by_question: [] };
+
+      // Batch fetch question texts
+      const { data: qRows } = await supabase
+        .from("questions")
+        .select("id, question")
+        .in("id", qids);
+
+      const qText: Record<string, string> = {};
+      for (const q of qRows ?? []) qText[(q as any).id] = (q as any).question;
+
+      const by_question: QuestionStat[] = qids
+        .map(qid => {
+          const imp = impByQ[qid] ?? 0;
+          const sub = subByQ[qid] ?? 0;
+          return { question_id: qid, question_text: qText[qid] ?? qid, impressions: imp, submissions: sub, rate: imp > 0 ? (sub / imp) * 100 : 0 };
+        })
+        .sort((a, b) => b.impressions - a.impressions);
+
+      return { total_impressions: totalImpressions, total_submissions: totalSubmissions, rate, by_question };
+    },
+  });
+}
+
+function StatCard({ icon, label, value, sub }: { icon: React.ReactNode; label: string; value: string | number; sub?: string }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-5">
+      <div className="flex items-center gap-2 mb-2">
+        <span className="h-8 w-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">{icon}</span>
+        <p className="text-xs text-slate-500">{label}</p>
+      </div>
+      <p className="text-2xl font-semibold text-slate-900">{value}</p>
+      {sub && <p className="text-xs text-slate-400 mt-0.5">{sub}</p>}
+    </div>
+  );
+}
+
+function PublisherStats() {
+  const { data: publisher, isLoading: pubLoading } = usePublisherAccount();
+  const { data: stats, isLoading: statsLoading } = usePublisherStats(publisher?.publisher_ref ?? null);
+
+  if (pubLoading) return (
+    <div className="flex items-center gap-2 py-8 text-sm text-slate-400">
+      <Loader2 className="h-4 w-4 animate-spin" /> Loading your publisher account…
+    </div>
+  );
+
+  if (!publisher) return null; // Not an approved publisher — don't show section
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-xl font-bold text-slate-900">Your embed performance</h2>
+        <p className="text-sm text-slate-500 mt-0.5">
+          Stats for <span className="font-medium text-slate-700">{publisher.name}</span> ·{" "}
+          <code className="text-xs bg-slate-100 px-1.5 py-0.5 rounded">{publisher.publisher_ref}</code>
+        </p>
+      </div>
+
+      {statsLoading ? (
+        <div className="flex items-center gap-2 py-4 text-sm text-slate-400">
+          <Loader2 className="h-4 w-4 animate-spin" /> Loading stats…
+        </div>
+      ) : (
+        <>
+          {/* Summary cards */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <StatCard icon={<Eye className="h-4 w-4" />} label="Total impressions" value={(stats?.total_impressions ?? 0).toLocaleString()} sub="Widget loads across all your pages" />
+            <StatCard icon={<Send className="h-4 w-4" />} label="Stances captured" value={(stats?.total_submissions ?? 0).toLocaleString()} sub="Completed responses from your readers" />
+            <StatCard icon={<MousePointerClick className="h-4 w-4" />} label="Conversion rate" value={`${(stats?.rate ?? 0).toFixed(1)}%`} sub="Readers who submitted a stance" />
+          </div>
+
+          {/* Per-question breakdown */}
+          {stats && stats.by_question.length > 0 ? (
+            <div className="rounded-xl border border-slate-200 overflow-hidden">
+              <div className="px-4 py-3 border-b border-slate-100 bg-slate-50">
+                <p className="text-sm font-semibold text-slate-700">By question</p>
+              </div>
+              <div className="divide-y divide-slate-100">
+                {stats.by_question.map(q => (
+                  <div key={q.question_id} className="px-4 py-3 flex items-center gap-4">
+                    <p className="flex-1 text-sm text-slate-800 line-clamp-1">{q.question_text}</p>
+                    <div className="flex items-center gap-6 text-xs text-slate-500 shrink-0">
+                      <span><span className="font-medium text-slate-700">{q.impressions.toLocaleString()}</span> views</span>
+                      <span><span className="font-medium text-slate-700">{q.submissions.toLocaleString()}</span> stances</span>
+                      <span className="w-14 text-right">
+                        <span className={`font-medium ${q.rate >= 20 ? "text-emerald-600" : q.rate >= 10 ? "text-amber-600" : "text-slate-500"}`}>
+                          {q.rate.toFixed(1)}%
+                        </span>
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-dashed border-slate-200 py-8 text-center text-sm text-slate-400">
+              No embed activity yet. Deploy your first snippet to start seeing stats.
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 const SAMPLE_QUESTION_ID = "00000000-0000-0000-0000-000000000000"; // Placeholder
 
 export default function PublisherPage() {
@@ -255,6 +441,9 @@ export default function PublisherPage() {
         <div id="register" className="max-w-lg mx-auto">
           <RegistrationForm />
         </div>
+
+        {/* Publisher analytics — shown to approved publishers who are logged in */}
+        <PublisherStats />
 
       </div>
     </PageLayout>
