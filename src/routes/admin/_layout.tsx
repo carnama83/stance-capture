@@ -18,7 +18,8 @@ import {
   Share2,
   LayoutTemplate,
   Building2,     // FIX 3: Publishers nav icon
-  Inbox,         // W4: Ingestion review nav icon
+  Activity,      // J: Pipeline run ledger
+  Inbox,         // W4: X Reply Review
 } from "lucide-react";
 
 import {
@@ -95,6 +96,11 @@ export default function AdminLayout() {
             to="/admin/ai-drafts"
             icon={<FileText className="h-4 w-4" />}
             label="AI Pipeline Dashboard"
+          />
+          <AdminLink
+            to="/admin/pipeline-runs"
+            icon={<Activity className="h-4 w-4" />}
+            label="Pipeline Run Ledger"
           />
           <AdminLink
             to="/admin/prompts"
