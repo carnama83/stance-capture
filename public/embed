@@ -24,6 +24,11 @@
  *   { type: "sc:stance_submitted", questionId: string, stanceValue: number }
  *   { type: "sc:signup_clicked" }
  *
+ * Programmatic API (available after script loads):
+ *   window.StanceCapture.mount(element)   — mount a single container element
+ *   window.StanceCapture.mountAll()       — mount all unmounted containers on page
+ *   window.StanceCapture.version          — semver string
+ *
  * The script is idempotent — running multiple times does not create
  * duplicate iframes. Each container div is processed once.
  */
@@ -195,5 +200,18 @@
     // Already interactive or complete
     boot();
   }
+
+  // ── Public API ─────────────────────────────────────────────────────────────
+  // Exposed on window so publishers can programmatically mount containers
+  // injected after page load (e.g. from a CMS plugin or React component).
+  //
+  //   window.StanceCapture.mount(element)  — mount one container element
+  //   window.StanceCapture.mountAll()      — mount all unmounted containers
+  //   window.StanceCapture.version         — "1.0.0"
+
+  window.StanceCapture = window.StanceCapture || {};
+  window.StanceCapture.mount    = mountContainer;
+  window.StanceCapture.mountAll = mountAll;
+  window.StanceCapture.version  = "1.0.0";
 
 }());
