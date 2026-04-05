@@ -44,6 +44,7 @@ import AdminDraftsPage from "@/routes/admin/drafts/Index";
 import AdminQuestionsPage from "@/routes/admin/questions/Index";
 import ShareAnalyticsPage from "@/routes/admin/share-analytics/Index";
 import AdminIngestionReviewPage from "@/routes/admin/ingestion-review/Index";
+import AdminPipelineRunsPage from "@/routes/admin/pipeline-runs/Index";
 import EmbedPage from "@/pages/EmbedPage";
 import PublisherPage from "@/pages/PublisherPage";
 import EmbedAnalyticsPage from "@/routes/admin/embed-analytics/Index";
@@ -258,10 +259,11 @@ const App: React.FC = () => {
                 <Route path="ingestion" element={<AdminIngestionPage />} />
                 <Route path="drafts" element={<AdminDraftsPage />} />
                 <Route path="ai-drafts" element={<AdminAiDraftsPage />} />
+                <Route path="pipeline-runs" element={<AdminPipelineRunsPage />} />
+                <Route path="ingestion-review" element={<AdminIngestionReviewPage />} />
                 <Route path="prompts" element={<AdminPromptsPage />} />
                 <Route path="questions" element={<AdminQuestionsPage />} />
                 <Route path="share-analytics" element={<ShareAnalyticsPage />} />
-                <Route path="ingestion-review" element={<AdminIngestionReviewPage />} />
                 <Route path="embed-analytics" element={<EmbedAnalyticsPage />} />
                 <Route path="live-questions" element={<AdminLiveQuestionsPage />} />
                 <Route
