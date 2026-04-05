@@ -43,6 +43,7 @@ import AdminIngestionPage from "@/routes/admin/ingestion/Index";
 import AdminDraftsPage from "@/routes/admin/drafts/Index";
 import AdminQuestionsPage from "@/routes/admin/questions/Index";
 import ShareAnalyticsPage from "@/routes/admin/share-analytics/Index";
+import AdminIngestionReviewPage from "@/routes/admin/ingestion-review/Index";
 import EmbedPage from "@/pages/EmbedPage";
 import PublisherPage from "@/pages/PublisherPage";
 import EmbedAnalyticsPage from "@/routes/admin/embed-analytics/Index";
@@ -57,7 +58,6 @@ import ScoringConfigPage from "@/routes/admin/ScoringConfigPage";
 
 // FIX 3: Publisher approval queue
 import AdminPublishersPage from "@/routes/admin/publishers/Index";
-import AdminTradeoffsPage from "@/routes/admin/tradeoffs/Index";
 
 // Cognitive State Pages
 import AdminCognitiveStatesPage from '@/routes/admin/cognitive-states';
@@ -261,6 +261,7 @@ const App: React.FC = () => {
                 <Route path="prompts" element={<AdminPromptsPage />} />
                 <Route path="questions" element={<AdminQuestionsPage />} />
                 <Route path="share-analytics" element={<ShareAnalyticsPage />} />
+                <Route path="ingestion-review" element={<AdminIngestionReviewPage />} />
                 <Route path="embed-analytics" element={<EmbedAnalyticsPage />} />
                 <Route path="live-questions" element={<AdminLiveQuestionsPage />} />
                 <Route
@@ -277,7 +278,6 @@ const App: React.FC = () => {
                 <Route path="moderation" element={<AdminModerationPage />} />
                 {/* FIX 3: Publisher approval queue */}
                 <Route path="publishers" element={<AdminPublishersPage />} />
-                <Route path="tradeoffs" element={<AdminTradeoffsPage />} />
               </Route>
 
               {/* Admin special page */}
