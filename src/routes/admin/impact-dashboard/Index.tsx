@@ -31,7 +31,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/components/ui/use-toast";
 import { cn } from "@/lib/utils";
-import { Loader2, Star } from "lucide-react";
+import { Loader2, Star, Trash2, TrendingUp, ShieldOff, RefreshCw } from "lucide-react";
 
 type QuestionVisibilityEnum =
   | "visible"
@@ -102,6 +102,213 @@ const compositeColor = (score: number | null | undefined): string => {
   if (score >= 4) return "text-orange-500";
   return "text-red-500";
 };
+
+// ── P: Feed Hygiene Panel ──────────────────────────────────────────────────────
+// Shows auto-suppressed/archived questions and lets admin run or preview hygiene.
+
+type HygieneResult = {
+  ran_at: string;
+  dry_run: boolean;
+  suppressed: number;
+  archived: number;
+  boosted: number;
+  rules: {
+    suppress_after_hours: number;
+    archive_after_days: number;
+    min_composite_score: number;
+    low_engagement_threshold: number;
+  };
+};
+
+type HygieneRow = {
+  question_id: string;
+  question: string;
+  published_at: string | null;
+  is_trending: boolean;
+  trending_score: number | null;
+  visibility: string;
+  reason: string | null;
+  last_evaluated_at: string;
+  responses_total: number | null;
+  composite_score: number | null;
+};
+
+function timeAgoHygiene(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const hours = Math.floor(diff / 3_600_000);
+  const days = Math.floor(diff / 86_400_000);
+  if (hours < 1) return "< 1h ago";
+  if (hours < 24) return `${hours}h ago`;
+  return `${days}d ago`;
+}
+
+function FeedHygienePanel() {
+  const sb = React.useMemo(getSupabase, []);
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  const [lastResult, setLastResult] = React.useState<HygieneResult | null>(null);
+  const [running, setRunning] = React.useState(false);
+
+  // Load auto-suppressed/archived questions from v_hygiene_suppressed view
+  const { data: hygieneRows, isLoading } = useQuery<HygieneRow[]>({
+    queryKey: ["admin-hygiene-rows"],
+    staleTime: 2 * 60_000,
+    queryFn: async () => {
+      if (!sb) return [];
+      const { data, error } = await sb
+        .from("v_hygiene_suppressed")
+        .select("*")
+        .limit(50);
+      if (error) return [];
+      return (data ?? []) as HygieneRow[];
+    },
+  });
+
+  async function runHygiene(dryRun: boolean) {
+    if (!sb) return;
+    setRunning(true);
+    try {
+      const { data, error } = await sb.rpc("apply_feed_hygiene", { p_dry_run: dryRun });
+      if (error) throw error;
+      setLastResult(data as HygieneResult);
+      if (!dryRun) {
+        queryClient.invalidateQueries({ queryKey: ["admin-hygiene-rows"] });
+        queryClient.invalidateQueries({ queryKey: ["admin-impact-rows"] });
+        toast({ title: `Hygiene run complete — ${(data as HygieneResult).suppressed} suppressed, ${(data as HygieneResult).archived} archived, ${(data as HygieneResult).boosted} boosted.` });
+      }
+    } catch (e: any) {
+      toast({ title: "Hygiene run failed", description: e.message, variant: "destructive" });
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  const suppressedCount = hygieneRows?.filter(r => r.visibility === "suppressed").length ?? 0;
+  const archivedCount = hygieneRows?.filter(r => r.visibility === "archived").length ?? 0;
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <CardTitle className="text-base flex items-center gap-2">
+              <ShieldOff className="h-4 w-4 text-slate-400" />
+              Feed Hygiene
+            </CardTitle>
+            <CardDescription className="mt-0.5">
+              Auto-suppresses old low-engagement questions and archives stale ones. Runs every 6h via pg_cron.
+            </CardDescription>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => runHygiene(true)}
+              disabled={running}
+            >
+              {running ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
+              Preview (dry run)
+            </Button>
+            <Button
+              variant="default"
+              size="sm"
+              onClick={() => runHygiene(false)}
+              disabled={running}
+            >
+              {running ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : <RefreshCw className="h-3.5 w-3.5 mr-1.5" />}
+              Run now
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+
+        {/* Last run result */}
+        {lastResult && (
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm space-y-1">
+            <p className="font-medium text-slate-700">
+              {lastResult.dry_run ? "Dry run preview" : "Run complete"} ·{" "}
+              <span className="font-normal text-slate-500">{new Date(lastResult.ran_at).toLocaleString()}</span>
+            </p>
+            <div className="flex items-center gap-6 text-xs">
+              <span className="text-amber-600">{lastResult.suppressed} suppressed</span>
+              <span className="text-red-600">{lastResult.archived} archived</span>
+              <span className="text-emerald-600">{lastResult.boosted} boosted (trending restored)</span>
+            </div>
+            <div className="text-[11px] text-slate-400">
+              Rules: suppress after {lastResult.rules.suppress_after_hours}h low-engagement ·
+              archive after {lastResult.rules.archive_after_days}d ·
+              min composite score {lastResult.rules.min_composite_score}
+            </div>
+          </div>
+        )}
+
+        {/* Counts */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="rounded-lg border px-4 py-3 text-center">
+            <p className="text-2xl font-semibold text-amber-600">{suppressedCount}</p>
+            <p className="text-xs text-slate-500 mt-0.5">Auto-suppressed</p>
+          </div>
+          <div className="rounded-lg border px-4 py-3 text-center">
+            <p className="text-2xl font-semibold text-red-500">{archivedCount}</p>
+            <p className="text-xs text-slate-500 mt-0.5">Auto-archived</p>
+          </div>
+        </div>
+
+        {/* Table of hygiene-affected questions */}
+        {isLoading && (
+          <div className="flex items-center gap-2 py-4 text-xs text-slate-400">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading hygiene log…
+          </div>
+        )}
+        {!isLoading && hygieneRows && hygieneRows.length > 0 && (
+          <ScrollArea className="h-64">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-xs">Question</TableHead>
+                  <TableHead className="text-xs w-24">Status</TableHead>
+                  <TableHead className="text-xs w-28">Age</TableHead>
+                  <TableHead className="text-xs w-24">Responses</TableHead>
+                  <TableHead className="text-xs w-32">Reason</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {hygieneRows.map(row => (
+                  <TableRow key={row.question_id}>
+                    <TableCell className="text-xs max-w-xs">
+                      <p className="line-clamp-2 text-slate-800">{row.question}</p>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={row.visibility === "archived" ? "destructive" : "secondary"} className="text-[10px]">
+                        {row.visibility}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-xs text-slate-500">
+                      {row.published_at ? timeAgoHygiene(row.published_at) : "—"}
+                    </TableCell>
+                    <TableCell className="text-xs text-slate-600">
+                      {row.responses_total ?? 0}
+                    </TableCell>
+                    <TableCell className="text-[10px] text-slate-400 max-w-[160px] line-clamp-2">
+                      {row.reason ?? "—"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </ScrollArea>
+        )}
+        {!isLoading && (!hygieneRows || hygieneRows.length === 0) && (
+          <p className="text-xs text-slate-400 py-2">
+            No questions auto-suppressed or archived yet. Run hygiene to evaluate.
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function AdminImpactDashboardPage() {
   const { toast } = useToast();
@@ -705,6 +912,9 @@ const handleRescoreSingle = async (questionId: string | null) => {
           )}
         </CardContent>
       </Card>
+
+      {/* ── P: Feed Hygiene Panel ─────────────────────────────────────────── */}
+      <FeedHygienePanel />
     </div>
   );
 }
