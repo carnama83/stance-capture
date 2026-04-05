@@ -18,7 +18,7 @@ import {
   Share2,
   LayoutTemplate,
   Building2,     // FIX 3: Publishers nav icon
-  Scale,         // S4: Tradeoffs nav icon
+  Inbox,         // W4: Ingestion review nav icon
 } from "lucide-react";
 
 import {
@@ -122,6 +122,11 @@ export default function AdminLayout() {
             label="Share Analytics"
           />
           <AdminLink
+            to="/admin/ingestion-review"
+            icon={<Inbox className="h-4 w-4" />}
+            label="X Reply Review"
+          />
+          <AdminLink
             to="/admin/embed-analytics"
             icon={<LayoutTemplate className="h-4 w-4" />}
             label="Embed Analytics"
@@ -165,11 +170,6 @@ export default function AdminLayout() {
             to="/admin/scoring-config"
             icon={<SlidersHorizontal className="h-4 w-4" />}
             label="Scoring Config"
-          />
-          <AdminLink
-            to="/admin/tradeoffs"
-            icon={<Scale className="h-4 w-4" />}
-            label="Tradeoff Preview"
           />
           
           <Separator className="my-2" />
