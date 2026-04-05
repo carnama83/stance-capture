@@ -56,17 +56,6 @@ type MyStanceRow = {
   question: LiveQuestion | null;
 };
 
-type ExportRow = {
-  question_id: string;
-  question_text: string;
-  current_score: number;
-  first_answered: string;
-  last_updated: string;
-  change_count: number;
-  rationale: string | null;
-  links: string[];
-  score_history: Array<{ old_score: number | null; new_score: number; changed_at: string }>;
-};
 
 type SortBy = "recent" | "oldest" | "strongest";
 type FilterBy = "all" | "sa" | "a" | "n" | "d" | "sd" | "strong";
@@ -135,39 +124,49 @@ async function fetchMyStances(userId: string): Promise<MyStanceRow[]> {
   }));
 }
 
-function downloadFile(content: string, filename: string, mime: string) {
-  const blob = new Blob([content], { type: mime });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
+// N: Secure export — calls generate-export edge function which writes to
+// Supabase Storage and returns a signed URL valid for 60 seconds.
+// The browser follows the signed URL to download without raw data
+// passing through client-side JS memory.
 
 async function runExport(format: "csv" | "json") {
   const sb = getSupabase();
   if (!sb) return;
-  const { data, error } = await sb.rpc("get_my_stance_export");
-  if (error || !data) { console.error("Export failed", error); return; }
 
-  const rows = data as ExportRow[];
-  const date = new Date().toISOString().slice(0, 10);
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) { console.error("Export: not authenticated"); return; }
 
-  if (format === "json") {
-    downloadFile(JSON.stringify(rows, null, 2), `stance-export-${date}.json`, "application/json");
+  const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL as string).replace(/\/+$/, "");
+  const anonKey     = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+
+  const res = await fetch(`${supabaseUrl}/functions/v1/generate-export`, {
+    method: "POST",
+    headers: {
+      "Content-Type":  "application/json",
+      "Authorization": `Bearer ${session.access_token}`,
+      "apikey":        anonKey,
+    },
+    body: JSON.stringify({ format }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: "Unknown error" }));
+    console.error("Export failed:", err.error);
     return;
   }
 
-  const headers = ["question_id", "question_text", "current_score", "first_answered", "last_updated", "change_count", "rationale", "links"];
-  const escape = (v: string) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-  const csvRows = rows.map((r) =>
-    [r.question_id, r.question_text, r.current_score, r.first_answered, r.last_updated, r.change_count, r.rationale ?? "", (r.links ?? []).join("; ")]
-      .map((v) => escape(String(v)))
-      .join(",")
-  );
-  downloadFile([headers.join(","), ...csvRows].join("\n"), `stance-export-${date}.csv`, "text/csv");
+  const { url, filename } = await res.json();
+
+  // Trigger browser download via signed URL — expires in 60s
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.rel = "noopener noreferrer";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
 }
+
 
 export default function MyStancesPage() {
   const { session, ready } = useSupabaseSession();
