@@ -1,38 +1,57 @@
 // src/components/question/TodayQuestionsFeed.tsx
+// UPDATED (Epic C — lifecycle ribbon consistency):
+//   Added secondary batch fetch of phase, state, is_trending, trending_score
+//   from questions table. The get_daily_curated_questions RPC does not return
+//   these fields. Pattern mirrors ThreeTierQuestionsFeed.
+//   Now shows QuestionPhaseBadge, QuestionStateBadge, and TrendingBadge
+//   consistently with all other feed surfaces.
+
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getSupabase } from "@/lib/supabaseClient";
+import { Link } from "react-router-dom";
 
 import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
+  Card, CardHeader, CardTitle, CardDescription, CardContent,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Link } from "react-router-dom";
+import { QuestionPhaseBadge } from "@/components/question/QuestionPhaseBadge";
+import { QuestionStateBadge } from "@/components/question/QuestionStateBadge";
+import { TrendingBadge } from "@/components/question/TrendingBadge";
+import type { QuestionState } from "@/types/questionLifecycleTypes";
 
-// UPDATED: New type to match get_daily_curated_questions() response
+// ── Types ─────────────────────────────────────────────────────────────────────
+
 type TodayQuestionRow = {
   question_id: string;
   question_text: string | null;
   question_summary: string | null;
   tags: string[] | null;
   composite_score: number | null;
-  source: 'curated' | 'fallback';
+  source: "curated" | "fallback";
+  // Lifecycle fields — populated by secondary fetch
+  phase?: string | null;
+  state?: QuestionState | null;
+  is_trending?: boolean;
+  trending_score?: number | null;
+};
+
+type LifecycleRow = {
+  id: string;
+  phase: string | null;
+  state: QuestionState;
+  is_trending: boolean;
+  trending_score: number | null;
 };
 
 interface TodayQuestionsFeedProps {
   limit?: number;
-  /**
-   * Build the URL for a question detail page.
-   * Default matches your /q/:id QuestionDetailPage route.
-   */
   buildQuestionLink?: (questionId: string) => string;
 }
+
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export function TodayQuestionsFeed({
   limit = 7,
@@ -40,33 +59,57 @@ export function TodayQuestionsFeed({
 }: TodayQuestionsFeedProps) {
   const sb = React.useMemo(getSupabase, []);
 
-  // UPDATED: Use new get_daily_curated_questions function
-  const { data, isLoading, isError, error, refetch } =
+  // Step 1: fetch curated question list
+  const { data: rawData, isLoading, isError, error, refetch } =
     useQuery<TodayQuestionRow[]>({
       queryKey: ["daily-curated-questions"],
       queryFn: async () => {
         if (!sb) return [];
-        
-        // Get today's date in YYYY-MM-DD format
-        const today = new Date().toISOString().split('T')[0];
-        
-        // Call NEW function
+        const today = new Date().toISOString().split("T")[0];
         const { data, error } = await sb.rpc("get_daily_curated_questions", {
           p_date: today,
         });
-
-        if (error) {
-          console.error("get_daily_curated_questions error:", error);
-          throw error;
-        }
+        if (error) throw error;
         return (data ?? []) as TodayQuestionRow[];
       },
-      staleTime: 60_000, // 1 minute
+      staleTime: 60_000,
     });
 
-  // Check if we have curated or fallback questions
-  const isCurated = data?.[0]?.source === 'curated';
-  const isFallback = data?.[0]?.source === 'fallback';
+  // Step 2: batch fetch lifecycle fields for these question IDs
+  const questionIds = React.useMemo(
+    () => (rawData ?? []).map((q) => q.question_id),
+    [rawData]
+  );
+
+  const { data: lifecycleData } = useQuery<LifecycleRow[]>({
+    queryKey: ["today-feed-lifecycle", questionIds.join(",")],
+    enabled: questionIds.length > 0,
+    staleTime: 2 * 60_000,
+    queryFn: async () => {
+      if (!sb || questionIds.length === 0) return [];
+      const { data } = await sb
+        .from("questions")
+        .select("id, phase, state, is_trending, trending_score")
+        .in("id", questionIds);
+      return (data ?? []) as LifecycleRow[];
+    },
+  });
+
+  // Merge lifecycle into question rows
+  const data = React.useMemo((): TodayQuestionRow[] => {
+    if (!rawData) return [];
+    if (!lifecycleData) return rawData;
+    const lcMap = new Map(lifecycleData.map((r) => [r.id, r]));
+    return rawData.map((q) => {
+      const lc = lcMap.get(q.question_id);
+      return lc
+        ? { ...q, phase: lc.phase, state: lc.state, is_trending: lc.is_trending, trending_score: lc.trending_score }
+        : q;
+    });
+  }, [rawData, lifecycleData]);
+
+  const isCurated = data?.[0]?.source === "curated";
+  const isFallback = data?.[0]?.source === "fallback";
 
   return (
     <Card className="border border-slate-200 shadow-sm">
@@ -78,19 +121,14 @@ export function TodayQuestionsFeed({
           <CardDescription className="text-xs sm:text-sm">
             {isCurated && "Curated by our editorial team"}
             {isFallback && "High-impact questions selected by AI"}
-            {!data && "A curated set of stance-worthy questions"}
+            {!data?.length && "A curated set of stance-worthy questions"}
           </CardDescription>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => refetch()}
-          disabled={isLoading}
-        >
+        <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isLoading}>
           Refresh
         </Button>
       </CardHeader>
-      
+
       <CardContent className="space-y-3">
         {isLoading && (
           <div className="space-y-2">
@@ -131,17 +169,35 @@ export function TodayQuestionsFeed({
                 </Badge>
               )}
             </div>
-            
+
             {/* Questions list */}
             <ol className="space-y-3 list-decimal list-inside">
-              {data.map((q, idx) => {
+              {data.map((q) => {
                 const href = buildQuestionLink(q.question_id);
 
                 return (
                   <li
                     key={q.question_id}
-                    className="flex flex-col gap-1 border border-slate-100 rounded-md px-3 py-2 hover:bg-slate-50 transition-colors"
+                    className="flex flex-col gap-1.5 border border-slate-100 rounded-md px-3 py-2.5 hover:bg-slate-50 transition-colors"
                   >
+                    {/* Lifecycle badges — consistent with all other card surfaces */}
+                    {(q.phase && q.phase !== "initial") || q.state || q.is_trending ? (
+                      <div className="flex flex-wrap gap-1.5">
+                        {q.phase && q.phase !== "initial" && (
+                          <QuestionPhaseBadge phase={q.phase} size="sm" />
+                        )}
+                        {q.state && (
+                          <QuestionStateBadge state={q.state} size="sm" />
+                        )}
+                        {q.is_trending && (
+                          <TrendingBadge
+                            trendingScore={q.trending_score ?? undefined}
+                            responsesTotal={undefined}
+                          />
+                        )}
+                      </div>
+                    ) : null}
+
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex flex-col gap-1 flex-1">
                         <Link
@@ -155,33 +211,25 @@ export function TodayQuestionsFeed({
                             {q.question_summary}
                           </p>
                         )}
-                        
-                        {/* Tags */}
+
                         {q.tags && q.tags.length > 0 && (
                           <div className="flex flex-wrap gap-1 mt-1">
                             {q.tags.slice(0, 3).map((tag) => (
-                              <Badge
-                                key={tag}
-                                variant="outline"
-                                className="text-[10px]"
-                              >
+                              <Badge key={tag} variant="outline" className="text-[10px]">
                                 #{tag}
                               </Badge>
                             ))}
                           </div>
                         )}
                       </div>
-                      
-                      {/* Composite score badge */}
+
                       {q.composite_score && (
-                        <div className="hidden sm:flex flex-col items-end gap-1">
+                        <div className="hidden sm:flex flex-col items-end gap-1 shrink-0">
                           <Badge
                             variant={
-                              q.composite_score >= 8
-                                ? "default"
-                                : q.composite_score >= 6
-                                ? "secondary"
-                                : "outline"
+                              q.composite_score >= 8 ? "default"
+                              : q.composite_score >= 6 ? "secondary"
+                              : "outline"
                             }
                             className="text-[10px]"
                           >
