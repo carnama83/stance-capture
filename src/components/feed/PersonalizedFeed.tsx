@@ -2,6 +2,11 @@
  * Epic C - Personalized Feed Component (PHASE-AWARE VERSION)
  * Shows questions tailored to user's location and followed topics
  * ✨ NOW WITH: Phase-aware re-exposure tracking + QuestionPhaseBadge component
+ *
+ * FIX: Added sessionLoading guard so the empty state is never shown while
+ * the auth session is still resolving on page refresh. Previously, userId
+ * was undefined during session resolution, which disabled the feed query
+ * and caused isLoading=false → empty state flash before Retry was needed.
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -41,13 +46,16 @@ export function PersonalizedFeed() {
   const supabase = getSupabase();
   const queryClient = useQueryClient();
   
-  const { data: sessionData } = useQuery({
+  // FIX: track whether the session query has settled so we never show
+  // the empty state while auth is still resolving on page refresh.
+  const { data: sessionData, isLoading: sessionLoading } = useQuery({
     queryKey: ['session'],
     queryFn: async () => {
       if (!supabase) return null;
       const { data } = await supabase.auth.getSession();
       return data;
     },
+    staleTime: 60 * 1000, // session is stable — don't refetch aggressively
   });
   
   const userId = sessionData?.session?.user?.id;
@@ -69,7 +77,7 @@ export function PersonalizedFeed() {
   });
   
   // Fetch personalized feed
-  const { data: questions, isLoading, error } = useQuery<FeedQuestion[]>({
+  const { data: questions, isLoading: feedLoading, error } = useQuery<FeedQuestion[]>({
     queryKey: ['personalized-feed', userId],
     queryFn: async () => {
       if (!userId || !supabase) {
@@ -113,7 +121,11 @@ export function PersonalizedFeed() {
     return () => clearTimeout(timer);
   }, [questions]);
   
-  if (isLoading) {
+  // FIX: show skeletons while session OR feed is loading.
+  // Previously only feedLoading was checked — but feedLoading is false
+  // when the query is disabled (userId not yet resolved), so the component
+  // fell through to the empty state before auth settled.
+  if (sessionLoading || feedLoading) {
     return (
       <div className="space-y-4">
         {[1, 2, 3].map((i) => (
