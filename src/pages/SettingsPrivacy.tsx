@@ -6,20 +6,22 @@
 //   L1b: Stance visibility (aggregate only vs public)
 //   L1c: Comment visibility (follows display mode vs always anonymous)
 //   L1d: Profile visibility (private vs public)
+//   W5:  Social stance ingestion opt-out
 
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Shield, Eye, MessageSquare, User } from "lucide-react";
+import { Loader2, Shield, Eye, MessageSquare, User, Share2 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 type PrivacySettings = {
-  display_mode:       "anonymous" | "username";
-  stance_visibility:  "aggregate_only" | "public";
-  comment_visibility: "display_mode" | "always_anonymous";
-  profile_visibility: "private" | "public";
+  display_mode:             "anonymous" | "username";
+  stance_visibility:        "aggregate_only" | "public";
+  comment_visibility:       "display_mode" | "always_anonymous";
+  profile_visibility:       "private" | "public";
+  allow_social_ingestion:   boolean; // W5 — added field
 };
 
 // ── Fetch / save hooks ─────────────────────────────────────────────────────────
@@ -31,7 +33,8 @@ function usePrivacySettings() {
     queryFn: async () => {
       const { data, error } = await supabase.rpc("get_my_privacy_settings");
       if (error) throw error;
-      return data as PrivacySettings;
+      // Default allow_social_ingestion to true if not yet in DB
+      return { allow_social_ingestion: true, ...(data as PrivacySettings) };
     },
   });
 }
@@ -41,13 +44,14 @@ function useSavePrivacy() {
   return useMutation({
     mutationFn: async (patch: Partial<PrivacySettings>) => {
       const { data, error } = await supabase.rpc("update_my_privacy_settings", {
-        p_display_mode:       patch.display_mode       ?? null,
-        p_stance_visibility:  patch.stance_visibility  ?? null,
-        p_comment_visibility: patch.comment_visibility ?? null,
-        p_profile_visibility: patch.profile_visibility ?? null,
+        p_display_mode:             patch.display_mode             ?? null,
+        p_stance_visibility:        patch.stance_visibility        ?? null,
+        p_comment_visibility:       patch.comment_visibility       ?? null,
+        p_profile_visibility:       patch.profile_visibility       ?? null,
+        p_allow_social_ingestion:   patch.allow_social_ingestion   ?? null, // W5
       });
       if (error) throw error;
-      return data as PrivacySettings;
+      return { allow_social_ingestion: true, ...(data as PrivacySettings) };
     },
     onSuccess: (updated) => {
       queryClient.setQueryData(["privacy-settings"], updated);
@@ -280,6 +284,41 @@ export default function SettingsPrivacy() {
             },
           ]}
         />
+      </SectionCard>
+
+      {/* W5: Social stance ingestion */}
+      <SectionCard
+        icon={Share2}
+        title="Social stance ingestion"
+        description="Whether replies you post on X (Twitter) to shared Stance Capture questions can be attributed to your account."
+      >
+        <RadioGroup
+          value={local.allow_social_ingestion ? "on" : "off"}
+          onChange={(v) => handleChange({ allow_social_ingestion: v === "on" })}
+          disabled={isPending}
+          options={[
+            {
+              value: "on",
+              label: "Allow (default)",
+              description:
+                "If you reply to a question shared on X and your X account is connected, your reply may be captured as a stance on Stance Capture.",
+            },
+            {
+              value: "off",
+              label: "Do not attribute my X replies",
+              description:
+                "Replies you make on X will not be linked to your Stance Capture account. Your replies may still contribute anonymously to aggregate data.",
+            },
+          ]}
+        />
+        <p className="text-[11px] text-slate-400 pt-1">
+          Only replies with a high confidence score are ever attributed. Manage your connected
+          X account in{" "}
+          <a href="/settings/account" className="underline hover:text-slate-600">
+            Account settings
+          </a>
+          .
+        </p>
       </SectionCard>
 
       {/* Info footer */}
