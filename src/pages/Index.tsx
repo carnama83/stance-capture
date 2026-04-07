@@ -2710,9 +2710,10 @@ export default function IndexPage() {
   const anonIsLoading = !sessionResolved || anonTrendingQuery.isLoading;
   const anonIsError = anonTrendingQuery.isError;
   const authedIsLoading =
-    locationIdsLoading ||
-    trendingQuestionsNationalQuery.isLoading ||
-    trendingQuestionsGlobalQuery.isLoading;
+  !sessionResolved ||
+  locationIdsLoading ||
+  trendingQuestionsNationalQuery.isLoading ||
+  trendingQuestionsGlobalQuery.isLoading;
 
   // ── Question distribution into hero / featured / grid ──
   //
