@@ -1,0 +1,52 @@
+
+```yaml
+name: Accessibility (WCAG 2.1 AA)
+
+on:
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  axe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium --with-deps
+
+      - name: Build app
+        run: npm run build
+
+      - name: Start preview server
+        run: npm run preview &
+        env:
+          PORT: 5173
+
+      - name: Wait for server
+        run: npx wait-on http://localhost:5173 --timeout 30000
+
+      - name: Run axe accessibility tests
+        run: npx playwright test tests/a11y/
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:5173
+          # Optional: write results to DB
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+```
