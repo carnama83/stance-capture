@@ -82,4 +82,11 @@
     "typescript-eslint": "^8.38.0",
     "vite": "^7.2.7"
   }
+{
+  "scripts": {
+    "test:a11y": "playwright test tests/a11y/",
+    "test:a11y:headed": "playwright test tests/a11y/ --headed"
+  }
+}
+  
 }
