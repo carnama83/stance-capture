@@ -8,7 +8,9 @@
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:a11y": "playwright test tests/a11y/",
+    "test:a11y:headed": "playwright test tests/a11y/ --headed"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -64,7 +66,9 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.11.1",
     "@eslint/js": "^9.32.0",
+    "@playwright/test": "^1.59.1",
     "@tailwindcss/typography": "^0.5.16",
     "@types/node": "^22.16.5",
     "@types/react": "^18.3.23",
@@ -82,11 +86,4 @@
     "typescript-eslint": "^8.38.0",
     "vite": "^7.2.7"
   }
-{
-  "scripts": {
-    "test:a11y": "playwright test tests/a11y/",
-    "test:a11y:headed": "playwright test tests/a11y/ --headed"
-  }
-}
-  
 }
