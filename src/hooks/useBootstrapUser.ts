@@ -196,9 +196,14 @@ async function applyOAuthStashIfPresent(sb: any) {
   // (the user needs to confirm their display name / username in onboarding)
   // We only clean up stale entries if the user has already completed onboarding
   try {
+    const { data: userRes } = await sb.auth.getUser();
+    const uid = userRes?.user?.id;
+    if (!uid) return;
+
     const { data: profile } = await sb
       .from("profiles")
       .select("username")
+      .eq("user_id", uid)  // FIX: was missing — caused 406 (no filter on .single())
       .single();
     if (profile?.username) {
       // Onboarding complete — clear any leftover oauth suggestions
