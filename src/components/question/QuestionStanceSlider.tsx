@@ -341,69 +341,92 @@ export function QuestionStanceSlider({
       </div>
 
       {/* Slider */}
-      <div className="space-y-1">
-        <div className="relative py-2 sm:py-1 touch-pan-x">
-          {/*
-           * Point 15: Opinion spectrum gradient behind track.
-           * Low opacity (15%) avoids strong political color coding
-           * while still communicating disagree → neutral → agree direction.
-           */}
-          <div
-            className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 rounded-full"
-            style={{ height: "12px" }}
-            aria-hidden
-          >
-            <div
-              className="h-full w-full rounded-full"
-              style={{
-                background:
-                  "linear-gradient(to right, rgba(248,113,113,0.15), rgba(203,213,225,0.15), rgba(74,222,128,0.15))",
-              }}
-            />
-          </div>
+  <div
+    className="space-y-1"
+    role="group"
+    aria-labelledby="stance-slider-label"
+  >
+    <span id="stance-slider-label" className="sr-only">
+      Stance slider — move left to disagree, right to agree
+    </span>
+    <div className="relative py-2 sm:py-1 touch-pan-x">
+      {/* Gradient track — decorative */}
+      <div
+        className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 rounded-full"
+        style={{ height: "12px" }}
+        aria-hidden
+      >
+        <div
+          className="h-full w-full rounded-full"
+          style={{
+            background:
+              "linear-gradient(to right, rgba(248,113,113,0.15), rgba(203,213,225,0.15), rgba(74,222,128,0.15))",
+          }}
+        />
+      </div>
 
-          <Slider
-            min={-2}
-            max={2}
-            step={1}
-            value={[value]}
-            disabled={disabled}
-            onValueChange={handleChange}
-            onValueCommit={handleCommit}
-            className="relative w-full"
-          />
+      <Slider
+        min={-2}
+        max={2}
+        step={1}
+        value={[value]}
+        disabled={disabled}
+        onValueChange={handleChange}
+        onValueCommit={handleCommit}
+        className="relative w-full"
+        aria-label="Stance"
+        aria-valuemin={-2}
+        aria-valuemax={2}
+        aria-valuenow={value}
+        aria-valuetext={STANCE_LABELS[value] ?? "Neutral"}
+      />
 
-          {/* Colored fill under the thumb */}
-          <div
-            className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 rounded-full bg-slate-200"
-            style={{ height: "12px" }}
-          >
-            <div
-              className={cn(
-                "h-full rounded-full transition-[width,background-color] duration-300"
-              )}
-              style={{
-                width: `${fillPercent}%`,
-                backgroundColor: stanceColor,
-                opacity: 0.85,
-              }}
-            />
-          </div>
-
-          {/*
-           * Point 17: Pulse overlay on thumb area when no stance committed.
-           * Positioned at current slider value percentage.
-           */}
-          {!committed && !disabled && (
-            <div
-              className="pointer-events-none absolute top-1/2 -translate-y-1/2 -translate-x-1/2"
-              style={{ left: `${fillPercent}%` }}
-              aria-hidden
-            >
-              <div className="h-5 w-5 rounded-full bg-slate-400/20 animate-ping" />
-            </div>
+      {/* Colored fill — decorative */}
+      <div
+        className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 rounded-full bg-slate-200"
+        style={{ height: "12px" }}
+        aria-hidden
+      >
+        <div
+          className={cn(
+            "h-full rounded-full transition-[width,background-color] duration-300"
           )}
+          style={{
+            width: `${fillPercent}%`,
+            backgroundColor: stanceColor,
+            opacity: 0.85,
+          }}
+        />
+      </div>
+
+      {/* Pulse overlay — decorative */}
+      {!committed && !disabled && (
+        <div
+          className="pointer-events-none absolute top-1/2 -translate-y-1/2 -translate-x-1/2"
+          style={{ left: `${fillPercent}%` }}
+          aria-hidden
+        >
+          <div className="h-5 w-5 rounded-full bg-slate-400/20 animate-ping" />
         </div>
+      )}
+    </div>
+
+    {/* Tick labels — aria-hidden since aria-valuetext carries the meaning */}
+    <div
+      className="flex justify-between text-[10px] text-slate-500"
+      aria-hidden
+    >
+      <span className="max-w-[48px] sm:max-w-none">
+        Strongly <span className="hidden sm:inline">disagree</span>
+      </span>
+      <span className="hidden sm:inline">Disagree</span>
+      <span>Neutral</span>
+      <span className="hidden sm:inline">Agree</span>
+      <span className="max-w-[60px] sm:max-w-none text-right">
+        Strongly <span className="hidden sm:inline">agree</span>
+      </span>
+    </div>
+  </div>
 
         {/* Tick labels */}
         <div className="flex justify-between text-[10px] text-slate-500">
