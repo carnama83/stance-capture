@@ -335,6 +335,10 @@ function useGeoData() {
 }
 
 // ---------- Location selection UI ----------
+// FIX (QA-A01): geoData is now received as a prop from Signup (hoisted single
+// instance) instead of calling useGeoData() internally. This ensures the
+// country <select> options and the `country` state value are always driven by
+// the same fetch, eliminating the race that caused the dropdown to appear blank.
 function LocationSelect(props: {
   country: string;
   setCountry: (v: string) => void;
@@ -352,6 +356,8 @@ function LocationSelect(props: {
   detectedCountryCode?: string | null;
   /** M-A01: Called when user picks a different country than the detected one */
   onGeoOverride?: () => void;
+  /** QA-A01 fix: single shared useGeoData instance hoisted from Signup */
+  geoData: ReturnType<typeof useGeoData>;
 }) {
   const {
     ready,
@@ -365,7 +371,7 @@ function LocationSelect(props: {
     loadStates,
     loadCounties,
     loadCities,
-  } = useGeoData();
+  } = props.geoData;
 
   const [cityText, setCityText] = React.useState("");
 
@@ -661,18 +667,22 @@ export default function Signup() {
   // Track whether the final submitted location was an override of the detected one
   const [geoOverride, setGeoOverride] = React.useState(false);
 
-  // Once IP detection resolves successfully and country is still empty, pre-populate
+  // QA-A01 fix: single hoisted useGeoData instance shared with LocationSelect.
+  // Previously useGeoData() was called both here and inside LocationSelect,
+  // creating two independent fetches. setCountry("US") could fire from the
+  // hoisted instance while LocationSelect's own countries array was still empty,
+  // causing the <select> to render blank. Now there is exactly one instance.
+  const geoData = useGeoData();
 
-const geoData = useGeoData(); // hoist out of LocationSelect
+  // Once IP detection resolves AND countries are loaded, silently pre-populate.
+  React.useEffect(() => {
+    if (ipGeo.loading || ipGeo.error || !ipGeo.countryCode) return;
+    if (!geoData.ready) return; // wait for countries list to be populated
+    if (country) return;        // user already selected something
+    if (geoState !== "pending") return;
+    setCountry(ipGeo.countryCode);
+  }, [ipGeo.loading, ipGeo.error, ipGeo.countryCode, geoData.ready]); // eslint-disable-line react-hooks/exhaustive-deps
 
-
-React.useEffect(() => {
-  if (ipGeo.loading || ipGeo.error || !ipGeo.countryCode) return;
-  if (!geoData.ready) return; // ← WAIT for countries to load
-  if (country) return;
-  if (geoState !== "pending") return;
-  setCountry(ipGeo.countryCode);
-}, [ipGeo.loading, ipGeo.error, ipGeo.countryCode, geoData.ready]);
   // Validation/errors
   const [errors, setErrors] = React.useState<Record<string, string>>({});
   const [busy, setBusy] = React.useState(false);
@@ -1060,7 +1070,7 @@ React.useEffect(() => {
       // No session yet -> stash and rely on first-login bootstrap
       stashForFirstLogin();
       setMsg(
-        "Check your email to confirm your account. After you log in, we’ll finish setting up your profile automatically."
+        "Check your email to confirm your account. After you log in, we'll finish setting up your profile automatically."
       );
       addLog("confirm_email.notice_shown");
     } catch (err: any) {
@@ -1228,6 +1238,7 @@ React.useEffect(() => {
             errorCountry={errors.country}
             detectedCountryCode={ipGeo.countryCode}
             onGeoOverride={() => { setGeoState("overridden"); setGeoOverride(true); }}
+            geoData={geoData}
           />
 
           <button
