@@ -82,6 +82,91 @@ function getDebugFlag(): boolean {
   }
 }
 
+// ---------- M-A01: IP geo-detection ----------------------------------------
+// Uses ipapi.co/json (free, no key, ~150ms). Returns the detected ISO country
+// code so Signup can pre-populate the country select and show a suggestion banner.
+interface IpGeo {
+  countryCode: string | null;  // ISO 3166-1 alpha-2, e.g. "US"
+  countryName: string | null;
+  loading: boolean;
+  error: boolean;
+}
+
+function useIpGeoDetection(): IpGeo {
+  const [state, setState] = React.useState<IpGeo>({
+    countryCode: null,
+    countryName: null,
+    loading: true,
+    error: false,
+  });
+
+  React.useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 4000); // 4 s timeout
+
+    (async () => {
+      try {
+        const res = await fetch("https://ipapi.co/json/", {
+          signal: controller.signal,
+        });
+        if (!res.ok) throw new Error(`ipapi ${res.status}`);
+        const json = await res.json();
+        if (cancelled) return;
+        const code = typeof json.country_code === "string" && json.country_code.length === 2
+          ? json.country_code.toUpperCase()
+          : null;
+        setState({
+          countryCode: code,
+          countryName: json.country_name ?? null,
+          loading: false,
+          error: !code,
+        });
+      } catch {
+        if (!cancelled) setState(s => ({ ...s, loading: false, error: true }));
+      } finally {
+        clearTimeout(timer);
+      }
+    })();
+
+    return () => { cancelled = true; controller.abort(); clearTimeout(timer); };
+  }, []);
+
+  return state;
+}
+
+// ---------- M-A01: Geo suggestion banner -----------------------------------
+
+interface GeoSuggestionBannerProps {
+  countryName: string;
+  onAccept: () => void;
+  onDismiss: () => void;
+}
+
+function GeoSuggestionBanner({ countryName, onAccept, onDismiss }: GeoSuggestionBannerProps) {
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm">
+      <span className="text-sky-700 flex-1">
+        📍 We detected your location as <span className="font-semibold">{countryName}</span>. Use this?
+      </span>
+      <button
+        type="button"
+        className="rounded border border-sky-300 bg-white px-2 py-1 text-xs font-medium text-sky-800 hover:bg-sky-100"
+        onClick={onAccept}
+      >
+        Yes, use this
+      </button>
+      <button
+        type="button"
+        className="rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
+        onClick={onDismiss}
+      >
+        Enter manually
+      </button>
+    </div>
+  );
+}
+
 // ---------- Geo data loader (uses geo_*_v views) ----------
 function useGeoData() {
   const sb = React.useMemo(getSupabase, []);
@@ -263,6 +348,10 @@ function LocationSelect(props: {
   errorState?: string;
   errorCounty?: string;
   errorCity?: string;
+  /** M-A01: ISO code detected from IP — used to show "(auto-detected)" hint */
+  detectedCountryCode?: string | null;
+  /** M-A01: Called when user picks a different country than the detected one */
+  onGeoOverride?: () => void;
 }) {
   const {
     ready,
@@ -341,7 +430,17 @@ function LocationSelect(props: {
               props.errorCountry && "border-rose-500"
             )}
             value={props.country}
-            onChange={(e) => props.setCountry(e.target.value)}
+            onChange={(e) => {
+              props.setCountry(e.target.value);
+              // M-A01: flag as override if user picks a different country than detected
+              if (
+                props.detectedCountryCode &&
+                e.target.value &&
+                e.target.value !== props.detectedCountryCode
+              ) {
+                props.onGeoOverride?.();
+              }
+            }}
             disabled={!ready}
             aria-busy={!ready}
             aria-invalid={!!props.errorCountry}
@@ -351,9 +450,15 @@ function LocationSelect(props: {
             {countries.map((c) => (
               <option key={c.code} value={c.code}>
                 {c.name} ({c.code})
+                {props.detectedCountryCode === c.code ? " · auto-detected" : ""}
               </option>
             ))}
           </select>
+          {/* M-A01: subtle hint when auto-detected country is currently selected */}
+          {props.detectedCountryCode &&
+            props.country === props.detectedCountryCode && (
+              <p className="mt-1 text-xs text-sky-600">📍 Pre-filled from your IP address</p>
+          )}
           {props.errorCountry && (
             <p className="mt-1 text-xs text-rose-600">{props.errorCountry}</p>
           )}
@@ -548,6 +653,22 @@ export default function Signup() {
   const [stateCode, setStateCode] = React.useState<string>("");
   const [countyCode, setCountyCode] = React.useState<string>("");
   const [cityId, setCityId] = React.useState<string>("");
+
+  // M-A01: IP geo-detection
+  const ipGeo = useIpGeoDetection();
+  // "pending" = banner not yet acted on; "accepted" = user accepted; "dismissed" / "overridden" = user declined
+  const [geoState, setGeoState] = React.useState<"pending" | "accepted" | "dismissed" | "overridden">("pending");
+  // Track whether the final submitted location was an override of the detected one
+  const [geoOverride, setGeoOverride] = React.useState(false);
+
+  // Once IP detection resolves successfully and country is still empty, pre-populate
+  React.useEffect(() => {
+    if (ipGeo.loading || ipGeo.error || !ipGeo.countryCode) return;
+    if (country) return; // user already selected something manually
+    if (geoState !== "pending") return;
+    // Pre-populate silently — banner will show separately
+    setCountry(ipGeo.countryCode);
+  }, [ipGeo.loading, ipGeo.error, ipGeo.countryCode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Validation/errors
   const [errors, setErrors] = React.useState<Record<string, string>>({});
@@ -811,8 +932,8 @@ export default function Signup() {
         p_user_id: uid,
         p_location_id: resolved.locationId,
         p_precision: resolved.precision,
-        p_override: false,
-        p_source: "signup",
+        p_override: geoOverride,
+        p_source: geoOverride ? "signup_ip_override" : "signup",
       });
       if (l.error) {
         addLog("onboarding.location.set.error", safeErr(l.error));
@@ -1065,10 +1186,36 @@ export default function Signup() {
             )}
           </div>
 
+          {/* M-A01: IP geo-detection suggestion banner */}
+          {ipGeo.countryCode &&
+            ipGeo.countryName &&
+            !ipGeo.loading &&
+            geoState === "pending" && (
+              <GeoSuggestionBanner
+                countryName={ipGeo.countryName}
+                onAccept={() => {
+                  setCountry(ipGeo.countryCode!);
+                  setGeoState("accepted");
+                  setGeoOverride(false);
+                }}
+                onDismiss={() => {
+                  setCountry("");
+                  setGeoState("dismissed");
+                }}
+              />
+          )}
+
           {/* Location */}
           <LocationSelect
             country={country}
-            setCountry={setCountry}
+            setCountry={(v) => {
+              setCountry(v);
+              // If user changes country after accepting geo, mark as overridden
+              if (geoState === "accepted" && v !== ipGeo.countryCode) {
+                setGeoState("overridden");
+                setGeoOverride(true);
+              }
+            }}
             stateCode={stateCode}
             setStateCode={setStateCode}
             countyCode={countyCode}
@@ -1076,6 +1223,8 @@ export default function Signup() {
             cityId={cityId}
             setCityId={setCityId}
             errorCountry={errors.country}
+            detectedCountryCode={ipGeo.countryCode}
+            onGeoOverride={() => { setGeoState("overridden"); setGeoOverride(true); }}
           />
 
           <button
