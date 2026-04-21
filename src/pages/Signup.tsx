@@ -662,14 +662,17 @@ export default function Signup() {
   const [geoOverride, setGeoOverride] = React.useState(false);
 
   // Once IP detection resolves successfully and country is still empty, pre-populate
-  React.useEffect(() => {
-    if (ipGeo.loading || ipGeo.error || !ipGeo.countryCode) return;
-    if (country) return; // user already selected something manually
-    if (geoState !== "pending") return;
-    // Pre-populate silently — banner will show separately
-    setCountry(ipGeo.countryCode);
-  }, [ipGeo.loading, ipGeo.error, ipGeo.countryCode]); // eslint-disable-line react-hooks/exhaustive-deps
 
+const geoData = useGeoData(); // hoist out of LocationSelect
+
+
+React.useEffect(() => {
+  if (ipGeo.loading || ipGeo.error || !ipGeo.countryCode) return;
+  if (!geoData.ready) return; // ← WAIT for countries to load
+  if (country) return;
+  if (geoState !== "pending") return;
+  setCountry(ipGeo.countryCode);
+}, [ipGeo.loading, ipGeo.error, ipGeo.countryCode, geoData.ready]);
   // Validation/errors
   const [errors, setErrors] = React.useState<Record<string, string>>({});
   const [busy, setBusy] = React.useState(false);
