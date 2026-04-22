@@ -6,6 +6,11 @@
 //   - bootstrapSocialProfile correctly handles twitter provider
 //   - No other logic changed — the X OAuth flow uses the same PKCE path
 //
+// EMAIL CONFIRMATION FIX (QA):
+//   - extractAuthParams now detects ?token_hash=...&type=... query params
+//   - handleCallback now handles token_hash+type via supabase.auth.verifyOtp()
+//     before the PKCE and implicit token blocks
+//
 // setSession() hangs when the Supabase client has detectSessionInUrl:false
 // and hasn't been "warmed up" with a prior auth call. Instead we:
 //   1. Manually write the session to localStorage (same key Supabase uses)
@@ -23,8 +28,15 @@ function extractAuthParams(): URLSearchParams | null {
   if (idx !== -1) return new URLSearchParams(href.slice(idx + "#/auth/callback#".length));
   const hash = window.location.hash.replace(/^#/, "");
   if (hash.includes("access_token=") || hash.includes("error=")) return new URLSearchParams(hash);
+
+  // EMAIL CONFIRMATION FIX: token_hash arrives as a query param (?token_hash=...&type=signup)
+  // because the email template uses {{ .SiteURL }}/#/auth/callback?token_hash=...
+  // HashRouter exposes these as window.location.search on the /auth/callback route.
   const search = window.location.search;
-  if (search.includes("code=") || search.includes("error=")) return new URLSearchParams(search.slice(1));
+  if (search.includes("token_hash=") || search.includes("code=") || search.includes("error=")) {
+    return new URLSearchParams(search.slice(1));
+  }
+
   return null;
 }
 
@@ -88,6 +100,29 @@ export default function OAuthCallbackPage() {
 
       const oauthError = params.get("error_description") || params.get("error");
       if (oauthError) { setError(decodeURIComponent(oauthError)); return; }
+
+      // EMAIL CONFIRMATION FIX: handle token_hash+type (email confirmation flow).
+      // Supabase email template must use:
+      //   {{ .SiteURL }}/#/auth/callback?token_hash={{ .TokenHash }}&type=signup
+      const tokenHash = params.get("token_hash");
+      const otpType = params.get("type");
+      if (tokenHash && otpType) {
+        setStatus("Confirming your email…");
+        try {
+          const { data, error: err } = await sb!.auth.verifyOtp({
+            token_hash: tokenHash,
+            type: otpType as any,
+          });
+          if (err || !data?.session) {
+            setError(err?.message ?? "Email confirmation failed. The link may have expired — please sign up again.");
+            return;
+          }
+          await finalize(sb!, data.session, navigate, setStatus);
+        } catch (e: any) {
+          setError(e?.message ?? "Email confirmation error.");
+        }
+        return;
+      }
 
       const accessToken = params.get("access_token");
       const refreshToken = params.get("refresh_token");
