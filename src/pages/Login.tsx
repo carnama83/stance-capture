@@ -20,6 +20,17 @@ export default function Login() {
   const [needsMfa, setNeedsMfa] = React.useState(false);
   const [mfaCode, setMfaCode] = React.useState("");
 
+  // EMAIL CONFIRMATION BANNER: detect ?confirmed=1 in hash query string.
+  // HashRouter puts query params inside window.location.hash, e.g.:
+  //   /#/login?confirmed=1  →  hash = "#/login?confirmed=1"
+  const [emailConfirmed, setEmailConfirmed] = React.useState(() => {
+    const hash = window.location.hash; // e.g. "#/login?confirmed=1"
+    const qIndex = hash.indexOf("?");
+    if (qIndex === -1) return false;
+    const params = new URLSearchParams(hash.slice(qIndex + 1));
+    return params.get("confirmed") === "1";
+  });
+
   // ✅ PRODUCTION FIX: Simple, clean redirect handling
   const handleSuccessfulLogin = React.useCallback(() => {
     const returnTo = sessionStorage.getItem("return_to");
@@ -118,6 +129,24 @@ export default function Login() {
     <PageLayout>
       <div className="mx-auto max-w-md p-6 space-y-4">
         <h1 className="text-2xl font-bold">Log in</h1>
+
+        {/* EMAIL CONFIRMATION BANNER */}
+        {emailConfirmed && (
+          <div className="flex items-start gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+            <span className="mt-0.5">✓</span>
+            <div>
+              <span className="font-medium">Email confirmed!</span> Your account is verified. Log in below to continue setting up your profile.
+            </div>
+            <button
+              type="button"
+              className="ml-auto text-green-600 hover:text-green-800 leading-none"
+              onClick={() => setEmailConfirmed(false)}
+              aria-label="Dismiss"
+            >
+              ×
+            </button>
+          </div>
+        )}
 
         <form className="space-y-4" onSubmit={onLogin}>
           <input
