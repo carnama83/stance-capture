@@ -687,6 +687,8 @@ export default function Signup() {
   const [errors, setErrors] = React.useState<Record<string, string>>({});
   const [busy, setBusy] = React.useState(false);
   const [msg, setMsg] = React.useState<string | null>(null);
+  // True once signup succeeds and email confirmation is pending — replaces the form with a success screen
+  const [registered, setRegistered] = React.useState(false);
 
   // Username availability
   type UStatus = "idle" | "invalid" | "checking" | "available" | "taken";
@@ -1069,9 +1071,7 @@ export default function Signup() {
 
       // No session yet -> stash and rely on first-login bootstrap
       stashForFirstLogin();
-      setMsg(
-        "Check your email to confirm your account. After you log in, we'll finish setting up your profile automatically."
-      );
+      setRegistered(true);
       addLog("confirm_email.notice_shown");
     } catch (err: any) {
       addLog("submit.error", safeErr(err));
@@ -1080,6 +1080,40 @@ export default function Signup() {
       setBusy(false);
       addLog("submit.done");
     }
+  }
+
+  // POST-SIGNUP CONFIRMATION SCREEN
+  // Replaces the entire form once email confirmation has been sent.
+  if (registered) {
+    return (
+      <PageLayout>
+        <div className="mx-auto max-w-md p-6 flex flex-col items-center text-center space-y-5">
+          <div className="text-5xl">📬</div>
+          <h1 className="text-2xl font-bold">Check your email</h1>
+          <p className="text-slate-600 text-sm leading-relaxed">
+            We sent a confirmation link to <span className="font-semibold text-slate-900">{email}</span>.
+            Click the link in that email to verify your account, then log in to finish setting up your profile.
+          </p>
+          <p className="text-xs text-slate-400">
+            Didn't receive it? Check your spam folder, or{" "}
+            <button
+              type="button"
+              className="underline text-slate-500 hover:text-slate-700"
+              onClick={() => setRegistered(false)}
+            >
+              go back
+            </button>{" "}
+            to try again.
+          </p>
+          <Link
+            to="/login"
+            className="mt-2 inline-block rounded-lg bg-slate-900 px-6 py-2 text-sm font-semibold text-white hover:bg-slate-800 transition-colors"
+          >
+            Go to login
+          </Link>
+        </div>
+      </PageLayout>
+    );
   }
 
   return (
