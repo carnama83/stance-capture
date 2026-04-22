@@ -57,6 +57,14 @@ async function fetchMyRegion(userId: string): Promise<RegionRow | null> {
   return data ?? null;
 }
 
+// Maps each type to the correct geo view and its code column name
+const GEO_VIEW_MAP = {
+  country: { view: "geo_countries_v", codeCol: "code" },
+  state:   { view: "geo_states_v",    codeCol: "code" },
+  county:  { view: "geo_counties_v",  codeCol: "code" },
+  city:    { view: "geo_cities_v",    codeCol: "id"   },
+} as const;
+
 async function searchByType(
   type: "country" | "state" | "county" | "city",
   query: string
@@ -65,10 +73,11 @@ async function searchByType(
   if (!sb) throw new Error("Supabase client not available");
   if (!query.trim()) return [];
 
+  const { view, codeCol } = GEO_VIEW_MAP[type];
+
   const { data, error } = await sb
-    .from("locations")
-    .select("iso_code, name, type")
-    .eq("type", type)
+    .from(view)
+    .select(`${codeCol},name`)
     .ilike("name", `%${query.trim()}%`)
     .order("name")
     .limit(25);
@@ -78,7 +87,11 @@ async function searchByType(
     return [];
   }
 
-  return (data ?? []) as LocationOption[];
+  return ((data ?? []) as any[]).map((row) => ({
+    iso_code: row[codeCol] as string,
+    name: row.name as string,
+    type,
+  }));
 }
 
 async function setUserLocationByIso(
