@@ -258,8 +258,11 @@ async function runBootstrap(sb: any) {
   await touchSessionAndDevice(sb);
 
   // Signal to the feed that location/profile data is now written.
+  // 300ms delay ensures Supabase has committed all writes before the re-fetch fires.
   // IndexPage listens and invalidates my-region => all location-dependent queries re-fetch.
-  try { window.dispatchEvent(new CustomEvent('bootstrap:complete')); } catch { /* non-fatal */ }
+  setTimeout(() => {
+    try { window.dispatchEvent(new CustomEvent('bootstrap:complete')); } catch { /* non-fatal */ }
+  }, 300);
 }
 
 export function useBootstrapUser() {
