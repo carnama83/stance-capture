@@ -337,8 +337,8 @@ export default function SettingsProfile() {
       if (res.error) {
         setLastUsernameError({ code: res.error.code, message: res.error.message });
         const raw = String(res.error.message || "").trim();
-        if (raw.startsWith("ERR_USERNAME_LIMIT")) {
-          setMsg("You've hit the username change limit (30 days). Try again later.");
+        if (raw.startsWith("ERR_USERNAME_LIMIT") || raw.toLowerCase().includes("username change limit")) {
+          setMsg("You've hit the username change limit (2 changes per 30 days). Try again later.");
         } else if (raw.toLowerCase().includes("reserved")) {
           setMsg("That username is reserved. Please choose another.");
         } else if (raw.toLowerCase().includes("taken") || res.error.code === "23505") {
@@ -442,12 +442,12 @@ export default function SettingsProfile() {
 
         {/* M-A05: quota display */}
         {usernameQuota && (
-          <p className="text-xs text-slate-500">
+          <p className={"text-xs " + (usernameQuota.used >= usernameQuota.limit ? "text-rose-600 font-medium" : "text-slate-500")}>
             {usernameQuota.used} of {usernameQuota.limit} username changes used in the last 30 days
             {usernameQuota.resetsInDays != null
               ? ` (resets in ${usernameQuota.resetsInDays} day${usernameQuota.resetsInDays === 1 ? "" : "s"})`
               : ""}
-            .
+            .{usernameQuota.used >= usernameQuota.limit ? " You cannot change your username again until the limit resets." : ""}
           </p>
         )}
 
@@ -456,7 +456,7 @@ export default function SettingsProfile() {
             type="button"
             className="border rounded px-3 py-1 disabled:opacity-50"
             onClick={updateUsername}
-            disabled={busy || !isUsernameSet || !isUsernameChanged}
+            disabled={busy || !isUsernameSet || !isUsernameChanged || (!!usernameQuota && usernameQuota.used >= usernameQuota.limit)}
           >
             {isUsernameSet ? "Update Username" : "Set Username"}
           </button>
