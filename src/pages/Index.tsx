@@ -1942,6 +1942,18 @@ export default function IndexPage() {
   const globalLabel = myRegion?.global_label ?? "Global";
   const hasCountry = !!countryLabel;
 
+  // Bootstrap completion listener: when useBootstrapUser finishes writing location
+  // data on first login, invalidate my-region so regionLabel updates and all
+  // location-dependent feed queries re-fetch automatically (no Retry needed).
+  React.useEffect(() => {
+    if (!userId) return;
+    const handler = () => {
+      qc.invalidateQueries({ queryKey: ["my-region", userId] });
+    };
+    window.addEventListener("bootstrap:complete", handler);
+    return () => window.removeEventListener("bootstrap:complete", handler);
+  }, [userId, qc]);
+
   const [regionTab, setRegionTab] = React.useState<"country" | "global">(
     hasCountry ? "country" : "global"
   );
