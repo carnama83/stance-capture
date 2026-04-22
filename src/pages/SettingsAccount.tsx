@@ -138,8 +138,8 @@ function Section({
 
 function DeletionSection() {
   const { data: request, isLoading } = useDeletionRequest();
-  const { mutate: requestDeletion, isPending: requesting } = useRequestDeletion();
-  const { mutate: cancelDeletion, isPending: cancelling } = useCancelDeletion();
+  const { mutate: requestDeletion, isPending: requesting, reset: resetRequest } = useRequestDeletion();
+  const { mutate: cancelDeletion, isPending: cancelling, reset: resetCancel } = useCancelDeletion();
   const { toast } = useToast();
   const [confirmOpen, setConfirmOpen] = React.useState(false);
   const [confirmText, setConfirmText] = React.useState("");
@@ -160,7 +160,13 @@ function DeletionSection() {
 
   const handleCancel = () => {
     cancelDeletion(undefined, {
-      onSuccess: () => toast({ title: "Deletion request cancelled. Your account is safe." }),
+      onSuccess: () => {
+        resetRequest();
+        resetCancel();
+        setConfirmOpen(false);
+        setConfirmText("");
+        toast({ title: "Deletion request cancelled. Your account is safe." });
+      },
       onError: () => toast({ title: "Failed to cancel request.", variant: "destructive" }),
     });
   };
@@ -225,7 +231,7 @@ function DeletionSection() {
           {!confirmOpen ? (
             <button
               type="button"
-              onClick={() => setConfirmOpen(true)}
+              onClick={() => { resetRequest(); setConfirmOpen(true); }}
               className="flex items-center gap-2 rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 transition-colors"
             >
               <Trash2 className="h-3.5 w-3.5" />
