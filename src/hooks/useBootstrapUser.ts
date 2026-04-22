@@ -97,8 +97,8 @@ async function applySignupStashIfPresent(sb: any) {
     return;
   }
 
-  const { data: userRes } = await sb.auth.getUser();
-  const uid = userRes.user?.id;
+  const { data: sessRes } = await sb.auth.getSession();
+const uid = sessRes.session?.user?.id;
   if (!uid) return;
 
   // Username (non-fatal)
