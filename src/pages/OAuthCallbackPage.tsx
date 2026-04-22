@@ -29,9 +29,21 @@ function extractAuthParams(): URLSearchParams | null {
   const hash = window.location.hash.replace(/^#/, "");
   if (hash.includes("access_token=") || hash.includes("error=")) return new URLSearchParams(hash);
 
-  // EMAIL CONFIRMATION FIX: token_hash arrives as a query param (?token_hash=...&type=signup)
-  // because the email template uses {{ .SiteURL }}/#/auth/callback?token_hash=...
-  // HashRouter exposes these as window.location.search on the /auth/callback route.
+    // EMAIL CONFIRMATION FIX: token_hash arrives inside the hash, not window.location.search.
+  // HashRouter puts everything after # into location.hash, so the URL:
+  //   localhost:8080/#/auth/callback?token_hash=...&type=signup
+  // means location.hash = "#/auth/callback?token_hash=...&type=signup"
+  // and location.search is EMPTY. We must parse the query string out of the hash.
+  const hashStr = window.location.hash; // full hash including #/auth/callback
+  const qIndex = hashStr.indexOf("?");
+  if (qIndex !== -1) {
+    const hashQuery = hashStr.slice(qIndex + 1);
+    if (hashQuery.includes("token_hash=") || hashQuery.includes("code=") || hashQuery.includes("error=")) {
+      return new URLSearchParams(hashQuery);
+    }
+  }
+
+  // Fallback: check window.location.search for non-HashRouter deployments
   const search = window.location.search;
   if (search.includes("token_hash=") || search.includes("code=") || search.includes("error=")) {
     return new URLSearchParams(search.slice(1));
