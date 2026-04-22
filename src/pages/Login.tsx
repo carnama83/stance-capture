@@ -34,20 +34,20 @@ export default function Login() {
   // ✅ PRODUCTION FIX: Simple, clean redirect handling
   const handleSuccessfulLogin = React.useCallback(() => {
     const returnTo = sessionStorage.getItem("return_to");
-    
-    if (returnTo && returnTo.startsWith("#/")) {
-      // Hash router
-      sessionStorage.removeItem("return_to");
-      window.location.hash = returnTo;
-    } else if (returnTo && returnTo.startsWith("/")) {
-      // Regular path
-      sessionStorage.removeItem("return_to");
-      navigate(returnTo, { replace: true });
+    sessionStorage.removeItem("return_to");
+
+    if (returnTo && (returnTo.startsWith("#/") || returnTo.startsWith("/"))) {
+      // For specific return destinations, use location.href for a full reload
+      // so the target page initialises fresh with the new auth state.
+      const dest = returnTo.startsWith("#/")
+        ? returnTo  // hash path — assign directly to hash
+        : returnTo;
+      window.location.href = `/#${dest.startsWith("/") ? dest : dest.slice(1)}`;
     } else {
-      // Default: go home
-      navigate("/", { replace: true });
+      // Default: full reload to home so feed re-fetches with auth context
+      window.location.href = "/";
     }
-  }, [navigate]);
+  }, []);
 
   // ✅ Auth listener - only redirect on SIGNED_IN event
   React.useEffect(() => {
