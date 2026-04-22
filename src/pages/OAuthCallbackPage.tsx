@@ -129,7 +129,12 @@ export default function OAuthCallbackPage() {
             setError(err?.message ?? "Email confirmation failed. The link may have expired — please sign up again.");
             return;
           }
-          await finalize(sb!, data.session, navigate, setStatus);
+          // Email confirmed successfully. Profile onboarding data (username, DOB,
+          // gender, location) was stashed in localStorage by stashForFirstLogin()
+          // during signup. useBootstrapUser picks it up and finalizes the profile
+          // on first login. Navigate to login so the user explicitly signs in and
+          // triggers that bootstrap flow — do NOT call finalize() here.
+          navigate("/login?confirmed=1", { replace: true });
         } catch (e: any) {
           setError(e?.message ?? "Email confirmation error.");
         }
