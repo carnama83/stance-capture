@@ -2,19 +2,29 @@
 import * as React from "react";
 import { getSupabase } from "@/lib/supabaseClient";
 
+type UStatus = "idle" | "invalid" | "checking" | "available" | "taken";
+
 export default function UsernameField({
   value,
   onChange,
+  setValue,
+  error,
+  status,
+  setStatus,
 }: {
   value: string;
   onChange: (v: string) => void;
+  setValue?: (v: string) => void;
+  error?: string;
+  status?: UStatus;
+  setStatus?: (s: UStatus) => void;
 }) {
   const client = React.useMemo(getSupabase, []);
   const [ok, setOk] = React.useState<null | boolean>(null);
   const [hint, setHint] = React.useState("");
 
-  // ✅ NEW: fetch the signed-in user's current username once,
-  // so we can treat "Taken" as "Yours" when appropriate.
+  // Fetch the signed-in user's current username once so we can treat
+  // "Taken" as "Yours" when appropriate (settings page use case).
   const [myUsername, setMyUsername] = React.useState<string>("");
 
   React.useEffect(() => {
@@ -58,6 +68,7 @@ export default function UsernameField({
   React.useEffect(() => {
     setOk(null);
     setHint("");
+    setStatus?.("idle");
 
     const vRaw = value.trim();
     if (!vRaw) return;
@@ -65,10 +76,13 @@ export default function UsernameField({
     const v = vRaw.toLowerCase();
     const mine = (myUsername || "").trim().toLowerCase();
 
+    setStatus?.("checking");
+
     const t = setTimeout(async () => {
       if (!client) {
         setOk(null);
         setHint("Supabase OFF");
+        setStatus?.("idle");
         return;
       }
 
@@ -79,23 +93,26 @@ export default function UsernameField({
       if (!valid) {
         setOk(false);
         setHint("3–20 chars, letters/digits/_");
+        setStatus?.("invalid");
         return;
       }
 
-      // 2) availability check (keep existing behavior + timing)
+      // 2) availability check
       const start = performance.now();
       const { data: available } = await client.rpc("username_available", {
         p_username: v,
       });
 
-      // ✅ If not available but it matches the user's current username, show "Yours"
+      // If not available but matches the user's current username, show "Yours"
       if (!available && mine && v === mine) {
         setOk(true);
         setHint("Yours");
+        setStatus?.("available");
         return;
       }
 
       setOk(!!available);
+      setStatus?.(available ? "available" : "taken");
       setHint(
         available
           ? `Available (${Math.round(performance.now() - start)}ms)`
@@ -104,21 +121,36 @@ export default function UsernameField({
     }, 200);
 
     return () => clearTimeout(t);
-  }, [value, client, myUsername]);
+  }, [value, client, myUsername]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div>
+      <label className="block text-sm font-medium" htmlFor="username">
+        Username <span className="text-rose-600">*</span>
+      </label>
       <input
-        className="w-full border rounded px-3 py-2"
-        placeholder="Username (optional)"
+        id="username"
+        className={[
+          "mt-1 w-full border rounded px-3 py-2",
+          error ? "border-rose-500" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        placeholder="Choose a username"
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        autoComplete="username"
       />
-      {hint && (
+      {/* Availability hint (only shown when user has typed something) */}
+      {hint && !error && (
         <div className="text-xs mt-1">
           {ok ? "✅ " : "❌ "}
           {hint}
         </div>
+      )}
+      {/* Validation error from parent (required / format) — takes priority over hint */}
+      {error && (
+        <p className="mt-1 text-xs text-rose-600">{error}</p>
       )}
     </div>
   );
