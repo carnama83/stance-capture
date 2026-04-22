@@ -116,9 +116,11 @@ export default function SettingsLocation() {
   const userId = session?.user?.id ?? null;
 
   // selectedCountryCode: ISO code seeded from region (display/seed only)
-  // selectedCountryId: DB id used to scope state/county searches via parent_id
+  // selectedCountryId: DB id used to scope state searches via parent_id
+  // selectedStateId: DB id used to scope county searches via parent_id
   const [selectedCountryCode, setSelectedCountryCode] = React.useState<string | null>(null);
   const [selectedCountryId, setSelectedCountryId] = React.useState<string | null>(null);
+  const [selectedStateId, setSelectedStateId] = React.useState<string | null>(null);
 
   // Country search
   const [countrySearchInput, setCountrySearchInput] = React.useState("");
@@ -150,19 +152,30 @@ export default function SettingsLocation() {
     staleTime: 60_000,
   });
 
-  // Seed selectedCountryCode + selectedCountryId from loaded region
+  // Seed selectedCountryCode + selectedCountryId + selectedStateId from loaded region
   React.useEffect(() => {
-    if (!region?.country_code || selectedCountryId) return;
-    setSelectedCountryCode(region.country_code);
-    // Look up the country's DB id so state/county searches can filter by parent_id
+    if (!region) return;
     const sb = getSupabase();
     if (!sb) return;
-    sb.from("locations")
-      .select("id")
-      .eq("type", "country")
-      .eq("iso_code", region.country_code)
-      .maybeSingle()
-      .then(({ data }) => { if (data?.id) setSelectedCountryId(data.id); });
+
+    if (region.country_code && !selectedCountryId) {
+      setSelectedCountryCode(region.country_code);
+      sb.from("locations")
+        .select("id")
+        .eq("type", "country")
+        .eq("iso_code", region.country_code)
+        .maybeSingle()
+        .then(({ data }) => { if (data?.id) setSelectedCountryId(data.id); });
+    }
+
+    if (region.state_label && !selectedStateId) {
+      sb.from("locations")
+        .select("id")
+        .eq("type", "state")
+        .eq("name", region.state_label)
+        .maybeSingle()
+        .then(({ data }) => { if (data?.id) setSelectedStateId(data.id); });
+    }
   }, [region]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const {
@@ -190,8 +203,8 @@ export default function SettingsLocation() {
     isLoading: countyLoading,
   } = useQuery({
     enabled: countySearch.trim().length >= 2,
-    queryKey: ["location-search-county", countySearch, selectedCountryId],
-    queryFn: () => searchByType("county", countySearch, selectedCountryId),
+    queryKey: ["location-search-county", countySearch, selectedStateId],
+    queryFn: () => searchByType("county", countySearch, selectedStateId),
     staleTime: 0,
   });
 
@@ -418,6 +431,7 @@ export default function SettingsLocation() {
                     isoCode: loc.iso_code,
                     precision: "state",
                   });
+                  setSelectedStateId(loc.id);
                   setStateSearchInput("");
                   setStateSearch("");
                   setStateTouched(false);
