@@ -256,6 +256,10 @@ async function runBootstrap(sb: any) {
   await applyOAuthStashIfPresent(sb);
   await mergeEmbeddedStancesIfPending(sb);
   await touchSessionAndDevice(sb);
+
+  // Signal to the feed that location/profile data is now written.
+  // IndexPage listens and invalidates my-region => all location-dependent queries re-fetch.
+  try { window.dispatchEvent(new CustomEvent('bootstrap:complete')); } catch { /* non-fatal */ }
 }
 
 export function useBootstrapUser() {
