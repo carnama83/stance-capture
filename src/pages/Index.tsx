@@ -1948,7 +1948,9 @@ export default function IndexPage() {
   React.useEffect(() => {
     if (!userId) return;
     const handler = () => {
-      qc.invalidateQueries({ queryKey: ["my-region", userId] });
+      // refetchType:'all' forces re-fetch even within staleTime (60s) so the
+      // feed doesn't stay stuck on a cached empty result from before bootstrap ran.
+      qc.invalidateQueries({ queryKey: ["my-region", userId], refetchType: 'all' });
     };
     window.addEventListener("bootstrap:complete", handler);
     return () => window.removeEventListener("bootstrap:complete", handler);
