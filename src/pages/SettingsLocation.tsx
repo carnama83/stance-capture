@@ -15,9 +15,11 @@ type RegionRow = {
   county_label: string | null;
   state_label: string | null;
   country_label: string | null;
+  country_code: string | null;
 };
 
 type LocationOption = {
+  id: string;
   iso_code: string;
   name: string;
   type: string;
@@ -45,7 +47,7 @@ async function fetchMyRegion(userId: string): Promise<RegionRow | null> {
 
   const { data, error } = await sb
     .from("user_region_dimensions")
-    .select("user_id, city_label, county_label, state_label, country_label")
+    .select("user_id, city_label, county_label, state_label, country_label, country_code")
     .eq("user_id", userId)
     .maybeSingle<RegionRow>();
 
@@ -57,41 +59,35 @@ async function fetchMyRegion(userId: string): Promise<RegionRow | null> {
   return data ?? null;
 }
 
-// Maps each type to the correct geo view and its code column name
-const GEO_VIEW_MAP = {
-  country: { view: "geo_countries_v", codeCol: "code" },
-  state:   { view: "geo_states_v",    codeCol: "code" },
-  county:  { view: "geo_counties_v",  codeCol: "code" },
-  city:    { view: "geo_cities_v",    codeCol: "id"   },
-} as const;
-
 async function searchByType(
   type: "country" | "state" | "county" | "city",
-  query: string
+  query: string,
+  parentId?: string | null,
 ): Promise<LocationOption[]> {
   const sb = getSupabase();
   if (!sb) throw new Error("Supabase client not available");
   if (!query.trim()) return [];
 
-  const { view, codeCol } = GEO_VIEW_MAP[type];
-
-  const { data, error } = await sb
-    .from(view)
-    .select(`${codeCol},name`)
+  let q = (sb.from("locations") as any)
+    .select("id, iso_code, name, type")
+    .eq("type", type)
     .ilike("name", `%${query.trim()}%`)
     .order("name")
     .limit(25);
+
+  // Scope state/county to the selected country via parent_id
+  if ((type === "state" || type === "county") && parentId) {
+    q = q.eq("parent_id", parentId);
+  }
+
+  const { data, error } = await q;
 
   if (error) {
     console.error(`Failed to search ${type}s`, error);
     return [];
   }
 
-  return ((data ?? []) as any[]).map((row) => ({
-    iso_code: row[codeCol] as string,
-    name: row.name as string,
-    type,
-  }));
+  return (data ?? []) as LocationOption[];
 }
 
 async function setUserLocationByIso(
@@ -118,6 +114,11 @@ export default function SettingsLocation() {
   const session = useSupabaseSession();
   const queryClient = useQueryClient();
   const userId = session?.user?.id ?? null;
+
+  // selectedCountryCode: ISO code seeded from region (display/seed only)
+  // selectedCountryId: DB id used to scope state/county searches via parent_id
+  const [selectedCountryCode, setSelectedCountryCode] = React.useState<string | null>(null);
+  const [selectedCountryId, setSelectedCountryId] = React.useState<string | null>(null);
 
   // Country search
   const [countrySearchInput, setCountrySearchInput] = React.useState("");
@@ -149,6 +150,21 @@ export default function SettingsLocation() {
     staleTime: 60_000,
   });
 
+  // Seed selectedCountryCode + selectedCountryId from loaded region
+  React.useEffect(() => {
+    if (!region?.country_code || selectedCountryId) return;
+    setSelectedCountryCode(region.country_code);
+    // Look up the country's DB id so state/county searches can filter by parent_id
+    const sb = getSupabase();
+    if (!sb) return;
+    sb.from("locations")
+      .select("id")
+      .eq("type", "country")
+      .eq("iso_code", region.country_code)
+      .maybeSingle()
+      .then(({ data }) => { if (data?.id) setSelectedCountryId(data.id); });
+  }, [region]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const {
     data: countryResults,
     isLoading: countryLoading,
@@ -164,8 +180,8 @@ export default function SettingsLocation() {
     isLoading: stateLoading,
   } = useQuery({
     enabled: stateSearch.trim().length >= 2,
-    queryKey: ["location-search-state", stateSearch],
-    queryFn: () => searchByType("state", stateSearch),
+    queryKey: ["location-search-state", stateSearch, selectedCountryId],
+    queryFn: () => searchByType("state", stateSearch, selectedCountryId),
     staleTime: 0,
   });
 
@@ -174,8 +190,8 @@ export default function SettingsLocation() {
     isLoading: countyLoading,
   } = useQuery({
     enabled: countySearch.trim().length >= 2,
-    queryKey: ["location-search-county", countySearch],
-    queryFn: () => searchByType("county", countySearch),
+    queryKey: ["location-search-county", countySearch, selectedCountryId],
+    queryFn: () => searchByType("county", countySearch, selectedCountryId),
     staleTime: 0,
   });
 
@@ -334,6 +350,8 @@ export default function SettingsLocation() {
                     isoCode: loc.iso_code,
                     precision: "country",
                   });
+                  setSelectedCountryCode(loc.iso_code);
+                  setSelectedCountryId(loc.id);
                   setCountrySearchInput("");
                   setCountrySearch("");
                   setCountryTouched(false);
