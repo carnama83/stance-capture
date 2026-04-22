@@ -244,6 +244,16 @@ export default function AvatarUploader({
     };
   }
 
+  // ── Upload timeout helper (Supabase Storage has no built-in timeout) ──
+  function withUploadTimeout<T>(promise: Promise<T>, ms = 15_000): Promise<T> {
+    return Promise.race([
+      promise,
+      new Promise<T>((_, reject) =>
+        setTimeout(() => reject(new Error("Upload timed out. Check your connection and try again.")), ms)
+      ),
+    ]);
+  }
+
   // ── Crop accepted — upload the cropped blob ──
   async function onCropAccept(cropped: Blob, ext: string) {
     if (!client || !pendingFile) return;
@@ -254,13 +264,16 @@ export default function AvatarUploader({
     setMsg("");
 
     try {
-      const newPath = `avatars/${uid}/${Date.now()}.${ext}`;
+      const ts = Date.now();
+      const newPath = `avatars/${uid}/${ts}.${ext}`;
       const mimeType =
         ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg";
 
-      const { error: uploadErr } = await client.storage
-        .from("avatars")
-        .upload(newPath, cropped, { upsert: true, contentType: mimeType });
+      const { error: uploadErr } = await withUploadTimeout(
+        client.storage
+          .from("avatars")
+          .upload(newPath, cropped, { upsert: true, contentType: mimeType })
+      );
       if (uploadErr) throw uploadErr;
 
       // M-A03: delete old file after successful upload
@@ -272,7 +285,8 @@ export default function AvatarUploader({
       }
 
       const { data } = client.storage.from("avatars").getPublicUrl(newPath);
-      const url  = data.publicUrl;
+      // Append cache-busting param so replaced avatars show immediately
+      const url  = `${data.publicUrl}?t=${ts}`;
       const alt  = `Avatar of @${handle}`;
 
       // avatars table insert is best-effort — failure doesn't block the upload
