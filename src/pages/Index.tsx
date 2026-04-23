@@ -1943,15 +1943,14 @@ export default function IndexPage() {
   const hasCountry = !!countryLabel;
 
   // Bootstrap completion listener: when useBootstrapUser finishes writing location
-  // data on first login (including OAuth), invalidate my-region + all feed queries
-  // so the feed loads without requiring a manual Retry.
-  // Note: userId guard removed — listener must register even before userId resolves
-  // on OAuth login, otherwise the event fires before the effect re-runs with userId set.
+  // data on first login (including OAuth), invalidate my-region + all feed queries.
+  // On OAuth, the page does a full reload — bootstrap may complete before or after
+  // this effect runs. We handle both cases:
+  //   1. Listener registered before event fires — handled by addEventListener
+  //   2. Event already fired before listener registered — handled by bootstrapDoneRef flag
   React.useEffect(() => {
-    const handler = () => {
-      // Invalidate my-region first so countryLabel/regionLabel update
+    const invalidateAll = () => {
       qc.invalidateQueries({ refetchType: 'all', queryKey: ["my-region"] });
-      // Invalidate all feed query families so they re-fetch with updated location
       qc.invalidateQueries({ refetchType: 'all', queryKey: ["home-trending-questions"] });
       qc.invalidateQueries({ refetchType: 'all', queryKey: ["home-society-pulse"] });
       qc.invalidateQueries({ refetchType: 'all', queryKey: ["home-participation"] });
@@ -1961,8 +1960,15 @@ export default function IndexPage() {
       qc.invalidateQueries({ refetchType: 'all', queryKey: ["home-reopened"] });
       qc.invalidateQueries({ refetchType: 'all', queryKey: ["home-fallback-feed"] });
     };
-    window.addEventListener("bootstrap:complete", handler);
-    return () => window.removeEventListener("bootstrap:complete", handler);
+
+    // Case 2: bootstrap already completed before this effect ran
+    if ((window as any).__bootstrapComplete) {
+      invalidateAll();
+    }
+
+    // Case 1: listen for future completion
+    window.addEventListener("bootstrap:complete", invalidateAll);
+    return () => window.removeEventListener("bootstrap:complete", invalidateAll);
   }, [qc]);
 
   const [regionTab, setRegionTab] = React.useState<"country" | "global">(
