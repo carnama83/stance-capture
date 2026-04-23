@@ -1943,18 +1943,27 @@ export default function IndexPage() {
   const hasCountry = !!countryLabel;
 
   // Bootstrap completion listener: when useBootstrapUser finishes writing location
-  // data on first login, invalidate my-region so regionLabel updates and all
-  // location-dependent feed queries re-fetch automatically (no Retry needed).
+  // data on first login (including OAuth), invalidate my-region + all feed queries
+  // so the feed loads without requiring a manual Retry.
+  // Note: userId guard removed — listener must register even before userId resolves
+  // on OAuth login, otherwise the event fires before the effect re-runs with userId set.
   React.useEffect(() => {
-    if (!userId) return;
     const handler = () => {
-      // refetchType:'all' forces re-fetch even within staleTime (60s) so the
-      // feed doesn't stay stuck on a cached empty result from before bootstrap ran.
-      qc.invalidateQueries({ queryKey: ["my-region", userId], refetchType: 'all' });
+      // Invalidate my-region first so countryLabel/regionLabel update
+      qc.invalidateQueries({ refetchType: 'all', queryKey: ["my-region"] });
+      // Invalidate all feed query families so they re-fetch with updated location
+      qc.invalidateQueries({ refetchType: 'all', queryKey: ["home-trending-questions"] });
+      qc.invalidateQueries({ refetchType: 'all', queryKey: ["home-society-pulse"] });
+      qc.invalidateQueries({ refetchType: 'all', queryKey: ["home-participation"] });
+      qc.invalidateQueries({ refetchType: 'all', queryKey: ["home-media-surge"] });
+      qc.invalidateQueries({ refetchType: 'all', queryKey: ["home-where-you-stand"] });
+      qc.invalidateQueries({ refetchType: 'all', queryKey: ["home-because-you"] });
+      qc.invalidateQueries({ refetchType: 'all', queryKey: ["home-reopened"] });
+      qc.invalidateQueries({ refetchType: 'all', queryKey: ["home-fallback-feed"] });
     };
     window.addEventListener("bootstrap:complete", handler);
     return () => window.removeEventListener("bootstrap:complete", handler);
-  }, [userId, qc]);
+  }, [qc]);
 
   const [regionTab, setRegionTab] = React.useState<"country" | "global">(
     hasCountry ? "country" : "global"
