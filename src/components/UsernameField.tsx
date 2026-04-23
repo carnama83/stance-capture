@@ -97,19 +97,19 @@ export default function UsernameField({
         return;
       }
 
-      // 2) availability check
-      const start = performance.now();
-      const { data: available } = await client.rpc("username_available", {
-        p_username: v,
-      });
-
-      // If not available but matches the user's current username, show "Yours"
-      if (!available && mine && v === mine) {
+      // 2) If it matches the user's own current username, short-circuit — no RPC needed
+      if (mine && v === mine) {
         setOk(true);
         setHint("Yours");
         setStatus?.("available");
         return;
       }
+
+      // 3) availability check
+      const start = performance.now();
+      const { data: available } = await client.rpc("username_available", {
+        p_username: v,
+      });
 
       setOk(!!available);
       setStatus?.(available ? "available" : "taken");
