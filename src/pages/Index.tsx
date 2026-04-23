@@ -2529,6 +2529,23 @@ export default function IndexPage() {
   const canTrendingGlobal =
     !!sb && !!userId && !!GLOBAL_LOCATION_ID && !locationIdsLoading;
 
+  // DEBUG: log feed gate values when key vars change
+  React.useEffect(() => {
+    console.log("[FeedDebug]", {
+      sb: !!sb,
+      userId,
+      countryLabel,
+      globalLabel,
+      GLOBAL_LOCATION_ID,
+      COUNTRY_LOCATION_ID,
+      locationIdsLoading,
+      canTrendingNational,
+      canTrendingGlobal,
+      sessionResolved,
+      isAuthed,
+    });
+  }, [!!sb, userId, countryLabel, globalLabel, GLOBAL_LOCATION_ID, COUNTRY_LOCATION_ID, locationIdsLoading, canTrendingNational, canTrendingGlobal, sessionResolved, isAuthed]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const trendingQuestionsNationalQuery = useInfiniteQuery({
     enabled: canTrendingNational,
     queryKey: [
@@ -2571,6 +2588,7 @@ export default function IndexPage() {
       lastPageParam: number
     ) => (lastPage.length < 10 ? undefined : lastPageParam + 10),
     queryFn: async ({ pageParam = 0 }) => {
+      console.log("[FeedDebug] global queryFn firing", { userId, globalLabel, GLOBAL_LOCATION_ID, pageParam });
       const { data, error } = await sb!.rpc("get_trending_questions_homepage", {
         p_user_id: userId,
         p_region_scope: "global",
@@ -2579,6 +2597,7 @@ export default function IndexPage() {
         p_limit: 10,
         p_offset: pageParam,
       });
+      console.log("[FeedDebug] global queryFn result", { count: data?.length, error });
       if (error) throw error;
       return await hydrateCoversForTrendingRows(
         (data ?? []) as TrendingHomepageQuestionRow[]
@@ -2650,6 +2669,7 @@ export default function IndexPage() {
     enabled: needsFallback,
     queryKey: ["home-fallback-feed", userId],
     queryFn: async (): Promise<FallbackQuestionRow[]> => {
+      console.log("[FeedDebug] fallback queryFn firing", { userId, needsFallback });
       const { data, error } = await sb!
         .from("v_live_questions")
         .select("id, question, summary, tags, location_label, origin_location_label, audience_location_label, cover_image_url, topic_title")
