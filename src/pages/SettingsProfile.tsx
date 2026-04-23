@@ -266,17 +266,18 @@ export default function SettingsProfile() {
 
   // ── Load profile ──
   React.useEffect(() => {
+    let cancelled = false;
     (async () => {
       if (!sb) return setMsg("Supabase is OFF (check env).");
       if (!sessionUserId) { setUid(""); setMsg("Please log in."); return; }
       try {
         setMsg(null);
-        setUid(sessionUserId);
         const { data, error } = await sb
           .from("profiles")
           .select("*")
           .eq("user_id", sessionUserId)
           .maybeSingle();
+        if (cancelled) return;
         if (error) throw error;
 
         const username             = data?.username || "";
@@ -288,15 +289,17 @@ export default function SettingsProfile() {
         const rid                  = data?.random_id || "";
         const dob_encrypted        = data?.dob_encrypted;
 
+        setUid(sessionUserId);
         setRandomId(rid);
         setDobSet(!!dob_encrypted);
         setForm({ username, display_handle_mode: mode, bio, avatar_url, avatar_path, show_age });
         setInitialUsername(username);
         setHandle(mode === "username" ? (username || rid) : rid);
       } catch (e: any) {
-        setMsg(e.message || "Failed to load profile");
+        if (!cancelled) setMsg(e.message || "Failed to load profile");
       }
     })();
+    return () => { cancelled = true; };
   }, [sb, sessionUserId]);
 
   // ── Save bio / avatar / show_age ──
@@ -376,7 +379,9 @@ export default function SettingsProfile() {
   // Trigger M-A05 quota load on initial mount once uid is known
   React.useEffect(() => {
     if (!sb || !uid) return;
-    fetchUsernameQuota(sb, uid).then(setUsernameQuota);
+    let cancelled = false;
+    fetchUsernameQuota(sb, uid).then(q => { if (!cancelled) setUsernameQuota(q); });
+    return () => { cancelled = true; };
   }, [sb, uid]);
 
   // ── Display handle ──
