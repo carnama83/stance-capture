@@ -431,11 +431,19 @@ function LocationSelect(props: {
 
   // M-A01: once states finish loading after geo accept, auto-select the detected state
   React.useEffect(() => {
+    console.log('[geoRegion] effect fired', {
+      geoRegionName: props.geoRegionName,
+      loadingStates,
+      statesCount: states.length,
+      stateCode: props.stateCode,
+      firstFew: states.slice(0, 3).map(s => ({ code: s.code, name: s.name })),
+    });
     if (!props.geoRegionName) return;
     if (loadingStates || states.length === 0) return;
     if (props.stateCode) return; // user already picked one
     const target = props.geoRegionName.trim().toLowerCase();
     const match = states.find(s => s.name.trim().toLowerCase() === target);
+    console.log('[geoRegion] match result', { target, match: match ?? null });
     if (match) props.setStateCode(match.code);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [states, loadingStates]);
