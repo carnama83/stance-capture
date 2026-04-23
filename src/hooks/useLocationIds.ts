@@ -74,15 +74,22 @@ export function useLocationIds(options: UseLocationIdsOptions = {}): UseLocation
     staleTime: 60 * 60 * 1000, // 1 hour
   });
 
-  // Get global ID from cache (synchronous after initialization)
-  const [globalId, setGlobalId] = useState<string | null>(null);
+  // Get global ID synchronously from service cache — avoids the null→uuid transition
+  // that causes query key churn and double-fetch on every mount.
+  // Falls back to useState update path if cache not yet populated.
+  const cachedGlobalId = initQuery.isSuccess ? locationService.getGlobalLocationId() : null;
+  const [globalIdState, setGlobalIdState] = useState<string | null>(
+    () => locationService.getGlobalLocationId() // synchronous read on mount
+  );
 
   useEffect(() => {
     if (initQuery.isSuccess) {
       const id = locationService.getGlobalLocationId();
-      setGlobalId(id);
+      if (id && id !== globalIdState) setGlobalIdState(id);
     }
-  }, [initQuery.isSuccess]);
+  }, [initQuery.isSuccess]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const globalId = cachedGlobalId ?? globalIdState;
 
   // Determine loading state
   const isLoading = initQuery.isLoading || 
