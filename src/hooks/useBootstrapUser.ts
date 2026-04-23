@@ -261,7 +261,10 @@ async function runBootstrap(sb: any) {
   // 300ms delay ensures Supabase has committed all writes before the re-fetch fires.
   // IndexPage listens and invalidates my-region => all location-dependent queries re-fetch.
   setTimeout(() => {
-    try { window.dispatchEvent(new CustomEvent('bootstrap:complete')); } catch { /* non-fatal */ }
+    try {
+      (window as any).__bootstrapComplete = true;
+      window.dispatchEvent(new CustomEvent('bootstrap:complete'));
+    } catch { /* non-fatal */ }
   }, 300);
 }
 
