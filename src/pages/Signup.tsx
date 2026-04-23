@@ -88,6 +88,8 @@ function getDebugFlag(): boolean {
 interface IpGeo {
   countryCode: string | null;  // ISO 3166-1 alpha-2, e.g. "US"
   countryName: string | null;
+  regionCode: string | null;   // e.g. "NJ"
+  regionName: string | null;   // e.g. "New Jersey"
   loading: boolean;
   error: boolean;
 }
@@ -96,6 +98,8 @@ function useIpGeoDetection(): IpGeo {
   const [state, setState] = React.useState<IpGeo>({
     countryCode: null,
     countryName: null,
+    regionCode: null,
+    regionName: null,
     loading: true,
     error: false,
   });
@@ -116,9 +120,16 @@ function useIpGeoDetection(): IpGeo {
         const code = typeof json.country_code === "string" && json.country_code.length === 2
           ? json.country_code.toUpperCase()
           : null;
+        // region_code from ipapi is e.g. "NJ"; our geo_states_v uses codes like "US-NJ"
+        // so we store both raw and let the accept handler do the lookup
+        const regionCode = typeof json.region_code === "string" && json.region_code
+          ? json.region_code.toUpperCase()
+          : null;
         setState({
           countryCode: code,
           countryName: json.country_name ?? null,
+          regionCode,
+          regionName: json.region ?? null,
           loading: false,
           error: !code,
         });
@@ -139,15 +150,17 @@ function useIpGeoDetection(): IpGeo {
 
 interface GeoSuggestionBannerProps {
   countryName: string;
+  regionName?: string | null;
   onAccept: () => void;
   onDismiss: () => void;
 }
 
-function GeoSuggestionBanner({ countryName, onAccept, onDismiss }: GeoSuggestionBannerProps) {
+function GeoSuggestionBanner({ countryName, regionName, onAccept, onDismiss }: GeoSuggestionBannerProps) {
+  const locationLabel = regionName ? `${regionName}, ${countryName}` : countryName;
   return (
     <div className="flex items-center gap-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm">
       <span className="text-sky-700 flex-1">
-        📍 We detected your location as <span className="font-semibold">{countryName}</span>. Use this?
+        📍 We detected your location as <span className="font-semibold">{locationLabel}</span>. Use this?
       </span>
       <button
         type="button"
@@ -666,6 +679,8 @@ export default function Signup() {
   const [geoState, setGeoState] = React.useState<"pending" | "accepted" | "dismissed" | "overridden">("pending");
   // Track whether the final submitted location was an override of the detected one
   const [geoOverride, setGeoOverride] = React.useState(false);
+  // Holds the detected region name to resolve against states once they load after accept
+  const pendingGeoRegionName = React.useRef<string | null>(null);
 
   // QA-A01 fix: single hoisted useGeoData instance shared with LocationSelect.
   // Previously useGeoData() was called both here and inside LocationSelect,
@@ -682,6 +697,16 @@ export default function Signup() {
     if (geoState !== "pending") return;
     setCountry(ipGeo.countryCode);
   }, [ipGeo.loading, ipGeo.error, ipGeo.countryCode, geoData.ready]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Once states load after a geo accept, resolve the pending region name to a code
+  React.useEffect(() => {
+    if (!pendingGeoRegionName.current) return;
+    if (geoData.loadingStates || geoData.states.length === 0) return;
+    const target = pendingGeoRegionName.current.trim().toLowerCase();
+    const match = geoData.states.find(s => s.name.trim().toLowerCase() === target);
+    if (match) setStateCode(match.code);
+    pendingGeoRegionName.current = null;
+  }, [geoData.states, geoData.loadingStates]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Validation/errors
   const [errors, setErrors] = React.useState<Record<string, string>>({});
@@ -1240,10 +1265,15 @@ export default function Signup() {
             geoState === "pending" && (
               <GeoSuggestionBanner
                 countryName={ipGeo.countryName}
+                regionName={ipGeo.regionName}
                 onAccept={() => {
                   setCountry(ipGeo.countryCode!);
                   setGeoState("accepted");
                   setGeoOverride(false);
+                  // Stash region name for resolution once states load
+                  if (ipGeo.regionName) {
+                    pendingGeoRegionName.current = ipGeo.regionName;
+                  }
                 }}
                 onDismiss={() => {
                   setCountry("");
