@@ -247,18 +247,21 @@ export default function SettingsProfile() {
   // ── Session listener ──
   React.useEffect(() => {
     if (!sb) return;
+    let cancelled = false;
     let unsub: (() => void) | undefined;
     (async () => {
       try {
         const sess = await sb.auth.getSession();
-        setSessionUserId(sess.data.session?.user?.id ?? null);
-        const sub = sb.auth.onAuthStateChange((_evt, s) => setSessionUserId(s?.user?.id ?? null));
+        if (!cancelled) setSessionUserId(sess.data.session?.user?.id ?? null);
+        const sub = sb.auth.onAuthStateChange((_evt, s) => {
+          if (!cancelled) setSessionUserId(s?.user?.id ?? null);
+        });
         unsub = sub?.data?.subscription?.unsubscribe;
       } catch {
-        setSessionUserId(null);
+        if (!cancelled) setSessionUserId(null);
       }
     })();
-    return () => unsub?.();
+    return () => { cancelled = true; unsub?.(); };
   }, [sb]);
 
   // ── Load profile ──
@@ -300,6 +303,7 @@ export default function SettingsProfile() {
   async function saveProfile() {
     setMsg(null);
     if (!sb) return setMsg("Supabase is OFF (check env).");
+    if (!uid) return setMsg("Session not ready. Please wait a moment and try again.");
     try {
       setBusy(true);
       const update: Record<string, any> = {
