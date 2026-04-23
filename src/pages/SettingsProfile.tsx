@@ -244,6 +244,19 @@ export default function SettingsProfile() {
 
   const [handle, setHandle] = React.useState<string>("");
 
+  // Release any held Supabase auth lock on unmount to prevent getSession hangs
+  // on remount. This occurs because autoRefreshToken uses a localStorage mutex
+  // that can get stuck if the component unmounts mid-refresh.
+  React.useEffect(() => {
+    return () => {
+      if (!sb) return;
+      try {
+        const lockKey = Object.keys(localStorage).find(k => k.includes('supabase') && k.includes('lock'));
+        if (lockKey) localStorage.removeItem(lockKey);
+      } catch { /* ignore */ }
+    };
+  }, [sb]);
+
   // ── Session listener ──
   React.useEffect(() => {
     if (!sb) return;
@@ -304,15 +317,11 @@ export default function SettingsProfile() {
 
   // ── Save bio / avatar / show_age ──
   async function saveProfile() {
-    console.log('[saveProfile] called', { uid, hasSb: !!sb });
     setMsg(null);
     if (!sb) return setMsg("Supabase is OFF (check env).");
     if (!uid) return setMsg("Session not ready. Please wait a moment and try again.");
     try {
       setBusy(true);
-      console.log('[saveProfile] setBusy(true), about to getSession');
-      const { data: sessData } = await sb.auth.getSession();
-      console.log('[saveProfile] getSession resolved', { userId: sessData.session?.user?.id ?? null });
       const update: Record<string, any> = {
         bio: form.bio || null,
         avatar_url: form.avatar_url || null,
@@ -321,16 +330,12 @@ export default function SettingsProfile() {
       if (form.avatar_path !== undefined) {
         update.avatar_path = form.avatar_path || null;
       }
-      console.log('[saveProfile] about to update profiles', { uid, update });
       const { error } = await sb.from("profiles").update(update).eq("user_id", uid);
-      console.log('[saveProfile] update resolved', { error });
       if (error) throw error;
       setMsg("Profile saved.");
     } catch (e: any) {
-      console.error('[saveProfile] caught error', e);
       setMsg(e.message || "Could not save profile");
     } finally {
-      console.log('[saveProfile] finally — setBusy(false)');
       setBusy(false);
     }
   }
