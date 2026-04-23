@@ -211,6 +211,52 @@ function DobCorrectionSection({ sb, onDobCleared }: DobCorrectionSectionProps) {
   );
 }
 
+// ── M-A06: DOB set section (for users who skipped onboarding e.g. OAuth) ────
+
+interface DobSetSectionProps {
+  sb: ReturnType<typeof getSupabase>;
+  onDobSet: () => void;
+}
+
+function DobSetSection({ sb, onDobSet }: DobSetSectionProps) {
+  const [dob, setDob]   = React.useState("");
+  const [err, setErr]   = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+
+  async function handleSet() {
+    if (!sb || !dob) { setErr("Please select your date of birth."); return; }
+    setBusy(true);
+    setErr("");
+    try {
+      const { error } = await sb.rpc("profile_set_dob_checked", { p_dob_text: dob });
+      if (error) throw error;
+      onDobSet();
+    } catch (e: any) {
+      setErr(e.message ?? "Could not save date of birth.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-slate-500">
+        Your date of birth has not been set. It is used for age verification and optional age display.
+      </p>
+      <DobField value={dob} setValue={setDob} />
+      {err && <p className="text-xs text-rose-600">{err}</p>}
+      <button
+        type="button"
+        className="rounded bg-slate-900 text-white px-3 py-1.5 text-sm disabled:opacity-50"
+        onClick={handleSet}
+        disabled={busy || !dob}
+      >
+        {busy ? "Saving…" : "Save date of birth"}
+      </button>
+    </div>
+  );
+}
+
 // ── Main page ────────────────────────────────────────────────────────────────
 
 export default function SettingsProfile() {
@@ -556,7 +602,7 @@ export default function SettingsProfile() {
         </p>
       </div>
 
-      {/* M-A06: DOB correction pathway */}
+      {/* M-A06: DOB — set if unset, greyed out if already set */}
       <div className="rounded border p-3 space-y-2">
         <div className="text-sm font-medium">Date of birth</div>
         {dobSet ? (
@@ -564,6 +610,11 @@ export default function SettingsProfile() {
             <p className="text-xs text-slate-500">
               Your date of birth is set and encrypted. It cannot be viewed, only corrected.
             </p>
+            {/* Greyed-out locked indicator */}
+            <div className="flex items-center gap-2 rounded border border-slate-200 bg-slate-50 px-3 py-2 opacity-60 cursor-not-allowed select-none">
+              <span className="text-sm text-slate-500">••••-••-••</span>
+              <span className="text-xs text-slate-400 ml-auto">Locked</span>
+            </div>
             <DobCorrectionSection
               sb={sb}
               onDobCleared={() => {
@@ -573,9 +624,13 @@ export default function SettingsProfile() {
             />
           </>
         ) : (
-          <p className="text-xs text-slate-500">
-            Date of birth is not set. You can set it during onboarding.
-          </p>
+          <DobSetSection
+            sb={sb}
+            onDobSet={() => {
+              setDobSet(true);
+              setMsg("Date of birth saved.");
+            }}
+          />
         )}
       </div>
 
