@@ -369,6 +369,8 @@ function LocationSelect(props: {
   detectedCountryCode?: string | null;
   /** M-A01: Called when user picks a different country than the detected one */
   onGeoOverride?: () => void;
+  /** M-A01: region name detected from IP — auto-selects state once states load */
+  geoRegionName?: string | null;
   /** QA-A01 fix: single shared useGeoData instance hoisted from Signup */
   geoData: ReturnType<typeof useGeoData>;
 }) {
@@ -426,6 +428,17 @@ function LocationSelect(props: {
     setCityText("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.countyCode]);
+
+  // M-A01: once states finish loading after geo accept, auto-select the detected state
+  React.useEffect(() => {
+    if (!props.geoRegionName) return;
+    if (loadingStates || states.length === 0) return;
+    if (props.stateCode) return; // user already picked one
+    const target = props.geoRegionName.trim().toLowerCase();
+    const match = states.find(s => s.name.trim().toLowerCase() === target);
+    if (match) props.setStateCode(match.code);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [states, loadingStates]);
 
   return (
     <div className="space-y-2" aria-live="polite">
@@ -679,8 +692,8 @@ export default function Signup() {
   const [geoState, setGeoState] = React.useState<"pending" | "accepted" | "dismissed" | "overridden">("pending");
   // Track whether the final submitted location was an override of the detected one
   const [geoOverride, setGeoOverride] = React.useState(false);
-  // Holds the detected region name to resolve against states once they load after accept
-  const pendingGeoRegionName = React.useRef<string | null>(null);
+  // Holds the detected region name to auto-select in LocationSelect once states load
+  const [geoRegionName, setGeoRegionName] = React.useState<string | null>(null);
 
   // QA-A01 fix: single hoisted useGeoData instance shared with LocationSelect.
   // Previously useGeoData() was called both here and inside LocationSelect,
@@ -697,16 +710,6 @@ export default function Signup() {
     if (geoState !== "pending") return;
     setCountry(ipGeo.countryCode);
   }, [ipGeo.loading, ipGeo.error, ipGeo.countryCode, geoData.ready]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Once states load after a geo accept, resolve the pending region name to a code
-  React.useEffect(() => {
-    if (!pendingGeoRegionName.current) return;
-    if (geoData.loadingStates || geoData.states.length === 0) return;
-    const target = pendingGeoRegionName.current.trim().toLowerCase();
-    const match = geoData.states.find(s => s.name.trim().toLowerCase() === target);
-    if (match) setStateCode(match.code);
-    pendingGeoRegionName.current = null;
-  }, [geoData.states, geoData.loadingStates]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Validation/errors
   const [errors, setErrors] = React.useState<Record<string, string>>({});
@@ -1272,7 +1275,7 @@ export default function Signup() {
                   setGeoOverride(false);
                   // Stash region name for resolution once states load
                   if (ipGeo.regionName) {
-                    pendingGeoRegionName.current = ipGeo.regionName;
+                    setGeoRegionName(ipGeo.regionName);
                   }
                 }}
                 onDismiss={() => {
@@ -1301,6 +1304,7 @@ export default function Signup() {
             setCityId={setCityId}
             errorCountry={errors.country}
             detectedCountryCode={ipGeo.countryCode}
+            geoRegionName={geoRegionName}
             onGeoOverride={() => { setGeoState("overridden"); setGeoOverride(true); }}
             geoData={geoData}
           />
