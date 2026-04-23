@@ -717,6 +717,8 @@ export default function Signup() {
     if (country) return;        // user already selected something
     if (geoState !== "pending") return;
     setCountry(ipGeo.countryCode);
+    // Also stash region so it auto-selects once states load
+    if (ipGeo.regionName) setGeoRegionName(ipGeo.regionName);
   }, [ipGeo.loading, ipGeo.error, ipGeo.countryCode, geoData.ready]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Validation/errors
