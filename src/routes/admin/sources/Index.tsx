@@ -93,6 +93,37 @@ function makeRequestId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+
+function isAbortOrTimeoutError(e: unknown): boolean {
+  const msg = errorMessage(e).toLowerCase();
+  return msg.includes("abort") || msg.includes("timeout") || msg.includes("timed out");
+}
+
+async function runSupabaseWriteWithAbort<T>(
+  build: (signal: AbortSignal) => Promise<T>,
+  ms: number,
+  label: string
+): Promise<T> {
+  const controller = new AbortController();
+  debugLog(`[abort-timeout] starting ${label}; limit=${ms}ms`);
+
+  const timer = window.setTimeout(() => {
+    debugError(`[abort-timeout] aborting ${label}`, new Error(`${label} timed out after ${ms}ms`));
+    controller.abort();
+  }, ms);
+
+  try {
+    const result = await build(controller.signal);
+    debugLog(`[abort-timeout] ${label} completed`);
+    return result;
+  } catch (e) {
+    debugError(`[abort-timeout] ${label} rejected`, e);
+    throw e;
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
 function withTimeout<T>(p: Promise<T>, ms = 15000, label = "operation"): Promise<T> {
   debugLog(`[timeout] starting ${label}; limit=${ms}ms`);
 
@@ -629,6 +660,7 @@ export default function AdminSourcesIndex() {
       draft,
       route: location.pathname,
       hash: window.location.hash,
+      online: navigator.onLine,
     });
 
     if (saving) {
@@ -667,44 +699,53 @@ export default function AdminSourcesIndex() {
       const sb = getSupabase()!;
 
       if (draft.id) {
-        debugLog(`[${requestId}] UPDATE path`, { id: draft.id });
+        debugLog(`[${requestId}] UPDATE path - no select/returning`, { id: draft.id });
 
-        const { data, error, status, statusText } = await withTimeout(
-          sb
-            .from("topic_sources")
-            .update(payload)
-            .eq("id", draft.id)
-            .select("id,name,kind,endpoint,country_name,is_enabled,polling_interval")
-            .maybeSingle(),
-          20000,
+        const response = await runSupabaseWriteWithAbort(
+          (signal) =>
+            sb
+              .from("topic_sources")
+              .update(payload)
+              .eq("id", draft.id!)
+              .abortSignal(signal),
+          15000,
           `${requestId}: topic_sources update`
         );
 
+        const { data, error, status, statusText } = response as any;
         debugLog(`[${requestId}] UPDATE response`, { data, error, status, statusText });
         if (error) throw error;
       } else {
-        debugLog(`[${requestId}] INSERT path`);
+        debugLog(`[${requestId}] INSERT path - no select/returning`);
 
-        const { data, error, status, statusText } = await withTimeout(
-          sb
-            .from("topic_sources")
-            .insert(payload)
-            .select("id,name,kind,endpoint,country_name,is_enabled,polling_interval")
-            .maybeSingle(),
-          20000,
+        const response = await runSupabaseWriteWithAbort(
+          (signal) =>
+            sb
+              .from("topic_sources")
+              .insert(payload)
+              .abortSignal(signal),
+          15000,
           `${requestId}: topic_sources insert`
         );
 
+        const { data, error, status, statusText } = response as any;
         debugLog(`[${requestId}] INSERT response`, { data, error, status, statusText });
         if (error) throw error;
       }
 
-      debugLog(`[${requestId}] SUCCESS; closing modal and refreshing rows`);
+      debugLog(`[${requestId}] SUCCESS; closing modal immediately; refreshing rows in background`);
       setEditing(null);
-      await fetchRows();
+      setSaving(false);
+      void fetchRows();
     } catch (e: any) {
       const msg = errorMessage(e);
-      debugError(`[${requestId}] CAUGHT`, e);
+      debugError(`[${requestId}] CAUGHT`, {
+        raw: e,
+        message: msg,
+        isAbortOrTimeout: isAbortOrTimeoutError(e),
+        hint:
+          "If this is a timeout/AbortError, check DevTools Network for the topic_sources request. The DB/API is not returning, or the browser request is stalled.",
+      });
       setErr(msg);
       alert(`Save failed: ${msg}`);
     } finally {
