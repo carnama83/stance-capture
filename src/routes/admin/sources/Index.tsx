@@ -3,11 +3,13 @@
  *
  * Admin: News Sources Manager
  *
- * Drop-in fixed version v3.
+ * Drop-in fixed version v4.
  *
  * Fixes included:
  * - Save now uses a raw PostgREST fetch with AbortController timeout to bypass
  *   supabase-js request/auth stalls after route navigation.
+ * - Row refresh now also uses raw PostgREST fetch, so a successful save is not
+ *   followed by a stuck Supabase client read.
  * - Save path logs every major step with a unique request id.
  * - Insert/update payload is logged before the request.
  * - Insert/update response is logged after the request.
@@ -93,22 +95,28 @@ function makeRequestId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-
 function isAbortOrTimeoutError(e: unknown): boolean {
   const msg = errorMessage(e).toLowerCase();
-  return msg.includes("abort") || msg.includes("timeout") || msg.includes("timed out");
+  return (
+    msg.includes("abort") ||
+    msg.includes("timeout") ||
+    msg.includes("timed out")
+  );
 }
 
 async function runSupabaseWriteWithAbort<T>(
   build: (signal: AbortSignal) => Promise<T>,
   ms: number,
-  label: string
+  label: string,
 ): Promise<T> {
   const controller = new AbortController();
   debugLog(`[abort-timeout] starting ${label}; limit=${ms}ms`);
 
   const timer = window.setTimeout(() => {
-    debugError(`[abort-timeout] aborting ${label}`, new Error(`${label} timed out after ${ms}ms`));
+    debugError(
+      `[abort-timeout] aborting ${label}`,
+      new Error(`${label} timed out after ${ms}ms`),
+    );
     controller.abort();
   }, ms);
 
@@ -124,7 +132,11 @@ async function runSupabaseWriteWithAbort<T>(
   }
 }
 
-function withTimeout<T>(p: Promise<T>, ms = 15000, label = "operation"): Promise<T> {
+function withTimeout<T>(
+  p: Promise<T>,
+  ms = 15000,
+  label = "operation",
+): Promise<T> {
   debugLog(`[timeout] starting ${label}; limit=${ms}ms`);
 
   return new Promise((resolve, reject) => {
@@ -144,18 +156,20 @@ function withTimeout<T>(p: Promise<T>, ms = 15000, label = "operation"): Promise
         window.clearTimeout(t);
         debugError(`[timeout] ${label} rejected`, e);
         reject(e);
-      }
+      },
     );
   });
 }
-
 
 function findAccessTokenInObject(value: any, depth = 0): string | null {
   if (!value || depth > 6) return null;
   if (typeof value === "string") return null;
   if (typeof value !== "object") return null;
 
-  if (typeof value.access_token === "string" && value.access_token.length > 20) {
+  if (
+    typeof value.access_token === "string" &&
+    value.access_token.length > 20
+  ) {
     return value.access_token;
   }
 
@@ -182,7 +196,9 @@ function getAccessTokenFromLocalStorage(): string | null {
         const parsed = JSON.parse(raw);
         const token = findAccessTokenInObject(parsed);
         if (token) {
-          debugLog(`[auth-fallback] access token found in localStorage key=${key}`);
+          debugLog(
+            `[auth-fallback] access token found in localStorage key=${key}`,
+          );
           return token;
         }
       } catch {
@@ -212,31 +228,44 @@ function getSupabaseUrlAndKey(sb: any): { url: string; anonKey: string } {
     env.VITE_SUPABASE_KEY;
 
   if (!url) throw new Error("Missing Supabase URL for raw save fallback");
-  if (!anonKey) throw new Error("Missing Supabase anon/publishable key for raw save fallback");
+  if (!anonKey)
+    throw new Error(
+      "Missing Supabase anon/publishable key for raw save fallback",
+    );
 
   return { url: String(url).replace(/\/$/, ""), anonKey: String(anonKey) };
 }
 
-async function getAccessTokenFast(sb: any, requestId: string): Promise<string | null> {
+async function getAccessTokenFast(
+  sb: any,
+  requestId: string,
+): Promise<string | null> {
+  // Prefer the already-persisted token. After route navigation, your screenshots show
+  // supabase.auth.getSession() can stall for ~1500ms before we fall back. Reading the
+  // token directly avoids that extra delay and keeps both save + refresh responsive.
+  const fallback = getAccessTokenFromLocalStorage();
+  if (fallback) return fallback;
+
   try {
     const sessionResult: any = await withTimeout(
       sb.auth.getSession(),
       1500,
-      `${requestId}: auth.getSession fast check`
+      `${requestId}: auth.getSession fast check`,
     );
     const token = sessionResult?.data?.session?.access_token ?? null;
     if (token) {
-      debugLog(`[${requestId}] auth token obtained from supabase.auth.getSession()`);
+      debugLog(
+        `[${requestId}] auth token obtained from supabase.auth.getSession()`,
+      );
       return token;
     }
   } catch (e) {
-    debugWarn(`[${requestId}] auth.getSession slow/failed; using localStorage fallback`, e);
+    debugWarn(`[${requestId}] auth.getSession slow/failed`, e);
   }
 
-  const fallback = getAccessTokenFromLocalStorage();
-  if (fallback) return fallback;
-
-  debugWarn(`[${requestId}] no user access token found; raw save will use anon key only`);
+  debugWarn(
+    `[${requestId}] no user access token found; raw request will use anon key only`,
+  );
   return null;
 }
 
@@ -253,7 +282,10 @@ async function rawPostgrestSaveSource(args: {
 
   const controller = new AbortController();
   const timer = window.setTimeout(() => {
-    debugError(`[${requestId}] RAW fetch aborting`, new Error(`raw topic_sources save timed out after ${timeoutMs}ms`));
+    debugError(
+      `[${requestId}] RAW fetch aborting`,
+      new Error(`raw topic_sources save timed out after ${timeoutMs}ms`),
+    );
     controller.abort();
   }, timeoutMs);
 
@@ -277,7 +309,7 @@ async function rawPostgrestSaveSource(args: {
         Authorization: `Bearer ${token || anonKey}`,
         "Content-Type": "application/json",
         Prefer: "return=minimal",
-        "X-Client-Info": "admin-sources-raw-save-v3",
+        "X-Client-Info": "admin-sources-raw-save-v4",
       },
       body: JSON.stringify(payload),
       signal: controller.signal,
@@ -295,7 +327,7 @@ async function rawPostgrestSaveSource(args: {
 
     if (!res.ok) {
       throw new Error(
-        `Raw save failed ${res.status} ${res.statusText}${bodyText ? `: ${bodyText}` : ""}`
+        `Raw save failed ${res.status} ${res.statusText}${bodyText ? `: ${bodyText}` : ""}`,
       );
     }
 
@@ -306,6 +338,173 @@ async function rawPostgrestSaveSource(args: {
   } finally {
     window.clearTimeout(timer);
   }
+}
+
+function mapHealthToRowRaw(r: any): SourceRow {
+  return {
+    id: r.id,
+    name: r.name ?? "",
+    kind: (r.kind ?? "rss") as SourceKind,
+    endpoint: r.endpoint ?? r.url ?? "",
+    country_name: r.country_name ?? null,
+    is_enabled: !!r.is_enabled,
+    last_polled_at: r.last_polled_at ?? r.last_run_at ?? null,
+    last_status: r.last_status ?? null,
+    last_error: r.last_error ?? null,
+    success_count: r.success_count ?? null,
+    failure_count: r.failure_count ?? null,
+    polling_interval: r.polling_interval ?? r.polling_cadence ?? "daily",
+  };
+}
+
+function mapTopicSourcesToRowRaw(r: any): SourceRow {
+  return {
+    id: r.id,
+    name: r.name ?? "",
+    kind: (r.kind as SourceKind) ?? "rss",
+    endpoint: r.endpoint ?? r.url ?? "",
+    country_name: r.country_name ?? null,
+    is_enabled: !!(r.is_enabled ?? r.enabled ?? true),
+    last_polled_at: r.last_polled_at ?? r.last_run_at ?? null,
+    last_status: r.last_status ?? null,
+    last_error: r.last_error ?? null,
+    success_count: r.success_count ?? null,
+    failure_count: r.failure_count ?? null,
+    polling_interval: r.polling_interval ?? r.polling_cadence ?? "daily",
+  };
+}
+
+async function rawPostgrestGetJson<T>(args: {
+  sb: any;
+  requestId: string;
+  pathAndQuery: string;
+  label: string;
+  timeoutMs?: number;
+}): Promise<T> {
+  const { sb, requestId, pathAndQuery, label, timeoutMs = 12000 } = args;
+  const { url, anonKey } = getSupabaseUrlAndKey(sb);
+  const token = await getAccessTokenFast(sb, requestId);
+
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => {
+    debugError(
+      `[${requestId}] RAW GET aborting ${label}`,
+      new Error(`${label} timed out after ${timeoutMs}ms`),
+    );
+    controller.abort();
+  }, timeoutMs);
+
+  const endpoint = `${url}/rest/v1/${pathAndQuery.replace(/^\/+/, "")}`;
+  debugLog(`[${requestId}] RAW GET start ${label}`, {
+    endpoint,
+    hasToken: !!token,
+    timeoutMs,
+  });
+
+  try {
+    const res = await fetch(endpoint, {
+      method: "GET",
+      headers: {
+        apikey: anonKey,
+        Authorization: `Bearer ${token || anonKey}`,
+        Accept: "application/json",
+        "X-Client-Info": "admin-sources-raw-read-v4",
+      },
+      signal: controller.signal,
+      cache: "no-store",
+      credentials: "omit",
+    });
+
+    const bodyText = await res.text().catch(() => "");
+    debugLog(`[${requestId}] RAW GET response ${label}`, {
+      ok: res.ok,
+      status: res.status,
+      statusText: res.statusText,
+      bodyLength: bodyText.length,
+      bodyPreview: bodyText.slice(0, 500),
+    });
+
+    if (!res.ok) {
+      throw new Error(
+        `Raw read failed ${res.status} ${res.statusText}${bodyText ? `: ${bodyText}` : ""}`,
+      );
+    }
+
+    return (bodyText ? JSON.parse(bodyText) : null) as T;
+  } catch (e) {
+    debugError(`[${requestId}] RAW GET failed ${label}`, e);
+    throw e;
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
+async function fetchRowsRaw(sb: any, requestId: string): Promise<SourceRow[]> {
+  // Required source list. Keep this as the source of truth for the table after save.
+  const sourceRows = await rawPostgrestGetJson<any[]>({
+    sb,
+    requestId,
+    label: "topic_sources list",
+    timeoutMs: 12000,
+    pathAndQuery:
+      "topic_sources?select=id,name,kind,endpoint,country_name,is_enabled,polling_interval&order=name.asc",
+  });
+
+  let rows = (sourceRows ?? [])
+    .map(mapTopicSourcesToRowRaw)
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  // Optional health enrichment. Do not fail the whole screen if this view hangs or is missing.
+  try {
+    const healthRows = await rawPostgrestGetJson<any[]>({
+      sb,
+      requestId,
+      label: "v_source_health optional enrichment",
+      timeoutMs: 6000,
+      pathAndQuery: "v_source_health?select=*",
+    });
+
+    const sourceById = new Map(rows.map((r) => [r.id, r]));
+    rows = (healthRows ?? []).map((h) => {
+      const s = sourceById.get(h.id);
+      const base = mapHealthToRowRaw(h);
+      return {
+        ...base,
+        name: base.name || s?.name || "",
+        kind: (base.kind || s?.kind || "rss") as SourceKind,
+        endpoint: base.endpoint || s?.endpoint || "",
+        country_name: base.country_name ?? s?.country_name ?? null,
+        is_enabled:
+          typeof h.is_enabled === "boolean" ? h.is_enabled : !!s?.is_enabled,
+        polling_interval:
+          base.polling_interval ?? s?.polling_interval ?? "daily",
+      };
+    });
+
+    // If the health view returns fewer rows, append any sources that do not yet have health rows.
+    const healthIds = new Set(rows.map((r) => r.id));
+    for (const source of sourceById.values()) {
+      if (!healthIds.has(source.id)) rows.push(source);
+    }
+
+    rows.sort((a, b) => {
+      if (a.is_enabled !== b.is_enabled) return a.is_enabled ? -1 : 1;
+      const aTime = a.last_polled_at ? Date.parse(a.last_polled_at) : 0;
+      const bTime = b.last_polled_at ? Date.parse(b.last_polled_at) : 0;
+      return bTime - aTime || a.name.localeCompare(b.name);
+    });
+
+    debugLog(`[${requestId}] raw rows enriched from health`, {
+      count: rows.length,
+    });
+  } catch (healthErr) {
+    debugWarn(
+      `[${requestId}] optional v_source_health enrichment skipped`,
+      healthErr,
+    );
+  }
+
+  return rows;
 }
 
 const adminNavItems = [
@@ -329,8 +528,8 @@ function StatusPill({
     raw === "ok" || raw === "success"
       ? "done"
       : raw === "fail" || raw === "failed"
-      ? "error"
-      : raw;
+        ? "error"
+        : raw;
 
   const meta = (() => {
     switch (norm) {
@@ -352,7 +551,12 @@ function StatusPill({
         return { icon: "❌", text: "error", bg: "#fee2e2", fg: "#991b1b" };
 
       default:
-        return { icon: "⚠️", text: norm || "unknown", bg: "#fef3c7", fg: "#92400e" };
+        return {
+          icon: "⚠️",
+          text: norm || "unknown",
+          bg: "#fef3c7",
+          fg: "#92400e",
+        };
     }
   })();
 
@@ -379,7 +583,10 @@ function StatusPill({
       </span>
 
       {error ? (
-        <span title={error} style={{ marginLeft: 2, color: "#b00", cursor: "help" }}>
+        <span
+          title={error}
+          style={{ marginLeft: 2, color: "#b00", cursor: "help" }}
+        >
           ⓘ
         </span>
       ) : null}
@@ -409,11 +616,17 @@ export default function AdminSourcesIndex() {
   const [runProgress, setRunProgress] = useState<string>("");
 
   useEffect(() => {
-    debugLog("mounted", { path: location.pathname, hash: window.location.hash });
+    debugLog("mounted", {
+      path: location.pathname,
+      hash: window.location.hash,
+    });
     mountedRef.current = true;
 
     return () => {
-      debugLog("unmounted", { path: location.pathname, hash: window.location.hash });
+      debugLog("unmounted", {
+        path: location.pathname,
+        hash: window.location.hash,
+      });
       mountedRef.current = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -434,7 +647,7 @@ export default function AdminSourcesIndex() {
       "Last Run",
       "Actions",
     ],
-    []
+    [],
   );
 
   function mapHealthToRow(r: any): SourceRow {
@@ -479,67 +692,46 @@ export default function AdminSourcesIndex() {
     setErr(null);
 
     try {
-      const [healthRes, srcRes] = await withTimeout(
-        Promise.all([
-          supabase
-            .from("v_source_health")
-            .select("*")
-            .order("is_enabled", { ascending: false })
-            .order("last_polled_at", { ascending: false }),
-          supabase
-            .from("topic_sources")
-            .select("id,name,kind,endpoint,country_name,is_enabled,polling_interval")
-            .order("name", { ascending: true }),
-        ]),
-        20000,
-        `${requestId}: load v_source_health + topic_sources`
+      // v4: use raw PostgREST fetch for refresh too. Your v3 screenshot shows save
+      // succeeds, then the Supabase client read hangs on Promise.all(v_source_health,
+      // topic_sources). Raw fetch avoids the same stale client path that broke insert.
+      const freshRows = await fetchRowsRaw(getSupabase()!, requestId);
+
+      if (mountedRef.current) setRows(freshRows);
+      debugLog(`[${requestId}] setRows raw`, { count: freshRows.length });
+    } catch (e: any) {
+      debugError(
+        `[${requestId}] raw fetch failed; attempting legacy Supabase fallback`,
+        e,
       );
 
-      const { data: healthData, error: healthError } = healthRes;
-      const { data: srcData, error: srcError } = srcRes;
+      try {
+        const srcRes = await withTimeout(
+          supabase
+            .from("topic_sources")
+            .select(
+              "id,name,kind,endpoint,country_name,is_enabled,polling_interval",
+            )
+            .order("name", { ascending: true }),
+          8000,
+          `${requestId}: legacy topic_sources fallback`,
+        );
 
-      debugLog(`[${requestId}] responses`, {
-        healthRows: healthData?.length ?? 0,
-        srcRows: srcData?.length ?? 0,
-        healthError,
-        srcError,
-      });
-
-      if (srcError) throw srcError;
-
-      const srcById = new Map<string, any>();
-      (srcData ?? []).forEach((s: any) => srcById.set(s.id, s));
-
-      if (!healthError && healthData) {
-        const merged: SourceRow[] = (healthData as any[]).map((h) => {
-          const s = srcById.get(h.id);
-          const base = mapHealthToRow(h);
-
-          return {
-            ...base,
-            name: base.name || (s?.name ?? ""),
-            kind: (base.kind || s?.kind || "rss") as SourceKind,
-            endpoint: base.endpoint || (s?.endpoint ?? ""),
-            country_name: base.country_name ?? (s?.country_name ?? null),
-            is_enabled:
-              typeof h.is_enabled === "boolean" ? h.is_enabled : !!s?.is_enabled,
-            polling_interval:
-              base.polling_interval ?? s?.polling_interval ?? s?.polling_cadence ?? "daily",
-          };
+        if (srcRes.error) throw srcRes.error;
+        const fallbackRows = (srcRes.data ?? []).map(mapTopicSourcesToRowRaw);
+        if (mountedRef.current) setRows(fallbackRows);
+        debugLog(`[${requestId}] setRows legacy fallback`, {
+          count: fallbackRows.length,
         });
-
-        if (mountedRef.current) setRows(merged);
-        debugLog(`[${requestId}] setRows from health`, { count: merged.length });
-        return;
+      } catch (fallbackErr) {
+        debugError(`[${requestId}] fallback failed`, fallbackErr);
+        if (mountedRef.current)
+          setErr(
+            errorMessage(fallbackErr) ||
+              errorMessage(e) ||
+              "Failed to load sources",
+          );
       }
-
-      debugWarn(`[${requestId}] v_source_health unavailable; using topic_sources fallback`, healthError);
-      const fallbackRows = (srcData ?? []).map(mapTopicSourcesToRow);
-      if (mountedRef.current) setRows(fallbackRows);
-      debugLog(`[${requestId}] setRows fallback`, { count: fallbackRows.length });
-    } catch (e: any) {
-      debugError(`[${requestId}] failed`, e);
-      if (mountedRef.current) setErr(errorMessage(e) || "Failed to load sources");
     } finally {
       if (mountedRef.current) setLoading(false);
       debugLog(`[${requestId}] finally`);
@@ -565,7 +757,8 @@ export default function AdminSourcesIndex() {
       if (enabled === "off" && r.is_enabled) return false;
       if (q) {
         const qq = q.toLowerCase();
-        const hay = `${r.name} ${r.endpoint} ${r.country_name ?? ""}`.toLowerCase();
+        const hay =
+          `${r.name} ${r.endpoint} ${r.country_name ?? ""}`.toLowerCase();
         if (!hay.includes(qq)) return false;
       }
       return true;
@@ -624,33 +817,44 @@ export default function AdminSourcesIndex() {
 
     for (const source of selectedSources) {
       completed++;
-      setRunProgress(`Running ${completed}/${selectedSources.length}: ${source.name}...`);
+      setRunProgress(
+        `Running ${completed}/${selectedSources.length}: ${source.name}...`,
+      );
 
       try {
         try {
           const { error } = await withTimeout(
-            supabase.functions.invoke("ingest", { body: { source_id: source.id } }),
+            supabase.functions.invoke("ingest", {
+              body: { source_id: source.id },
+            }),
             15000,
-            `bulk ingest edge ${source.name}`
+            `bulk ingest edge ${source.name}`,
           );
 
           if (error) throw error;
           results.push({ name: source.name, success: true });
           continue;
         } catch (edgeErr: any) {
-          debugWarn(`Edge ingest failed for ${source.name}, trying RPC`, edgeErr);
+          debugWarn(
+            `Edge ingest failed for ${source.name}, trying RPC`,
+            edgeErr,
+          );
         }
 
         const { error: rpcError } = await withTimeout(
           supabase.rpc("admin_ingest_source", { p_source_id: source.id }),
           15000,
-          `bulk ingest rpc ${source.name}`
+          `bulk ingest rpc ${source.name}`,
         );
 
         if (rpcError) throw rpcError;
         results.push({ name: source.name, success: true });
       } catch (e: any) {
-        results.push({ name: source.name, success: false, error: errorMessage(e) });
+        results.push({
+          name: source.name,
+          success: false,
+          error: errorMessage(e),
+        });
       }
     }
 
@@ -688,11 +892,13 @@ export default function AdminSourcesIndex() {
       const { data, error } = await withTimeout(
         supabase
           .from("topic_sources")
-          .select("id,name,kind,endpoint,country_name,is_enabled,polling_interval")
+          .select(
+            "id,name,kind,endpoint,country_name,is_enabled,polling_interval",
+          )
           .eq("id", row.id)
           .maybeSingle(),
         15000,
-        `${requestId}: load topic_sources row`
+        `${requestId}: load topic_sources row`,
       );
 
       debugLog(`[${requestId}] response`, { data, error });
@@ -744,9 +950,12 @@ export default function AdminSourcesIndex() {
     setBusyId(row.id);
     try {
       const { error } = await withTimeout(
-        supabase.from("topic_sources").update({ is_enabled: checked }).eq("id", row.id),
+        supabase
+          .from("topic_sources")
+          .update({ is_enabled: checked })
+          .eq("id", row.id),
         15000,
-        `${requestId}: update is_enabled`
+        `${requestId}: update is_enabled`,
       );
       if (error) throw error;
       void fetchRows();
@@ -771,32 +980,39 @@ export default function AdminSourcesIndex() {
         const { data, error } = await withTimeout(
           supabase.functions.invoke("ingest", { body: { source_id: row.id } }),
           15000,
-          `${requestId}: edge ingest`
+          `${requestId}: edge ingest`,
         );
 
         debugLog(`[${requestId}] edge response`, { data, error });
         if (error) throw error;
 
         const statusLine =
-          typeof (data as any)?.status !== "undefined" ? `Status: ${(data as any).status}` : "";
-        const traceLine = (data as any)?.traceId ? `Trace: ${(data as any).traceId}` : "";
+          typeof (data as any)?.status !== "undefined"
+            ? `Status: ${(data as any).status}`
+            : "";
+        const traceLine = (data as any)?.traceId
+          ? `Trace: ${(data as any).traceId}`
+          : "";
 
         alert(
           `Triggered ingest for "${row.name}".\n${[statusLine, traceLine]
             .filter(Boolean)
-            .join("\n")}`
+            .join("\n")}`,
         );
 
         void fetchRows();
         return;
       } catch (edgeErr: any) {
-        debugWarn(`[${requestId}] Edge ingest failed; falling back to RPC`, edgeErr);
+        debugWarn(
+          `[${requestId}] Edge ingest failed; falling back to RPC`,
+          edgeErr,
+        );
       }
 
       const { error: rpcError } = await withTimeout(
         supabase.rpc("admin_ingest_source", { p_source_id: row.id }),
         15000,
-        `${requestId}: rpc admin_ingest_source`
+        `${requestId}: rpc admin_ingest_source`,
       );
 
       if (rpcError) throw rpcError;
@@ -871,7 +1087,9 @@ export default function AdminSourcesIndex() {
         timeoutMs: 15000,
       });
 
-      debugLog(`[${requestId}] SUCCESS; closing modal immediately; refreshing rows in background`);
+      debugLog(
+        `[${requestId}] SUCCESS; closing modal immediately; refreshing rows in background`,
+      );
       if (mountedRef.current) {
         setEditing(null);
         setSaving(false);
@@ -883,13 +1101,14 @@ export default function AdminSourcesIndex() {
         raw: e,
         message: msg,
         isAbortOrTimeout: isAbortOrTimeoutError(e),
-        hint:
-          "If RAW fetch also times out, open DevTools > Network and inspect the POST/PATCH /rest/v1/topic_sources request. If no request appears, env/auth configuration is the issue. If request is pending, the DB/PostgREST path is hanging.",
+        hint: "If RAW fetch also times out, open DevTools > Network and inspect the POST/PATCH /rest/v1/topic_sources request. If no request appears, env/auth configuration is the issue. If request is pending, the DB/PostgREST path is hanging.",
       });
       setErr(msg);
       alert(`Save failed: ${msg}`);
     } finally {
-      debugLog(`[${requestId}] finally; mounted=${mountedRef.current}; setSaving(false)`);
+      debugLog(
+        `[${requestId}] finally; mounted=${mountedRef.current}; setSaving(false)`,
+      );
       if (mountedRef.current) setSaving(false);
     }
   }
@@ -905,7 +1124,7 @@ export default function AdminSourcesIndex() {
       const { error } = await withTimeout(
         supabase.from("topic_sources").delete().eq("id", row.id),
         15000,
-        `${requestId}: delete topic_sources row`
+        `${requestId}: delete topic_sources row`,
       );
       if (error) throw error;
       void fetchRows();
@@ -918,8 +1137,10 @@ export default function AdminSourcesIndex() {
     }
   }
 
-  const allChecked = filtered.length > 0 && selectedIds.size === filtered.length;
-  const someChecked = selectedIds.size > 0 && selectedIds.size < filtered.length;
+  const allChecked =
+    filtered.length > 0 && selectedIds.size === filtered.length;
+  const someChecked =
+    selectedIds.size > 0 && selectedIds.size < filtered.length;
 
   return (
     <div style={{ padding: 16 }}>
@@ -965,7 +1186,14 @@ export default function AdminSourcesIndex() {
         }}
       >
         <h1 style={{ margin: 0 }}>Sources</h1>
-        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            alignItems: "center",
+            flexWrap: "wrap",
+          }}
+        >
           {selectedIds.size > 0 && (
             <button
               onClick={runAllSelected}
@@ -981,7 +1209,9 @@ export default function AdminSourcesIndex() {
                 opacity: runningAll ? 0.6 : 1,
               }}
             >
-              {runningAll ? `⏳ ${runProgress}` : `▶️ Run ${selectedIds.size} Selected`}
+              {runningAll
+                ? `⏳ ${runProgress}`
+                : `▶️ Run ${selectedIds.size} Selected`}
             </button>
           )}
 
@@ -991,7 +1221,10 @@ export default function AdminSourcesIndex() {
             <option value="api">api</option>
             <option value="social">social</option>
           </select>
-          <select value={enabled} onChange={(e) => setEnabled(e.target.value as any)}>
+          <select
+            value={enabled}
+            onChange={(e) => setEnabled(e.target.value as any)}
+          >
             <option value="all">All</option>
             <option value="on">Enabled</option>
             <option value="off">Disabled</option>
@@ -1012,11 +1245,18 @@ export default function AdminSourcesIndex() {
         <p style={{ marginTop: 12 }}>Loading…</p>
       ) : (
         <div style={{ marginTop: 12, overflowX: "auto" }}>
-          <table width="100%" cellPadding={8} style={{ borderCollapse: "collapse" }}>
+          <table
+            width="100%"
+            cellPadding={8}
+            style={{ borderCollapse: "collapse" }}
+          >
             <thead>
               <tr style={{ textAlign: "left", borderBottom: "1px solid #ddd" }}>
                 {headers.map((h, idx) => (
-                  <th key={idx === 0 ? "checkbox" : h} style={h === "Actions" ? { textAlign: "right" } : undefined}>
+                  <th
+                    key={idx === 0 ? "checkbox" : h}
+                    style={h === "Actions" ? { textAlign: "right" } : undefined}
+                  >
                     {idx === 0 ? (
                       <input
                         type="checkbox"
@@ -1073,7 +1313,13 @@ export default function AdminSourcesIndex() {
                     {r.endpoint}
                   </td>,
                   <td key="enabled">
-                    <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    <label
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                      }}
+                    >
                       <input
                         type="checkbox"
                         checked={!!r.is_enabled}
@@ -1092,14 +1338,22 @@ export default function AdminSourcesIndex() {
                     <StatusPill status={r.last_status} error={r.last_error} />
                   </td>,
                   <td key="lastrun">
-                    {r.last_polled_at ? new Date(r.last_polled_at).toLocaleString() : "—"}
+                    {r.last_polled_at
+                      ? new Date(r.last_polled_at).toLocaleString()
+                      : "—"}
                   </td>,
                   <td key="actions" style={{ textAlign: "right" }}>
                     <div style={{ display: "inline-flex", gap: 8 }}>
-                      <button disabled={busyId === r.id || runningAll} onClick={() => openEdit(r)}>
+                      <button
+                        disabled={busyId === r.id || runningAll}
+                        onClick={() => openEdit(r)}
+                      >
                         Edit
                       </button>
-                      <button disabled={busyId === r.id || runningAll} onClick={() => onRun(r)}>
+                      <button
+                        disabled={busyId === r.id || runningAll}
+                        onClick={() => onRun(r)}
+                      >
                         Run
                       </button>
                       <button
@@ -1128,7 +1382,10 @@ export default function AdminSourcesIndex() {
 
               {!filtered.length ? (
                 <tr>
-                  <td colSpan={12} style={{ padding: 24, textAlign: "center", color: "#666" }}>
+                  <td
+                    colSpan={12}
+                    style={{ padding: 24, textAlign: "center", color: "#666" }}
+                  >
                     No sources found.
                   </td>
                 </tr>
@@ -1164,14 +1421,18 @@ export default function AdminSourcesIndex() {
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 style={{ marginTop: 0 }}>{editing.id ? "Edit source" : "New source"}</h3>
+            <h3 style={{ marginTop: 0 }}>
+              {editing.id ? "Edit source" : "New source"}
+            </h3>
 
             <div style={{ display: "grid", gap: 12 }}>
               <label>
                 <div>Name</div>
                 <input
                   value={editing.name ?? ""}
-                  onChange={(e) => setEditing({ ...editing, name: e.target.value })}
+                  onChange={(e) =>
+                    setEditing({ ...editing, name: e.target.value })
+                  }
                   placeholder="e.g., BBC World RSS"
                   style={{ width: "100%" }}
                   disabled={saving}
@@ -1182,7 +1443,12 @@ export default function AdminSourcesIndex() {
                 <div>Kind</div>
                 <select
                   value={(editing.kind as SourceKind) ?? "rss"}
-                  onChange={(e) => setEditing({ ...editing, kind: e.target.value as SourceKind })}
+                  onChange={(e) =>
+                    setEditing({
+                      ...editing,
+                      kind: e.target.value as SourceKind,
+                    })
+                  }
                   style={{ width: "100%" }}
                   disabled={saving}
                 >
@@ -1196,7 +1462,9 @@ export default function AdminSourcesIndex() {
                 <div>Country Name</div>
                 <input
                   value={editing.country_name ?? ""}
-                  onChange={(e) => setEditing({ ...editing, country_name: e.target.value })}
+                  onChange={(e) =>
+                    setEditing({ ...editing, country_name: e.target.value })
+                  }
                   placeholder="e.g., United States"
                   style={{ width: "100%" }}
                   disabled={saving}
@@ -1207,18 +1475,24 @@ export default function AdminSourcesIndex() {
                 <div>Endpoint (URL or identifier)</div>
                 <input
                   value={editing.endpoint ?? ""}
-                  onChange={(e) => setEditing({ ...editing, endpoint: e.target.value })}
+                  onChange={(e) =>
+                    setEditing({ ...editing, endpoint: e.target.value })
+                  }
                   placeholder="https://..."
                   style={{ width: "100%" }}
                   disabled={saving}
                 />
               </label>
 
-              <label style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <label
+                style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+              >
                 <input
                   type="checkbox"
                   checked={!!editing.is_enabled}
-                  onChange={(e) => setEditing({ ...editing, is_enabled: e.target.checked })}
+                  onChange={(e) =>
+                    setEditing({ ...editing, is_enabled: e.target.checked })
+                  }
                   disabled={saving}
                 />
                 <span>Enabled</span>
@@ -1228,7 +1502,9 @@ export default function AdminSourcesIndex() {
                 <div>Polling cadence</div>
                 <select
                   value={editing.polling_interval ?? "daily"}
-                  onChange={(e) => setEditing({ ...editing, polling_interval: e.target.value })}
+                  onChange={(e) =>
+                    setEditing({ ...editing, polling_interval: e.target.value })
+                  }
                   style={{ width: "100%" }}
                   disabled={saving}
                 >
@@ -1251,7 +1527,11 @@ export default function AdminSourcesIndex() {
               <button onClick={closeModal} disabled={saving}>
                 Cancel
               </button>
-              <button onClick={() => onSave(editing)} disabled={saving} style={{ fontWeight: 600 }}>
+              <button
+                onClick={() => onSave(editing)}
+                disabled={saving}
+                style={{ fontWeight: 600 }}
+              >
                 {saving ? "Saving…" : editing.id ? "Update" : "Create"}
               </button>
             </div>
