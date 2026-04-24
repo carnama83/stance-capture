@@ -425,9 +425,9 @@ export default function AdminSourcesIndex() {
         is_enabled: row.is_enabled,
       };
 
+      console.log("[openEdit] opening modal. setSaving(false)");
       setSaving(false);
       setEditing({
-        id: canonical.id,
         name: canonical.name ?? "",
         kind: (canonical.kind as SourceKind) ?? "rss",
         endpoint: canonical.endpoint ?? "",
@@ -518,7 +518,11 @@ export default function AdminSourcesIndex() {
   }
 
   async function onSave(draft: Partial<SourceRow>) {
-    if (saving) return;
+    console.log("[onSave] called. saving=", saving, "draft=", JSON.stringify(draft));
+    if (saving) {
+      console.warn("[onSave] BLOCKED — saving is true. Stale lock.");
+      return;
+    }
 
     const missing: string[] = [];
     if (!draft.name?.trim()) missing.push("name");
@@ -529,6 +533,7 @@ export default function AdminSourcesIndex() {
       return;
     }
 
+    console.log("[onSave] validation passed, setting saving=true");
     setSaving(true);
     setErr(null);
 
@@ -539,6 +544,7 @@ export default function AdminSourcesIndex() {
 
     try {
       if (draft.id) {
+        console.log("[onSave] UPDATE path. id=", draft.id);
         const p = supabase
           .from("topic_sources")
           .update({
@@ -553,8 +559,10 @@ export default function AdminSourcesIndex() {
           .select();
 
         const { error } = await withTimeout(p, 15000);
+        console.log("[onSave] UPDATE result. error=", error);
         if (error) throw error;
       } else {
+        console.log("[onSave] INSERT path");
         const p = supabase.from("topic_sources").insert({
           name: draft.name!.trim(),
           endpoint: draft.endpoint!.trim(),
@@ -565,14 +573,18 @@ export default function AdminSourcesIndex() {
         }).select();
 
         const { error } = await withTimeout(p, 15000);
+        console.log("[onSave] INSERT result. error=", error);
         if (error) throw error;
       }
 
+      console.log("[onSave] SUCCESS — closing modal");
       setEditing(null);
       void fetchRows();
     } catch (e: any) {
+      console.error("[onSave] CAUGHT ERROR:", e);
       alert(`Save failed: ${e?.message ?? e}`);
     } finally {
+      console.log("[onSave] finally — setting saving=false");
       setSaving(false);
     }
   }
@@ -675,6 +687,7 @@ export default function AdminSourcesIndex() {
           />
           <button
             onClick={() => {
+              console.log("[+ New] opening modal. setSaving(false)");
               setSaving(false);
               setEditing({
                 kind: "rss",
