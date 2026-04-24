@@ -3,11 +3,11 @@
  *
  * Admin: News Sources Manager
  *
- * Drop-in fixed version.
+ * Drop-in fixed version v3.
  *
  * Fixes included:
- * - Save mutations now use an explicit timeout, so the UI cannot remain stuck on
- *   "Saving…" forever if Supabase/network/PostgREST hangs.
+ * - Save now uses a raw PostgREST fetch with AbortController timeout to bypass
+ *   supabase-js request/auth stalls after route navigation.
  * - Save path logs every major step with a unique request id.
  * - Insert/update payload is logged before the request.
  * - Insert/update response is logged after the request.
@@ -147,6 +147,165 @@ function withTimeout<T>(p: Promise<T>, ms = 15000, label = "operation"): Promise
       }
     );
   });
+}
+
+
+function findAccessTokenInObject(value: any, depth = 0): string | null {
+  if (!value || depth > 6) return null;
+  if (typeof value === "string") return null;
+  if (typeof value !== "object") return null;
+
+  if (typeof value.access_token === "string" && value.access_token.length > 20) {
+    return value.access_token;
+  }
+
+  for (const key of Object.keys(value)) {
+    const found = findAccessTokenInObject(value[key], depth + 1);
+    if (found) return found;
+  }
+
+  return null;
+}
+
+function getAccessTokenFromLocalStorage(): string | null {
+  try {
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const key = window.localStorage.key(i);
+      if (!key) continue;
+      const lower = key.toLowerCase();
+      if (!lower.includes("supabase") && !lower.startsWith("sb-")) continue;
+
+      const raw = window.localStorage.getItem(key);
+      if (!raw) continue;
+
+      try {
+        const parsed = JSON.parse(raw);
+        const token = findAccessTokenInObject(parsed);
+        if (token) {
+          debugLog(`[auth-fallback] access token found in localStorage key=${key}`);
+          return token;
+        }
+      } catch {
+        // Ignore non-JSON localStorage entries.
+      }
+    }
+  } catch (e) {
+    debugWarn("[auth-fallback] localStorage scan failed", e);
+  }
+
+  return null;
+}
+
+function getSupabaseUrlAndKey(sb: any): { url: string; anonKey: string } {
+  const env = (import.meta as any).env ?? {};
+  const url =
+    sb?.supabaseUrl ||
+    sb?.rest?.url?.replace(/\/rest\/v1\/?$/, "") ||
+    env.VITE_SUPABASE_URL ||
+    env.VITE_SUPABASE_PROJECT_URL;
+
+  const anonKey =
+    sb?.supabaseKey ||
+    sb?.anonKey ||
+    env.VITE_SUPABASE_ANON_KEY ||
+    env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+    env.VITE_SUPABASE_KEY;
+
+  if (!url) throw new Error("Missing Supabase URL for raw save fallback");
+  if (!anonKey) throw new Error("Missing Supabase anon/publishable key for raw save fallback");
+
+  return { url: String(url).replace(/\/$/, ""), anonKey: String(anonKey) };
+}
+
+async function getAccessTokenFast(sb: any, requestId: string): Promise<string | null> {
+  try {
+    const sessionResult: any = await withTimeout(
+      sb.auth.getSession(),
+      1500,
+      `${requestId}: auth.getSession fast check`
+    );
+    const token = sessionResult?.data?.session?.access_token ?? null;
+    if (token) {
+      debugLog(`[${requestId}] auth token obtained from supabase.auth.getSession()`);
+      return token;
+    }
+  } catch (e) {
+    debugWarn(`[${requestId}] auth.getSession slow/failed; using localStorage fallback`, e);
+  }
+
+  const fallback = getAccessTokenFromLocalStorage();
+  if (fallback) return fallback;
+
+  debugWarn(`[${requestId}] no user access token found; raw save will use anon key only`);
+  return null;
+}
+
+async function rawPostgrestSaveSource(args: {
+  sb: any;
+  requestId: string;
+  payload: SavePayload;
+  id?: string;
+  timeoutMs?: number;
+}): Promise<{ status: number; statusText: string; bodyText: string }> {
+  const { sb, requestId, payload, id, timeoutMs = 15000 } = args;
+  const { url, anonKey } = getSupabaseUrlAndKey(sb);
+  const token = await getAccessTokenFast(sb, requestId);
+
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => {
+    debugError(`[${requestId}] RAW fetch aborting`, new Error(`raw topic_sources save timed out after ${timeoutMs}ms`));
+    controller.abort();
+  }, timeoutMs);
+
+  const method = id ? "PATCH" : "POST";
+  const endpoint = id
+    ? `${url}/rest/v1/topic_sources?id=eq.${encodeURIComponent(id)}`
+    : `${url}/rest/v1/topic_sources`;
+
+  debugLog(`[${requestId}] RAW ${method} start`, {
+    endpoint,
+    hasToken: !!token,
+    timeoutMs,
+    payload,
+  });
+
+  try {
+    const res = await fetch(endpoint, {
+      method,
+      headers: {
+        apikey: anonKey,
+        Authorization: `Bearer ${token || anonKey}`,
+        "Content-Type": "application/json",
+        Prefer: "return=minimal",
+        "X-Client-Info": "admin-sources-raw-save-v3",
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+      cache: "no-store",
+      credentials: "omit",
+    });
+
+    const bodyText = await res.text().catch(() => "");
+    debugLog(`[${requestId}] RAW ${method} response`, {
+      ok: res.ok,
+      status: res.status,
+      statusText: res.statusText,
+      bodyText,
+    });
+
+    if (!res.ok) {
+      throw new Error(
+        `Raw save failed ${res.status} ${res.statusText}${bodyText ? `: ${bodyText}` : ""}`
+      );
+    }
+
+    return { status: res.status, statusText: res.statusText, bodyText };
+  } catch (e) {
+    debugError(`[${requestId}] RAW ${method} failed`, e);
+    throw e;
+  } finally {
+    window.clearTimeout(timer);
+  }
 }
 
 const adminNavItems = [
@@ -698,44 +857,25 @@ export default function AdminSourcesIndex() {
     try {
       const sb = getSupabase()!;
 
-      if (draft.id) {
-        debugLog(`[${requestId}] UPDATE path - no select/returning`, { id: draft.id });
-
-        const response = await runSupabaseWriteWithAbort(
-          (signal) =>
-            sb
-              .from("topic_sources")
-              .update(payload)
-              .eq("id", draft.id!)
-              .abortSignal(signal),
-          15000,
-          `${requestId}: topic_sources update`
-        );
-
-        const { data, error, status, statusText } = response as any;
-        debugLog(`[${requestId}] UPDATE response`, { data, error, status, statusText });
-        if (error) throw error;
-      } else {
-        debugLog(`[${requestId}] INSERT path - no select/returning`);
-
-        const response = await runSupabaseWriteWithAbort(
-          (signal) =>
-            sb
-              .from("topic_sources")
-              .insert(payload)
-              .abortSignal(signal),
-          15000,
-          `${requestId}: topic_sources insert`
-        );
-
-        const { data, error, status, statusText } = response as any;
-        debugLog(`[${requestId}] INSERT response`, { data, error, status, statusText });
-        if (error) throw error;
-      }
+      // IMPORTANT:
+      // This save path intentionally uses raw fetch instead of supabase-js.
+      // Your screenshots show the code reaches the Supabase insert builder and then
+      // never returns after navigating away/back. That usually means the request is
+      // stalled before/inside the client request layer. Raw fetch bypasses that path,
+      // adds a hard AbortController timeout, and logs the actual HTTP response.
+      await rawPostgrestSaveSource({
+        sb,
+        requestId,
+        payload,
+        id: draft.id,
+        timeoutMs: 15000,
+      });
 
       debugLog(`[${requestId}] SUCCESS; closing modal immediately; refreshing rows in background`);
-      setEditing(null);
-      setSaving(false);
+      if (mountedRef.current) {
+        setEditing(null);
+        setSaving(false);
+      }
       void fetchRows();
     } catch (e: any) {
       const msg = errorMessage(e);
@@ -744,7 +884,7 @@ export default function AdminSourcesIndex() {
         message: msg,
         isAbortOrTimeout: isAbortOrTimeoutError(e),
         hint:
-          "If this is a timeout/AbortError, check DevTools Network for the topic_sources request. The DB/API is not returning, or the browser request is stalled.",
+          "If RAW fetch also times out, open DevTools > Network and inspect the POST/PATCH /rest/v1/topic_sources request. If no request appears, env/auth configuration is the issue. If request is pending, the DB/PostgREST path is hanging.",
       });
       setErr(msg);
       alert(`Save failed: ${msg}`);
