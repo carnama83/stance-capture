@@ -3,34 +3,22 @@
  *
  * Admin: News Sources Manager
  *
- * Provides the full CRUD interface for managing news ingestion sources
- * stored in the `topic_sources` table. Accessible at /admin/sources.
+ * Drop-in fixed version.
  *
- * Functionality:
- * - Lists all sources via the `v_source_health` view (joined with `topic_sources`
- *   for live polling stats: success/failure counts, last status, last polled time)
- * - Filter by kind (rss/api/social), enabled state, and free-text search
- * - Create new source via modal form (name, kind, country, endpoint, cadence)
- * - Edit existing source (fetches latest from `topic_sources` before opening modal)
- * - Toggle enabled/disabled per source inline
- * - Delete source with confirmation
- * - Run single source: invokes `ingest` Edge Function, falls back to
- *   `admin_ingest_source` RPC if Edge Function is unavailable
- * - Bulk run: multi-select checkboxes + "Run N Selected" button with
- *   sequential execution and per-source progress reporting
- * - StatusPill component: renders last_status as a color-coded badge
- *   (queued / running / done / error / unknown)
- * - All mutations use `withTimeout(promise, 15000)` to prevent silent hangs
- *
- * Key implementation notes:
- * - Reads via `v_source_health` (aggregated view); writes always go to `topic_sources`
- * - All Supabase insert/update calls must include `.select()` to force query execution
- *   (lazy builder pattern — without it the HTTP request never fires)
- * - `saving` state is explicitly reset to false before opening any modal to prevent
- *   stale lock from a prior failed save attempt blocking subsequent saves
+ * Fixes included:
+ * - Save mutations now use an explicit timeout, so the UI cannot remain stuck on
+ *   "Saving…" forever if Supabase/network/PostgREST hangs.
+ * - Save path logs every major step with a unique request id.
+ * - Insert/update payload is logged before the request.
+ * - Insert/update response is logged after the request.
+ * - `saving` is reset in `finally` no matter what happens.
+ * - Opening New/Edit always resets stale saving state.
+ * - Fetch/Edit selects include `polling_interval`, so cadence does not get lost.
+ * - Row mapping now always returns `polling_interval`, matching the SourceRow type.
+ * - Fetches are also protected from silent hangs.
  */
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { getSupabase } from "@/lib/supabaseClient";
 import { ROUTES } from "@/routes/paths";
@@ -52,6 +40,84 @@ type SourceRow = {
   polling_interval: string | null;
 };
 
+type SavePayload = {
+  name: string;
+  endpoint: string;
+  kind: SourceKind;
+  country_name: string | null;
+  is_enabled: boolean;
+  polling_interval: string;
+};
+
+const ADMIN_SOURCES_DEBUG = true;
+
+function debugLog(label: string, data?: unknown) {
+  if (!ADMIN_SOURCES_DEBUG) return;
+  const ts = new Date().toISOString();
+  if (typeof data === "undefined") {
+    console.log(`[AdminSources ${ts}] ${label}`);
+  } else {
+    console.log(`[AdminSources ${ts}] ${label}`, data);
+  }
+}
+
+function debugWarn(label: string, data?: unknown) {
+  if (!ADMIN_SOURCES_DEBUG) return;
+  const ts = new Date().toISOString();
+  console.warn(`[AdminSources ${ts}] ${label}`, data);
+}
+
+function debugError(label: string, data?: unknown) {
+  const ts = new Date().toISOString();
+  console.error(`[AdminSources ${ts}] ${label}`, data);
+}
+
+function errorMessage(e: unknown): string {
+  if (!e) return "Unknown error";
+  if (e instanceof Error) return e.message;
+  if (typeof e === "string") return e;
+  if (typeof e === "object") {
+    const anyErr = e as any;
+    return (
+      anyErr.message ||
+      anyErr.error_description ||
+      anyErr.details ||
+      anyErr.hint ||
+      JSON.stringify(anyErr)
+    );
+  }
+  return String(e);
+}
+
+function makeRequestId(prefix: string) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function withTimeout<T>(p: Promise<T>, ms = 15000, label = "operation"): Promise<T> {
+  debugLog(`[timeout] starting ${label}; limit=${ms}ms`);
+
+  return new Promise((resolve, reject) => {
+    const t = window.setTimeout(() => {
+      const err = new Error(`${label} timed out after ${ms}ms`);
+      debugError(`[timeout] ${label} timed out`, err);
+      reject(err);
+    }, ms);
+
+    p.then(
+      (v) => {
+        window.clearTimeout(t);
+        debugLog(`[timeout] ${label} completed`);
+        resolve(v);
+      },
+      (e) => {
+        window.clearTimeout(t);
+        debugError(`[timeout] ${label} rejected`, e);
+        reject(e);
+      }
+    );
+  });
+}
+
 const adminNavItems = [
   { label: "Sources", to: ROUTES.ADMIN_SOURCES },
   { label: "Ingestion", to: ROUTES.ADMIN_INGESTION },
@@ -59,22 +125,6 @@ const adminNavItems = [
   { label: "Questions", to: ROUTES.ADMIN_QUESTIONS },
   { label: "News", to: ROUTES.ADMIN_NEWS },
 ];
-
-function withTimeout<T>(p: Promise<T>, ms = 15000): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error(`Timed out after ${ms}ms`)), ms);
-    p.then(
-      (v) => {
-        clearTimeout(t);
-        resolve(v);
-      },
-      (e) => {
-        clearTimeout(t);
-        reject(e);
-      }
-    );
-  });
-}
 
 function StatusPill({
   status,
@@ -139,10 +189,7 @@ function StatusPill({
       </span>
 
       {error ? (
-        <span
-          title={error}
-          style={{ marginLeft: 2, color: "#b00", cursor: "help" }}
-        >
+        <span title={error} style={{ marginLeft: 2, color: "#b00", cursor: "help" }}>
           ⓘ
         </span>
       ) : null}
@@ -153,6 +200,7 @@ function StatusPill({
 export default function AdminSourcesIndex() {
   const supabase = getSupabase()!;
   const location = useLocation();
+  const mountedRef = useRef(true);
 
   const [rows, setRows] = useState<SourceRow[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -166,14 +214,24 @@ export default function AdminSourcesIndex() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [saving, setSaving] = useState<boolean>(false);
 
-  // NEW: Multi-select state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [runningAll, setRunningAll] = useState<boolean>(false);
   const [runProgress, setRunProgress] = useState<string>("");
 
+  useEffect(() => {
+    debugLog("mounted", { path: location.pathname, hash: window.location.hash });
+    mountedRef.current = true;
+
+    return () => {
+      debugLog("unmounted", { path: location.pathname, hash: window.location.hash });
+      mountedRef.current = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const headers = useMemo(
     () => [
-      "", // Checkbox column
+      "",
       "Name",
       "Kind",
       "Country",
@@ -194,7 +252,7 @@ export default function AdminSourcesIndex() {
       id: r.id,
       name: r.name ?? "",
       kind: (r.kind ?? "rss") as SourceKind,
-      endpoint: r.endpoint ?? "",
+      endpoint: r.endpoint ?? r.url ?? "",
       country_name: r.country_name ?? null,
       is_enabled: !!r.is_enabled,
       last_polled_at: r.last_polled_at ?? r.last_run_at ?? null,
@@ -202,6 +260,7 @@ export default function AdminSourcesIndex() {
       last_error: r.last_error ?? null,
       success_count: r.success_count ?? null,
       failure_count: r.failure_count ?? null,
+      polling_interval: r.polling_interval ?? r.polling_cadence ?? "daily",
     };
   }
 
@@ -218,28 +277,43 @@ export default function AdminSourcesIndex() {
       last_error: r.last_error ?? null,
       success_count: r.success_count ?? null,
       failure_count: r.failure_count ?? null,
+      polling_interval: r.polling_interval ?? r.polling_cadence ?? "daily",
     };
   }
 
   async function fetchRows() {
+    const requestId = makeRequestId("fetchRows");
+    debugLog(`[${requestId}] start`);
+
     setLoading(true);
     setErr(null);
 
     try {
-      const [healthRes, srcRes] = await Promise.all([
-        supabase
-          .from("v_source_health")
-          .select("*")
-          .order("is_enabled", { ascending: false })
-          .order("last_polled_at", { ascending: false }),
-        supabase
-          .from("topic_sources")
-          .select("id,name,kind,endpoint,country_name,is_enabled")
-          .order("name", { ascending: true }),
-      ]);
+      const [healthRes, srcRes] = await withTimeout(
+        Promise.all([
+          supabase
+            .from("v_source_health")
+            .select("*")
+            .order("is_enabled", { ascending: false })
+            .order("last_polled_at", { ascending: false }),
+          supabase
+            .from("topic_sources")
+            .select("id,name,kind,endpoint,country_name,is_enabled,polling_interval")
+            .order("name", { ascending: true }),
+        ]),
+        20000,
+        `${requestId}: load v_source_health + topic_sources`
+      );
 
       const { data: healthData, error: healthError } = healthRes;
       const { data: srcData, error: srcError } = srcRes;
+
+      debugLog(`[${requestId}] responses`, {
+        healthRows: healthData?.length ?? 0,
+        srcRows: srcData?.length ?? 0,
+        healthError,
+        srcError,
+      });
 
       if (srcError) throw srcError;
 
@@ -259,28 +333,39 @@ export default function AdminSourcesIndex() {
             country_name: base.country_name ?? (s?.country_name ?? null),
             is_enabled:
               typeof h.is_enabled === "boolean" ? h.is_enabled : !!s?.is_enabled,
+            polling_interval:
+              base.polling_interval ?? s?.polling_interval ?? s?.polling_cadence ?? "daily",
           };
         });
 
-        setRows(merged);
+        if (mountedRef.current) setRows(merged);
+        debugLog(`[${requestId}] setRows from health`, { count: merged.length });
         return;
       }
 
-      setRows((srcData ?? []).map(mapTopicSourcesToRow));
+      debugWarn(`[${requestId}] v_source_health unavailable; using topic_sources fallback`, healthError);
+      const fallbackRows = (srcData ?? []).map(mapTopicSourcesToRow);
+      if (mountedRef.current) setRows(fallbackRows);
+      debugLog(`[${requestId}] setRows fallback`, { count: fallbackRows.length });
     } catch (e: any) {
-      setErr(e?.message ?? "Failed to load sources");
+      debugError(`[${requestId}] failed`, e);
+      if (mountedRef.current) setErr(errorMessage(e) || "Failed to load sources");
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
+      debugLog(`[${requestId}] finally`);
     }
   }
 
   useEffect(() => {
-    fetchRows();
+    void fetchRows();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    if (editing) setSaving(false);
+    if (editing) {
+      debugLog("editing opened/changed; forcing saving=false", editing);
+      setSaving(false);
+    }
   }, [editing]);
 
   const filtered = useMemo(() => {
@@ -297,43 +382,53 @@ export default function AdminSourcesIndex() {
     });
   }, [rows, kind, enabled, q]);
 
-  // NEW: Toggle individual checkbox
+  function openNew() {
+    debugLog("[+ New] opening modal; reset saving=false");
+    setErr(null);
+    setSaving(false);
+    setEditing({
+      kind: "rss",
+      is_enabled: true,
+      country_name: "",
+      polling_interval: "daily",
+    } as Partial<SourceRow>);
+  }
+
+  function closeModal() {
+    debugLog("[modal] closing; reset saving=false");
+    setSaving(false);
+    setEditing(null);
+  }
+
   function toggleSelection(id: string) {
-    setSelectedIds(prev => {
+    setSelectedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   }
 
-  // NEW: Toggle all checkboxes
   function toggleSelectAll() {
     if (selectedIds.size === filtered.length) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(filtered.map(r => r.id)));
+      setSelectedIds(new Set(filtered.map((r) => r.id)));
     }
   }
 
-  // NEW: Run all selected sources
   async function runAllSelected() {
     if (selectedIds.size === 0) {
       alert("No sources selected");
       return;
     }
 
-    if (!confirm(`Run ${selectedIds.size} selected source(s)?`)) {
-      return;
-    }
+    if (!confirm(`Run ${selectedIds.size} selected source(s)?`)) return;
 
     setRunningAll(true);
     setRunProgress("");
 
-    const selectedSources = filtered.filter(r => selectedIds.has(r.id));
+    const selectedSources = filtered.filter((r) => selectedIds.has(r.id));
     let completed = 0;
     const results: { name: string; success: boolean; error?: string }[] = [];
 
@@ -342,78 +437,75 @@ export default function AdminSourcesIndex() {
       setRunProgress(`Running ${completed}/${selectedSources.length}: ${source.name}...`);
 
       try {
-        // Try Edge Function first
         try {
-          const { data, error } = await withTimeout(
-            supabase.functions.invoke("ingest", {
-              body: { source_id: source.id },
-            }),
-            15000
+          const { error } = await withTimeout(
+            supabase.functions.invoke("ingest", { body: { source_id: source.id } }),
+            15000,
+            `bulk ingest edge ${source.name}`
           );
 
           if (error) throw error;
           results.push({ name: source.name, success: true });
           continue;
         } catch (edgeErr: any) {
-          console.warn(`Edge ingest failed for ${source.name}, trying RPC`, edgeErr);
+          debugWarn(`Edge ingest failed for ${source.name}, trying RPC`, edgeErr);
         }
 
-        // Fallback to RPC
         const { error: rpcError } = await withTimeout(
           supabase.rpc("admin_ingest_source", { p_source_id: source.id }),
-          15000
+          15000,
+          `bulk ingest rpc ${source.name}`
         );
 
-        if (rpcError) {
-          throw rpcError;
-        }
-
+        if (rpcError) throw rpcError;
         results.push({ name: source.name, success: true });
       } catch (e: any) {
-        results.push({ 
-          name: source.name, 
-          success: false, 
-          error: e?.message || String(e) 
-        });
+        results.push({ name: source.name, success: false, error: errorMessage(e) });
       }
     }
 
     setRunningAll(false);
     setRunProgress("");
 
-    // Show results
-    const successCount = results.filter(r => r.success).length;
-    const failCount = results.filter(r => !r.success).length;
-    
+    const successCount = results.filter((r) => r.success).length;
+    const failCount = results.filter((r) => !r.success).length;
+
     let message = `Completed: ${successCount} succeeded, ${failCount} failed\n\n`;
-    
+
     if (failCount > 0) {
       message += "Failed sources:\n";
       results
-        .filter(r => !r.success)
-        .forEach(r => {
+        .filter((r) => !r.success)
+        .forEach((r) => {
           message += `- ${r.name}: ${r.error}\n`;
         });
     }
 
     alert(message);
-    
-    // Clear selection and refresh
     setSelectedIds(new Set());
-    fetchRows();
+    void fetchRows();
   }
 
   async function openEdit(row: SourceRow) {
+    const requestId = makeRequestId("openEdit");
+    debugLog(`[${requestId}] start`, row);
+
     setErr(null);
     setBusyId(row.id);
+    setSaving(false);
 
     try {
-      const { data, error } = await supabase
-        .from("topic_sources")
-        .select("id,name,kind,endpoint,country_name,is_enabled")
-        .eq("id", row.id)
-        .maybeSingle();
+      const { data, error } = await withTimeout(
+        supabase
+          .from("topic_sources")
+          .select("id,name,kind,endpoint,country_name,is_enabled,polling_interval")
+          .eq("id", row.id)
+          .maybeSingle(),
+        15000,
+        `${requestId}: load topic_sources row`
+      );
 
+      debugLog(`[${requestId}] response`, { data, error });
       if (error) throw error;
 
       const canonical = data ?? {
@@ -423,9 +515,9 @@ export default function AdminSourcesIndex() {
         endpoint: row.endpoint,
         country_name: row.country_name,
         is_enabled: row.is_enabled,
+        polling_interval: row.polling_interval ?? "daily",
       };
 
-      setSaving(false);
       setSaving(false);
       setEditing({
         id: canonical.id,
@@ -437,7 +529,8 @@ export default function AdminSourcesIndex() {
         polling_interval: (canonical as any).polling_interval ?? "daily",
       });
     } catch (e: any) {
-      alert(`Failed to open edit: ${e?.message ?? e}`);
+      debugError(`[${requestId}] failed; opening fallback edit object`, e);
+      alert(`Failed to open edit: ${errorMessage(e)}`);
       setSaving(false);
       setEditing({
         id: row.id,
@@ -446,40 +539,52 @@ export default function AdminSourcesIndex() {
         endpoint: row.endpoint ?? "",
         country_name: row.country_name ?? "",
         is_enabled: row.is_enabled ?? true,
+        polling_interval: row.polling_interval ?? "daily",
       });
     } finally {
       setBusyId(null);
+      debugLog(`[${requestId}] finally`);
     }
   }
 
   async function onToggle(row: SourceRow, checked: boolean) {
+    const requestId = makeRequestId("toggle");
+    debugLog(`[${requestId}] start`, { id: row.id, checked });
+
     setBusyId(row.id);
-    const { error } = await supabase
-      .from("topic_sources")
-      .update({ is_enabled: checked })
-      .eq("id", row.id);
-    setBusyId(null);
-    if (error) {
-      alert(`Toggle failed: ${error.message}`);
-      return;
+    try {
+      const { error } = await withTimeout(
+        supabase.from("topic_sources").update({ is_enabled: checked }).eq("id", row.id),
+        15000,
+        `${requestId}: update is_enabled`
+      );
+      if (error) throw error;
+      void fetchRows();
+    } catch (e: any) {
+      debugError(`[${requestId}] failed`, e);
+      alert(`Toggle failed: ${errorMessage(e)}`);
+    } finally {
+      setBusyId(null);
+      debugLog(`[${requestId}] finally`);
     }
-    void fetchRows();
   }
 
   async function onRun(row: SourceRow) {
+    const requestId = makeRequestId("runOne");
+    debugLog(`[${requestId}] start`, row);
+
     setBusyId(row.id);
     setErr(null);
 
     try {
-      // Try Edge Function first
       try {
         const { data, error } = await withTimeout(
-          supabase.functions.invoke("ingest", {
-            body: { source_id: row.id },
-          }),
-          15000
+          supabase.functions.invoke("ingest", { body: { source_id: row.id } }),
+          15000,
+          `${requestId}: edge ingest`
         );
 
+        debugLog(`[${requestId}] edge response`, { data, error });
         if (error) throw error;
 
         const statusLine =
@@ -495,33 +600,39 @@ export default function AdminSourcesIndex() {
         void fetchRows();
         return;
       } catch (edgeErr: any) {
-        console.warn("Edge ingest failed; falling back to RPC admin_ingest_source", edgeErr);
+        debugWarn(`[${requestId}] Edge ingest failed; falling back to RPC`, edgeErr);
       }
 
-      // Attempt B: RPC admin_ingest_source(p_source_id uuid)
-      const { data: rpcData, error: rpcError } = await withTimeout(
+      const { error: rpcError } = await withTimeout(
         supabase.rpc("admin_ingest_source", { p_source_id: row.id }),
-        15000
+        15000,
+        `${requestId}: rpc admin_ingest_source`
       );
 
-      if (rpcError) {
-        throw rpcError;
-      }
+      if (rpcError) throw rpcError;
 
       alert(`Triggered ingest for "${row.name}" via admin_ingest_source().`);
       void fetchRows();
-      return;
     } catch (e: any) {
-      alert(`Run failed: ${e?.message || e}`);
+      debugError(`[${requestId}] failed`, e);
+      alert(`Run failed: ${errorMessage(e)}`);
     } finally {
       setBusyId(null);
+      debugLog(`[${requestId}] finally`);
     }
   }
 
   async function onSave(draft: Partial<SourceRow>) {
-    console.log("[onSave] called. saving=", saving, "name=", draft.name);
+    const requestId = makeRequestId("save");
+    debugLog(`[${requestId}] called`, {
+      saving,
+      draft,
+      route: location.pathname,
+      hash: window.location.hash,
+    });
+
     if (saving) {
-      console.warn("[onSave] BLOCKED");
+      debugWarn(`[${requestId}] blocked because saving=true`, draft);
       return;
     }
 
@@ -530,6 +641,7 @@ export default function AdminSourcesIndex() {
     if (!draft.kind) missing.push("kind");
     if (!draft.endpoint?.trim()) missing.push("endpoint");
     if (missing.length) {
+      debugWarn(`[${requestId}] validation failed`, missing);
       alert(`Please provide: ${missing.join(", ")}`);
       return;
     }
@@ -537,63 +649,92 @@ export default function AdminSourcesIndex() {
     setSaving(true);
     setErr(null);
 
-    const countryName =
-      draft.country_name && draft.country_name.trim().length > 0
-        ? draft.country_name.trim()
-        : null;
+    const payload: SavePayload = {
+      name: draft.name!.trim(),
+      endpoint: draft.endpoint!.trim(),
+      kind: draft.kind as SourceKind,
+      country_name:
+        draft.country_name && draft.country_name.trim().length > 0
+          ? draft.country_name.trim()
+          : null,
+      is_enabled: draft.is_enabled ?? true,
+      polling_interval: draft.polling_interval ?? "daily",
+    };
+
+    debugLog(`[${requestId}] payload prepared`, payload);
 
     try {
+      const sb = getSupabase()!;
+
       if (draft.id) {
-        console.log("[onSave] UPDATE path");
-        const sb = getSupabase()!;
-        const { error } = await sb
-          .from("topic_sources")
-          .update({
-            name: draft.name!.trim(),
-            endpoint: draft.endpoint!.trim(),
-            kind: draft.kind,
-            country_name: countryName,
-            is_enabled: draft.is_enabled ?? true,
-            polling_interval: draft.polling_interval ?? "daily",
-          })
-          .eq("id", draft.id)
-          .select();
-        console.log("[onSave] UPDATE done. error=", error);
+        debugLog(`[${requestId}] UPDATE path`, { id: draft.id });
+
+        const { data, error, status, statusText } = await withTimeout(
+          sb
+            .from("topic_sources")
+            .update(payload)
+            .eq("id", draft.id)
+            .select("id,name,kind,endpoint,country_name,is_enabled,polling_interval")
+            .maybeSingle(),
+          20000,
+          `${requestId}: topic_sources update`
+        );
+
+        debugLog(`[${requestId}] UPDATE response`, { data, error, status, statusText });
         if (error) throw error;
       } else {
-        console.log("[onSave] INSERT path");
-        const sb = getSupabase()!;
-        const { error } = await sb.from("topic_sources").insert({
-          name: draft.name!.trim(),
-          endpoint: draft.endpoint!.trim(),
-          kind: draft.kind,
-          country_name: countryName,
-          is_enabled: draft.is_enabled ?? true,
-          polling_interval: draft.polling_interval ?? "daily",
-        }).select();
-        console.log("[onSave] INSERT done. error=", error);
+        debugLog(`[${requestId}] INSERT path`);
+
+        const { data, error, status, statusText } = await withTimeout(
+          sb
+            .from("topic_sources")
+            .insert(payload)
+            .select("id,name,kind,endpoint,country_name,is_enabled,polling_interval")
+            .maybeSingle(),
+          20000,
+          `${requestId}: topic_sources insert`
+        );
+
+        debugLog(`[${requestId}] INSERT response`, { data, error, status, statusText });
         if (error) throw error;
       }
 
-      console.log("[onSave] SUCCESS");
+      debugLog(`[${requestId}] SUCCESS; closing modal and refreshing rows`);
       setEditing(null);
-      void fetchRows();
+      await fetchRows();
     } catch (e: any) {
-      console.error("[onSave] CAUGHT:", e);
-      alert(`Save failed: ${e?.message ?? e}`);
+      const msg = errorMessage(e);
+      debugError(`[${requestId}] CAUGHT`, e);
+      setErr(msg);
+      alert(`Save failed: ${msg}`);
     } finally {
-      console.log("[onSave] finally. setSaving(false)");
-      setSaving(false);
+      debugLog(`[${requestId}] finally; mounted=${mountedRef.current}; setSaving(false)`);
+      if (mountedRef.current) setSaving(false);
     }
   }
 
   async function onDelete(row: SourceRow) {
+    const requestId = makeRequestId("delete");
     if (!confirm(`Delete source "${row.name}"?`)) return;
+
+    debugLog(`[${requestId}] start`, row);
     setBusyId(row.id);
-    const { error } = await supabase.from("topic_sources").delete().eq("id", row.id);
-    setBusyId(null);
-    if (error) return alert(`Delete failed: ${error.message}`);
-    fetchRows();
+
+    try {
+      const { error } = await withTimeout(
+        supabase.from("topic_sources").delete().eq("id", row.id),
+        15000,
+        `${requestId}: delete topic_sources row`
+      );
+      if (error) throw error;
+      void fetchRows();
+    } catch (e: any) {
+      debugError(`[${requestId}] failed`, e);
+      alert(`Delete failed: ${errorMessage(e)}`);
+    } finally {
+      setBusyId(null);
+      debugLog(`[${requestId}] finally`);
+    }
   }
 
   const allChecked = filtered.length > 0 && selectedIds.size === filtered.length;
@@ -644,7 +785,6 @@ export default function AdminSourcesIndex() {
       >
         <h1 style={{ margin: 0 }}>Sources</h1>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          {/* NEW: Run All Selected button */}
           {selectedIds.size > 0 && (
             <button
               onClick={runAllSelected}
@@ -660,12 +800,10 @@ export default function AdminSourcesIndex() {
                 opacity: runningAll ? 0.6 : 1,
               }}
             >
-              {runningAll 
-                ? `⏳ ${runProgress}` 
-                : `▶️ Run ${selectedIds.size} Selected`}
+              {runningAll ? `⏳ ${runProgress}` : `▶️ Run ${selectedIds.size} Selected`}
             </button>
           )}
-          
+
           <select value={kind} onChange={(e) => setKind(e.target.value as any)}>
             <option value="all">All kinds</option>
             <option value="rss">rss</option>
@@ -683,18 +821,7 @@ export default function AdminSourcesIndex() {
             onChange={(e) => setQ(e.target.value)}
             style={{ minWidth: 240 }}
           />
-          <button
-            onClick={() => {
-              setSaving(false);
-              setEditing({
-                kind: "rss",
-                is_enabled: true,
-                country_name: "",
-              } as Partial<SourceRow>);
-            }}
-          >
-            + New
-          </button>
+          <button onClick={openNew}>+ New</button>
         </div>
       </div>
 
@@ -708,23 +835,20 @@ export default function AdminSourcesIndex() {
             <thead>
               <tr style={{ textAlign: "left", borderBottom: "1px solid #ddd" }}>
                 {headers.map((h, idx) => (
-                  <th
-                    key={idx === 0 ? "checkbox" : h}
-                    style={h === "Actions" ? { textAlign: "right" } : undefined}
-                  >
+                  <th key={idx === 0 ? "checkbox" : h} style={h === "Actions" ? { textAlign: "right" } : undefined}>
                     {idx === 0 ? (
                       <input
                         type="checkbox"
                         checked={allChecked}
-                        ref={input => {
-                          if (input) {
-                            input.indeterminate = someChecked;
-                          }
+                        ref={(input) => {
+                          if (input) input.indeterminate = someChecked;
                         }}
                         onChange={toggleSelectAll}
                         title="Select all"
                       />
-                    ) : h}
+                    ) : (
+                      h
+                    )}
                   </th>
                 ))}
               </tr>
@@ -732,7 +856,7 @@ export default function AdminSourcesIndex() {
             <tbody>
               {filtered.map((r) => {
                 const isSelected = selectedIds.has(r.id);
-                
+
                 const cells: React.ReactNode[] = [
                   <td key="checkbox">
                     <input
@@ -791,16 +915,10 @@ export default function AdminSourcesIndex() {
                   </td>,
                   <td key="actions" style={{ textAlign: "right" }}>
                     <div style={{ display: "inline-flex", gap: 8 }}>
-                      <button 
-                        disabled={busyId === r.id || runningAll} 
-                        onClick={() => openEdit(r)}
-                      >
+                      <button disabled={busyId === r.id || runningAll} onClick={() => openEdit(r)}>
                         Edit
                       </button>
-                      <button 
-                        disabled={busyId === r.id || runningAll} 
-                        onClick={() => onRun(r)}
-                      >
+                      <button disabled={busyId === r.id || runningAll} onClick={() => onRun(r)}>
                         Run
                       </button>
                       <button
@@ -815,11 +933,11 @@ export default function AdminSourcesIndex() {
                 ];
 
                 return (
-                  <tr 
-                    key={r.id} 
-                    style={{ 
+                  <tr
+                    key={r.id}
+                    style={{
                       borderBottom: "1px solid #eee",
-                      background: isSelected ? "#eff6ff" : "transparent"
+                      background: isSelected ? "#eff6ff" : "transparent",
                     }}
                   >
                     {cells}
@@ -829,10 +947,7 @@ export default function AdminSourcesIndex() {
 
               {!filtered.length ? (
                 <tr>
-                  <td
-                    colSpan={12}
-                    style={{ padding: 24, textAlign: "center", color: "#666" }}
-                  >
+                  <td colSpan={12} style={{ padding: 24, textAlign: "center", color: "#666" }}>
                     No sources found.
                   </td>
                 </tr>
@@ -854,7 +969,9 @@ export default function AdminSourcesIndex() {
             placeItems: "center",
             padding: 16,
           }}
-          onClick={() => setEditing(null)}
+          onClick={() => {
+            if (!saving) closeModal();
+          }}
         >
           <div
             style={{
@@ -884,9 +1001,7 @@ export default function AdminSourcesIndex() {
                 <div>Kind</div>
                 <select
                   value={(editing.kind as SourceKind) ?? "rss"}
-                  onChange={(e) =>
-                    setEditing({ ...editing, kind: e.target.value as SourceKind })
-                  }
+                  onChange={(e) => setEditing({ ...editing, kind: e.target.value as SourceKind })}
                   style={{ width: "100%" }}
                   disabled={saving}
                 >
@@ -900,9 +1015,7 @@ export default function AdminSourcesIndex() {
                 <div>Country Name</div>
                 <input
                   value={editing.country_name ?? ""}
-                  onChange={(e) =>
-                    setEditing({ ...editing, country_name: e.target.value })
-                  }
+                  onChange={(e) => setEditing({ ...editing, country_name: e.target.value })}
                   placeholder="e.g., United States"
                   style={{ width: "100%" }}
                   disabled={saving}
@@ -913,9 +1026,7 @@ export default function AdminSourcesIndex() {
                 <div>Endpoint (URL or identifier)</div>
                 <input
                   value={editing.endpoint ?? ""}
-                  onChange={(e) =>
-                    setEditing({ ...editing, endpoint: e.target.value })
-                  }
+                  onChange={(e) => setEditing({ ...editing, endpoint: e.target.value })}
                   placeholder="https://..."
                   style={{ width: "100%" }}
                   disabled={saving}
@@ -926,9 +1037,7 @@ export default function AdminSourcesIndex() {
                 <input
                   type="checkbox"
                   checked={!!editing.is_enabled}
-                  onChange={(e) =>
-                    setEditing({ ...editing, is_enabled: e.target.checked })
-                  }
+                  onChange={(e) => setEditing({ ...editing, is_enabled: e.target.checked })}
                   disabled={saving}
                 />
                 <span>Enabled</span>
@@ -937,10 +1046,8 @@ export default function AdminSourcesIndex() {
               <label>
                 <div>Polling cadence</div>
                 <select
-                  value={(editing as any).polling_interval ?? "daily"}
-                  onChange={(e) =>
-                    setEditing({ ...editing, polling_interval: e.target.value } as any)
-                  }
+                  value={editing.polling_interval ?? "daily"}
+                  onChange={(e) => setEditing({ ...editing, polling_interval: e.target.value })}
                   style={{ width: "100%" }}
                   disabled={saving}
                 >
@@ -960,14 +1067,10 @@ export default function AdminSourcesIndex() {
                 justifyContent: "flex-end",
               }}
             >
-              <button onClick={() => setEditing(null)} disabled={saving}>
+              <button onClick={closeModal} disabled={saving}>
                 Cancel
               </button>
-              <button
-                onClick={() => onSave(editing)}
-                disabled={saving}
-                style={{ fontWeight: 600 }}
-              >
+              <button onClick={() => onSave(editing)} disabled={saving} style={{ fontWeight: 600 }}>
                 {saving ? "Saving…" : editing.id ? "Update" : "Create"}
               </button>
             </div>
