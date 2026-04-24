@@ -545,7 +545,8 @@ export default function AdminSourcesIndex() {
     try {
       if (draft.id) {
         console.log("[onSave] UPDATE path");
-        const { error } = await supabase
+        const sb = getSupabase()!;
+        const { error } = await sb
           .from("topic_sources")
           .update({
             name: draft.name!.trim(),
@@ -561,7 +562,8 @@ export default function AdminSourcesIndex() {
         if (error) throw error;
       } else {
         console.log("[onSave] INSERT path");
-        const { error } = await supabase.from("topic_sources").insert({
+        const sb = getSupabase()!;
+        const { error } = await sb.from("topic_sources").insert({
           name: draft.name!.trim(),
           endpoint: draft.endpoint!.trim(),
           kind: draft.kind,
