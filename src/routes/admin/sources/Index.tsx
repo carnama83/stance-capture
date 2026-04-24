@@ -1,3 +1,35 @@
+/**
+ * File: src/routes/admin/sources/Index.tsx
+ *
+ * Admin: News Sources Manager
+ *
+ * Provides the full CRUD interface for managing news ingestion sources
+ * stored in the `topic_sources` table. Accessible at /admin/sources.
+ *
+ * Functionality:
+ * - Lists all sources via the `v_source_health` view (joined with `topic_sources`
+ *   for live polling stats: success/failure counts, last status, last polled time)
+ * - Filter by kind (rss/api/social), enabled state, and free-text search
+ * - Create new source via modal form (name, kind, country, endpoint, cadence)
+ * - Edit existing source (fetches latest from `topic_sources` before opening modal)
+ * - Toggle enabled/disabled per source inline
+ * - Delete source with confirmation
+ * - Run single source: invokes `ingest` Edge Function, falls back to
+ *   `admin_ingest_source` RPC if Edge Function is unavailable
+ * - Bulk run: multi-select checkboxes + "Run N Selected" button with
+ *   sequential execution and per-source progress reporting
+ * - StatusPill component: renders last_status as a color-coded badge
+ *   (queued / running / done / error / unknown)
+ * - All mutations use `withTimeout(promise, 15000)` to prevent silent hangs
+ *
+ * Key implementation notes:
+ * - Reads via `v_source_health` (aggregated view); writes always go to `topic_sources`
+ * - All Supabase insert/update calls must include `.select()` to force query execution
+ *   (lazy builder pattern — without it the HTTP request never fires)
+ * - `saving` state is explicitly reset to false before opening any modal to prevent
+ *   stale lock from a prior failed save attempt blocking subsequent saves
+ */
+
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { getSupabase } from "@/lib/supabaseClient";
@@ -393,6 +425,7 @@ export default function AdminSourcesIndex() {
         is_enabled: row.is_enabled,
       };
 
+      setSaving(false);
       setEditing({
         id: canonical.id,
         name: canonical.name ?? "",
@@ -404,6 +437,7 @@ export default function AdminSourcesIndex() {
       });
     } catch (e: any) {
       alert(`Failed to open edit: ${e?.message ?? e}`);
+      setSaving(false);
       setEditing({
         id: row.id,
         name: row.name ?? "",
@@ -640,13 +674,14 @@ export default function AdminSourcesIndex() {
             style={{ minWidth: 240 }}
           />
           <button
-            onClick={() =>
+            onClick={() => {
+              setSaving(false);
               setEditing({
                 kind: "rss",
                 is_enabled: true,
                 country_name: "",
-              } as Partial<SourceRow>)
-            }
+              } as Partial<SourceRow>);
+            }}
           >
             + New
           </button>
