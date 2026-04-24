@@ -515,7 +515,8 @@ export default function AdminSourcesIndex() {
             is_enabled: draft.is_enabled ?? true,
             polling_interval: draft.polling_interval ?? "daily",
           })
-          .eq("id", draft.id);
+          .eq("id", draft.id)
+          .select();
 
         const { error } = await withTimeout(p, 15000);
         if (error) throw error;
@@ -527,7 +528,7 @@ export default function AdminSourcesIndex() {
           country_name: countryName,
           is_enabled: draft.is_enabled ?? true,
           polling_interval: draft.polling_interval ?? "daily",
-        });
+        }).select();
 
         const { error } = await withTimeout(p, 15000);
         if (error) throw error;
