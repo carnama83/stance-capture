@@ -426,6 +426,7 @@ export default function AdminSourcesIndex() {
       };
 
       setSaving(false);
+      setSaving(false);
       setEditing({
         id: canonical.id,
         name: canonical.name ?? "",
@@ -518,7 +519,11 @@ export default function AdminSourcesIndex() {
   }
 
   async function onSave(draft: Partial<SourceRow>) {
-    if (saving) return;
+    console.log("[onSave] called. saving=", saving, "name=", draft.name);
+    if (saving) {
+      console.warn("[onSave] BLOCKED");
+      return;
+    }
 
     const missing: string[] = [];
     if (!draft.name?.trim()) missing.push("name");
@@ -539,6 +544,7 @@ export default function AdminSourcesIndex() {
 
     try {
       if (draft.id) {
+        console.log("[onSave] UPDATE path");
         const { error } = await supabase
           .from("topic_sources")
           .update({
@@ -551,9 +557,10 @@ export default function AdminSourcesIndex() {
           })
           .eq("id", draft.id)
           .select();
-
+        console.log("[onSave] UPDATE done. error=", error);
         if (error) throw error;
       } else {
+        console.log("[onSave] INSERT path");
         const { error } = await supabase.from("topic_sources").insert({
           name: draft.name!.trim(),
           endpoint: draft.endpoint!.trim(),
@@ -562,15 +569,18 @@ export default function AdminSourcesIndex() {
           is_enabled: draft.is_enabled ?? true,
           polling_interval: draft.polling_interval ?? "daily",
         }).select();
-
+        console.log("[onSave] INSERT done. error=", error);
         if (error) throw error;
       }
 
+      console.log("[onSave] SUCCESS");
       setEditing(null);
       void fetchRows();
     } catch (e: any) {
+      console.error("[onSave] CAUGHT:", e);
       alert(`Save failed: ${e?.message ?? e}`);
     } finally {
+      console.log("[onSave] finally. setSaving(false)");
       setSaving(false);
     }
   }
