@@ -418,7 +418,6 @@ export default function TopicDraftsPage() {
       setTimeout(() => { clearEntityInterval(); setEntityLoading(false); }, 8000);
     }
   }, [entityLoading, supabase, toast, pollEntityProgress, clearEntityInterval]);
-  }, [supabase]);
 
   const runEmbed = React.useCallback(async () => {
     if (embedLoading) return;
