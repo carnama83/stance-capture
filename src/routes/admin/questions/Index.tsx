@@ -276,16 +276,17 @@ export default function QuestionDraftsPage() {
     if (reframing) return;
     setReframing(true);
     try {
-      const { error } = await supabase.rpc("run_reframe_http");
+      const { data, error } = await supabase.functions.invoke("reframe");
       if (error) {
         toast({ title: "Reframe failed", description: error.message, variant: "destructive" });
         return;
       }
+      const { reframed = 0, failed = 0, skipped = 0 } = (data as any) ?? {};
       toast({
-        title: "Reframe triggered ✅",
-        description: "Reframing has started. Updated questions will appear in 30–60 seconds.",
+        title: "Reframe complete ✅",
+        description: `Reframed: ${reframed} · Failed: ${failed} · Skipped: ${skipped}`,
       });
-      setTimeout(() => { void load(); }, 5000);
+      setTimeout(() => { void load(); }, 2000);
     } catch (e: any) {
       toast({ title: "Reframe error", description: e?.message ?? String(e), variant: "destructive" });
     } finally {
