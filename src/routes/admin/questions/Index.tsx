@@ -17,17 +17,24 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/use-toast";
 import { ExternalLink, Edit2, RefreshCw, Loader2 } from "lucide-react";
 
-type QuestionStatus = "draft" | "approved" | "rejected";
+type QuestionStatus = "draft" | "approved" | "rejected" | "reframing" | "reframed" | "reframe_failed";
 
 type QuestionDraftRow = {
   id: string;
   topic_draft_id: string;
   topic_id: string | null;
   question: string;
+  raw_question: string | null;
   summary: string | null;
   tags: string[] | null;
   location_label: string | null;
   status: QuestionStatus;
+  // Epic QF: framing metadata
+  framing_style: string | null;
+  core_tension: string | null;
+  question_quality_score: number | null;
+  quality_notes: string | null;
+  reframed_at: string | null;
   created_at: string;
   updated_at: string;
   approved_at: string | null;
@@ -50,6 +57,9 @@ type QuestionDraftRow = {
 const STATUS_FILTERS: { value: "all" | QuestionStatus; label: string }[] = [
   { value: "all", label: "Any" },
   { value: "draft", label: "Draft" },
+  { value: "reframing", label: "Reframing" },
+  { value: "reframed", label: "Reframed" },
+  { value: "reframe_failed", label: "Reframe Failed" },
   { value: "approved", label: "Approved" },
   { value: "rejected", label: "Rejected" },
 ];
@@ -89,6 +99,7 @@ export default function QuestionDraftsPage() {
   };
   const [loading, setLoading] = React.useState(false);
   const [generating, setGenerating] = React.useState(false);
+  const [reframing, setReframing] = React.useState(false);
   const [bulkApproving, setBulkApproving] = React.useState(false);
   const [bulkPublishing, setBulkPublishing] = React.useState(false);
   const [generateCooldown, setGenerateCooldown] = React.useState(0);
@@ -147,10 +158,16 @@ export default function QuestionDraftsPage() {
         topic_draft_id,
         topic_id,
         question,
+        raw_question,
         summary,
         tags,
         location_label,
         status,
+        framing_style,
+        core_tension,
+        question_quality_score,
+        quality_notes,
+        reframed_at,
         created_at,
         updated_at,
         approved_at,
@@ -254,6 +271,27 @@ export default function QuestionDraftsPage() {
     setGenerating(false);
   }
 }, [generating, generateCooldown, supabase, toast, load, startGenerateCooldown]);
+
+  const handleReframe = React.useCallback(async () => {
+    if (reframing) return;
+    setReframing(true);
+    try {
+      const { error } = await supabase.rpc("run_reframe_http");
+      if (error) {
+        toast({ title: "Reframe failed", description: error.message, variant: "destructive" });
+        return;
+      }
+      toast({
+        title: "Reframe triggered ✅",
+        description: "Reframing has started. Updated questions will appear in 30–60 seconds.",
+      });
+      setTimeout(() => { void load(); }, 5000);
+    } catch (e: any) {
+      toast({ title: "Reframe error", description: e?.message ?? String(e), variant: "destructive" });
+    } finally {
+      setReframing(false);
+    }
+  }, [reframing, supabase, toast, load]);
 
 const chunk = <T,>(arr: T[], size: number): T[][] => {
     const out: T[][] = [];
@@ -452,6 +490,16 @@ const chunk = <T,>(arr: T[], size: number): T[][] => {
                 : generateCooldown > 0
                   ? `Run Generate (${generateCooldown}s)`
                   : "🚀 Run Generate Now"}
+            </Button>
+            <Button
+              variant="default"
+              onClick={handleReframe}
+              disabled={reframing || loading}
+              className="bg-violet-600 hover:bg-violet-700 text-white"
+              title="Run Reframe Now"
+            >
+              {reframing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {reframing ? "Reframing..." : "✨ Run Reframe Now"}
             </Button>
           </div>
         </div>
@@ -658,6 +706,41 @@ function QuestionDraftRowView({
 
           <h3 className="text-base font-semibold break-words">{row.question}</h3>
 
+          {/* Epic QF: framing metadata */}
+          {(row.framing_style || row.question_quality_score != null || row.core_tension) && (
+            <div className="mt-1 space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
+                {row.framing_style && (
+                  <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-violet-100 text-violet-700">
+                    {row.framing_style.replace(/_/g, " ")}
+                  </span>
+                )}
+                {row.question_quality_score != null && (
+                  <span
+                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                      row.question_quality_score >= 8
+                        ? "bg-emerald-100 text-emerald-700"
+                        : row.question_quality_score >= 6
+                          ? "bg-amber-100 text-amber-700"
+                          : "bg-rose-100 text-rose-700"
+                    }`}
+                    title={row.quality_notes ?? undefined}
+                  >
+                    Quality: {row.question_quality_score}/10
+                  </span>
+                )}
+              </div>
+              {row.core_tension && (
+                <p className="text-xs text-muted-foreground italic">{row.core_tension}</p>
+              )}
+              {row.status === "reframe_failed" && row.quality_notes && (
+                <p className="text-xs text-amber-700 bg-amber-50 rounded px-2 py-1">
+                  ⚠️ {row.quality_notes}
+                </p>
+              )}
+            </div>
+          )}
+
           {row.tags && row.tags.length > 0 && (
             <div className="flex flex-wrap gap-2 mt-1">
               {row.tags.map((t) => (
@@ -731,6 +814,18 @@ function StatusBadge({ status }: { status: QuestionStatus }) {
     case "draft":
       cls = "bg-slate-100 text-slate-700";
       label = "Draft";
+      break;
+    case "reframing":
+      cls = "bg-violet-100 text-violet-700";
+      label = "Reframing…";
+      break;
+    case "reframed":
+      cls = "bg-blue-100 text-blue-700";
+      label = "Reframed";
+      break;
+    case "reframe_failed":
+      cls = "bg-amber-100 text-amber-700";
+      label = "Reframe Failed";
       break;
     case "approved":
       cls = "bg-emerald-100 text-emerald-700";
