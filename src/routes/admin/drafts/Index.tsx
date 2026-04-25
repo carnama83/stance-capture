@@ -308,6 +308,7 @@ export default function TopicDraftsPage() {
       needEmbedding: needRes.count ?? 0,
       haveEmbedding: doneRes.count ?? 0,
     };
+  }, [supabase]);
 
   // Entity extraction progress polling — counts rows still missing entities
   const pollEntityProgress = React.useCallback(async () => {
