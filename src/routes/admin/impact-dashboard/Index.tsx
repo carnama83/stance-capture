@@ -402,90 +402,110 @@ const { data, isLoading, isError, error, refetch } = useQuery<QuestionImpactRow[
   const [isBootstrapping, setIsBootstrapping] = React.useState(false);
   const [scoringProgress, setScoringProgress] = React.useState({ current: 0, total: 0 });
 
+  // Batch size per scoring run — keeps runs under ~60s and prevents timeouts.
+  // Each question takes ~1-2s (API call + 300ms delay), so 30 ≈ 45s max.
+  const SCORE_BATCH_SIZE = 30;
+
   const handleBootstrap = async () => {
     setIsBootstrapping(true);
-    setScoringProgress({ current: 0, total: 0 }); // Reset progress
-    
+    setScoringProgress({ current: 0, total: 0 });
+
     try {
-      // Get all question IDs
-      const questionIds = data
-        ?.map((row) => row.question_id)
-        .filter((id): id is string => !!id) || [];
-      
-      if (questionIds.length === 0) {
+      // ── Round-robin ordering ──────────────────────────────────────────────
+      // Sort by scores_updated_at ASC NULLS FIRST so:
+      //   1. Unscored questions are always processed first
+      //   2. Oldest-scored questions come next
+      //   3. Recently-scored questions are deferred to future runs
+      // This ensures every question gets scored eventually instead of the
+      // same top questions being re-scored on every run.
+      const allRows = data
+        ?.filter((row): row is typeof row & { question_id: string } => !!row.question_id)
+        .slice() // don't mutate original
+        .sort((a, b) => {
+          // Unscored (null) always first
+          if (!a.scores_updated_at && !b.scores_updated_at) return 0;
+          if (!a.scores_updated_at) return -1;
+          if (!b.scores_updated_at) return 1;
+          // Oldest scored first
+          return new Date(a.scores_updated_at).getTime() - new Date(b.scores_updated_at).getTime();
+        }) || [];
+
+      if (allRows.length === 0) {
         toast({
           title: "No Questions Found",
-          description: "Add questions first, then bootstrap.",
+          description: "Add questions first, then score.",
           variant: "destructive",
         });
         return;
       }
 
-      // Initialize progress
-      setScoringProgress({ current: 0, total: questionIds.length });
+      // Take only the first SCORE_BATCH_SIZE questions this run
+      const batch = allRows.slice(0, SCORE_BATCH_SIZE);
+      const unscoredInBatch = batch.filter(r => !r.scores_updated_at).length;
+      const totalUnscored = allRows.filter(r => !r.scores_updated_at).length;
+
+      setScoringProgress({ current: 0, total: batch.length });
 
       toast({
         title: "🚀 Starting AI Scoring...",
-        description: `Scoring ${questionIds.length} questions with GPT-4`,
+        description: `Scoring ${batch.length} of ${allRows.length} questions `
+          + `(${unscoredInBatch} unscored, ${totalUnscored} total unscored). `
+          + (allRows.length > SCORE_BATCH_SIZE ? `Run again to score remaining ${allRows.length - SCORE_BATCH_SIZE}.` : ''),
       });
 
-      // Step 1: Score all with AI
+      // Step 1: Score batch with AI
       let scoredCount = 0;
       let failedCount = 0;
-      
-      for (let i = 0; i < questionIds.length; i++) {
-        const qid = questionIds[i];
+
+      for (let i = 0; i < batch.length; i++) {
+        const qid = batch[i].question_id;
         try {
           await supabase.functions.invoke('ai-score-question', {
             body: { question_id: qid }
           });
           scoredCount++;
-          
-          // Update progress
-          setScoringProgress({ current: i + 1, total: questionIds.length });
-          
+          setScoringProgress({ current: i + 1, total: batch.length });
         } catch (err) {
           console.error(`Failed to score ${qid}:`, err);
           failedCount++;
         }
-        
-        // Small delay to avoid rate limiting
-        await new Promise(resolve => setTimeout(resolve, 500));
+        // Delay to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 300));
       }
 
-      // Show interim results
       toast({
-        title: "🎯 AI Scoring Complete",
-        description: `Scored ${scoredCount}/${questionIds.length} questions. Now applying visibility rules...`,
+        title: "🎯 Scoring Complete",
+        description: `Scored ${scoredCount}/${batch.length} questions`
+          + (failedCount > 0 ? ` (${failedCount} failed)` : '')
+          + `. Applying visibility rules...`,
       });
 
       // Step 2: Apply visibility rules
       const { data: visibilityResult } = await supabase.rpc('update_visibility_rules');
       const visibilityCount = visibilityResult?.length || 0;
 
-      // Final success message
+      const remaining = allRows.length - SCORE_BATCH_SIZE;
       toast({
-        title: "✅ Bootstrap Complete!",
-        description: failedCount > 0 
-          ? `Scored ${scoredCount} questions (${failedCount} failed), applied ${visibilityCount} visibility rules.`
-          : `Scored ${scoredCount} questions, applied ${visibilityCount} visibility rules.`,
+        title: "✅ Run Complete!",
+        description: `Scored ${scoredCount} questions, applied ${visibilityCount} visibility rules.`
+          + (remaining > 0 ? ` ${remaining} questions remain — run again to continue.` : ' All questions scored!'),
       });
 
       // Force refetch
-      await queryClient.resetQueries({ 
+      await queryClient.resetQueries({
         queryKey: ["impact-dashboard", "v_question_impact_admin"],
         exact: true
       });
 
     } catch (err: any) {
       toast({
-        title: "Bootstrap Failed",
+        title: "Scoring Failed",
         description: err?.message || "Unknown error",
         variant: "destructive",
       });
     } finally {
       setIsBootstrapping(false);
-      setScoringProgress({ current: 0, total: 0 }); // Reset progress
+      setScoringProgress({ current: 0, total: 0 });
     }
   };
 
@@ -626,11 +646,20 @@ const handleRescoreSingle = async (questionId: string | null) => {
               <Button
                 onClick={handleBootstrap}
                 disabled={isBootstrapping || isLoading}
+                title={`Scores up to ${SCORE_BATCH_SIZE} questions per run, unscored first. Run multiple times to cover all questions.`}
               >
                 {isBootstrapping ? (
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
                 ) : null}
-                Score All Questions
+                {isBootstrapping
+                  ? `Scoring... ${scoringProgress.current}/${scoringProgress.total}`
+                  : (() => {
+                      const unscored = data?.filter(r => !r.scores_updated_at).length ?? 0;
+                      return unscored > 0
+                        ? `Score Next ${Math.min(SCORE_BATCH_SIZE, unscored)} (${unscored} unscored)`
+                        : `Re-score Next ${SCORE_BATCH_SIZE}`;
+                    })()
+                }
               </Button>
               <Button
                 variant="secondary"
@@ -658,6 +687,7 @@ const handleRescoreSingle = async (questionId: string | null) => {
                 </div>
                 <p className="text-sm text-muted-foreground">
                   Scoring questions with GPT-4... {Math.round((scoringProgress.current / scoringProgress.total) * 100)}% complete
+                  {' '}(unscored first, oldest-scored next)
                 </p>
               </div>
             )}
