@@ -444,6 +444,9 @@ export default function TopicDraftsPage() {
     let baselineClustered: number | null = null;
     let baselineClusters: number | null = null;
     let totalEligible: number | null = null;
+    // Plateau detection state
+    let lastClusteredCount = 0;
+    let plateauTicks = 0;
 
     // Start polling IMMEDIATELY — same pattern as embed
     clusterIntervalRef.current = window.setInterval(async () => {
@@ -498,7 +501,27 @@ export default function TopicDraftsPage() {
           `${newlyClustered} / ${totalEligible ?? "?"} clustered — ${remaining} remaining, ${newClusters} clusters`
         );
 
+        // Fast-path: all eligible items clustered in one run
         if (newlyClustered > 0 && remaining === 0) {
+          clearClusterInterval();
+          setClusterLoading(false);
+          toast({
+            title: "Clustering complete! ✅",
+            description: `${newClusters} clusters from ${newlyClustered} articles in ${elapsed}s`,
+          });
+          return;
+        }
+
+        // Plateau detection: RPC finished and no progress for 3 consecutive polls (~6s)
+        // Handles the case where batch limit < total eligible (e.g. 200 cap with 454 items)
+        if (newlyClustered === lastClusteredCount && newlyClustered > 0) {
+          plateauTicks++;
+        } else {
+          plateauTicks = 0;
+          lastClusteredCount = newlyClustered;
+        }
+
+        if (plateauTicks >= 3) {
           clearClusterInterval();
           setClusterLoading(false);
           toast({
