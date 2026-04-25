@@ -420,14 +420,49 @@ const chunk = <T,>(arr: T[], size: number): T[][] => {
 
   return (
     <Card className="max-w-6xl mx-auto">
-      <CardHeader className="flex items-center justify-between gap-3">
-        <CardTitle>Question Drafts</CardTitle>
-        <div className="flex items-center gap-2">
+      <CardHeader className="space-y-3 pb-3">
+
+        {/* Row 1: Title + Refresh + Generate */}
+        <div className="flex items-center justify-between gap-2">
+          <CardTitle>Question Drafts</CardTitle>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={load}
+              disabled={loading}
+              title={loading ? "Loading…" : "Refresh"}
+            >
+              <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+            </Button>
+            <Button
+              variant="default"
+              onClick={handleBulkGenerate}
+              disabled={generating || loading || generateCooldown > 0}
+              className="bg-green-600 hover:bg-green-700 text-white"
+              title={
+                generateCooldown > 0
+                  ? `Please wait ${generateCooldown}s before running again`
+                  : "Run Generate Now"
+              }
+            >
+              {generating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {generating
+                ? "Generating..."
+                : generateCooldown > 0
+                  ? `Run Generate (${generateCooldown}s)`
+                  : "🚀 Run Generate Now"}
+            </Button>
+          </div>
+        </div>
+
+        {/* Row 2: Filters + bulk actions */}
+        <div className="flex flex-wrap items-center gap-2">
           <Input
             placeholder="Search question…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-56"
+            className="w-48"
           />
           <Input
             type="datetime-local"
@@ -437,7 +472,7 @@ const chunk = <T,>(arr: T[], size: number): T[][] => {
                 e.target.value ? new Date(e.target.value).toISOString() : "",
               )
             }
-            className="w-48"
+            className="w-44"
           />
           <Input
             type="datetime-local"
@@ -447,10 +482,10 @@ const chunk = <T,>(arr: T[], size: number): T[][] => {
                 e.target.value ? new Date(e.target.value).toISOString() : "",
               )
             }
-            className="w-48"
+            className="w-44"
           />
           <select
-            className="border rounded px-2 py-1 text-sm"
+            className="border rounded px-2 py-1 text-sm h-9"
             value={statusFilter}
             onChange={(e) =>
               setStatusFilter(e.target.value as "all" | QuestionStatus)
@@ -463,7 +498,7 @@ const chunk = <T,>(arr: T[], size: number): T[][] => {
             ))}
           </select>
 
-          <div className="flex items-center gap-2 ml-2">
+          <div className="flex items-center gap-2 ml-auto border rounded px-2 py-1">
             <label className="flex items-center gap-2 text-sm select-none">
               <input
                 type="checkbox"
@@ -472,11 +507,9 @@ const chunk = <T,>(arr: T[], size: number): T[][] => {
               />
               <span className="text-xs text-muted-foreground">Select all</span>
             </label>
-
             {selectedCount > 0 && (
               <span className="text-xs text-muted-foreground">Selected: {selectedCount}</span>
             )}
-
             <Button
               variant="outline"
               size="sm"
@@ -486,7 +519,6 @@ const chunk = <T,>(arr: T[], size: number): T[][] => {
             >
               {bulkApproving ? "Approving…" : "Bulk Approve"}
             </Button>
-
             <Button
               variant="outline"
               size="sm"
@@ -496,7 +528,6 @@ const chunk = <T,>(arr: T[], size: number): T[][] => {
             >
               {bulkPublishing ? "Publishing…" : "Bulk Publish"}
             </Button>
-
             <Button
               variant="ghost"
               size="sm"
@@ -507,36 +538,8 @@ const chunk = <T,>(arr: T[], size: number): T[][] => {
               Clear
             </Button>
           </div>
-
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={load}
-            disabled={loading}
-            title={loading ? "Loading…" : "Refresh"}
-          >
-            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-          </Button>
-
-          <Button
-            variant="default"
-            onClick={handleBulkGenerate}
-            disabled={generating || loading || generateCooldown > 0}
-            className="bg-green-600 hover:bg-green-700 text-white"
-            title={
-              generateCooldown > 0
-                ? `Please wait ${generateCooldown}s before running again`
-                : "Run Generate Now"
-            }
-          >
-            {generating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {generating
-              ? "Generating..."
-              : generateCooldown > 0
-                ? `Run Generate (${generateCooldown}s)`
-                : "🚀 Run Generate Now"}
-          </Button>
         </div>
+
       </CardHeader>
 
       <CardContent className="space-y-3">
