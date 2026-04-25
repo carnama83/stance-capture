@@ -348,6 +348,9 @@ export default function TopicDraftsPage() {
     const startTime = Date.now();
     let baselineHave: number | null = null;
     let totalNeed: number | null = null;
+    // Plateau detection state
+    let lastExtractedCount = 0;
+    let entityPlateauTicks = 0;
 
     entityIntervalRef.current = window.setInterval(async () => {
       const elapsed = Math.floor((Date.now() - startTime) / 1000);
@@ -388,6 +391,7 @@ export default function TopicDraftsPage() {
         setEntityDone(newlyExtracted);
         setEntityProgress(`${newlyExtracted} / ${totalNeed ?? "?"} extracted — ${remaining} remaining`);
 
+        // Fast-path: all eligible items extracted in one run
         if (remaining === 0 && newlyExtracted > 0) {
           clearEntityInterval();
           setEntityLoading(false);
@@ -398,8 +402,22 @@ export default function TopicDraftsPage() {
           return;
         }
 
-        // Plateau detection for partial runs
-        // (handled server-side by ENTITY_BATCH_LIMIT — UI just needs to unlock)
+        // Plateau detection: batch limit hit — unlock when progress stops for ~6s
+        if (newlyExtracted === lastExtractedCount && newlyExtracted > 0) {
+          entityPlateauTicks++;
+        } else {
+          entityPlateauTicks = 0;
+          lastExtractedCount = newlyExtracted;
+        }
+
+        if (entityPlateauTicks >= 3) {
+          clearEntityInterval();
+          setEntityLoading(false);
+          toast({
+            title: "Entity extraction complete ✅",
+            description: `${newlyExtracted} articles extracted in ${elapsed}s. Run again for remaining or proceed to Cluster.`,
+          });
+        }
       } catch (err) {
         console.warn("pollEntityProgress failed:", err);
       }
