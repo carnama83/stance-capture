@@ -972,29 +972,38 @@ export default function TopicDraftsPage() {
 
   return (
     <Card className="max-w-6xl mx-auto">
-      <CardHeader className="flex items-center justify-between gap-3">
-        <CardTitle>Topic Drafts</CardTitle>
+      <CardHeader className="space-y-3 pb-3">
+
+        {/* Row 1: Title + Refresh */}
+        <div className="flex items-center justify-between">
+          <CardTitle>Topic Drafts</CardTitle>
+          <Button variant="outline" size="icon" onClick={load} title="Refresh" disabled={loading}>
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+          </Button>
+        </div>
+
+        {/* Row 2: Filters + bulk actions */}
         <div className="flex flex-wrap items-center gap-2">
           <Input
             placeholder="Search draft title…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-56"
+            className="w-48"
           />
           <Input
             type="datetime-local"
             value={dateFrom}
             onChange={(e) => setDateFrom(e.target.value ? new Date(e.target.value).toISOString() : "")}
-            className="w-48"
+            className="w-44"
           />
           <Input
             type="datetime-local"
             value={dateTo}
             onChange={(e) => setDateTo(e.target.value ? new Date(e.target.value).toISOString() : "")}
-            className="w-48"
+            className="w-44"
           />
           <select
-            className="border rounded px-2 py-1 text-sm"
+            className="border rounded px-2 py-1 text-sm h-9"
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as "all" | DraftStatus)}
           >
@@ -1004,9 +1013,7 @@ export default function TopicDraftsPage() {
               </option>
             ))}
           </select>
-
-          {/* Bulk selection + actions */}
-          <div className="flex items-center gap-2 border rounded px-2 py-1">
+          <div className="flex items-center gap-2 border rounded px-2 py-1 ml-auto">
             <input
               type="checkbox"
               checked={allVisibleSelected}
@@ -1041,76 +1048,65 @@ export default function TopicDraftsPage() {
               {bulkCreatingQDrafts ? "Creating…" : "Bulk Create Question Drafts"}
             </Button>
           </div>
+        </div>
 
-          {/* Pipeline buttons — run in sequence: Embed → Cluster → Create Drafts */}
-          <div className="flex items-center gap-1 border rounded px-2 py-1 bg-slate-50">
-            <span className="text-xs text-muted-foreground font-medium mr-1">Pipeline:</span>
+        {/* Row 3: Pipeline — full width, never wraps */}
+        <div className="flex items-center gap-1 rounded border bg-slate-50 px-3 py-2 overflow-x-auto">
+          <span className="text-xs text-muted-foreground font-medium shrink-0 mr-1">Pipeline:</span>
 
-            <Button
-              variant="outline"
-              onClick={runEmbed}
-              disabled={embedLoading}
-              className="min-w-[210px]"
-              title="Step 1: Generate vector embeddings for all un-embedded articles"
-            >
-              {embedLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {!embedLoading && <Cpu className="mr-2 h-4 w-4" />}
-              {embedLoading
-                ? `${embedProgress} (${embedElapsed}s)`
-                : "1. Run Embedding"}
-            </Button>
+          <Button
+            variant="outline"
+            onClick={runEmbed}
+            disabled={embedLoading}
+            className="shrink-0 min-w-[190px]"
+            title="Step 1: Generate vector embeddings for all un-embedded articles"
+          >
+            {embedLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {!embedLoading && <Cpu className="mr-2 h-4 w-4" />}
+            {embedLoading ? `${embedProgress} (${embedElapsed}s)` : "1. Run Embedding"}
+          </Button>
 
-            <span className="text-muted-foreground text-xs px-1">→</span>
+          <span className="text-muted-foreground text-xs px-1 shrink-0">→</span>
 
-            <Button
-              variant="outline"
-              onClick={runExtractEntities}
-              disabled={entityLoading}
-              className="min-w-[210px]"
-              title="Step 2: Extract named entities from embedded articles for higher-quality clustering"
-            >
-              {entityLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {!entityLoading && <Cpu className="mr-2 h-4 w-4" />}
-              {entityLoading
-                ? `Extracting... ${entityElapsed}s (${entityProgress})`
-                : "2. Extract Entities"}
-            </Button>
+          <Button
+            variant="outline"
+            onClick={runExtractEntities}
+            disabled={entityLoading}
+            className="shrink-0 min-w-[190px]"
+            title="Step 2: Extract named entities from embedded articles for higher-quality clustering"
+          >
+            {entityLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {!entityLoading && <Cpu className="mr-2 h-4 w-4" />}
+            {entityLoading ? `Extracting... ${entityElapsed}s (${entityProgress})` : "2. Extract Entities"}
+          </Button>
 
-            <span className="text-muted-foreground text-xs px-1">→</span>
+          <span className="text-muted-foreground text-xs px-1 shrink-0">→</span>
 
-            <Button
-              variant="outline"
-              onClick={runCluster}
-              disabled={clusterLoading}
-              className="min-w-[210px]"
-              title="Step 3: Group embedded articles into topic clusters"
-            >
-              {clusterLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {clusterLoading
-                ? `Clustering... ${clusterElapsed}s (${clusterProgress})`
-                : "3. Run Cluster"}
-            </Button>
+          <Button
+            variant="outline"
+            onClick={runCluster}
+            disabled={clusterLoading}
+            className="shrink-0 min-w-[190px]"
+            title="Step 3: Group embedded articles into topic clusters"
+          >
+            {clusterLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {clusterLoading ? `Clustering... ${clusterElapsed}s (${clusterProgress})` : "3. Run Cluster"}
+          </Button>
 
-            <span className="text-muted-foreground text-xs px-1">→</span>
+          <span className="text-muted-foreground text-xs px-1 shrink-0">→</span>
 
-            <Button
-              variant="outline"
-              onClick={runCreateDrafts}
-              disabled={createDraftsLoading}
-              className="min-w-[230px]"
-              title="Step 4: Generate topic drafts from clusters for admin review"
-            >
-              {createDraftsLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {createDraftsLoading
-                ? `Creating... ${createDraftsElapsed}s (${createDraftsProgress})`
-                : "3. Create Topic Drafts"}
-            </Button>
-          </div>
-
-          <Button variant="outline" size="icon" onClick={load} title="Refresh" disabled={loading}>
-            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+          <Button
+            variant="outline"
+            onClick={runCreateDrafts}
+            disabled={createDraftsLoading}
+            className="shrink-0 min-w-[200px]"
+            title="Step 4: Generate topic drafts from clusters for admin review"
+          >
+            {createDraftsLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {createDraftsLoading ? `Creating... ${createDraftsElapsed}s (${createDraftsProgress})` : "4. Create Topic Drafts"}
           </Button>
         </div>
+
       </CardHeader>
 
       <CardContent className="space-y-3">
