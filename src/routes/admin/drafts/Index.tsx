@@ -82,6 +82,8 @@ export default function TopicDraftsPage() {
   const [clusterLoading, setClusterLoading] = React.useState(false);
   const [clusterElapsed, setClusterElapsed] = React.useState(0);
   const [clusterProgress, setClusterProgress] = React.useState("");
+  const [clusterEligible, setClusterEligible] = React.useState<number | null>(null);
+  const [clusterClustered, setClusterClustered] = React.useState<number | null>(null);
 
   const [createDraftsLoading, setCreateDraftsLoading] = React.useState(false);
   const [createDraftsElapsed, setCreateDraftsElapsed] = React.useState(0);
@@ -387,24 +389,41 @@ export default function TopicDraftsPage() {
     }
   }, [embedLoading, supabase, toast, pollEmbedProgress, clearEmbedInterval]);
 
-  // Cluster progress polling
+  // Cluster progress polling — mirrors embed pattern:
+  //   eligible  = items with embeddings not yet assigned to a cluster (finished_at IS NULL)
+  //   clustered = items already processed this run (finished_at IS NOT NULL, delta from baseline)
+  //   clusters  = total topic_clusters rows (delta from baseline)
   const pollClusterProgress = React.useCallback(async () => {
-    const { count: clusterCount, error: e1 } = await supabase
-      .from("topic_clusters")
-      .select("*", { count: "exact", head: true });
+    const [eligibleRes, clusteredRes, clusterCountRes] = await Promise.all([
+      supabase
+        .from("ingestion_queue")
+        .select("*", { count: "exact", head: true })
+        .not("embedding", "is", null)
+        .eq("embed_status", "done")
+        .is("finished_at", null),
+      supabase
+        .from("ingestion_queue")
+        .select("*", { count: "exact", head: true })
+        .not("finished_at", "is", null),
+      supabase
+        .from("topic_clusters")
+        .select("*", { count: "exact", head: true }),
+    ]);
 
-    if (e1) throw e1;
+    if (eligibleRes.error)     throw eligibleRes.error;
+    if (clusteredRes.error)    throw clusteredRes.error;
+    if (clusterCountRes.error) throw clusterCountRes.error;
 
-    const { count: itemCount, error: e2 } = await supabase
-      .from("topic_cluster_items")
-      .select("*", { count: "exact", head: true });
-
-    if (e2) throw e2;
-
-    return { clusters: clusterCount || 0, items: itemCount || 0 };
+    return {
+      eligible:  eligibleRes.count  ?? 0,
+      clustered: clusteredRes.count ?? 0,
+      clusters:  clusterCountRes.count ?? 0,
+    };
   }, [supabase]);
 
-  // ✅ Run cluster with real-time polling (FIXED: timer starts immediately, not after awaiting anything)
+  // ✅ Run cluster with real-time polling — mirrors embed progress pattern:
+  //   First poll snapshots baseline, subsequent polls show delta progress
+  //   "X / Y clustered — Z remaining, N clusters" updating every 2s
   const runCluster = React.useCallback(async () => {
     if (clusterLoading) return;
 
@@ -412,7 +431,9 @@ export default function TopicDraftsPage() {
 
     setClusterLoading(true);
     setClusterElapsed(0);
-    setClusterProgress("Starting...");
+    setClusterProgress("Counting...");
+    setClusterEligible(null);
+    setClusterClustered(null);
 
     toast({
       title: "Clustering started",
@@ -420,58 +441,82 @@ export default function TopicDraftsPage() {
     });
 
     const startTime = Date.now();
-    let initial: { clusters: number; items: number } | null = null;
+    let baselineClustered: number | null = null;
+    let baselineClusters: number | null = null;
+    let totalEligible: number | null = null;
 
-    // Start polling IMMEDIATELY
+    // Start polling IMMEDIATELY — same pattern as embed
     clusterIntervalRef.current = window.setInterval(async () => {
       const elapsed = Math.floor((Date.now() - startTime) / 1000);
       setClusterElapsed(elapsed);
 
+      if (elapsed > 120) {
+        clearClusterInterval();
+        setClusterLoading(false);
+        toast({
+          title: "Clustering timeout",
+          description: "Stopped polling after 120s. Check Edge Function logs — the job may still be running.",
+          variant: "destructive",
+        });
+        return;
+      }
+
       try {
         const current = await pollClusterProgress();
-        if (!initial) initial = current;
 
-        const newClusters = current.clusters - initial.clusters;
-        const newItems = current.items - initial.items;
+        if (baselineClustered === null) {
+          // First poll: snapshot baseline
+          baselineClustered = current.clustered;
+          baselineClusters  = current.clusters;
+          totalEligible     = current.eligible;
+          setClusterEligible(totalEligible);
+          setClusterClustered(0);
+          setClusterProgress(
+            totalEligible === 0
+              ? "Nothing eligible"
+              : `0 / ${totalEligible} clustered`
+          );
 
-        setClusterProgress(`${newClusters} clusters, ${newItems} items`);
-
-        if (newClusters > 0) {
-          clearClusterInterval();
-          setClusterLoading(false);
-
-          toast({
-            title: "Clustering complete! ✅",
-            description: `Created ${newClusters} clusters from ${newItems} articles in ${elapsed}s`,
-          });
-
-          // Don’t auto-refresh drafts here (matches your existing behavior)
-        }
-
-        if (elapsed > 60) {
-          clearClusterInterval();
-          setClusterLoading(false);
-
-          if (newClusters === 0) {
+          if (totalEligible === 0) {
+            clearClusterInterval();
+            setClusterLoading(false);
             toast({
-              title: "Clustering timeout",
-              description:
-                "No clusters created after 60s. Check logs or try refreshing the page first.",
-              variant: "destructive",
+              title: "Nothing to cluster",
+              description: "No embedded articles waiting to be clustered.",
             });
           }
+          return; // wait for next tick before tracking progress
+        }
+
+        // Subsequent polls: delta from baseline
+        const newlyClustered = current.clustered - baselineClustered;
+        const newClusters    = current.clusters  - (baselineClusters ?? 0);
+        const remaining      = Math.max(0, (totalEligible ?? 0) - newlyClustered);
+
+        setClusterClustered(newlyClustered);
+        setClusterProgress(
+          `${newlyClustered} / ${totalEligible ?? "?"} clustered — ${remaining} remaining, ${newClusters} clusters`
+        );
+
+        if (newlyClustered > 0 && remaining === 0) {
+          clearClusterInterval();
+          setClusterLoading(false);
+          toast({
+            title: "Clustering complete! ✅",
+            description: `${newClusters} clusters from ${newlyClustered} articles in ${elapsed}s`,
+          });
         }
       } catch (err) {
         console.warn("pollClusterProgress failed:", err);
-        // Don’t stop polling due to one failure
+        // Don’t stop polling on a single network blip
       }
     }, 2000);
 
     try {
-      // Trigger the RPC, but NEVER block the UI timer
+      // Trigger the RPC, but NEVER block the UI timer.
+      // Timeout raised to 120s to match polling window and fix prior 60s timeout error.
       const rpcPromise = supabase.rpc("run_cluster_http");
-      // Client timeout so we don’t hang forever waiting for the rpc call
-      await withTimeout(rpcPromise as any, 60000, "run_cluster_http");
+      await withTimeout(rpcPromise as any, 120_000, "run_cluster_http");
     } catch (e: any) {
       console.error("run_cluster_http error/timeout:", e);
 
@@ -929,7 +974,7 @@ export default function TopicDraftsPage() {
               </Button>
               <Button variant="outline" onClick={runCluster} disabled={clusterLoading}>
                 {clusterLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {clusterLoading ? `Clustering... ${clusterElapsed}s` : "2. Run Cluster"}
+                {clusterLoading ? `Clustering... ${clusterElapsed}s (${clusterProgress})` : "2. Run Cluster"}
               </Button>
               <Button variant="outline" onClick={runCreateDrafts} disabled={createDraftsLoading}>
                 {createDraftsLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
