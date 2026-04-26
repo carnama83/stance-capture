@@ -665,11 +665,22 @@ const handleRescoreSingle = async (questionId: string | null) => {
                 variant="secondary"
                 onClick={() => applyVisibilityRulesMutation.mutate()}
                 disabled={applyVisibilityRulesMutation.isPending || isLoading}
+                title="Applies visibility rules to all scored questions whose rules have not yet been evaluated or whose scores have changed since last evaluation."
               >
                 {applyVisibilityRulesMutation.isPending ? (
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
                 ) : null}
-                Apply Visibility Rules
+                {(() => {
+                  const pendingVisibility = data?.filter(r =>
+                    r.scores_updated_at && (
+                      !r.last_evaluated_at ||
+                      new Date(r.scores_updated_at) > new Date(r.last_evaluated_at)
+                    )
+                  ).length ?? 0;
+                  return pendingVisibility > 0
+                    ? `Apply Visibility Rules (${pendingVisibility} pending)`
+                    : "Apply Visibility Rules";
+                })()}
               </Button>
             </div>
             
