@@ -28,12 +28,7 @@ type QuestionDraftRow = {
   summary: string | null;
   tags: string[] | null;
   location_label: string | null;
-  scope: "global" | "national" | "local" | null;
   status: QuestionStatus;
-  reason: string | null;
-  // Guardrail / QA
-  guardrail_flags: string[] | null;
-  qa_passed: boolean | null;
   // Epic QF: framing metadata
   framing_style: string | null;
   core_tension: string | null;
@@ -105,6 +100,7 @@ export default function QuestionDraftsPage() {
   const [loading, setLoading] = React.useState(false);
   const [generating, setGenerating] = React.useState(false);
   const [reframing, setReframing] = React.useState(false);
+  const [classifyingParents, setClassifyingParents] = React.useState(false);
   const [bulkApproving, setBulkApproving] = React.useState(false);
   const [bulkPublishing, setBulkPublishing] = React.useState(false);
   const [generateCooldown, setGenerateCooldown] = React.useState(0);
@@ -167,11 +163,7 @@ export default function QuestionDraftsPage() {
         summary,
         tags,
         location_label,
-        scope,
         status,
-        reason,
-        guardrail_flags,
-        qa_passed,
         framing_style,
         core_tension,
         question_quality_score,
@@ -302,6 +294,36 @@ export default function QuestionDraftsPage() {
       setReframing(false);
     }
   }, [reframing, supabase, toast, load]);
+
+  const handleClassifyParents = React.useCallback(async () => {
+    if (classifyingParents) return;
+    setClassifyingParents(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("classify-parent-topics");
+      if (error) {
+        toast({
+          title: "Classify Parents failed",
+          description: error.message,
+          variant: "destructive",
+        });
+        return;
+      }
+      const { classified = 0, proposed = 0, skipped = 0 } = (data as any) ?? {};
+      toast({
+        title: "Parent classification complete ✅",
+        description: `Classified: ${classified} · New themes proposed: ${proposed} · Skipped: ${skipped}`,
+      });
+      setTimeout(() => { void load(); }, 1500);
+    } catch (e: any) {
+      toast({
+        title: "Classify Parents error",
+        description: e?.message ?? String(e),
+        variant: "destructive",
+      });
+    } finally {
+      setClassifyingParents(false);
+    }
+  }, [classifyingParents, supabase, toast, load]);
 
 const chunk = <T,>(arr: T[], size: number): T[][] => {
     const out: T[][] = [];
@@ -510,6 +532,16 @@ const chunk = <T,>(arr: T[], size: number): T[][] => {
             >
               {reframing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {reframing ? "Reframing..." : "✨ Run Reframe Now"}
+            </Button>
+            <Button
+              variant="default"
+              onClick={handleClassifyParents}
+              disabled={classifyingParents || loading}
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+              title="Classify topic drafts into parent themes"
+            >
+              {classifyingParents && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {classifyingParents ? "Classifying..." : "🗂️ Classify Parents"}
             </Button>
           </div>
         </div>
@@ -747,29 +779,6 @@ function QuestionDraftRowView({
                 <p className="text-xs text-amber-700 bg-amber-50 rounded px-2 py-1">
                   ⚠️ {row.quality_notes}
                 </p>
-              )}
-            </div>
-          )}
-
-          {/* Guardrail / QA indicator */}
-          {row.qa_passed != null && (
-            <div className="flex flex-wrap items-center gap-2 mt-1">
-              {row.qa_passed ? (
-                <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-emerald-100 text-emerald-700">
-                  ✓ QA passed
-                </span>
-              ) : (
-                <span
-                  className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-rose-100 text-rose-700"
-                  title={row.guardrail_flags?.join(", ") ?? undefined}
-                >
-                  {`⛔ Guardrail hit${row.guardrail_flags?.length ? `: "${row.guardrail_flags.join('", "')}"` : ""}`}
-                </span>
-              )}
-              {row.scope && (
-                <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-slate-100 text-slate-600">
-                  {row.scope}
-                </span>
               )}
             </div>
           )}
