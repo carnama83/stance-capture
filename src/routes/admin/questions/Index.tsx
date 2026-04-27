@@ -28,7 +28,12 @@ type QuestionDraftRow = {
   summary: string | null;
   tags: string[] | null;
   location_label: string | null;
+  scope: "global" | "national" | "local" | null;
   status: QuestionStatus;
+  reason: string | null;
+  // Guardrail / QA
+  guardrail_flags: string[] | null;
+  qa_passed: boolean | null;
   // Epic QF: framing metadata
   framing_style: string | null;
   core_tension: string | null;
@@ -162,7 +167,11 @@ export default function QuestionDraftsPage() {
         summary,
         tags,
         location_label,
+        scope,
         status,
+        reason,
+        guardrail_flags,
+        qa_passed,
         framing_style,
         core_tension,
         question_quality_score,
@@ -738,6 +747,29 @@ function QuestionDraftRowView({
                 <p className="text-xs text-amber-700 bg-amber-50 rounded px-2 py-1">
                   ⚠️ {row.quality_notes}
                 </p>
+              )}
+            </div>
+          )}
+
+          {/* Guardrail / QA indicator */}
+          {row.qa_passed != null && (
+            <div className="flex flex-wrap items-center gap-2 mt-1">
+              {row.qa_passed ? (
+                <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-emerald-100 text-emerald-700">
+                  ✓ QA passed
+                </span>
+              ) : (
+                <span
+                  className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-rose-100 text-rose-700"
+                  title={row.guardrail_flags?.join(", ") ?? undefined}
+                >
+                  {`⛔ Guardrail hit${row.guardrail_flags?.length ? `: "${row.guardrail_flags.join('", "')}"` : ""}`}
+                </span>
+              )}
+              {row.scope && (
+                <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-slate-100 text-slate-600">
+                  {row.scope}
+                </span>
               )}
             </div>
           )}
