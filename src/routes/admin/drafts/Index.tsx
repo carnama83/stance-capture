@@ -1,3 +1,36 @@
+// src/routes/admin/drafts/Index.tsx
+//
+// Admin: Topic Drafts page
+//
+// Displays topic_drafts rows with status filtering, search, date range filters,
+// bulk selection, and the full pipeline UI.
+//
+// Pipeline (Row 3 header):
+//   1. Run Embedding        → invoke edge function "embed"
+//   2. Extract Entities     → invoke edge function "extract-entities"
+//   3. Run Cluster          → RPC run_cluster_http → edge function "cluster"
+//                             NOTE: cluster/logic.ts Step 13 also creates topic_drafts
+//                             directly, so step 4 below is a fallback only.
+//   4. Create Topic Drafts  → RPC run_create_drafts_http → edge function "create-topic-drafts"
+//                             (fallback/recovery only — cluster already creates drafts in normal flow)
+//   5. Classify Parents     → invoke edge function "classify-parent-topics"
+//                             Assigns each topic_draft to an approved parent theme topic,
+//                             or proposes a new pending theme if no match found (confidence < 0.75).
+//                             Pending themes require admin approval before becoming classification targets.
+//
+// Bulk actions (Row 2 selection bar):
+//   - Bulk Approve          → updates topic_drafts.status = 'approved'
+//   - Bulk Create Question Drafts → invokes edge function "admin-create-question-draft"
+//                                   per selected topic_draft (skips existing question_drafts)
+//
+// Key state:
+//   topicDraftHasQDraft     → Set<string> of topic_draft_ids that already have a question_draft row
+//                             Used to show "Question Draft ✅" badge and disable single-create button
+//
+// Patches:
+//   v2: Added "5. Classify Parents" pipeline button + runClassifyParents handler
+//   v2: Fixed duplicate React key warning on tag badges (key={t} → key={`${t}-${i}`})
+
 import * as React from "react";
 import { getSupabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
@@ -1295,8 +1328,8 @@ function TopicDraftRowView({
           <h3 className="text-lg font-semibold break-words">{row.title}</h3>
           {row.tags && row.tags.length > 0 && (
             <div className="flex flex-wrap gap-2 mt-1">
-              {row.tags.map((t) => (
-                <Badge key={t} variant="secondary">
+              {row.tags.map((t, i) => (
+                <Badge key={`${t}-${i}`} variant="secondary">
                   {t}
                 </Badge>
               ))}
