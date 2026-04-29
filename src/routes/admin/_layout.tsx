@@ -20,6 +20,7 @@ import {
   Building2,     // FIX 3: Publishers nav icon
   Activity,      // J: Pipeline run ledger
   Inbox,         // W4: X Reply Review
+  Bookmark,      // M-C05: Curated Feed
 } from "lucide-react";
 
 import {
@@ -166,6 +167,11 @@ export default function AdminLayout() {
             to="/admin/impact-dashboard"
             icon={<BarChart3 className="h-4 w-4" />}
             label="Impact Dashboard"
+          />
+          <AdminLink
+            to="/admin/curated-feed"
+            icon={<Bookmark className="h-4 w-4" />}
+            label="Curated Feed"
           />
           <AdminLink
             to="/admin/cron-jobs"
