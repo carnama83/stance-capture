@@ -5,6 +5,7 @@ import { getSupabase } from "../lib/supabaseClient";
 import PageLayout from "../components/PageLayout";
 import { FollowTopicButton } from "@/components/FollowTopicButton";
 import TopicMomentumTimeline from "@/components/insights/TopicMomentumTimeline";
+import { QuestionPhaseBadge } from "@/components/question/QuestionPhaseBadge";
 
 type Session = import("@supabase/supabase-js").Session;
 
@@ -28,6 +29,7 @@ type LiveQuestion = {
   location_label?: string | null;
   published_at?: string | null;
   status?: string | null;
+  phase?: string | null;
 };
 
 type RegionalStat = {
@@ -821,6 +823,11 @@ export default function TopicDetailPage() {
                             {q.question}
                           </Link>
                         </div>
+                        {q.phase && q.phase !== "initial" && (
+                          <div className="mt-1">
+                            <QuestionPhaseBadge phase={q.phase} size="sm" />
+                          </div>
+                        )}
                         {q.summary && (
                           <p className="text-xs text-slate-600 mt-1 line-clamp-2">
                             {q.summary}
