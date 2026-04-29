@@ -48,6 +48,9 @@ type LiveQuestion = {
   status?: string | null;
   phase?: string;
   cover_image_url?: string | null;
+  state?: string | null;
+  archive_reason?: string | null;
+  archived_at?: string | null;
 };
 
 type TopicLite = {
@@ -143,10 +146,9 @@ async function fetchQuestionById(id: string): Promise<LiveQuestion | null> {
   const { data, error } = await sb
     .from("questions")
     .select(
-      "id, topic_id, question, summary, tags, location_label, published_at, status, phase, cover_image_url"
+      "id, topic_id, question, summary, tags, location_label, published_at, status, phase, cover_image_url, state, archive_reason, archived_at"
     )
     .eq("id", id)
-    .eq("status", "active")
     .limit(1);
 
   if (error) {
@@ -156,7 +158,6 @@ async function fetchQuestionById(id: string): Promise<LiveQuestion | null> {
 
   const row = (data ?? [])[0] as LiveQuestion | undefined;
   if (!row) return null;
-  if (row.status && row.status !== "active") return null;
   return row;
 }
 
@@ -616,6 +617,7 @@ function StanceCard({
   onConfidenceSubmit,
   showSharePrompt,
   onShareDismiss,
+  isArchived,
 }: {
   isAuthed: boolean;
   questionId: string;
@@ -630,12 +632,32 @@ function StanceCard({
   onConfidenceSubmit?: (score: number) => void;
   showSharePrompt?: boolean;
   onShareDismiss?: () => void;
+  isArchived?: boolean;
 }) {
   return (
     <section className="rounded-xl border border-slate-200 bg-slate-50 p-4 md:p-5 shadow-sm">
       <h3 className="text-[11px] font-semibold tracking-wide uppercase text-slate-500 mb-1">
         Your stance
       </h3>
+
+      {/* M-C09: Archived banner — shown when question is archived/no longer active */}
+      {isArchived && (
+        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 flex items-start gap-2">
+          <span className="text-amber-500 mt-0.5 text-base">📦</span>
+          <div>
+            <p className="text-sm font-medium text-amber-800">This question is archived</p>
+            {question.archive_reason && (
+              <p className="text-xs text-amber-700 mt-0.5">{question.archive_reason}</p>
+            )}
+            {question.archived_at && (
+              <p className="text-xs text-amber-600 mt-0.5">
+                Archived on {new Date(question.archived_at).toLocaleDateString(undefined, { dateStyle: "long" })}
+              </p>
+            )}
+            <p className="text-xs text-amber-600 mt-1">Stances are no longer accepted for this question.</p>
+          </div>
+        </div>
+      )}
 
       {!isAuthed && (
         <div className="space-y-3">
@@ -690,7 +712,7 @@ function StanceCard({
               questionText={question.question}
               summary={question.summary ?? null}
               initialValue={myStance ?? null}
-              disabled={stanceMutation.isPending || stanceLoading}
+              disabled={stanceMutation.isPending || stanceLoading || isArchived}
               mutationPending={stanceMutation.isPending}
               onSubmit={handleSetStance}
               stats={stats}
@@ -1105,6 +1127,7 @@ export default function QuestionDetailPage() {
     },
     showSharePrompt,
     onShareDismiss: () => setShowSharePrompt(false),
+    isArchived: question?.status === "archived" || question?.state === "archived",
   };
 
   let content: React.ReactNode;
@@ -1127,7 +1150,7 @@ export default function QuestionDetailPage() {
   } else if (!question) {
     content = (
       <div className="rounded-xl border border-slate-200 bg-white px-6 py-8 shadow-sm">
-        <p className="text-sm text-slate-500">Question not found or no longer active.</p>
+        <p className="text-sm text-slate-500">Question not found.</p>
       </div>
     );
   } else {
