@@ -56,6 +56,7 @@ import AdminPromptsPage from "@/routes/admin/prompts/Index";
 import AdminImpactDashboardPage from "@/routes/admin/impact-dashboard/Index";
 import AdminCronJobsPage from "@/routes/admin/cron-jobs/Index";
 import ScoringConfigPage from "@/routes/admin/ScoringConfigPage";
+import AdminCuratedFeedPage from "@/routes/admin/curated-feed/Index";
 
 // FIX 3: Publisher approval queue
 import AdminPublishersPage from "@/routes/admin/publishers/Index";
@@ -276,6 +277,7 @@ const App: React.FC = () => {
                 <Route path="stance-metrics" element={<AdminStanceMetricsPage />} />
                 <Route path="cron-jobs" element={<AdminCronJobsPage />} />
                 <Route path="scoring-config" element={<ScoringConfigPage />} />
+                <Route path="curated-feed" element={<AdminCuratedFeedPage />} />
                 <Route path="cognitive-states" element={<AdminCognitiveStatesPage />} />
                 <Route path="moderation" element={<AdminModerationPage />} />
                 {/* FIX 3: Publisher approval queue */}
