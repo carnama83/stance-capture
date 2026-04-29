@@ -6,6 +6,7 @@ import { getSupabase } from "@/lib/supabaseClient";
 import PageLayout from "@/components/PageLayout";
 import { SearchBar } from "@/components/search/SearchBar";
 import { Loader2 } from "lucide-react";
+import { QuestionPhaseBadge } from "@/components/question/QuestionPhaseBadge";
 
 type SearchQuestion = {
   id: string;
@@ -15,6 +16,7 @@ type SearchQuestion = {
   topic_title?: string | null;
   topic_id?: string | null;
   published_at?: string | null;
+  phase?: string | null;
   rank: number;
 };
 
@@ -182,6 +184,9 @@ export default function SearchResultsPage() {
                             <span className="px-2 py-0.5 rounded-full bg-slate-100">
                               {question.topic_title}
                             </span>
+                          )}
+                          {question.phase && question.phase !== "initial" && (
+                            <QuestionPhaseBadge phase={question.phase} size="sm" />
                           )}
                           {question.published_at && (
                             <span>
