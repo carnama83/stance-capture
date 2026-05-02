@@ -17,7 +17,7 @@ type AcknowledgementData = {
   reason?: string;
 };
 
-export function useContributionAcknowledgement() {
+export function useContributionAcknowledgement(isAuthed = false) {
   const [acknowledgement, setAcknowledgement] = useState<AcknowledgementData | null>(null);
   const [isChecking, setIsChecking] = useState(false);
 
@@ -57,10 +57,11 @@ export function useContributionAcknowledgement() {
     }
   }, []);
 
-  // Still check on mount for MyStancesPage fallback
+  // Still check on mount for MyStancesPage fallback — skip for unauthenticated users
   useEffect(() => {
+    if (!isAuthed) return;
     checkForAcknowledgement();
-  }, [checkForAcknowledgement]);
+  }, [isAuthed, checkForAcknowledgement]);
 
   const dismiss = useCallback(async (ackId?: string) => {
     if (ackId) {
