@@ -1877,7 +1877,7 @@ export default function IndexPage() {
   const userId = session?.user?.id ?? null;
 
   // Q5 — contribution acknowledgement check (Phase 4)
-  const { checkForAcknowledgement } = useContributionAcknowledgement();
+  const { checkForAcknowledgement } = useContributionAcknowledgement(isAuthed);
 
   // Infinite scroll sentinel
   const sentinelRef = React.useRef<HTMLDivElement | null>(null);
