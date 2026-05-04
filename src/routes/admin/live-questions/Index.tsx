@@ -15,7 +15,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { RefreshCw, Edit2 } from "lucide-react";
+import { RefreshCw, Edit2, CheckCircle } from "lucide-react";
 // ✅ existing import (kept)
 import { AdminTrendingDebugPanel } from "@/components/admin/AdminTrendingDebugPanel";
 
@@ -42,6 +42,10 @@ type QuestionRow = {
   origin_location_label: string | null;
   audience_location_label: string | null;
   audience_reason: string | null;
+  // Resolution
+  is_resolved: boolean;
+  resolved_at: string | null;
+  resolution_summary: string | null;
 };
 
 const STATUS_FILTERS: { value: "all" | QuestionStatus; label: string }[] = [
@@ -82,7 +86,10 @@ export default function LiveQuestionsPage() {
         published_at,
         origin_location_label,
         audience_location_label,
-        audience_reason
+        audience_reason,
+        is_resolved,
+        resolved_at,
+        resolution_summary
       `,
       )
       .order("created_at", { ascending: false })
@@ -213,6 +220,11 @@ function QuestionRowView({
         <div className="space-y-1 min-w-0">
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <StatusBadge status={row.status} />
+            {row.is_resolved && (
+              <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-purple-100 text-purple-700">
+                <CheckCircle className="h-3 w-3" /> Resolved
+              </span>
+            )}
             <span>Created: {createdAt}</span>
             <span>Published: {publishedAt}</span>
             {row.location_label && (
@@ -241,6 +253,7 @@ function QuestionRowView({
         </div>
         <div className="flex flex-col gap-2 items-end">
           <EditQuestionDialog row={row} onSaved={onChanged} />
+          <MarkResolvedDialog row={row} onResolved={onChanged} />
           <StatusButtons row={row} onChanged={onChanged} />
         </div>
       </div>
@@ -452,6 +465,111 @@ function EditQuestionDialog({
         </div>
         <DialogFooter>
           <Button onClick={save}>Save</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function MarkResolvedDialog({
+  row,
+  onResolved,
+}: {
+  row: QuestionRow;
+  onResolved: () => void;
+}) {
+  const supabase = getSupabase()!;
+  const [open, setOpen] = React.useState(false);
+  const [summary, setSummary] = React.useState("");
+  const [saving, setSaving] = React.useState(false);
+
+  // Reset on open
+  React.useEffect(() => {
+    if (open) setSummary(row.resolution_summary ?? "");
+  }, [open, row.resolution_summary]);
+
+  const confirm = async () => {
+    setSaving(true);
+    try {
+      // 1. Mark the question as resolved
+      const { error: updateError } = await supabase
+        .from("questions")
+        .update({
+          is_resolved: true,
+          resolved_at: new Date().toISOString(),
+          resolution_summary: summary.trim() || null,
+        })
+        .eq("id", row.id);
+
+      if (updateError) {
+        alert(updateError.message);
+        return;
+      }
+
+      // 2. Trigger state transition immediately via RPC
+      const { error: rpcError } = await supabase
+        .rpc("update_question_state", {
+          p_question_id: row.id,
+          p_reason: "resolved_by_admin",
+        });
+
+      if (rpcError) {
+        // Non-fatal — state will catch up on next pg_cron run
+        console.warn("[MarkResolved] state RPC error:", rpcError);
+      }
+
+      setOpen(false);
+      onResolved();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (row.is_resolved) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm" className="text-purple-700 border-purple-300 hover:bg-purple-50">
+          <CheckCircle className="h-4 w-4 mr-1" /> Mark Resolved
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Mark Question as Resolved</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            This will set <code>is_resolved = true</code> and immediately
+            transition the question to <strong>archived</strong> state (if{" "}
+            <code>auto_archive_on_resolution</code> is enabled in config).
+          </p>
+          <div>
+            <Label>
+              Resolution summary{" "}
+              <span className="font-normal text-muted-foreground">
+                — optional
+              </span>
+            </Label>
+            <Textarea
+              rows={3}
+              value={summary}
+              onChange={(e) => setSummary(e.target.value)}
+              placeholder="e.g., Bill passed — signed into law on May 3, 2026"
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+          <Button
+            onClick={confirm}
+            disabled={saving}
+            className="bg-purple-600 hover:bg-purple-700 text-white"
+          >
+            {saving ? "Saving…" : "Confirm Resolution"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
