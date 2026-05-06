@@ -77,6 +77,7 @@ type TrendingHomepageQuestionRow = {
   topic_momentum: number | null;
   cover_image_url?: string | null;
   impact_normalized?: number | null;
+  is_new_phase?: boolean | null;
 };
 
 type AnonQuestionRow = {
@@ -2652,7 +2653,7 @@ export default function IndexPage() {
   const primaryUnanswered = React.useMemo(
     () => (trendingQuestionsNationalQuery.data?.pages.flat() ?? [])
             .concat(trendingQuestionsGlobalQuery.data?.pages.flat() ?? [])
-            .filter((q) => !q.user_has_answered),
+            .filter((q) => !q.user_has_answered || q.is_new_phase),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [trendingQuestionsNationalQuery.data, trendingQuestionsGlobalQuery.data]
   );
@@ -2717,7 +2718,7 @@ export default function IndexPage() {
   // Priority: primary scoped feed → global feed → any-unanswered fallback → empty.
   // isFallbackMode = true when hero is showing questions outside the user's normal scope.
   const globalFeedQuestions = trendingQuestionsGlobalQuery.data?.pages.flat() ?? [];
-  const globalUnanswered = globalFeedQuestions.filter((q) => !q.user_has_answered);
+  const globalUnanswered = globalFeedQuestions.filter((q) => !q.user_has_answered || q.is_new_phase);
 
   const fallbackRows: TrendingHomepageQuestionRow[] = (fallbackFeedQuery.data ?? []).map((r) => ({
     question_id: r.id,
