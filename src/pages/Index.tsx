@@ -78,6 +78,7 @@ type TrendingHomepageQuestionRow = {
   cover_image_url?: string | null;
   impact_normalized?: number | null;
   is_new_phase?: boolean | null;
+  user_stance_value?: number | null;
 };
 
 type AnonQuestionRow = {
@@ -950,7 +951,7 @@ function HeroQuestionModule({
             questionId={heroQuestion.question_id}
             questionText={heroQuestion.question_text}
             summary={heroQuestion.summary}
-            initialValue={null}
+            initialValue={heroQuestion.user_stance_value ?? null}
             stats={heroStats ?? null}
             pulseThumb={true}
             onSubmit={(v) => onSubmit(heroQuestion.question_id, v)}
@@ -1606,7 +1607,7 @@ function FeaturedQuestionCard({
             questionId={q.question_id}
             questionText={q.question_text}
             summary={q.summary}
-            initialValue={null}
+            initialValue={q.user_stance_value ?? null}
             stats={featuredStats ?? null}
             pulseThumb={true}
             onSubmit={(v) => onSubmit(q.question_id, v)}
@@ -1763,7 +1764,7 @@ function GridQuestionCard({
               questionId={q.question_id}
               questionText={q.question_text}
               summary={q.summary}
-              initialValue={null}
+              initialValue={q.user_stance_value ?? null}
               onSubmit={(v) => onSubmit(q.question_id, v)}
             />
           ) : (
