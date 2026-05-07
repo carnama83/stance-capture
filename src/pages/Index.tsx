@@ -45,6 +45,7 @@ import { StanceDistributionBar } from "@/components/question/StanceDistributionB
 import { useGlobalAndCountryIds } from "@/hooks/useLocationIds";
 import { HeroSection } from "@/components/hero/HeroSection";
 import { useContributionAcknowledgement } from "@/hooks/useContributionAcknowledgement";
+import { useIPLocation } from "@/hooks/useIPLocation";
 import { toast } from "sonner";
 
 // ─────────────────────────── Types (all preserved) ───────────────────────────
@@ -2130,6 +2131,15 @@ export default function IndexPage() {
   const globalLabel = myRegion?.global_label ?? "Global";
   const hasCountry = !!countryLabel;
 
+  // ── IP-based country detection for anonymous users ──
+  // Only fires when not authenticated. Provides a country tab + filtered feed
+  // for anon users without requiring login. Cached 24h, fails silently.
+  const { country: ipCountry, isLoading: ipLoading } = useIPLocation(!isAuthed);
+  const anonCountryLabel = !isAuthed ? (ipCountry ?? null) : null;
+  const hasAnonCountry = !!anonCountryLabel;
+  const effectiveHasCountry = isAuthed ? hasCountry : hasAnonCountry;
+  const effectiveCountryLabel = isAuthed ? countryLabel : anonCountryLabel;
+
   // Bootstrap completion listener: when useBootstrapUser finishes writing location
   // data on first login (including OAuth), invalidate my-region + all feed queries.
   // On OAuth, the page does a full reload — bootstrap may complete before or after
@@ -2160,16 +2170,18 @@ export default function IndexPage() {
   }, [qc]);
 
   const [regionTab, setRegionTab] = React.useState<"country" | "global">(
-    hasCountry ? "country" : "global"
+    effectiveHasCountry ? "country" : "global"
   );
 
   React.useEffect(() => {
-    if (hasCountry) setRegionTab((t) => (t === "global" ? "country" : t));
-    if (!hasCountry) setRegionTab("global");
-  }, [hasCountry]);
+    if (effectiveHasCountry) setRegionTab((t) => (t === "global" ? "country" : t));
+    if (!effectiveHasCountry) setRegionTab("global");
+  }, [effectiveHasCountry]);
 
   const regionLabel =
-    regionTab === "country" && countryLabel ? countryLabel : globalLabel;
+    regionTab === "country" && effectiveCountryLabel
+      ? effectiveCountryLabel
+      : globalLabel;
 
   // ── Cover hydration safety net (unchanged) ──
   const hydrateCoversForTrendingRows = React.useCallback(
@@ -2795,7 +2807,7 @@ export default function IndexPage() {
   });
 
   const anonTrendingQuery = useInfiniteQuery({
-    enabled: !!sb && !isAuthed,
+    enabled: !!sb && !isAuthed && !ipLoading,
     queryKey: ["home-questions-anon", regionLabel],
     initialPageParam: 0,
     getNextPageParam: (
@@ -2957,7 +2969,7 @@ export default function IndexPage() {
   // Wait for session to resolve before trusting isLoading for anon users.
   // Without this, the hero stays in hero_loading forever when the session
   // check hasn't completed yet and the anonTrendingQuery fires then gets disabled.
-  const anonIsLoading = !sessionResolved || anonTrendingQuery.isLoading;
+  const anonIsLoading = !sessionResolved || ipLoading || anonTrendingQuery.isLoading;
   const anonIsError = anonTrendingQuery.isError;
   const authedIsLoading =
   !sessionResolved ||
@@ -3340,8 +3352,8 @@ export default function IndexPage() {
             className="w-full mt-6"
           >
             <TabsList>
-              {hasCountry && (
-                <TabsTrigger value="country">{countryLabel}</TabsTrigger>
+              {effectiveHasCountry && (
+                <TabsTrigger value="country">{effectiveCountryLabel}</TabsTrigger>
               )}
               <TabsTrigger value="global">Global</TabsTrigger>
             </TabsList>
