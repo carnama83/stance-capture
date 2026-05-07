@@ -1448,6 +1448,98 @@ function WhereYouStandCard({ snap }: { snap: AlignmentSnapshotRow | null }) {
   );
 }
 
+// ─────────────────────────── Scroll-collapse helpers ─────────────────────────
+//
+// When a card has been answered and leaves the viewport, it collapses to a
+// compact strip. Scrolling back shows the strip — tapping re-expands inline.
+
+const STANCE_LABELS_SHORT: Record<number, string> = {
+  [-2]: "Strongly disagree",
+  [-1]: "Disagree",
+  [0]: "Neutral",
+  [1]: "Agree",
+  [2]: "Strongly agree",
+};
+
+function clampLabel(v: number | null | undefined): string {
+  if (v == null || !Number.isFinite(v)) return "Neutral";
+  const clamped = Math.max(-2, Math.min(2, Math.round(v)));
+  return STANCE_LABELS_SHORT[clamped] ?? "Neutral";
+}
+
+// Fires onLeave once when the observed element scrolls fully out of view.
+// Fires onReturn once when it scrolls back into view.
+function useScrollCollapse(
+  ref: React.RefObject<HTMLElement>,
+  enabled: boolean,
+  onLeave: () => void,
+) {
+  const hasLeftRef = React.useRef(false);
+
+  React.useEffect(() => {
+    if (!enabled || !ref.current) return;
+    const el = ref.current;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting && !hasLeftRef.current) {
+          hasLeftRef.current = true;
+          onLeave();
+        }
+      },
+      { threshold: 0 }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [enabled, ref, onLeave]);
+}
+
+function CompactAnsweredStrip({
+  questionText,
+  stanceValue,
+  globalRegion,
+  onExpand,
+}: {
+  questionText: string;
+  stanceValue: number | null | undefined;
+  globalRegion: RegionalStat | null;
+  onExpand: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onExpand}
+      className="w-full text-left rounded-xl border border-slate-200 bg-white px-4 py-3 hover:bg-slate-50 transition-colors"
+    >
+      <div className="flex items-start justify-between gap-3 mb-2">
+        <p className="text-sm font-medium text-slate-700 line-clamp-2 flex-1">
+          {questionText}
+        </p>
+        <div className="shrink-0 flex items-center gap-1.5">
+          <span className="text-[11px] font-semibold text-slate-500">
+            {clampLabel(stanceValue)}
+          </span>
+          <svg className="h-3.5 w-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </div>
+      </div>
+      {globalRegion && (
+        <StanceDistributionBar
+          distribution={{
+            support_pct: globalRegion.pct_agree,
+            neutral_pct: globalRegion.pct_neutral,
+            oppose_pct: globalRegion.pct_disagree,
+            responses: globalRegion.total_responses,
+          }}
+          userStance={stanceValue ?? null}
+          showCount={true}
+          size="sm"
+        />
+      )}
+    </button>
+  );
+}
+
 // ─────────────────────────── Instant Feedback (preserved, restyled) ──────────
 
 function InstantFeedbackCard({
@@ -1560,8 +1652,27 @@ function FeaturedQuestionCard({
   const postAnswerStats = cardStats?.get(q.question_id) ?? null;
   const effectiveStats = postAnswerStats ?? featuredStats ?? null;
   const globalRegion = effectiveStats?.regions?.global ?? null;
+  const [collapsed, setCollapsed] = React.useState(false);
+  const cardRef = React.useRef<HTMLDivElement>(null);
+
+  const handleLeave = React.useCallback(() => setCollapsed(true), []);
+  useScrollCollapse(cardRef, !!postAnswerStats, handleLeave);
+
+  if (collapsed && postAnswerStats) {
+    return (
+      <div ref={cardRef}>
+        <CompactAnsweredStrip
+          questionText={q.question_text}
+          stanceValue={q.user_stance_value}
+          globalRegion={globalRegion}
+          onExpand={() => setCollapsed(false)}
+        />
+      </div>
+    );
+  }
+
   return (
-    <div className={`${card} overflow-hidden`}>
+    <div ref={cardRef} className={`${card} overflow-hidden`}>
       {/* Large cover image — Rule 3: featured card must have cover */}
       {q.cover_image_url ? (
         <div className="h-52 w-full overflow-hidden sm:h-60">
@@ -1763,8 +1874,27 @@ function GridQuestionCard({
 }) {
   const postAnswerStats = cardStats?.get(q.question_id) ?? null;
   const globalRegion = postAnswerStats?.regions?.global ?? null;
+  const [collapsed, setCollapsed] = React.useState(false);
+  const cardRef = React.useRef<HTMLDivElement>(null);
+
+  const handleLeave = React.useCallback(() => setCollapsed(true), []);
+  useScrollCollapse(cardRef, !!postAnswerStats, handleLeave);
+
+  if (collapsed && postAnswerStats) {
+    return (
+      <div ref={cardRef}>
+        <CompactAnsweredStrip
+          questionText={q.question_text}
+          stanceValue={q.user_stance_value}
+          globalRegion={globalRegion}
+          onExpand={() => setCollapsed(false)}
+        />
+      </div>
+    );
+  }
+
   return (
-    <div className={`${card} overflow-hidden flex flex-col`}>
+    <div ref={cardRef} className={`${card} overflow-hidden flex flex-col`}>
       <QuestionCoverImage
         imageUrl={q.cover_image_url ?? null}
         tags={q.tags}
@@ -1856,8 +1986,6 @@ function GridQuestionCard({
     </div>
   );
 }
-
-// Anon grid card
 function GridQuestionCardAnon({
   q,
   onLoginRedirect,
