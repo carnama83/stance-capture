@@ -2914,6 +2914,24 @@ export default function IndexPage() {
         })
       );
 
+      // ── Direct cache patch ──
+      // Update user_stance_value and user_has_answered in the TanStack cache
+      // immediately so sliders reflect the saved stance without waiting for a
+      // refetch. This avoids the auth-mutex delay from sb.rpc() on re-query.
+      const patchPage = (page: TrendingHomepageQuestionRow[]) =>
+        page.map((q) =>
+          q.question_id === questionId
+            ? { ...q, user_stance_value: value, user_has_answered: true }
+            : q
+        );
+      qc.setQueriesData<{ pages: TrendingHomepageQuestionRow[][] }>(
+        { queryKey: ["home-trending-questions"] },
+        (old) => {
+          if (!old?.pages) return old;
+          return { ...old, pages: old.pages.map(patchPage) };
+        }
+      );
+
       // Refresh local community distribution without blocking the resolved save.
       void fetchDistribution(questionId);
 
