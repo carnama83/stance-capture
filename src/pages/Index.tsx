@@ -41,6 +41,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getSupabase } from "@/lib/supabaseClient";
 import { QuestionStanceSlider } from "@/components/question/QuestionStanceSlider";
 import { QuestionCoverImage } from "@/components/question/QuestionCoverImage";
+import { StanceDistributionBar } from "@/components/question/StanceDistributionBar";
 import { useGlobalAndCountryIds } from "@/hooks/useLocationIds";
 import { HeroSection } from "@/components/hero/HeroSection";
 import { useContributionAcknowledgement } from "@/hooks/useContributionAcknowledgement";
@@ -1545,6 +1546,7 @@ function FeaturedQuestionCard({
   onOpen,
   featuredStats,
   submittingQuestionId,
+  cardStats,
 }: {
   q: TrendingHomepageQuestionRow;
   isAuthed: boolean;
@@ -1553,7 +1555,11 @@ function FeaturedQuestionCard({
   onOpen: (id: string) => void;
   featuredStats?: QuestionStats | null;
   submittingQuestionId?: string | null;
+  cardStats?: Map<string, QuestionStats>;
 }) {
+  const postAnswerStats = cardStats?.get(q.question_id) ?? null;
+  const effectiveStats = postAnswerStats ?? featuredStats ?? null;
+  const globalRegion = effectiveStats?.regions?.global ?? null;
   return (
     <div className={`${card} overflow-hidden`}>
       {/* Large cover image — Rule 3: featured card must have cover */}
@@ -1605,17 +1611,37 @@ function FeaturedQuestionCard({
         )}
 
         {isAuthed ? (
-          <QuestionStanceSlider
-            key={`featured-${q.question_id}`}
-            questionId={q.question_id}
-            questionText={q.question_text}
-            summary={q.summary}
-            initialValue={q.user_stance_value ?? null}
-            stats={featuredStats ?? null}
-            pulseThumb={true}
-            mutationPending={submittingQuestionId === q.question_id}
-            onSubmit={(v) => onSubmit(q.question_id, v)}
-          />
+          <>
+            <QuestionStanceSlider
+              key={`featured-${q.question_id}`}
+              questionId={q.question_id}
+              questionText={q.question_text}
+              summary={q.summary}
+              initialValue={q.user_stance_value ?? null}
+              stats={effectiveStats}
+              pulseThumb={true}
+              mutationPending={submittingQuestionId === q.question_id}
+              onSubmit={(v) => onSubmit(q.question_id, v)}
+            />
+            {postAnswerStats && globalRegion && (
+              <div className="mt-3 pt-3 border-t border-slate-100">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-1.5">
+                  Community Stance
+                </p>
+                <StanceDistributionBar
+                  distribution={{
+                    support_pct: globalRegion.pct_agree,
+                    neutral_pct: globalRegion.pct_neutral,
+                    oppose_pct: globalRegion.pct_disagree,
+                    responses: globalRegion.total_responses,
+                  }}
+                  userStance={q.user_stance_value ?? null}
+                  showCount={true}
+                  size="sm"
+                />
+              </div>
+            )}
+          </>
         ) : (
           <div
             onPointerUpCapture={onLoginRedirect}
@@ -1725,6 +1751,7 @@ function GridQuestionCard({
   onLoginRedirect,
   onOpen,
   submittingQuestionId,
+  cardStats,
 }: {
   q: TrendingHomepageQuestionRow;
   isAuthed: boolean;
@@ -1732,7 +1759,10 @@ function GridQuestionCard({
   onLoginRedirect: () => void;
   onOpen: (id: string) => void;
   submittingQuestionId?: string | null;
+  cardStats?: Map<string, QuestionStats>;
 }) {
+  const postAnswerStats = cardStats?.get(q.question_id) ?? null;
+  const globalRegion = postAnswerStats?.regions?.global ?? null;
   return (
     <div className={`${card} overflow-hidden flex flex-col`}>
       <QuestionCoverImage
@@ -1766,14 +1796,35 @@ function GridQuestionCard({
 
         <div className="mt-auto pt-2">
           {isAuthed ? (
-            <QuestionStanceSlider
-              questionId={q.question_id}
-              questionText={q.question_text}
-              summary={q.summary}
-              initialValue={q.user_stance_value ?? null}
-              mutationPending={submittingQuestionId === q.question_id}
-              onSubmit={(v) => onSubmit(q.question_id, v)}
-            />
+            <>
+              <QuestionStanceSlider
+                questionId={q.question_id}
+                questionText={q.question_text}
+                summary={q.summary}
+                initialValue={q.user_stance_value ?? null}
+                stats={postAnswerStats}
+                mutationPending={submittingQuestionId === q.question_id}
+                onSubmit={(v) => onSubmit(q.question_id, v)}
+              />
+              {postAnswerStats && globalRegion && (
+                <div className="mt-3 pt-3 border-t border-slate-100">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-1.5">
+                    Community Stance
+                  </p>
+                  <StanceDistributionBar
+                    distribution={{
+                      support_pct: globalRegion.pct_agree,
+                      neutral_pct: globalRegion.pct_neutral,
+                      oppose_pct: globalRegion.pct_disagree,
+                      responses: globalRegion.total_responses,
+                    }}
+                    userStance={q.user_stance_value ?? null}
+                    showCount={true}
+                    size="sm"
+                  />
+                </div>
+              )}
+            </>
           ) : (
             <div
               onPointerUpCapture={onLoginRedirect}
@@ -2706,6 +2757,19 @@ export default function IndexPage() {
       : (trendingQuestionsGlobalQuery.data?.pages.flat() ?? []);
   const anonQuestions = anonTrendingQuery.data?.pages.flat() ?? [];
 
+  // Pre-populate cardStats for questions already answered when feed loads.
+  // This ensures returning users see Community Stance on previously answered cards.
+  React.useEffect(() => {
+    if (!isAuthed) return;
+    const answeredIds = trendingQuestions
+      .filter((q) => q.user_has_answered && !cardStats.has(q.question_id))
+      .map((q) => q.question_id);
+    if (answeredIds.length === 0) return;
+    answeredIds.forEach((id) => void fetchCardStats(id));
+  // Only re-run when feed data changes, not on every cardStats update
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trendingQuestionsNationalQuery.data, trendingQuestionsGlobalQuery.data, isAuthed]);
+
   // ── Infinite scroll controls ──
   const activeAuthedQuery =
     regionTab === "country"
@@ -2841,7 +2905,10 @@ export default function IndexPage() {
     staleTime: 60_000,
   });
 
-  // ── Instant feedback state ──
+  // ── Per-card post-answer stats ──
+  // Keyed by question_id. Populated after save confirms via get_question_stats_for_user.
+  // Powers the inline Community Stance bar + "You align with" panel on each card.
+  const [cardStats, setCardStats] = React.useState<Map<string, QuestionStats>>(new Map());
   const [feedback, setFeedback] = React.useState<QuestionDistributionRow | null>(null);
   const [anonLastValue, setAnonLastValue] = React.useState<number | null>(null);
 
@@ -2867,7 +2934,34 @@ export default function IndexPage() {
     [sb, regionLabel]
   );
 
-  // ── Stance submit ──
+  // Fetch full regional stats for a question after save — populates the
+  // inline Community Stance bar and "You align with" panel on each card.
+  const fetchCardStats = React.useCallback(
+    async (questionId: string) => {
+      if (!sb) return;
+      try {
+        const { data, error } = await sb.rpc("get_question_stats_for_user", {
+          p_question_id: questionId,
+        });
+        if (error) throw error;
+        if (!data) return;
+        const raw = data as any;
+        const stats: QuestionStats = {
+          my_stance: typeof raw.my_stance === "number" ? raw.my_stance : null,
+          location: raw.location ?? null,
+          regions: (raw.regions ?? {}) as QuestionStats["regions"],
+        };
+        setCardStats((prev) => {
+          const next = new Map(prev);
+          next.set(questionId, stats);
+          return next;
+        });
+      } catch (e) {
+        console.warn("[home] fetchCardStats failed", e);
+      }
+    },
+    [sb]
+  );
   // Keep the hero save contract tight: resolve once the stance RPC succeeds.
   // Follow-up refreshes should run in the background so the controller can leave
   // hero_submitting immediately after a real save instead of waiting on every
@@ -2954,6 +3048,8 @@ export default function IndexPage() {
 
       // Refresh local community distribution without blocking the resolved save.
       void fetchDistribution(questionId);
+      // Fetch full regional stats for inline card Community Stance + You align with.
+      void fetchCardStats(questionId);
 
       // Invalidate related homepage data in the background.
       void Promise.allSettled([
@@ -2986,7 +3082,7 @@ export default function IndexPage() {
         }
       }).catch(() => { /* silent — ack is non-critical */ });
     },
-    [sb, session, userId, qc, navigate, regionLabel, fetchDistribution]
+    [sb, session, userId, qc, navigate, regionLabel, fetchDistribution, fetchCardStats]
   );
 
   const redirectToLogin = React.useCallback(
@@ -3186,6 +3282,7 @@ export default function IndexPage() {
                       onOpen={goToQuestion}
                       featuredStats={featuredStatsQuery.data ?? null}
                       submittingQuestionId={submittingQuestionId}
+                      cardStats={cardStats}
                     />
                   ) : null
                 ) : anonIsLoading ? (
@@ -3225,6 +3322,7 @@ export default function IndexPage() {
                           onLoginRedirect={loginRedirect}
                           onOpen={goToQuestion}
                           submittingQuestionId={submittingQuestionId}
+                          cardStats={cardStats}
                         />
                       ))}
                     </div>
