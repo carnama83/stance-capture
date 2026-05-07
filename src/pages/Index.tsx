@@ -954,6 +954,7 @@ function HeroQuestionModule({
             initialValue={heroQuestion.user_stance_value ?? null}
             stats={heroStats ?? null}
             pulseThumb={true}
+            mutationPending={submittingQuestionId === heroQuestion.question_id}
             onSubmit={(v) => onSubmit(heroQuestion.question_id, v)}
           />
         ) : (
@@ -1543,6 +1544,7 @@ function FeaturedQuestionCard({
   onLoginRedirect,
   onOpen,
   featuredStats,
+  submittingQuestionId,
 }: {
   q: TrendingHomepageQuestionRow;
   isAuthed: boolean;
@@ -1550,6 +1552,7 @@ function FeaturedQuestionCard({
   onLoginRedirect: () => void;
   onOpen: (id: string) => void;
   featuredStats?: QuestionStats | null;
+  submittingQuestionId?: string | null;
 }) {
   return (
     <div className={`${card} overflow-hidden`}>
@@ -1610,6 +1613,7 @@ function FeaturedQuestionCard({
             initialValue={q.user_stance_value ?? null}
             stats={featuredStats ?? null}
             pulseThumb={true}
+            mutationPending={submittingQuestionId === q.question_id}
             onSubmit={(v) => onSubmit(q.question_id, v)}
           />
         ) : (
@@ -1720,12 +1724,14 @@ function GridQuestionCard({
   onSubmit,
   onLoginRedirect,
   onOpen,
+  submittingQuestionId,
 }: {
   q: TrendingHomepageQuestionRow;
   isAuthed: boolean;
   onSubmit: (questionId: string, value: number) => Promise<void>;
   onLoginRedirect: () => void;
   onOpen: (id: string) => void;
+  submittingQuestionId?: string | null;
 }) {
   return (
     <div className={`${card} overflow-hidden flex flex-col`}>
@@ -1765,6 +1771,7 @@ function GridQuestionCard({
               questionText={q.question_text}
               summary={q.summary}
               initialValue={q.user_stance_value ?? null}
+              mutationPending={submittingQuestionId === q.question_id}
               onSubmit={(v) => onSubmit(q.question_id, v)}
             />
           ) : (
@@ -2865,6 +2872,12 @@ export default function IndexPage() {
   // Follow-up refreshes should run in the background so the controller can leave
   // hero_submitting immediately after a real save instead of waiting on every
   // homepage invalidation/refetch to settle.
+  //
+  // submittingQuestionId: tracks which question is mid-save so sliders can
+  // suppress the prop-sync useEffect that would otherwise snap back to the
+  // stale initialValue while "Saving…" is still showing.
+  const [submittingQuestionId, setSubmittingQuestionId] = React.useState<string | null>(null);
+
   const submitStance = React.useCallback(
     async (questionId: string, value: number) => {
       if (!sb) {
@@ -2888,15 +2901,22 @@ export default function IndexPage() {
         `[home:submit] START qId=${questionId.slice(0, 8)} userId=${userId.slice(0, 8)} value=${value}`
       );
 
-      const res = await fetch(`${supabaseUrl}/rest/v1/rpc/set_question_stance`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "apikey": anonKey,
-          "Authorization": `Bearer ${jwt}`,
-        },
-        body: JSON.stringify({ p_question_id: questionId, p_score: value }),
-      });
+      setSubmittingQuestionId(questionId);
+
+      let res: Response;
+      try {
+        res = await fetch(`${supabaseUrl}/rest/v1/rpc/set_question_stance`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "apikey": anonKey,
+            "Authorization": `Bearer ${jwt}`,
+          },
+          body: JSON.stringify({ p_question_id: questionId, p_score: value }),
+        });
+      } finally {
+        setSubmittingQuestionId(null);
+      }
 
       if (!res.ok) {
         const body = await res.json().catch(() => null);
@@ -3165,6 +3185,7 @@ export default function IndexPage() {
                       onLoginRedirect={loginRedirect}
                       onOpen={goToQuestion}
                       featuredStats={featuredStatsQuery.data ?? null}
+                      submittingQuestionId={submittingQuestionId}
                     />
                   ) : null
                 ) : anonIsLoading ? (
@@ -3203,6 +3224,7 @@ export default function IndexPage() {
                           onSubmit={submitStance}
                           onLoginRedirect={loginRedirect}
                           onOpen={goToQuestion}
+                          submittingQuestionId={submittingQuestionId}
                         />
                       ))}
                     </div>
