@@ -2825,15 +2825,13 @@ export default function IndexPage() {
         .range(pageParam, pageParam + 9);
 
       if (regionLabel !== "Global") {
-        const eligible =
-          regionLabel === "United States"
-            ? ["United States", "Global"]
-            : [regionLabel, "Global"];
-        q.or(
-          `audience_location_label.in.(${eligible
-            .map((x) => `"${x}"`)
-            .join(",")}),audience_location_label.is.null`
-        );
+        // Country tab: show only questions explicitly targeted at this country
+        q.eq("audience_location_label", regionLabel);
+      } else {
+        // Global tab: exclude the user's detected country so tabs are strictly separate
+        if (effectiveCountryLabel) {
+          q.neq("audience_location_label", effectiveCountryLabel);
+        }
       }
 
       const { data, error } = await q;
