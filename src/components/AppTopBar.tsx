@@ -14,7 +14,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ChevronDown, Plus, Search, Compass } from "lucide-react";
+import { ChevronDown, Plus, Search, Compass, X } from "lucide-react";
 import { NotificationsBell } from "@/components/notifications/NotificationsBell";
 
 type Profile = {
@@ -130,6 +130,33 @@ export default function AppTopBar({
   const onLoginPage = location.pathname === "/login";
   const onSignupPage = location.pathname === "/signup";
   const onAuthPage = onLoginPage || onSignupPage;
+
+  // Inline search state
+  const [searchOpen, setSearchOpen] = React.useState(false);
+  const [searchQuery, setSearchQuery] = React.useState("");
+  const searchInputRef = React.useRef<HTMLInputElement>(null);
+
+  const openSearch = () => {
+    setSearchOpen(true);
+    setTimeout(() => searchInputRef.current?.focus(), 50);
+  };
+
+  const closeSearch = () => {
+    setSearchOpen(false);
+    setSearchQuery("");
+  };
+
+  const submitSearch = () => {
+    const q = searchQuery.trim();
+    if (!q) return;
+    closeSearch();
+    navigate(`/search?q=${encodeURIComponent(q)}`);
+  };
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") submitSearch();
+    if (e.key === "Escape") closeSearch();
+  };
 
   // Fetch user profile
   const { data: profile } = useQuery({
@@ -256,12 +283,38 @@ export default function AppTopBar({
               </button>
             </div>
 
-            {/* Consistent pills across auth states */}
-            <PillButton
-              onClick={() => navigate("/search")}
-              icon={<Search className="h-4 w-4" />}
-              label="Search"
-            />
+            {/* Inline Search — expands on click */}
+            {searchOpen ? (
+              <div className="flex items-center gap-1 rounded-full border border-primary bg-card px-3 py-1.5 shadow-sm">
+                <Search className="h-4 w-4 text-muted-foreground shrink-0" />
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={handleSearchKeyDown}
+                  placeholder="Search questions and topics..."
+                  className="w-48 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={submitSearch}
+                  disabled={!searchQuery.trim()}
+                  className="text-xs font-medium text-primary hover:text-primary/80 disabled:opacity-40 disabled:cursor-not-allowed px-1"
+                >
+                  Go
+                </button>
+                <button type="button" onClick={closeSearch} className="text-muted-foreground hover:text-foreground">
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ) : (
+              <PillButton
+                onClick={openSearch}
+                icon={<Search className="h-4 w-4" />}
+                label="Search"
+              />
+            )}
             <PillButton
               onClick={() => navigate("/topics")}
               icon={<Compass className="h-4 w-4" />}
