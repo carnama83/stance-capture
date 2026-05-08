@@ -258,7 +258,7 @@ export default function AppTopBar({
 
             {/* Consistent pills across auth states */}
             <PillButton
-              onClick={() => navigate("/topics")}
+              onClick={() => navigate("/search")}
               icon={<Search className="h-4 w-4" />}
               label="Search"
             />
@@ -273,7 +273,7 @@ export default function AppTopBar({
             <>
               {/* Primary CTA: Answer Question */}
               <button
-                onClick={() => navigate("/topics")}
+                onClick={() => navigate("/")}
                 className="hidden sm:flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-full hover:bg-primary/90 transition-colors text-sm font-medium"
               >
                 <Plus className="h-4 w-4" />
@@ -282,7 +282,7 @@ export default function AppTopBar({
 
               {/* Mobile CTA */}
               <button
-                onClick={() => navigate("/topics")}
+                onClick={() => navigate("/")}
                 className="sm:hidden flex items-center justify-center w-10 h-10 bg-primary text-primary-foreground rounded-full hover:bg-primary/90 transition-colors"
                 aria-label="Answer question"
               >
