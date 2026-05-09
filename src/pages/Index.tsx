@@ -1213,10 +1213,14 @@ function SinceYouLastVisited({
   continuingData,
   reopenedData,
   isLoading,
+  sinceLastVisit,
+  sinceLastVisitLoading,
 }: {
   continuingData: BecauseYouRow[];
   reopenedData: ReopenedRow[];
   isLoading: boolean;
+  sinceLastVisit: SinceLastVisitData | null;
+  sinceLastVisitLoading: boolean;
 }) {
   // Build up to 3 meaningful items
   const items: Array<{ text: string; href: string }> = [];
@@ -1243,7 +1247,16 @@ function SinceYouLastVisited({
 
   // Don't render the card at all when not loading and there's nothing to show.
   // This prevents first-time users (no history) from seeing an empty placeholder.
-  if (!isLoading && items.length === 0) return null;
+  // A returning user qualifies if: they have engagement items OR sinceLastVisit
+  // shows they've been away ≥1 day with changes.
+  const allLoading = isLoading || sinceLastVisitLoading;
+  const hasEngagementItems = items.length > 0;
+  const hasSinceLastVisitData =
+    sinceLastVisit != null &&
+    (sinceLastVisit.days_away ?? 0) >= 1 &&
+    sinceLastVisit.has_changes;
+
+  if (!allLoading && !hasEngagementItems && !hasSinceLastVisitData) return null;
 
   return (
     <div className={`${card} p-5`}>
@@ -1271,6 +1284,17 @@ function SinceYouLastVisited({
             </li>
           ))}
         </ul>
+      )}
+
+      {/* Fallback: returning user with days_away but no specific engagement items */}
+      {!isLoading && items.length === 0 && hasSinceLastVisitData && sinceLastVisit && (
+        <p className="text-sm text-slate-600">
+          You were away for{" "}
+          {sinceLastVisit.days_away === 1
+            ? "1 day"
+            : `${sinceLastVisit.days_away} days`}
+          . New questions and opinion shifts have been recorded — explore below.
+        </p>
       )}
     </div>
   );
@@ -3359,6 +3383,8 @@ export default function IndexPage() {
                   continuingData={continuingQuery.data ?? []}
                   reopenedData={reopenedQuery.data ?? []}
                   isLoading={continuingQuery.isLoading || reopenedQuery.isLoading}
+                  sinceLastVisit={sinceLastVisitQuery.data ?? null}
+                  sinceLastVisitLoading={sinceLastVisitQuery.isLoading}
                 />
               )}
 
