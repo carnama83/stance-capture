@@ -1230,8 +1230,11 @@ function SinceYouLastVisited({
       r.public_shift_proxy != null
         ? ` (shift: ${Math.round(r.public_shift_proxy * 10) / 10})`
         : "";
+    const questionSnippet = r.question_text
+      ? `"${r.question_text.slice(0, 80)}${r.question_text.length > 80 ? "…" : ""}"`
+      : "a question you answered";
     items.push({
-      text: `Opinion shifted on a question you answered${shift} — worth revisiting`,
+      text: `Opinion shifted on ${questionSnippet}${shift} — worth revisiting`,
       href: `/q/${r.question_id}`,
     });
   });
