@@ -1241,6 +1241,10 @@ function SinceYouLastVisited({
     });
   });
 
+  // Don't render the card at all when not loading and there's nothing to show.
+  // This prevents first-time users (no history) from seeing an empty placeholder.
+  if (!isLoading && items.length === 0) return null;
+
   return (
     <div className={`${card} p-5`}>
       <Eyebrow>↻ Since you last visited</Eyebrow>
@@ -1250,15 +1254,6 @@ function SinceYouLastVisited({
           <div className="h-3 rounded bg-slate-100 w-full" />
           <div className="h-3 rounded bg-slate-100 w-5/6" />
           <div className="h-3 rounded bg-slate-100 w-4/6" />
-        </div>
-      )}
-
-      {!isLoading && items.length === 0 && (
-        <div>
-          <p className="text-sm font-medium text-slate-700 mb-1">Track how society changes.</p>
-          <p className="text-sm text-slate-500">
-            Answer a few questions and we'll show how opinion evolves around you.
-          </p>
         </div>
       )}
 
