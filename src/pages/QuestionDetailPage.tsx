@@ -51,6 +51,7 @@ type LiveQuestion = {
   state?: string | null;
   archive_reason?: string | null;
   archived_at?: string | null;
+  context_version?: number | null;
 };
 
 type TopicLite = {
@@ -146,7 +147,7 @@ async function fetchQuestionById(id: string): Promise<LiveQuestion | null> {
   const { data, error } = await sb
     .from("questions")
     .select(
-      "id, topic_id, question, summary, tags, location_label, published_at, status, phase, cover_image_url, state, archive_reason, archived_at"
+      "id, topic_id, question, summary, tags, location_label, published_at, status, phase, cover_image_url, state, archive_reason, archived_at, context_version"
     )
     .eq("id", id)
     .limit(1);
@@ -1210,7 +1211,8 @@ export default function QuestionDetailPage() {
             )}
 
             {/* C: Lifecycle context updates — shown when question has new developments */}
-            {question.phase && question.phase !== "initial" && (
+            {/* C: Lifecycle context updates — shown when question has new developments */}
+            {question.context_version != null && question.context_version > 1 && (
               <QuestionContextUpdates questionId={question.id} />
             )}
 
