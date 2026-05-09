@@ -2526,7 +2526,7 @@ export default function IndexPage() {
         p_region: regionLabel,
         p_limit: 3,
         p_min_shift: 1.0,
-        p_min_age_days: 1,  // QA: temporarily lowered from 30; restore before launch
+        p_min_age_days: 1,
       });
       if (error) throw error;
       return (data ?? []) as ReopenedRow[];
