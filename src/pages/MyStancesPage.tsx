@@ -23,8 +23,9 @@ import { Link, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getSupabase } from "../lib/supabaseClient";
 import PageLayout from "../components/PageLayout";
-import { Download, BookOpen } from "lucide-react";
+import { Download, BookOpen, Loader2 } from "lucide-react";
 import { buildStanceLabels } from "@/lib/stanceColors";
+import { useToast } from "@/components/ui/use-toast";
 
 type Session = import("@supabase/supabase-js").Session;
 
@@ -124,42 +125,60 @@ async function fetchMyStances(userId: string): Promise<MyStanceRow[]> {
 // The browser follows the signed URL to download without raw data
 // passing through client-side JS memory.
 
-async function runExport(format: "csv" | "json") {
-  const sb = getSupabase();
-  if (!sb) return;
+// M-E04: runExport now accepts toast (for error feedback) and
+// setLoading (for spinner on the Export button).
+// Wrapped in try/catch — on any failure shows a destructive toast.
+async function runExport(
+  format: "csv" | "json",
+  toast: (opts: { title: string; description: string; variant?: "destructive" }) => void,
+  setLoading: (v: boolean) => void,
+) {
+  setLoading(true);
+  try {
+    const sb = getSupabase();
+    if (!sb) throw new Error("Supabase not available");
 
-  const { data: { session } } = await sb.auth.getSession();
-  if (!session) { console.error("Export: not authenticated"); return; }
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) throw new Error("Not authenticated");
 
-  const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL as string).replace(/\/+$/, "");
-  const anonKey     = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+    const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL as string).replace(/\/+$/, "");
+    const anonKey     = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
-  const res = await fetch(`${supabaseUrl}/functions/v1/generate-export`, {
-    method: "POST",
-    headers: {
-      "Content-Type":  "application/json",
-      "Authorization": `Bearer ${session.access_token}`,
-      "apikey":        anonKey,
-    },
-    body: JSON.stringify({ format }),
-  });
+    const res = await fetch(`${supabaseUrl}/functions/v1/generate-export`, {
+      method: "POST",
+      headers: {
+        "Content-Type":  "application/json",
+        "Authorization": `Bearer ${session.access_token}`,
+        "apikey":        anonKey,
+      },
+      body: JSON.stringify({ format }),
+    });
 
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: "Unknown error" }));
-    console.error("Export failed:", err.error);
-    return;
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: "Unknown error" }));
+      throw new Error(err.error ?? "Export failed");
+    }
+
+    const { url, filename } = await res.json();
+
+    // Trigger browser download via signed URL — expires in 60s
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.rel = "noopener noreferrer";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  } catch (err: any) {
+    console.error("Export failed:", err);
+    toast({
+      title: "Export failed",
+      description: "Export failed. Please try again.",
+      variant: "destructive",
+    });
+  } finally {
+    setLoading(false);
   }
-
-  const { url, filename } = await res.json();
-
-  // Trigger browser download via signed URL — expires in 60s
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.rel = "noopener noreferrer";
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
 }
 
 
@@ -168,6 +187,7 @@ export default function MyStancesPage() {
   const navigate = useNavigate();
   const isAuthed = !!session;
   const userId = session?.user?.id ?? null;
+  const { toast } = useToast();
 
   const [sortBy, setSortBy] = React.useState<SortBy>("recent");
   const [filterBy, setFilterBy] = React.useState<FilterBy>("all");
@@ -175,6 +195,7 @@ export default function MyStancesPage() {
   const [dateFrom, setDateFrom] = React.useState<string>("");
   const [dateTo, setDateTo] = React.useState<string>("");
   const [exportOpen, setExportOpen] = React.useState(false);
+  const [exportLoading, setExportLoading] = React.useState(false); // M-E04
   const [activeTab, setActiveTab] = React.useState<"overview" | "stances">("overview");
 
   // ── TopicHistoryDrawer state ─────────────────────────────────────────────
@@ -303,17 +324,21 @@ export default function MyStancesPage() {
               <button
                 type="button"
                 onClick={() => setExportOpen((v) => !v)}
-                className="flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs text-slate-600 hover:bg-slate-50 transition-colors"
+                disabled={exportLoading}
+                className="flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50"
               >
-                <Download className="h-3.5 w-3.5" />
-                Export
+                {exportLoading
+                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  : <Download className="h-3.5 w-3.5" />
+                }
+                {exportLoading ? "Exporting…" : "Export"}
               </button>
-              {exportOpen && (
+              {exportOpen && !exportLoading && (
                 <div className="absolute right-0 top-full mt-1 z-20 rounded-md border bg-white shadow-md text-xs overflow-hidden">
-                  <button type="button" className="block w-full px-4 py-2 text-left hover:bg-slate-50 text-slate-700" onClick={() => { runExport("csv"); setExportOpen(false); }}>
+                  <button type="button" className="block w-full px-4 py-2 text-left hover:bg-slate-50 text-slate-700" onClick={() => { setExportOpen(false); runExport("csv", toast, setExportLoading); }}>
                     Download CSV
                   </button>
-                  <button type="button" className="block w-full px-4 py-2 text-left hover:bg-slate-50 text-slate-700" onClick={() => { runExport("json"); setExportOpen(false); }}>
+                  <button type="button" className="block w-full px-4 py-2 text-left hover:bg-slate-50 text-slate-700" onClick={() => { setExportOpen(false); runExport("json", toast, setExportLoading); }}>
                     Download JSON
                   </button>
                 </div>
