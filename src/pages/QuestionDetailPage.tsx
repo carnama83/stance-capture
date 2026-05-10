@@ -52,6 +52,8 @@ type LiveQuestion = {
   archive_reason?: string | null;
   archived_at?: string | null;
   context_version?: number | null;
+  slider_low_label?: string | null;
+  slider_high_label?: string | null;
 };
 
 type TopicLite = {
@@ -110,11 +112,11 @@ type ThreadSentimentRow = {
 };
 
 const STANCE_SCALE = [
-  { value: -2, labelShort: "Strongly disagree", label: "Strongly disagree" },
-  { value: -1, labelShort: "Disagree", label: "Disagree" },
+  { value: -2, labelShort: "Strongly oppose", label: "Strongly oppose" },
+  { value: -1, labelShort: "Lean oppose", label: "Lean oppose" },
   { value: 0, labelShort: "Neutral", label: "Neutral" },
-  { value: 1, labelShort: "Agree", label: "Agree" },
-  { value: 2, labelShort: "Strongly agree", label: "Strongly agree" },
+  { value: 1, labelShort: "Lean support", label: "Lean support" },
+  { value: 2, labelShort: "Strongly support", label: "Strongly support" },
 ];
 
 // ---------- Session hook ----------
@@ -147,7 +149,7 @@ async function fetchQuestionById(id: string): Promise<LiveQuestion | null> {
   const { data, error } = await sb
     .from("questions")
     .select(
-      "id, topic_id, question, summary, tags, location_label, published_at, status, phase, cover_image_url, state, archive_reason, archived_at, context_version"
+      "id, topic_id, question, summary, tags, location_label, published_at, status, phase, cover_image_url, state, archive_reason, archived_at, context_version, slider_low_label, slider_high_label"
     )
     .eq("id", id)
     .limit(1);
@@ -398,6 +400,7 @@ async function trackQuestionInteraction(
 
 // ---------- Editorial hero image ----------
 import { getHeroImageUrl } from "@/lib/imageUtils";
+import { buildStanceLabels } from "@/lib/stanceColors";
 
 function EditorialHeroImage({
   imageUrl,
@@ -748,6 +751,8 @@ function StanceCard({
               onSubmit={handleSetStance}
               stats={stats}
               pulseThumb={!stanceLoading && myStance == null}
+              sliderLowLabel={question.slider_low_label ?? null}
+              sliderHighLabel={question.slider_high_label ?? null}
             />
           </div>
 
@@ -775,7 +780,7 @@ function StanceCard({
               <span>No stance recorded yet.</span>
             ) : (
               <span>
-                Saved as {STANCE_SCALE.find((s) => s.value === myStance)?.label}.
+                Saved as {buildStanceLabels(question?.slider_low_label, question?.slider_high_label)[myStance ?? 0]}.
               </span>
             )}
 
@@ -1080,7 +1085,7 @@ export default function QuestionDetailPage() {
       const label =
         resolvedScore == null
           ? null
-          : STANCE_SCALE.find((s) => s.value === resolvedScore)?.labelShort ?? `Score ${resolvedScore}`;
+          : (buildStanceLabels(question?.slider_low_label, question?.slider_high_label)[resolvedScore] ?? `Score ${resolvedScore}`);
 
       toast({
         title: resolvedScore == null ? "Stance cleared" : "Stance saved",
