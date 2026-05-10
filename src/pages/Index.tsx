@@ -96,6 +96,8 @@ type AnonQuestionRow = {
   published_at: string | null;
   status?: string | null;
   cover_image_url?: string | null;
+  slider_low_label?: string | null;
+  slider_high_label?: string | null;
 };
 
 // FallbackQuestionRow — returned by the "any unanswered live question" safety-net query.
@@ -962,6 +964,8 @@ function HeroQuestionModule({
             pulseThumb={true}
             mutationPending={submittingQuestionId === heroQuestion.question_id}
             onSubmit={(v) => onSubmit(heroQuestion.question_id, v)}
+            sliderLowLabel={heroQuestion.slider_low_label ?? null}
+            sliderHighLabel={heroQuestion.slider_high_label ?? null}
           />
         ) : (
           <>
@@ -979,6 +983,8 @@ function HeroQuestionModule({
                 summary={heroQuestion.summary}
                 initialValue={null}
                 onSubmit={onLoginRedirect}
+                sliderLowLabel={heroQuestion.slider_low_label ?? null}
+                sliderHighLabel={heroQuestion.slider_high_label ?? null}
               />
             </div>
             <div className="mt-4 flex flex-col items-center gap-2">
@@ -1760,6 +1766,8 @@ function FeaturedQuestionCard({
               pulseThumb={true}
               mutationPending={submittingQuestionId === q.question_id}
               onSubmit={(v) => onSubmit(q.question_id, v)}
+              sliderLowLabel={q.slider_low_label ?? null}
+              sliderHighLabel={q.slider_high_label ?? null}
             />
             {postAnswerStats && globalRegion && (
               <div className="mt-3 pt-3 border-t border-slate-100">
@@ -1795,6 +1803,8 @@ function FeaturedQuestionCard({
               summary={q.summary}
               initialValue={null}
               onSubmit={onLoginRedirect}
+              sliderLowLabel={q.slider_low_label ?? null}
+              sliderHighLabel={q.slider_high_label ?? null}
             />
           </div>
         )}
@@ -1864,6 +1874,8 @@ function FeaturedQuestionCardAnon({
             summary={q.summary}
             initialValue={null}
             onSubmit={onLoginRedirect}
+            sliderLowLabel={q.slider_low_label ?? null}
+            sliderHighLabel={q.slider_high_label ?? null}
           />
         </div>
 
@@ -1962,6 +1974,8 @@ function GridQuestionCard({
                 stats={postAnswerStats}
                 mutationPending={submittingQuestionId === q.question_id}
                 onSubmit={(v) => onSubmit(q.question_id, v)}
+                sliderLowLabel={q.slider_low_label ?? null}
+                sliderHighLabel={q.slider_high_label ?? null}
               />
               {postAnswerStats && globalRegion && (
                 <div className="mt-3 pt-3 border-t border-slate-100">
@@ -1996,6 +2010,8 @@ function GridQuestionCard({
                 summary={q.summary}
                 initialValue={null}
                 onSubmit={onLoginRedirect}
+                sliderLowLabel={q.slider_low_label ?? null}
+                sliderHighLabel={q.slider_high_label ?? null}
               />
             </div>
           )}
@@ -2064,6 +2080,8 @@ function GridQuestionCardAnon({
               summary={q.summary}
               initialValue={null}
               onSubmit={onLoginRedirect}
+              sliderLowLabel={q.slider_low_label ?? null}
+              sliderHighLabel={q.slider_high_label ?? null}
             />
           </div>
           <div className="mt-2 flex justify-end">
