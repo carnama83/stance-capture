@@ -463,26 +463,17 @@ export function QuestionStanceSlider({
           <div className="font-semibold text-slate-700">
             You chose: <span className="text-slate-900">{label}</span>
           </div>
-          <div className="text-slate-500 font-medium uppercase tracking-wide text-[10px]">
-            You align with
-          </div>
           <div className="space-y-1">
             {alignmentLines.map((line) => (
-              <div key={line.label} className="flex items-center justify-between">
-                <span className="text-slate-600 capitalize">{line.label}</span>
-                <span
-                  className={cn(
-                    "font-medium",
-                    line.aligns ? "text-slate-800" : "text-slate-500"
-                  )}
-                >
-                  {line.pct}%{" "}
-                  {line.aligns ? (
-                    <span className="text-[10px] text-slate-400">(majority)</span>
-                  ) : (
-                    <span className="text-[10px] text-slate-400">(minority)</span>
-                  )}
+              <div key={line.label} className="text-slate-600">
+                <span className="font-medium text-slate-800">{line.pct}%</span>
+                {" of "}
+                <span className="capitalize">{line.label}</span>
+                {" "}
+                <span className={line.aligns ? "text-slate-700" : "text-slate-500"}>
+                  {line.aligns ? "agrees" : "disagrees"}
                 </span>
+                {" with you"}
               </div>
             ))}
           </div>
