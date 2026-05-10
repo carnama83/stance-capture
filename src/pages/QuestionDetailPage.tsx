@@ -259,6 +259,36 @@ async function setMyStance(
   }
 }
 
+// M-D01: Persist confidence rating for a committed stance.
+// Uses the same direct-fetch pattern as setMyStance (avoids SDK .rpc() mutex).
+// Fire-and-forget from the UI — errors are logged but never surfaced to the user
+// since confidence is a secondary, non-blocking signal.
+async function upsertStanceConfidence(
+  questionId: string,
+  confidence: number,
+  jwt: string,
+  supabaseUrl: string,
+  anonKey: string,
+): Promise<void> {
+  const res = await fetch(`${supabaseUrl}/rest/v1/rpc/upsert_stance_confidence`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "apikey": anonKey,
+      "Authorization": `Bearer ${jwt}`,
+      "Prefer": "return=representation",
+    },
+    body: JSON.stringify({
+      p_question_id: questionId,
+      p_confidence: confidence,
+    }),
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.message ?? `HTTP ${res.status}`);
+  }
+}
 
 async function fetchQuestionStats(questionId: string): Promise<QuestionStats | null> {
   const sb = getSupabase();
@@ -1159,6 +1189,19 @@ export default function QuestionDetailPage() {
     onConfidenceSubmit: (score: number) => {
       setConfidenceScore(score);
       setShowConfidence(false);
+      // M-D01: Persist the confidence rating. Fire-and-forget — errors are
+      // logged but never surfaced; confidence is a secondary signal and must
+      // not block or disrupt the post-stance UX.
+      const jwt = session?.access_token;
+      if (jwt && supabaseUrl && supabaseAnonKey) {
+        upsertStanceConfidence(questionId, score, jwt, supabaseUrl, supabaseAnonKey)
+          .then(() => {
+            console.log("[qdp:confidence] saved", { questionId, score });
+          })
+          .catch((err) => {
+            console.error("[qdp:confidence] save failed (non-blocking)", err);
+          });
+      }
     },
     showSharePrompt,
     onShareDismiss: () => setShowSharePrompt(false),
