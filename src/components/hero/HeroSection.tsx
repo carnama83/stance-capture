@@ -1232,6 +1232,8 @@ function SectionAQuestion({
               disabled={isSubmitting}
               pulseThumb={!isSubmitting && !isResultMode}
               onSubmit={onSubmit}
+              sliderLowLabel={question.slider_low_label ?? null}
+              sliderHighLabel={question.slider_high_label ?? null}
             />
           </>
         ) : (
@@ -1253,6 +1255,8 @@ function SectionAQuestion({
                 initialValue={null}
                 onSubmit={onLoginRedirect}
                 onInteractionStart={onGuestEngage}
+                sliderLowLabel={question.slider_low_label ?? null}
+                sliderHighLabel={question.slider_high_label ?? null}
               />
             </div>
 
