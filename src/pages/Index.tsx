@@ -3347,6 +3347,8 @@ export default function IndexPage() {
               topic_momentum: null,
               cover_image_url: q.cover_image_url,
               impact_normalized: null,
+              slider_low_label: q.slider_low_label ?? null,
+              slider_high_label: q.slider_high_label ?? null,
             }))}
             isLoading={isAuthed ? authedIsLoading : anonIsLoading}
             isAuthed={isAuthed}
