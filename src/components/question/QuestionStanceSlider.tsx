@@ -317,7 +317,8 @@ export function QuestionStanceSlider({
   if (countryLine) alignmentLines.push(countryLine);
   if (stateLine) alignmentLines.push(stateLine);
 
-  const showAlignment = committed && alignmentLines.length > 0;
+  const isFirstRespondent = committed && (stats?.total_responses ?? 0) <= 1;
+  const showAlignment = committed && alignmentLines.length > 0 && !isFirstRespondent;
 
   // Hero/featured: pulseThumb=true → decision-oriented copy
   // Small grid cards: pulseThumb=false/undefined → lighter UI-hint copy
@@ -481,6 +482,16 @@ export function QuestionStanceSlider({
        * Point 18: Personalized alignment messaging — shown after stance committed.
        * Only renders when stats are available.
        */}
+      {isFirstRespondent && (
+        <div className="rounded-md border border-slate-200 bg-white px-3 py-2.5 text-[11px] space-y-1.5">
+          <div className="font-semibold text-slate-700">
+            You chose: <span className="text-slate-900">{label}</span>
+          </div>
+          <div className="text-slate-500 leading-relaxed">
+            You&#x2019;re the first to weigh in on this. We&#x2019;ll show you how others compare once more stances come in.
+          </div>
+        </div>
+      )}
       {showAlignment && (
         <div className="rounded-md border border-slate-200 bg-white px-3 py-2.5 text-[11px] space-y-1.5">
           <div className="font-semibold text-slate-700">
