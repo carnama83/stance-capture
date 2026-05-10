@@ -491,6 +491,39 @@ const SCORE_OPTIONS: { value: number; label: string; tone: "pos" | "neg" | "neu"
   { value: -2, label: "Strongly disagree", tone: "neg" },
 ];
 
+// M-E02: score → hex colour, mirrors StanceSparkline's SCORE_COLOR map.
+const SCORE_COLOR: Record<number, string> = {
+  [-2]: "#f43f5e", [-1]: "#fb923c", [0]: "#94a3b8", [1]: "#34d399", [2]: "#10b981",
+};
+
+// M-E02: Fetches the last 2 stance_history rows for this question.
+// Uses the same query key as StanceSparkline so results are shared from cache
+// once the sparkline is expanded — no duplicate network calls.
+// Returns { arrow, color } or null when fewer than 2 history points exist.
+function useTrendBadge(questionId: string) {
+  const { data } = useQuery({
+    queryKey: ["stance-history", questionId],
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      const sb = getSupabase();
+      if (!sb) throw new Error("Supabase not available");
+      const { data, error } = await sb.rpc("get_my_stance_history", {
+        p_question_id: questionId,
+      });
+      if (error) throw error;
+      return (data ?? []) as { id: string; old_score: number | null; new_score: number; changed_at: string }[];
+    },
+  });
+
+  return React.useMemo(() => {
+    if (!data || data.length < 2) return null;
+    const delta = data[data.length - 1].new_score - data[data.length - 2].new_score;
+    if (delta > 0) return { arrow: "↑", color: SCORE_COLOR[1] };
+    if (delta < 0) return { arrow: "↓", color: SCORE_COLOR[-1] };
+    return { arrow: "→", color: SCORE_COLOR[0] };
+  }, [data]);
+}
+
 function MyStanceCard({ row }: { row: MyStanceRow }) {
   const q = row.question;
   const updatedAt = row.updated_at ?? row.created_at;
@@ -502,6 +535,9 @@ function MyStanceCard({ row }: { row: MyStanceRow }) {
   const [selectedScore, setSelectedScore] = React.useState(row.score);
   const [saving, setSaving] = React.useState(false);
   const queryClient = useQueryClient();
+
+  // M-E02: trend badge derived from last two history entries
+  const trendBadge = useTrendBadge(row.question_id);
 
   const stanceDef = STANCE_LABELS[editing ? selectedScore : row.score] ??
     { label: "Unknown", short: String(row.score), tone: "neu" as const };
@@ -537,6 +573,16 @@ function MyStanceCard({ row }: { row: MyStanceRow }) {
           <div className="flex items-center gap-2">
             {q?.phase && q.phase !== "initial" && (
               <QuestionPhaseBadge phase={q.phase} size="sm" />
+            )}
+            {/* M-E02: trend direction badge from last two history entries */}
+            {trendBadge && (
+              <span
+                className="text-[11px] font-semibold leading-none"
+                style={{ color: trendBadge.color }}
+                title="Direction of last stance change"
+              >
+                {trendBadge.arrow}
+              </span>
             )}
             {q ? (
               <Link to={`/q/${q.id}`} className="text-sm font-semibold text-slate-900 hover:underline">
