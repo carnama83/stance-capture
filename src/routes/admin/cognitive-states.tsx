@@ -36,11 +36,29 @@ interface CognitiveStateRow {
 export default function AdminCognitiveStatesPage() {
   const [searchEmail, setSearchEmail] = useState('');
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
-  const supabase = getSupabase();  // ← CHANGED: Get supabase instance
+  const supabase = getSupabase();
 
-  // Fetch all cognitive states
+  // M-E05: Guard with is_admin_me() — same pattern as AdminIdentifiers.
+  // Three states: null = checking, false = not authorized, true = authorized.
+  const [allowed, setAllowed] = useState<boolean | null>(null);
+
+  React.useEffect(() => {
+    let alive = true;
+    (async () => {
+      if (!supabase) { setAllowed(false); return; }
+      const { data, error } = await supabase.rpc('is_admin_me');
+      if (!alive) return;
+      if (error) { setAllowed(false); return; }
+      setAllowed(Boolean(data));
+    })();
+    return () => { alive = false; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Fetch all cognitive states — only runs once admin check passes
   const { data: cognitiveStates, isLoading, error, refetch } = useQuery({
     queryKey: ['admin-cognitive-states', searchEmail],
+    enabled: allowed === true,
     queryFn: async () => {
       if (!supabase) throw new Error('Supabase client not available');
 
@@ -152,6 +170,14 @@ export default function AdminCognitiveStatesPage() {
       filteredStatesCount: filteredStates?.length,
     });
   }, [isLoading, error, cognitiveStates, filteredStates]);
+
+  // M-E05: Early-return guards — shown before the main render
+  if (allowed === null) {
+    return <div className="container mx-auto py-8 text-sm text-muted-foreground">Checking access…</div>;
+  }
+  if (allowed === false) {
+    return <div className="container mx-auto py-8 text-sm text-slate-700">Not authorized.</div>;
+  }
 
   return (
     <div className="container mx-auto py-8 space-y-6">
