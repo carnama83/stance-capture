@@ -434,21 +434,21 @@ export function QuestionStanceSlider({
           aria-hidden
         >
           {/* -2 */}
-          <span className="max-w-[80px] sm:max-w-[120px] leading-tight shrink-0 overflow-hidden line-clamp-2 break-words">
+          <span className="max-w-[60px] leading-tight shrink-0 overflow-hidden line-clamp-3 break-words text-[9px]">
             {stanceLabels[-2]}
           </span>
           {/* -1: hidden on mobile to avoid crowding */}
-          <span className="hidden md:block max-w-[100px] leading-tight text-center shrink-0 text-slate-400">
+          <span className="hidden lg:block max-w-[100px] leading-tight text-center shrink-0 text-slate-400">
             {stanceLabels[-1]}
           </span>
           {/* 0 */}
           <span className="shrink-0">Neutral</span>
           {/* +1: hidden on mobile */}
-          <span className="hidden md:block max-w-[100px] leading-tight text-center shrink-0 text-slate-400">
+          <span className="hidden lg:block max-w-[100px] leading-tight text-center shrink-0 text-slate-400">
             {stanceLabels[1]}
           </span>
           {/* +2 */}
-          <span className="max-w-[80px] sm:max-w-[120px] text-right leading-tight shrink-0 overflow-hidden line-clamp-2 break-words">
+          <span className="max-w-[60px] text-right leading-tight shrink-0 overflow-hidden line-clamp-3 break-words text-[9px]">
             {stanceLabels[2]}
           </span>
         </div>
