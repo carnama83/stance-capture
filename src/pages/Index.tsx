@@ -81,6 +81,8 @@ type TrendingHomepageQuestionRow = {
   impact_normalized?: number | null;
   is_new_phase?: boolean | null;
   user_stance_value?: number | null;
+  slider_low_label?: string | null;
+  slider_high_label?: string | null;
 };
 
 type AnonQuestionRow = {
@@ -109,6 +111,8 @@ type FallbackQuestionRow = {
   audience_location_label: string | null;
   cover_image_url: string | null;
   topic_title: string | null;
+  slider_low_label?: string | null;
+  slider_high_label?: string | null;
 };
 
 type SocietyPulseRow = {
@@ -2841,7 +2845,7 @@ export default function IndexPage() {
       const q = sb!
         .from("v_live_questions")
         .select(
-          "id, question, summary, tags, location_label, origin_location_label, audience_location_label, published_at, status, cover_image_url"
+          "id, question, summary, tags, location_label, origin_location_label, audience_location_label, published_at, status, cover_image_url, slider_low_label, slider_high_label"
         )
         .order("published_at", { ascending: false })
         .range(pageParam, pageParam + 9);
@@ -2892,7 +2896,7 @@ export default function IndexPage() {
       console.log("[FeedDebug] fallback queryFn firing", { userId, needsFallback });
       const { data, error } = await sb!
         .from("v_live_questions")
-        .select("id, question, summary, tags, location_label, origin_location_label, audience_location_label, cover_image_url, topic_title")
+        .select("id, question, summary, tags, location_label, origin_location_label, audience_location_label, cover_image_url, topic_title, slider_low_label, slider_high_label")
         .order("published_at", { ascending: false })
         .limit(15);
       if (error) throw error;
@@ -2970,6 +2974,8 @@ export default function IndexPage() {
     topic_momentum: null,
     cover_image_url: r.cover_image_url,
     impact_normalized: null,
+    slider_low_label: r.slider_low_label ?? null,
+    slider_high_label: r.slider_high_label ?? null,
   }));
 
   const finalHeroQuestions: TrendingHomepageQuestionRow[] = (() => {
