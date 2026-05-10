@@ -1326,7 +1326,7 @@ export default function QuestionDetailPage() {
             )}
 
             {question.summary && (
-              <p className="max-w-[44rem] font-normal text-base md:text-lg text-slate-600 leading-relaxed md:leading-[1.6] text-left md:text-justify md:hyphens-auto">
+              <p className="max-w-[44rem] font-normal text-base md:text-lg text-slate-600 leading-relaxed md:leading-[1.6] text-left">
                 {question.summary}
               </p>
             )}
