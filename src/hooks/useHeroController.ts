@@ -64,6 +64,8 @@ export type HeroQuestion = {
   topic_momentum: number | null;
   cover_image_url?: string | null;
   impact_normalized?: number | null;
+  slider_low_label?: string | null;
+  slider_high_label?: string | null;
 };
 
 // HeroDistribution replaced by CommunityStanceData from @/types/communityStance
