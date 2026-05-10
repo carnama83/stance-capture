@@ -1172,12 +1172,15 @@ function SectionAQuestion({
             )}
           </div>
 
-          {/* Question headline */}
+          {/* Question headline — always shown in full.
+              Users must be able to read the complete question before submitting
+              a stance. line-clamp removed deliberately: truncation forces a
+              click-through to QDP just to read what you're being asked. */}
           <button
             type="button"
             onClick={() => onNavigateToQuestion(question.question_id)}
             className={[
-              "text-left font-bold text-slate-900 leading-snug hover:underline underline-offset-2 line-clamp-4",
+              "text-left font-bold text-slate-900 leading-snug hover:underline underline-offset-2",
               question.question_text.length > 160
                 ? "text-base"
                 : question.question_text.length > 100
