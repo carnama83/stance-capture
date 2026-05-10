@@ -24,6 +24,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getSupabase } from "../lib/supabaseClient";
 import PageLayout from "../components/PageLayout";
 import { Download, BookOpen } from "lucide-react";
+import { buildStanceLabels } from "@/lib/stanceColors";
 
 type Session = import("@supabase/supabase-js").Session;
 
@@ -37,6 +38,8 @@ type LiveQuestion = {
   status?: string | null;
   phase?: string;
   topic_title?: string | null;
+  slider_low_label?: string | null;
+  slider_high_label?: string | null;
 };
 
 type QuestionStanceRow = {
@@ -59,14 +62,6 @@ type MyStanceRow = {
 
 type SortBy = "recent" | "oldest" | "strongest";
 type FilterBy = "all" | "sa" | "a" | "n" | "d" | "sd" | "strong";
-
-const STANCE_LABELS: Record<number, { label: string; short: string; tone: "pos" | "neg" | "neu" }> = {
-  [-2]: { label: "Strongly disagree", short: "Strongly disagree", tone: "neg" },
-  [-1]: { label: "Disagree",          short: "Disagree",          tone: "neg" },
-  [0]:  { label: "Neutral",           short: "Neutral",           tone: "neu" },
-  [1]:  { label: "Agree",             short: "Agree",             tone: "pos" },
-  [2]:  { label: "Strongly agree",    short: "Strongly agree",    tone: "pos" },
-};
 
 function useSupabaseSession() {
   const sb = React.useMemo(getSupabase, []);
@@ -106,7 +101,7 @@ async function fetchMyStances(userId: string): Promise<MyStanceRow[]> {
 
   const { data: questions, error: questionError } = await sb
     .from("v_live_questions")
-    .select("id, question, summary, tags, location_label, published_at, status, phase, topic_title")
+    .select("id, question, summary, tags, location_label, published_at, status, phase, topic_title, slider_low_label, slider_high_label")
     .in("id", questionIds);
 
   const questionMap = new Map<string, LiveQuestion>();
@@ -539,11 +534,17 @@ function MyStanceCard({ row, userId }: { row: MyStanceRow; userId: string }) {
   // M-E02: trend badge derived from last two history entries
   const trendBadge = useTrendBadge(row.question_id);
 
-  const stanceDef = STANCE_LABELS[editing ? selectedScore : row.score] ??
-    { label: "Unknown", short: String(row.score), tone: "neu" as const };
+  // Dynamic 5-point labels derived from question's reframe pipeline output —
+  // same logic as QDP and homepage. Falls back to generic labels when null.
+  const stanceLabels = buildStanceLabels(q?.slider_low_label, q?.slider_high_label);
+
+  const currentLabel = stanceLabels[editing ? selectedScore : row.score] ?? String(row.score);
+  const currentTone: "pos" | "neg" | "neu" =
+    (editing ? selectedScore : row.score) > 0 ? "pos" :
+    (editing ? selectedScore : row.score) < 0 ? "neg" : "neu";
   const stanceToneClass =
-    stanceDef.tone === "pos" ? "bg-emerald-50 border-emerald-200 text-emerald-800" :
-    stanceDef.tone === "neg" ? "bg-rose-50 border-rose-200 text-rose-800" :
+    currentTone === "pos" ? "bg-emerald-50 border-emerald-200 text-emerald-800" :
+    currentTone === "neg" ? "bg-rose-50 border-rose-200 text-rose-800" :
     "bg-slate-50 border-slate-200 text-slate-800";
 
   // M-E03: onSubmit wired to set_question_stance().
@@ -623,23 +624,26 @@ function MyStanceCard({ row, userId }: { row: MyStanceRow; userId: string }) {
           {editing && (
             <div className="mt-2 space-y-2">
               <div className="flex flex-wrap gap-1.5">
-                {SCORE_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => setSelectedScore(opt.value)}
-                    className={[
-                      "rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors",
-                      selectedScore === opt.value
-                        ? opt.tone === "pos" ? "bg-emerald-100 border-emerald-300 text-emerald-800"
-                          : opt.tone === "neg" ? "bg-rose-100 border-rose-300 text-rose-800"
-                          : "bg-slate-200 border-slate-400 text-slate-800"
-                        : "border-slate-200 text-slate-600 hover:bg-slate-50",
-                    ].join(" ")}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
+                {SCORE_OPTIONS.map((opt) => {
+                  const optLabel = stanceLabels[opt.value] ?? opt.label;
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setSelectedScore(opt.value)}
+                      className={[
+                        "rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors",
+                        selectedScore === opt.value
+                          ? opt.tone === "pos" ? "bg-emerald-100 border-emerald-300 text-emerald-800"
+                            : opt.tone === "neg" ? "bg-rose-100 border-rose-300 text-rose-800"
+                            : "bg-slate-200 border-slate-400 text-slate-800"
+                          : "border-slate-200 text-slate-600 hover:bg-slate-50",
+                      ].join(" ")}
+                    >
+                      {optLabel}
+                    </button>
+                  );
+                })}
               </div>
               <div className="flex gap-2">
                 <button
@@ -664,7 +668,7 @@ function MyStanceCard({ row, userId }: { row: MyStanceRow; userId: string }) {
 
         <div className="flex flex-col items-end gap-1 shrink-0">
           <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] ${stanceToneClass}`}>
-            {stanceDef.label}
+            {currentLabel}
           </span>
           {!editing && (
             <button
