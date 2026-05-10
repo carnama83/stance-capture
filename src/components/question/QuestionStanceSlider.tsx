@@ -438,13 +438,13 @@ export function QuestionStanceSlider({
             {stanceLabels[-2]}
           </span>
           {/* -1: hidden on mobile to avoid crowding */}
-          <span className="hidden lg:block max-w-[100px] leading-tight text-center shrink-0 text-slate-400">
+          <span className="hidden max-w-[100px] leading-tight text-center shrink-0 text-slate-400">
             {stanceLabels[-1]}
           </span>
           {/* 0 */}
           <span className="shrink-0">Neutral</span>
           {/* +1: hidden on mobile */}
-          <span className="hidden lg:block max-w-[100px] leading-tight text-center shrink-0 text-slate-400">
+          <span className="hidden max-w-[100px] leading-tight text-center shrink-0 text-slate-400">
             {stanceLabels[1]}
           </span>
           {/* +2 */}
