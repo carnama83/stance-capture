@@ -904,8 +904,47 @@ export default function QuestionDetailPage() {
     console.log(`[qdp:realtime] subscribing to question_stance_stats_region qId=${questionId.slice(0,8)}`);
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
+    // Shared debounce handler — used by both postgres_changes listeners below.
+    // Both tables (question_stance_stats and question_stance_stats_region) are
+    // refreshed synchronously by the same DB triggers on every stance write, so
+    // either firing is sufficient to drive a community-stats refetch.
+    // The shared debounce ensures at most one refetch per 400ms regardless of
+    // which table fires first (M-D06: all connected users update live).
+    const handleStatsChange = (source: string, isDelete: boolean) => {
+      console.log(`[qdp:realtime] ✓ ${source} ${isDelete ? "DELETED" : "changed"} for qId=${questionId.slice(0,8)} — debouncing 400ms`);
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        console.log(`[qdp:realtime] ✓ invalidating community-stats (triggered by ${source})`);
+        // Only invalidate community-stats here.
+        // question-stats is kept fresh via setQueryData in onSuccess so the
+        // region comparison always reflects the user's own save immediately.
+        // Invalidating question-stats here too would fire get_question_stats_for_user
+        // concurrently with the community-stats refetch and the next save RPC,
+        // exhausting the PostgREST connection pool.
+        queryClient.invalidateQueries({ queryKey: communityStatsKey(questionId) });
+      }, 400);
+    };
+
     const channel = sb
       .channel(`qdp-stats-${questionId}`)
+      // M-D06: Listen to question_stance_stats (global totals) so all connected
+      // users see CommunityStanceBar update live when any user submits a stance,
+      // not just the submitting user (who gets an update via onSuccess cache set).
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "question_stance_stats",
+          filter: `question_id=eq.${questionId}`,
+        },
+        (payload) => {
+          handleStatsChange("question_stance_stats", payload.eventType === "DELETE");
+        }
+      )
+      // Also listen to question_stance_stats_region (regional breakdowns).
+      // Both listeners share the same debounce so only one refetch fires per
+      // stance write regardless of which table's CDC event arrives first.
       .on(
         "postgres_changes",
         {
@@ -915,19 +954,7 @@ export default function QuestionDetailPage() {
           filter: `question_id=eq.${questionId}`,
         },
         (payload) => {
-          const isDelete = payload.eventType === "DELETE";
-          console.log(`[qdp:realtime] ✓ aggregate row ${isDelete ? "DELETED" : "changed"} for qId=${questionId.slice(0,8)} — debouncing 400ms`);
-          if (debounceTimer) clearTimeout(debounceTimer);
-          debounceTimer = setTimeout(() => {
-            console.log(`[qdp:realtime] ✓ invalidating community-stats (question-stats cache already updated by onSuccess)`);
-            // Only invalidate community-stats here.
-            // question-stats is kept fresh via setQueryData in onSuccess so the
-            // region comparison always reflects the user's own save immediately.
-            // Invalidating question-stats here too would fire get_question_stats_for_user
-            // concurrently with the community-stats refetch and the next save RPC,
-            // exhausting the PostgREST connection pool.
-            queryClient.invalidateQueries({ queryKey: communityStatsKey(questionId) });
-          }, 400);
+          handleStatsChange("question_stance_stats_region", payload.eventType === "DELETE");
         }
       )
       .subscribe((status) => {
