@@ -1059,28 +1059,62 @@ export default function QuestionDetailPage() {
   });
 
   // handleSetStance: synchronous trigger — no awaits here.
-  // The PostgREST pool hang that previously required channelReady/session guards
-  // is resolved by NOTIFY pgrst, 'reload schema' at the DB level.
   // Keeping this synchronous closes the race window where a second slider commit
   // could slip past the mutationInFlight guard while async guards were awaited.
+  //
+  // channelReady gate: handleSetStance waits for the Realtime subscription to
+  // reach SUBSCRIBED before allowing the first save. This prevents a save from
+  // racing with the WebSocket handshake on first page load, which could cause
+  // the stance RPC and the subscription setup to contend on the same PostgREST
+  // connection slot.
+  //
+  // Fallback: if SUBSCRIBED has not fired within 8 seconds (matching the RPC
+  // timeout), the gate opens anyway so a degraded Realtime connection never
+  // permanently blocks stance submission. CHANNEL_ERROR / TIMED_OUT also open
+  // the gate via the subscription status handler above.
   const handleSetStance = React.useCallback(
     (newVal: number | null) => {
       if (mutationInFlight.current) {
         console.log("[qdp:handleSetStance] dropped — mutation in flight (ref)", { newVal });
         return;
       }
-      // Set the guard synchronously before mutate() so no second commit can
-      // slip through between now and when mutationFn sets it in the async path.
-      mutationInFlight.current = true;
 
-      console.log("[qdp:handleSetStance]", {
-        qid: debugQid,
-        newVal,
-        queryMyStanceBefore: queryClient.getQueryData(["my-stance", questionId]),
-        mutationPending: stanceMutation.isPending,
-        channelReady: channelReady.current,
-      });
-      stanceMutation.mutate(newVal);
+      const proceed = () => {
+        // Re-check in-flight inside the closure — the timeout path could
+        // fire after a concurrent commit already set the ref.
+        if (mutationInFlight.current) return;
+        // Set the guard synchronously before mutate() so no second commit can
+        // slip through between now and when mutationFn sets it in the async path.
+        mutationInFlight.current = true;
+
+        console.log("[qdp:handleSetStance]", {
+          qid: debugQid,
+          newVal,
+          queryMyStanceBefore: queryClient.getQueryData(["my-stance", questionId]),
+          mutationPending: stanceMutation.isPending,
+          channelReady: channelReady.current,
+        });
+        stanceMutation.mutate(newVal);
+      };
+
+      if (channelReady.current) {
+        proceed();
+      } else {
+        // Not yet subscribed — wait up to 8 s for SUBSCRIBED, then proceed anyway.
+        console.log("[qdp:handleSetStance] channelReady=false — waiting for SUBSCRIBED (max 8 s)", { newVal });
+        const deadline = setTimeout(() => {
+          console.warn("[qdp:handleSetStance] channelReady timeout — proceeding without subscription", { newVal });
+          proceed();
+        }, 8_000);
+
+        const poll = setInterval(() => {
+          if (channelReady.current) {
+            clearTimeout(deadline);
+            clearInterval(poll);
+            proceed();
+          }
+        }, 50);
+      }
     },
     [stanceMutation, debugQid, queryClient, questionId]
   );
