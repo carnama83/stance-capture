@@ -30,6 +30,28 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+// M-E01: Compute the net score change within the last `windowMs` milliseconds.
+// Baseline = last point before the window (or the very first point if all are inside).
+// Returns null when there is no activity in the window, or no net change.
+function computeWindowDelta(points: HistoryPoint[], windowMs: number): number | null {
+  if (points.length < 2) return null;
+  const cutoff = Date.now() - windowMs;
+  const inWindow = points.filter((p) => new Date(p.changed_at).getTime() >= cutoff);
+  if (inWindow.length === 0) return null;
+  const beforeWindow = points.filter((p) => new Date(p.changed_at).getTime() < cutoff);
+  const baseline =
+    beforeWindow.length > 0
+      ? beforeWindow[beforeWindow.length - 1].new_score
+      : points[0].new_score;
+  const delta = inWindow[inWindow.length - 1].new_score - baseline;
+  return delta === 0 ? null : delta;
+}
+
+function fmtDelta(delta: number | null, period: "week" | "month"): string | null {
+  if (delta === null) return null;
+  return `${delta > 0 ? "+" : ""}${delta} this ${period}`;
+}
+
 export function StanceSparkline({ questionId, currentScore }: StanceSparklineProps) {
   const [expanded, setExpanded] = React.useState(false);
 
@@ -60,6 +82,16 @@ export function StanceSparkline({ questionId, currentScore }: StanceSparklinePro
     if (delta === 0) return null;
     return delta > 0 ? `+${delta} from first answer` : `${delta} from first answer`;
   }, [points]);
+
+  // M-E01: weekly / monthly delta labels
+  const weekLabel = React.useMemo(
+    () => fmtDelta(computeWindowDelta(points, 7 * 24 * 60 * 60_000), "week"),
+    [points],
+  );
+  const monthLabel = React.useMemo(
+    () => fmtDelta(computeWindowDelta(points, 30 * 24 * 60 * 60_000), "month"),
+    [points],
+  );
 
   // SVG sparkline — maps scores (-2 to +2) to Y coords
   const svgWidth = 120;
@@ -136,6 +168,28 @@ export function StanceSparkline({ questionId, currentScore }: StanceSparklinePro
                   <span className="text-[10px] text-slate-500 italic">{pctLabel}</span>
                 )}
               </div>
+
+              {/* M-E01: weekly / monthly delta labels */}
+              {(weekLabel || monthLabel) && (
+                <div className="flex items-center gap-3">
+                  {weekLabel && (
+                    <span
+                      className="text-[10px] font-medium"
+                      style={{ color: weekLabel.startsWith("+") ? SCORE_COLOR[1] : SCORE_COLOR[-1] }}
+                    >
+                      {weekLabel}
+                    </span>
+                  )}
+                  {monthLabel && (
+                    <span
+                      className="text-[10px] font-medium"
+                      style={{ color: monthLabel.startsWith("+") ? SCORE_COLOR[1] : SCORE_COLOR[-1] }}
+                    >
+                      {monthLabel}
+                    </span>
+                  )}
+                </div>
+              )}
 
               {/* Timeline list */}
               <ol className="space-y-0.5">
