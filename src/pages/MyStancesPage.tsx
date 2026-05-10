@@ -470,7 +470,7 @@ export default function MyStancesPage() {
             {!isLoading && !isError && visibleCount > 0 && (
               <section className="space-y-3">
                 {filteredAndSorted.map((row) => (
-                  <MyStanceCard key={row.stance_id} row={row} />
+                  <MyStanceCard key={row.stance_id} row={row} userId={userId} />
                 ))}
               </section>
             )}
@@ -524,7 +524,7 @@ function useTrendBadge(questionId: string) {
   }, [data]);
 }
 
-function MyStanceCard({ row }: { row: MyStanceRow }) {
+function MyStanceCard({ row, userId }: { row: MyStanceRow; userId: string }) {
   const q = row.question;
   const updatedAt = row.updated_at ?? row.created_at;
   const dateLabel = updatedAt
@@ -546,6 +546,10 @@ function MyStanceCard({ row }: { row: MyStanceRow }) {
     stanceDef.tone === "neg" ? "bg-rose-50 border-rose-200 text-rose-800" :
     "bg-slate-50 border-slate-200 text-slate-800";
 
+  // M-E03: onSubmit wired to set_question_stance().
+  // Invalidates ['my-stances', userId] (scoped to user) and
+  // ['stance-history', questionId] so the trend badge + sparkline
+  // reflect the new score immediately without a page reload.
   async function handleSave() {
     if (selectedScore === row.score) { setEditing(false); return; }
     setSaving(true);
@@ -557,7 +561,10 @@ function MyStanceCard({ row }: { row: MyStanceRow }) {
         p_score: selectedScore,
       });
       if (error) throw error;
-      queryClient.invalidateQueries({ queryKey: ["my-stances"] });
+      // Invalidate the scoped my-stances list (userId key) and the
+      // per-question history cache so trend badge + sparkline update.
+      queryClient.invalidateQueries({ queryKey: ["my-stances", userId] });
+      queryClient.invalidateQueries({ queryKey: ["stance-history", row.question_id] });
       setEditing(false);
     } catch (err: any) {
       alert(err?.message ?? "Failed to save stance");
