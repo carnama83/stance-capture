@@ -1310,7 +1310,7 @@ export default function QuestionDetailPage() {
             )}
 
             {/* Headline */}
-            <h1 className="text-3xl md:text-4xl font-semibold leading-[1.1] md:leading-[1.08] tracking-[-0.02em] text-slate-900">
+            <h1 className="text-2xl md:text-3xl font-semibold leading-[1.15] tracking-[-0.02em] text-slate-900">
               {question.question}
             </h1>
 
