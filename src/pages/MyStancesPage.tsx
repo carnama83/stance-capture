@@ -19,6 +19,7 @@ import TopicHistoryDrawer from "@/components/insights/TopicHistoryDrawer";
 import * as React from "react";
 import { QuestionPhaseBadge } from "@/components/question/QuestionPhaseBadge";
 import { StanceSparkline } from "@/components/StanceSparkline";
+import { RationaleEditor } from "@/components/RationaleEditor";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getSupabase } from "../lib/supabaseClient";
@@ -645,6 +646,8 @@ function MyStanceCard({ row, userId }: { row: MyStanceRow; userId: string }) {
           )}
 
           <StanceSparkline questionId={row.question_id} currentScore={row.score} />
+
+          <RationaleEditor questionId={row.question_id} />
 
           {editing && (
             <div className="mt-2 space-y-2">
