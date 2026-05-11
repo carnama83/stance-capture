@@ -31,6 +31,7 @@ import { CommunityStanceBar } from "@/components/question/CommunityStanceBar";
 import { CommunityTrendSparkline } from "@/components/question/CommunityTrendSparkline";
 import WhyIsTrendingPanel from "@/components/insights/WhyIsTrendingPanel";
 import TradeoffExplorer from "@/components/insights/TradeoffExplorer";
+import { RationaleEditor } from "@/components/RationaleEditor";
 import {
 
 } from "@/types/communityStance";
@@ -790,6 +791,12 @@ function StanceCard({
               </button>
             )}
           </div>
+
+          {/* RationaleEditor — shown once user has answered; lets them record
+              why they hold this stance and add supporting links. */}
+          {isAuthed && myStance != null && (
+            <RationaleEditor questionId={questionId} />
+          )}
         </>
       )}
     </section>
