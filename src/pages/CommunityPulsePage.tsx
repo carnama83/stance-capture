@@ -334,11 +334,10 @@ function MacroTrendsSection({
         </div>
       )}
 
-      {/* Support / Oppose / Neutral over time — with confidence band on support */}
+      {/* Support / Oppose / Neutral over time */}
       <div>
         <p className="text-xs font-medium text-slate-600 mb-1">
           Support vs Opposition trend
-          <span className="ml-1 text-slate-400 font-normal">(shaded = support confidence band)</span>
         </p>
         <ResponsiveContainer width="100%" height={180}>
           <ComposedChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
@@ -373,23 +372,6 @@ function MacroTrendsSection({
               }}
             />
             <Legend wrapperStyle={{ fontSize: 10 }} />
-            {/* Confidence band on support line — same technique as avg score chart */}
-            <Area
-              type="monotone"
-              dataKey="confHigh"
-              stroke="transparent"
-              fill="#10b981"
-              fillOpacity={0.12}
-              legendType="none"
-            />
-            <Area
-              type="monotone"
-              dataKey="confLow"
-              stroke="transparent"
-              fill="#ffffff"
-              fillOpacity={1}
-              legendType="none"
-            />
             <Line type="monotone" dataKey="support" stroke="#10b981" strokeWidth={2} dot={false} name="Support" />
             <Line type="monotone" dataKey="oppose"  stroke="#f43f5e" strokeWidth={2} dot={false} name="Oppose" />
             <Line type="monotone" dataKey="neutral" stroke="#94a3b8" strokeWidth={1.5} dot={false} name="Neutral" strokeDasharray="4 2" />
