@@ -626,8 +626,8 @@ interface CompareRegionsSectionProps {
 }
 
 function CompareRegionsSection({ regionOptions }: CompareRegionsSectionProps) {
-  const defaultA = regionOptions[0] ?? { value: "global" as RegionScope, label: "Global", key: "Global" };
-  const defaultB = regionOptions[1] ?? regionOptions[0] ?? { value: "global" as RegionScope, label: "Global", key: "Global" };
+  const defaultA = regionOptions[0] ?? { value: "global" as RegionScope, label: "Global", key: "global" };
+  const defaultB = regionOptions[1] ?? regionOptions[0] ?? { value: "global" as RegionScope, label: "Global", key: "global" };
 
   const [regionA, setRegionA] = React.useState(defaultA);
   const [regionB, setRegionB] = React.useState(defaultB);
@@ -842,7 +842,7 @@ function CompareRegionsSection({ regionOptions }: CompareRegionsSectionProps) {
 
 export default function CommunityPulsePage() {
   const [regionScope, setRegionScope] = React.useState<RegionScope>("global");
-  const [regionKey, setRegionKey] = React.useState("Global");
+  const [regionKey, setRegionKey] = React.useState("global");
   const [trendDays, setTrendDays] = React.useState(30);
   const [selectedQuestionId, setSelectedQuestionId] = React.useState<string | null>(null);
   const [compareMode, setCompareMode] = React.useState(false);
@@ -873,7 +873,7 @@ export default function CommunityPulsePage() {
 
   // Build region options dynamically from user's actual labels
   const regionOptions: Array<{ value: RegionScope; label: string; key: string }> = [
-    { value: "global",  label: "Global",                              key: "Global" },
+    { value: "global",  label: "Global",                              key: "global" },
     ...(userRegion?.country_label ? [{ value: "country" as RegionScope, label: userRegion.country_label, key: userRegion.country_label }] : []),
     ...(userRegion?.state_label   ? [{ value: "state"   as RegionScope, label: userRegion.state_label,   key: userRegion.state_label   }] : []),
     ...(userRegion?.county_label  ? [{ value: "county"  as RegionScope, label: userRegion.county_label,  key: userRegion.county_label  }] : []),
@@ -926,7 +926,7 @@ export default function CommunityPulsePage() {
                 const scope = e.target.value as RegionScope;
                 const opt = regionOptions.find((o) => o.value === scope);
                 setRegionScope(scope);
-                setRegionKey(opt?.key ?? "Global");
+                setRegionKey(opt?.key ?? "global");
               }}
               className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-400"
             >
