@@ -12,7 +12,7 @@ import {
   BarChart, Bar, Line, XAxis, YAxis, Tooltip,
   ResponsiveContainer, ReferenceLine, Area, ComposedChart, Legend,
 } from "recharts";
-import { Loader2, TrendingUp, Users, MapPin, BarChart3, AlertCircle } from "lucide-react";
+import { Loader2, TrendingUp, Users, MapPin, BarChart3, AlertCircle, GitCompare } from "lucide-react";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -618,6 +618,225 @@ function DemographicSection({ questionId }: { questionId: string | null }) {
 }
 
 // ---------------------------------------------------------------------------
+// M-F03 — Compare Regions
+// ---------------------------------------------------------------------------
+
+interface CompareRegionsSectionProps {
+  regionOptions: Array<{ value: RegionScope; label: string; key: string }>;
+}
+
+function CompareRegionsSection({ regionOptions }: CompareRegionsSectionProps) {
+  const defaultA = regionOptions[0] ?? { value: "global" as RegionScope, label: "Global", key: "Global" };
+  const defaultB = regionOptions[1] ?? regionOptions[0] ?? { value: "global" as RegionScope, label: "Global", key: "Global" };
+
+  const [regionA, setRegionA] = React.useState(defaultA);
+  const [regionB, setRegionB] = React.useState(defaultB);
+
+  const SEL_CLS = "rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-400 w-full";
+
+  const fetchPulse = async (scope: RegionScope, key: string) => {
+    const sb = getSupabase();
+    if (!sb) throw new Error("Supabase not available");
+    const { data, error } = await sb.rpc("get_community_pulse", {
+      p_region_scope: scope,
+      p_region_key: key,
+      p_limit: 20,
+    });
+    if (error) throw error;
+    return (data ?? []) as PulseRow[];
+  };
+
+  const { data: dataA, isLoading: loadingA } = useQuery<PulseRow[]>({
+    queryKey: ["compare-pulse-a", regionA.value, regionA.key],
+    staleTime: 5 * 60_000,
+    queryFn: () => fetchPulse(regionA.value, regionA.key),
+  });
+
+  const { data: dataB, isLoading: loadingB } = useQuery<PulseRow[]>({
+    queryKey: ["compare-pulse-b", regionB.value, regionB.key],
+    staleTime: 5 * 60_000,
+    queryFn: () => fetchPulse(regionB.value, regionB.key),
+  });
+
+  const sameRegion = regionA.value === regionB.value && regionA.key === regionB.key;
+
+  // Build a shared question list keyed on question_id, ordered by Region A response count.
+  // Region B bars align to the same question order for easy visual comparison.
+  const questionIds: string[] = React.useMemo(() => {
+    if (!dataA?.length) return [];
+    return dataA.map((r) => r.question_id);
+  }, [dataA]);
+
+  const buildChartData = (rows: PulseRow[] | undefined) => {
+    if (!rows?.length || !questionIds.length) return [];
+    const byId = new Map(rows.map((r) => [r.question_id, r]));
+    return questionIds.map((id) => {
+      const r = byId.get(id);
+      return {
+        label: (r?.question_text ?? "").slice(0, 30) + ((r?.question_text?.length ?? 0) > 30 ? "…" : ""),
+        support: r?.pct_support ?? 0,
+        neutral: r?.pct_neutral ?? 0,
+        oppose:  r?.pct_oppose  ?? 0,
+        n:       r?.total_responses ?? 0,
+      };
+    }).filter((d) => d.n > 0 || questionIds.length <= 5);
+  };
+
+  const chartA = buildChartData(dataA);
+  const chartB = buildChartData(dataB);
+  const chartHeight = Math.max(160, questionIds.length * 28 + 60);
+
+  const MacroStats = ({ data }: { data: PulseRow[] | undefined }) => {
+    if (!data?.length) return null;
+    const m = data[0];
+    return (
+      <div className="flex gap-3 mb-3">
+        {[
+          { label: "Responses", value: fmtNum(m.macro_total_responses) },
+          { label: "Avg support", value: fmt(m.macro_avg_support) },
+          { label: "Avg oppose",  value: fmt(m.macro_avg_oppose) },
+        ].map(({ label, value }) => (
+          <div key={label} className="rounded-lg bg-slate-50 px-3 py-2 flex-1">
+            <p className="text-[10px] text-slate-500 uppercase tracking-wide">{label}</p>
+            <p className="text-sm font-semibold text-slate-900 mt-0.5">{value}</p>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const RegionChart = ({
+    chartData,
+    isLoading,
+    label,
+  }: {
+    chartData: ReturnType<typeof buildChartData>;
+    isLoading: boolean;
+    label: string;
+  }) => {
+    if (isLoading) return (
+      <div className="flex justify-center items-center" style={{ height: chartHeight }}>
+        <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
+      </div>
+    );
+    if (!chartData.length) return (
+      <p className="text-xs text-slate-500 py-4">No data available for {label}.</p>
+    );
+    return (
+      <ResponsiveContainer width="100%" height={chartHeight}>
+        <BarChart data={chartData} layout="vertical" margin={{ top: 4, right: 8, left: 4, bottom: 0 }}>
+          <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 9 }} unit="%" />
+          <YAxis
+            type="category"
+            dataKey="label"
+            tick={{ fontSize: 9 }}
+            width={90}
+            interval={0}
+          />
+          <Tooltip
+            contentStyle={{ fontSize: 11 }}
+            formatter={(v: number, name: string) => [`${Math.round(v)}%`, name]}
+          />
+          <Bar dataKey="support" stackId="a" fill="#10b981" name="Support" />
+          <Bar dataKey="neutral" stackId="a" fill="#94a3b8" name="Neutral" />
+          <Bar dataKey="oppose"  stackId="a" fill="#f43f5e" name="Oppose" />
+        </BarChart>
+      </ResponsiveContainer>
+    );
+  };
+
+  return (
+    <div className="space-y-4">
+
+      {/* Region selectors */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <p className="text-[10px] font-medium text-slate-500 uppercase tracking-wide">Region A</p>
+          <select
+            value={regionA.value}
+            onChange={(e) => {
+              const opt = regionOptions.find((o) => o.value === e.target.value);
+              if (opt) setRegionA(opt);
+            }}
+            className={SEL_CLS}
+          >
+            {regionOptions.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </div>
+        <div className="space-y-1">
+          <p className="text-[10px] font-medium text-slate-500 uppercase tracking-wide">Region B</p>
+          <select
+            value={regionB.value}
+            onChange={(e) => {
+              const opt = regionOptions.find((o) => o.value === e.target.value);
+              if (opt) setRegionB(opt);
+            }}
+            className={SEL_CLS}
+          >
+            {regionOptions.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* Same region warning */}
+      {sameRegion && (
+        <div className="flex items-center gap-1.5 text-[11px] text-amber-600 bg-amber-50 rounded px-3 py-2">
+          <AlertCircle className="h-3 w-3 shrink-0" />
+          Select two different regions to compare.
+        </div>
+      )}
+
+      {/* Side-by-side charts */}
+      {!sameRegion && (
+        <div className="grid grid-cols-2 gap-4">
+          {/* Region A */}
+          <div>
+            <p className="text-xs font-semibold text-slate-700 mb-2">{regionA.label}</p>
+            <MacroStats data={dataA} />
+            <RegionChart chartData={chartA} isLoading={loadingA} label={regionA.label} />
+          </div>
+
+          {/* Region B */}
+          <div>
+            <p className="text-xs font-semibold text-slate-700 mb-2">{regionB.label}</p>
+            <MacroStats data={dataB} />
+            <RegionChart chartData={chartB} isLoading={loadingB} label={regionB.label} />
+          </div>
+        </div>
+      )}
+
+      {/* Legend — shared, shown once below both charts */}
+      {!sameRegion && !loadingA && !loadingB && chartA.length > 0 && (
+        <div className="flex gap-4 text-[10px] text-slate-500">
+          {[
+            { color: "#10b981", label: "Support" },
+            { color: "#94a3b8", label: "Neutral" },
+            { color: "#f43f5e", label: "Oppose" },
+          ].map(({ color, label }) => (
+            <span key={label} className="flex items-center gap-1">
+              <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: color }} />
+              {label}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Insufficient options fallback */}
+      {regionOptions.length < 2 && (
+        <p className="text-xs text-slate-500">
+          Set your location in your profile to unlock regional comparisons.
+        </p>
+      )}
+    </div>
+  );
+}
+
+
+// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
@@ -626,6 +845,7 @@ export default function CommunityPulsePage() {
   const [regionKey, setRegionKey] = React.useState("Global");
   const [trendDays, setTrendDays] = React.useState(30);
   const [selectedQuestionId, setSelectedQuestionId] = React.useState<string | null>(null);
+  const [compareMode, setCompareMode] = React.useState(false);
 
   // F improvement: load user's actual region labels to power the region selector
   const { data: userRegion } = useQuery<{
@@ -717,9 +937,43 @@ export default function CommunityPulsePage() {
           </div>
         </div>
 
-        {/* F1 — Aggregated Stance Dashboard */}
-        <Section title="Stance Distribution" icon={<BarChart3 className="h-4 w-4" />}>
-          <AggregatedStanceSection regionScope={regionScope} regionKey={regionKey} />
+        {/* F1 — Aggregated Stance Dashboard + M-F03 Compare Regions mode */}
+        <Section
+          title="Stance Distribution"
+          icon={<BarChart3 className="h-4 w-4" />}
+        >
+          {/* Mode toggle */}
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-xs text-slate-500">
+              {compareMode ? "Comparing two regions side by side." : "Distribution across all questions in this region."}
+            </p>
+            <div className="flex gap-1">
+              {[
+                { mode: false, label: "View" },
+                { mode: true,  label: "Compare" },
+              ].map(({ mode, label }) => (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => setCompareMode(mode)}
+                  className={[
+                    "px-2.5 py-1 rounded text-xs font-medium transition-colors flex items-center gap-1",
+                    compareMode === mode
+                      ? "bg-slate-900 text-white"
+                      : "border border-slate-200 text-slate-600 hover:bg-slate-50",
+                  ].join(" ")}
+                >
+                  {mode && <GitCompare className="h-3 w-3" />}
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {compareMode
+            ? <CompareRegionsSection regionOptions={regionOptions} />
+            : <AggregatedStanceSection regionScope={regionScope} regionKey={regionKey} />
+          }
         </Section>
 
         {/* F2 — Macro Trends */}
