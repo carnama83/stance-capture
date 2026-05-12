@@ -312,7 +312,7 @@ function MacroTrendsSection({
     avgScore: p.avg_score,
     confLow: p.confidence_low,
     confHigh: p.confidence_high,
-    lowSample: p.is_low_sample,
+    lowSample: p.is_low_sample === true || (p.is_low_sample as any) === "true",
     responses: p.total_responses,
   }));
 
@@ -348,8 +348,11 @@ function MacroTrendsSection({
               contentStyle={{ fontSize: 11 }}
               content={({ active, payload, label }) => {
                 if (!active || !payload?.length) return null;
-                const point = payload[0]?.payload;
-                const isLow = point?.lowSample;
+                // Use any series payload — all share the same data object
+                const point = payload.find((e: any) =>
+                  ["support", "oppose", "neutral"].includes(e.dataKey)
+                )?.payload ?? payload[0]?.payload;
+                const isLow = point?.lowSample === true || (point?.lowSample as any) === "true";
                 return (
                   <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 6, padding: "8px 10px", fontSize: 11 }}>
                     <p style={{ fontWeight: 500, marginBottom: 4, color: "#475569" }}>{label}</p>
@@ -434,7 +437,7 @@ function MacroTrendsSection({
         </ResponsiveContainer>
       </div>
 
-      {data.some((p) => p.is_low_sample) && (
+      {data.some((p) => p.is_low_sample === true || (p.is_low_sample as any) === "true") && (
         <div className="flex items-start gap-1.5 text-[10px] text-amber-600 bg-amber-50 rounded px-3 py-2">
           <AlertCircle className="h-3 w-3 shrink-0 mt-0.5" />
           Some data points have fewer than 10 responses — treat those days with caution.
