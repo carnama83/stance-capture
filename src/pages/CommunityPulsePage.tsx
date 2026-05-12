@@ -9,7 +9,7 @@ import { useQuery } from "@tanstack/react-query";
 import { getSupabase } from "@/lib/supabaseClient";
 import PageLayout from "@/components/PageLayout";
 import {
-  BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip,
+  BarChart, Bar, Line, XAxis, YAxis, Tooltip,
   ResponsiveContainer, ReferenceLine, Area, ComposedChart, Legend,
 } from "recharts";
 import { Loader2, TrendingUp, Users, MapPin, BarChart3, AlertCircle } from "lucide-react";
@@ -334,22 +334,63 @@ function MacroTrendsSection({
         </div>
       )}
 
-      {/* Support / Oppose / Neutral over time */}
+      {/* Support / Oppose / Neutral over time — with confidence band on support */}
       <div>
-        <p className="text-xs font-medium text-slate-600 mb-2">Support vs Opposition trend</p>
+        <p className="text-xs font-medium text-slate-600 mb-1">
+          Support vs Opposition trend
+          <span className="ml-1 text-slate-400 font-normal">(shaded = support confidence band)</span>
+        </p>
         <ResponsiveContainer width="100%" height={180}>
-          <LineChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+          <ComposedChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
             <XAxis dataKey="date" tick={{ fontSize: 9 }} interval="preserveStartEnd" />
             <YAxis tick={{ fontSize: 9 }} domain={[0, 100]} unit="%" />
             <Tooltip
               contentStyle={{ fontSize: 11 }}
-              formatter={(v: number, name: string) => [`${Math.round(v)}%`, name]}
+              content={({ active, payload, label }) => {
+                if (!active || !payload?.length) return null;
+                const point = payload[0]?.payload;
+                const isLow = point?.lowSample;
+                return (
+                  <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 6, padding: "8px 10px", fontSize: 11 }}>
+                    <p style={{ fontWeight: 500, marginBottom: 4, color: "#475569" }}>{label}</p>
+                    {payload
+                      .filter((e: any) => ["support", "oppose", "neutral"].includes(e.dataKey))
+                      .map((e: any) => (
+                        <p key={e.dataKey} style={{ color: e.stroke, margin: "2px 0" }}>
+                          {e.name}: {Math.round(e.value)}%
+                        </p>
+                      ))}
+                    {isLow && (
+                      <p style={{ color: "#d97706", marginTop: 6, borderTop: "1px solid #fef3c7", paddingTop: 4 }}>
+                        ⚠ Low sample — interpret with caution
+                      </p>
+                    )}
+                  </div>
+                );
+              }}
             />
             <Legend wrapperStyle={{ fontSize: 10 }} />
+            {/* Confidence band on support line — same technique as avg score chart */}
+            <Area
+              type="monotone"
+              dataKey="confHigh"
+              stroke="transparent"
+              fill="#10b981"
+              fillOpacity={0.12}
+              legendType="none"
+            />
+            <Area
+              type="monotone"
+              dataKey="confLow"
+              stroke="transparent"
+              fill="#ffffff"
+              fillOpacity={1}
+              legendType="none"
+            />
             <Line type="monotone" dataKey="support" stroke="#10b981" strokeWidth={2} dot={false} name="Support" />
             <Line type="monotone" dataKey="oppose"  stroke="#f43f5e" strokeWidth={2} dot={false} name="Oppose" />
             <Line type="monotone" dataKey="neutral" stroke="#94a3b8" strokeWidth={1.5} dot={false} name="Neutral" strokeDasharray="4 2" />
-          </LineChart>
+          </ComposedChart>
         </ResponsiveContainer>
       </div>
 
