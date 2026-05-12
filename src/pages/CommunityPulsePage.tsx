@@ -99,6 +99,26 @@ const GENDER_LABELS: Record<string, string> = {
   self_described:    "Self-described",
 };
 
+const AGE_GROUP_LABELS: Record<string, string> = {
+  "13-17": "13–17",
+  "18-24": "18–24",
+  "25-34": "25–34",
+  "35-44": "35–44",
+  "45-54": "45–54",
+  "55-64": "55–64",
+  "65+":   "65+",
+};
+
+// Canonical sort order for age bands so chart always renders youngest → oldest.
+const AGE_GROUP_ORDER = ["13-17", "18-24", "25-34", "35-44", "45-54", "55-64", "65+"];
+
+type DemoDimension = "gender" | "age_group";
+
+const DIMENSION_OPTIONS: Array<{ value: DemoDimension; label: string }> = [
+  { value: "gender",    label: "Gender" },
+  { value: "age_group", label: "Age group" },
+];
+
 function fmt(v: number | null): string {
   return v == null ? "—" : `${Math.round(v)}%`;
 }
@@ -449,8 +469,10 @@ function RegionalComparisonSection({ questionId }: { questionId: string | null }
 // ---------------------------------------------------------------------------
 
 function DemographicSection({ questionId }: { questionId: string | null }) {
+  const [dimension, setDimension] = React.useState<DemoDimension>("gender");
+
   const { data, isLoading } = useQuery<DemoRow[]>({
-    queryKey: ["demographic-breakdown", questionId],
+    queryKey: ["demographic-breakdown", questionId, dimension],
     enabled: !!questionId,
     staleTime: 5 * 60_000,
     queryFn: async () => {
@@ -458,19 +480,67 @@ function DemographicSection({ questionId }: { questionId: string | null }) {
       if (!sb) throw new Error("Supabase not available");
       const { data, error } = await sb.rpc("get_demographic_breakdown", {
         p_question_id: questionId,
-        p_dimension: "gender",
+        p_dimension: dimension,
       });
       if (error) throw error;
       return (data ?? []) as DemoRow[];
     },
   });
 
-  if (!questionId) return <p className="text-sm text-slate-500">Select a question above to see demographic breakdown.</p>;
-  if (isLoading) return <div className="flex justify-center py-4"><Loader2 className="h-4 w-4 animate-spin text-slate-400" /></div>;
-  if (!data?.length) return <p className="text-sm text-slate-500">Demographic data not yet available (requires minimum 3 responses per group).</p>;
+  // Dimension toggle — rendered regardless of loading/empty state so user
+  // can switch while data is loading or absent.
+  const toggle = (
+    <div className="flex gap-1">
+      {DIMENSION_OPTIONS.map((opt) => (
+        <button
+          key={opt.value}
+          type="button"
+          onClick={() => setDimension(opt.value)}
+          className={[
+            "px-2.5 py-1 rounded text-xs font-medium transition-colors",
+            dimension === opt.value
+              ? "bg-slate-900 text-white"
+              : "border border-slate-200 text-slate-600 hover:bg-slate-50",
+          ].join(" ")}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
 
-  const chartData = data.map((r) => ({
-    group:   GENDER_LABELS[r.dimension_value] ?? r.dimension_value,
+  if (!questionId) return (
+    <div className="space-y-3">
+      {toggle}
+      <p className="text-sm text-slate-500">Select a question above to see demographic breakdown.</p>
+    </div>
+  );
+
+  if (isLoading) return (
+    <div className="space-y-3">
+      {toggle}
+      <div className="flex justify-center py-4"><Loader2 className="h-4 w-4 animate-spin text-slate-400" /></div>
+    </div>
+  );
+
+  if (!data?.length) return (
+    <div className="space-y-3">
+      {toggle}
+      <p className="text-sm text-slate-500">Demographic data not yet available (requires minimum 3 responses per group).</p>
+    </div>
+  );
+
+  // For age_group: sort by canonical band order youngest → oldest.
+  // For gender: use DB order (total_responses desc from RPC).
+  const sortedData = dimension === "age_group"
+    ? [...data].sort((a, b) => AGE_GROUP_ORDER.indexOf(a.dimension_value) - AGE_GROUP_ORDER.indexOf(b.dimension_value))
+    : data;
+
+  const labelMap = dimension === "age_group" ? AGE_GROUP_LABELS : GENDER_LABELS;
+  const dimensionLabel = dimension === "age_group" ? "By age group" : "By gender";
+
+  const chartData = sortedData.map((r) => ({
+    group:   labelMap[r.dimension_value] ?? r.dimension_value,
     support: r.pct_support ?? 0,
     neutral: r.pct_neutral ?? 0,
     oppose:  r.pct_oppose  ?? 0,
@@ -479,7 +549,8 @@ function DemographicSection({ questionId }: { questionId: string | null }) {
 
   return (
     <div className="space-y-4">
-      <p className="text-[10px] text-slate-400">By gender — latest snapshot</p>
+      {toggle}
+      <p className="text-[10px] text-slate-400">{dimensionLabel} — latest snapshot</p>
       <ResponsiveContainer width="100%" height={160}>
         <BarChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
           <XAxis dataKey="group" tick={{ fontSize: 10 }} />
@@ -495,9 +566,9 @@ function DemographicSection({ questionId }: { questionId: string | null }) {
         </BarChart>
       </ResponsiveContainer>
       <div className="flex flex-wrap gap-2">
-        {data.map((r) => (
+        {sortedData.map((r) => (
           <span key={r.dimension_value} className="text-[10px] text-slate-500 bg-slate-50 border rounded px-2 py-1">
-            {GENDER_LABELS[r.dimension_value] ?? r.dimension_value}: n={r.total_responses}
+            {labelMap[r.dimension_value] ?? r.dimension_value}: n={r.total_responses}
           </span>
         ))}
       </div>
@@ -668,7 +739,7 @@ export default function CommunityPulsePage() {
             {/* Demographic breakdown */}
             <div>
               <p className="text-xs font-semibold text-slate-700 mb-2 flex items-center gap-1.5">
-                <Users className="h-3 w-3" /> By gender
+                <Users className="h-3 w-3" /> Demographics
               </p>
               <DemographicSection questionId={selectedQuestionId} />
             </div>
