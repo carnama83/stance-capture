@@ -845,7 +845,8 @@ export default function CommunityPulsePage() {
       const sb = getSupabase();
       if (!sb) return null;
       const { data: { user } } = await sb.auth.getUser();
-      if (!user) return null;
+      // Exclude anonymous sessions — anon users have no region data
+      if (!user || user.is_anonymous || !user.email) return null;
       const { data, error } = await sb
         .from("user_region_dimensions")
         .select("city_label, county_label, state_label, country_label")
