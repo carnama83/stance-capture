@@ -78,6 +78,27 @@ import SettingsPrivacy from "./pages/SettingsPrivacy";
 import SettingsAccount from "./pages/SettingsAccount";
 import CommunityPulsePage from "./pages/CommunityPulsePage";
 
+// Forces CommunityPulsePage to fully remount when the authenticated user changes.
+// This prevents stale per-user data (region options, question selections, cached
+// regional comparison) from leaking across user sessions.
+function UserKeyedPulsePage() {
+  const [userKey, setUserKey] = React.useState<string>("init");
+  React.useEffect(() => {
+    const sb = (window as any).sb ?? (() => { try { const { getSupabase } = require("@/lib/supabaseClient"); return getSupabase(); } catch { return null; } })();
+    if (!sb) return;
+    const { data: { subscription } } = sb.auth.onAuthStateChange((_: any, session: any) => {
+      const uid = session?.user?.id ?? "anon";
+      setUserKey(uid);
+    });
+    // Set initial key
+    sb.auth.getUser().then(({ data: { user } }: any) => {
+      setUserKey(user?.id ?? "anon");
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+  return <CommunityPulsePage key={userKey} />;
+}
+
 import RouteDebug from "./components/RouteDebug";
 
 // Admin stance metrics page
@@ -139,7 +160,7 @@ const App: React.FC = () => {
 
               <Route path="/search" element={<SearchResultsPage />} />
               <Route path="/for-you" element={<Protected><ForYouFeedPage /></Protected>} />
-              <Route path="/pulse" element={<CommunityPulsePage />} />
+              <Route path="/pulse" element={<UserKeyedPulsePage />} />
               <Route path="/insights" element={<InsightsPage />} />
               
               <Route
