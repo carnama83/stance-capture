@@ -5,7 +5,7 @@
 // F3: Regional comparison + demographic breakdown
 
 import * as React from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { getSupabase } from "@/lib/supabaseClient";
 import PageLayout from "@/components/PageLayout";
 import {
@@ -834,100 +834,6 @@ export default function CommunityPulsePage() {
   const [selectedQuestionId, setSelectedQuestionId] = React.useState<string | null>(null);
   const [compareMode, setCompareMode] = React.useState(false);
 
-  // Track current user ID to scope cached data per-user
-  const [currentUserId, setCurrentUserId] = React.useState<string | null>(null);
-  const [userIdResolved, setUserIdResolved] = React.useState(false);
-  const queryClient = useQueryClient();
-
-  React.useEffect(() => {
-    const sb = getSupabase();
-    if (!sb) return;
-    // Set initial user on mount — mark resolved once getUser() completes
-    sb.auth.getUser().then(({ data: { user } }) => {
-      const id = (!user || user.is_anonymous || !user.email) ? null : user.id;
-      setCurrentUserId(id);
-      setUserIdResolved(true);
-    });
-    // Reset on every auth change
-    const { data: { subscription } } = sb.auth.onAuthStateChange((_event, session) => {
-      const user = session?.user;
-      const id = (!user || user.is_anonymous || !user.email) ? null : user.id;
-      setCurrentUserId(id);
-      setUserIdResolved(true);
-      // Invalidate user-specific cached data so new user gets fresh region options
-      queryClient.invalidateQueries({ queryKey: ["user-region-pulse"] });
-      queryClient.invalidateQueries({ queryKey: ["community-pulse"] });
-      queryClient.removeQueries({ queryKey: ["regional-comparison"] });
-      queryClient.removeQueries({ queryKey: ["demographic-breakdown"] });
-      queryClient.invalidateQueries({ queryKey: ["macro-trends"] });
-      queryClient.invalidateQueries({ queryKey: ["compare-pulse-a"] });
-      queryClient.invalidateQueries({ queryKey: ["compare-pulse-b"] });
-      // Reset page-level selections so stale question/region from previous user is cleared
-      setRegionScope("global");
-      setRegionKey("global");
-      setSelectedQuestionId(null);
-      setCompareMode(false);
-    });
-    return () => subscription.unsubscribe();
-  }, [queryClient]);
-
-  // F improvement: load user's actual region labels to power the region selector
-  const { data: userRegion } = useQuery<{
-    city_label: string | null;
-    county_label: string | null;
-    state_label: string | null;
-    country_label: string | null;
-  } | null>({
-    queryKey: ["user-region-pulse", currentUserId],
-    staleTime: 10 * 60_000,
-    queryFn: async () => {
-      const sb = getSupabase();
-      if (!sb) return null;
-      const { data: { user } } = await sb.auth.getUser();
-      // Exclude anonymous sessions — anon users have no region data
-      if (!user || user.is_anonymous || !user.email) return null;
-      const { data, error } = await sb
-        .from("user_region_dimensions")
-        .select("city_label, county_label, state_label, country_label")
-        .eq("user_id", user.id)
-        .maybeSingle();
-      if (error) return null;
-      return data;
-    },
-  });
-
-  // Build region options dynamically from user's actual labels
-  const regionOptions: Array<{ value: RegionScope; label: string; key: string }> = [
-    { value: "global",  label: "Global",                              key: "global" },
-    ...(userRegion?.country_label ? [{ value: "country" as RegionScope, label: userRegion.country_label, key: userRegion.country_label }] : []),
-    ...(userRegion?.state_label   ? [{ value: "state"   as RegionScope, label: userRegion.state_label,   key: userRegion.state_label   }] : []),
-    ...(userRegion?.county_label  ? [{ value: "county"  as RegionScope, label: userRegion.county_label,  key: userRegion.county_label  }] : []),
-    ...(userRegion?.city_label    ? [{ value: "city"    as RegionScope, label: userRegion.city_label,    key: userRegion.city_label    }] : []),
-  ];
-
-  // Fetch pulse data to populate question selector for F3
-  // Only fires after userId has been resolved to prevent cross-user cache sharing
-  const { data: pulseData } = useQuery<PulseRow[]>({
-    queryKey: ["community-pulse", currentUserId, regionScope, regionKey],
-    enabled: userIdResolved,
-    staleTime: 5 * 60_000,
-    queryFn: async () => {
-      const sb = getSupabase();
-      if (!sb) throw new Error("Supabase not available");
-      const { data, error } = await sb.rpc("get_community_pulse", {
-        p_region_scope: regionScope,
-        p_region_key: regionKey,
-        p_limit: 20,
-      });
-      if (error) throw error;
-      return (data ?? []) as PulseRow[];
-    },
-  });
-
-  // Reset question selection when user changes
-  React.useEffect(() => {
-    setSelectedQuestionId(null);
-  }, [currentUserId]);
 
   return (
     <PageLayout>
