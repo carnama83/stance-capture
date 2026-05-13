@@ -5,7 +5,7 @@
 // F3: Regional comparison + demographic breakdown
 
 import * as React from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getSupabase } from "@/lib/supabaseClient";
 import PageLayout from "@/components/PageLayout";
 import {
@@ -831,6 +831,26 @@ export default function CommunityPulsePage() {
   const [trendDays, setTrendDays] = React.useState(30);
   const [selectedQuestionId, setSelectedQuestionId] = React.useState<string | null>(null);
   const [compareMode, setCompareMode] = React.useState(false);
+
+  // Reset page state and invalidate user-specific queries when auth user changes
+  const queryClient = useQueryClient();
+  React.useEffect(() => {
+    const sb = getSupabase();
+    if (!sb) return;
+    const { data: { subscription } } = sb.auth.onAuthStateChange((_event, session) => {
+      // Invalidate user-specific cached data so new user gets fresh region options
+      queryClient.invalidateQueries({ queryKey: ["user-region-pulse"] });
+      queryClient.invalidateQueries({ queryKey: ["community-pulse"] });
+      queryClient.invalidateQueries({ queryKey: ["compare-pulse-a"] });
+      queryClient.invalidateQueries({ queryKey: ["compare-pulse-b"] });
+      // Reset page-level selections so stale question/region from previous user is cleared
+      setRegionScope("global");
+      setRegionKey("global");
+      setSelectedQuestionId(null);
+      setCompareMode(false);
+    });
+    return () => subscription.unsubscribe();
+  }, [queryClient]);
 
   // F improvement: load user's actual region labels to power the region selector
   const { data: userRegion } = useQuery<{
