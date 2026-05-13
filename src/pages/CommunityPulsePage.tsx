@@ -836,21 +836,24 @@ export default function CommunityPulsePage() {
 
   // Track current user ID to scope cached data per-user
   const [currentUserId, setCurrentUserId] = React.useState<string | null>(null);
+  const [userIdResolved, setUserIdResolved] = React.useState(false);
   const queryClient = useQueryClient();
 
   React.useEffect(() => {
     const sb = getSupabase();
     if (!sb) return;
-    // Set initial user on mount
+    // Set initial user on mount — mark resolved once getUser() completes
     sb.auth.getUser().then(({ data: { user } }) => {
       const id = (!user || user.is_anonymous || !user.email) ? null : user.id;
       setCurrentUserId(id);
+      setUserIdResolved(true);
     });
     // Reset on every auth change
     const { data: { subscription } } = sb.auth.onAuthStateChange((_event, session) => {
       const user = session?.user;
       const id = (!user || user.is_anonymous || !user.email) ? null : user.id;
       setCurrentUserId(id);
+      setUserIdResolved(true);
       // Invalidate user-specific cached data so new user gets fresh region options
       queryClient.invalidateQueries({ queryKey: ["user-region-pulse"] });
       queryClient.invalidateQueries({ queryKey: ["community-pulse"] });
@@ -903,8 +906,10 @@ export default function CommunityPulsePage() {
   ];
 
   // Fetch pulse data to populate question selector for F3
+  // Only fires after userId has been resolved to prevent cross-user cache sharing
   const { data: pulseData } = useQuery<PulseRow[]>({
     queryKey: ["community-pulse", currentUserId, regionScope, regionKey],
+    enabled: userIdResolved,
     staleTime: 5 * 60_000,
     queryFn: async () => {
       const sb = getSupabase();
