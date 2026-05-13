@@ -438,6 +438,7 @@ function RegionalComparisonSection({ questionId }: { questionId: string | null }
     queryKey: ["regional-comparison", questionId],
     enabled: !!questionId,
     staleTime: 5 * 60_000,
+    gcTime: 0,
     queryFn: async () => {
       const sb = getSupabase();
       if (!sb) throw new Error("Supabase not available");
@@ -501,6 +502,7 @@ function DemographicSection({ questionId }: { questionId: string | null }) {
     queryKey: ["demographic-breakdown", questionId, dimension],
     enabled: !!questionId,
     staleTime: 5 * 60_000,
+    gcTime: 0,
     queryFn: async () => {
       const sb = getSupabase();
       if (!sb) throw new Error("Supabase not available");
@@ -852,8 +854,8 @@ export default function CommunityPulsePage() {
       // Invalidate user-specific cached data so new user gets fresh region options
       queryClient.invalidateQueries({ queryKey: ["user-region-pulse"] });
       queryClient.invalidateQueries({ queryKey: ["community-pulse"] });
-      queryClient.invalidateQueries({ queryKey: ["regional-comparison"] });
-      queryClient.invalidateQueries({ queryKey: ["demographic-breakdown"] });
+      queryClient.removeQueries({ queryKey: ["regional-comparison"] });
+      queryClient.removeQueries({ queryKey: ["demographic-breakdown"] });
       queryClient.invalidateQueries({ queryKey: ["macro-trends"] });
       queryClient.invalidateQueries({ queryKey: ["compare-pulse-a"] });
       queryClient.invalidateQueries({ queryKey: ["compare-pulse-b"] });
