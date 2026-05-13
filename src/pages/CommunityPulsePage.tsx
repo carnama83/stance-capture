@@ -852,6 +852,9 @@ export default function CommunityPulsePage() {
       // Invalidate user-specific cached data so new user gets fresh region options
       queryClient.invalidateQueries({ queryKey: ["user-region-pulse"] });
       queryClient.invalidateQueries({ queryKey: ["community-pulse"] });
+      queryClient.invalidateQueries({ queryKey: ["regional-comparison"] });
+      queryClient.invalidateQueries({ queryKey: ["demographic-breakdown"] });
+      queryClient.invalidateQueries({ queryKey: ["macro-trends"] });
       queryClient.invalidateQueries({ queryKey: ["compare-pulse-a"] });
       queryClient.invalidateQueries({ queryKey: ["compare-pulse-b"] });
       // Reset page-level selections so stale question/region from previous user is cleared
@@ -899,7 +902,7 @@ export default function CommunityPulsePage() {
 
   // Fetch pulse data to populate question selector for F3
   const { data: pulseData } = useQuery<PulseRow[]>({
-    queryKey: ["community-pulse", regionScope, regionKey],
+    queryKey: ["community-pulse", currentUserId, regionScope, regionKey],
     staleTime: 5 * 60_000,
     queryFn: async () => {
       const sb = getSupabase();
