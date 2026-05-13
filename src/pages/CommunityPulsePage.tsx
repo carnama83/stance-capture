@@ -917,17 +917,10 @@ export default function CommunityPulsePage() {
     },
   });
 
-  // Auto-select first question when data loads — scoped to currentUserId
-  // so switching users resets the selection even if pulseData hasn't changed yet
+  // Reset question selection when user changes
   React.useEffect(() => {
     setSelectedQuestionId(null);
   }, [currentUserId]);
-
-  React.useEffect(() => {
-    if (pulseData?.length && !selectedQuestionId) {
-      setSelectedQuestionId(pulseData[0].question_id);
-    }
-  }, [pulseData, currentUserId]);
 
   return (
     <PageLayout>
