@@ -832,12 +832,23 @@ export default function CommunityPulsePage() {
   const [selectedQuestionId, setSelectedQuestionId] = React.useState<string | null>(null);
   const [compareMode, setCompareMode] = React.useState(false);
 
-  // Reset page state and invalidate user-specific queries when auth user changes
+  // Track current user ID to scope cached data per-user
+  const [currentUserId, setCurrentUserId] = React.useState<string | null>(null);
   const queryClient = useQueryClient();
+
   React.useEffect(() => {
     const sb = getSupabase();
     if (!sb) return;
+    // Set initial user on mount
+    sb.auth.getUser().then(({ data: { user } }) => {
+      const id = (!user || user.is_anonymous || !user.email) ? null : user.id;
+      setCurrentUserId(id);
+    });
+    // Reset on every auth change
     const { data: { subscription } } = sb.auth.onAuthStateChange((_event, session) => {
+      const user = session?.user;
+      const id = (!user || user.is_anonymous || !user.email) ? null : user.id;
+      setCurrentUserId(id);
       // Invalidate user-specific cached data so new user gets fresh region options
       queryClient.invalidateQueries({ queryKey: ["user-region-pulse"] });
       queryClient.invalidateQueries({ queryKey: ["community-pulse"] });
@@ -859,7 +870,7 @@ export default function CommunityPulsePage() {
     state_label: string | null;
     country_label: string | null;
   } | null>({
-    queryKey: ["user-region-pulse"],
+    queryKey: ["user-region-pulse", currentUserId],
     staleTime: 10 * 60_000,
     queryFn: async () => {
       const sb = getSupabase();
@@ -903,12 +914,17 @@ export default function CommunityPulsePage() {
     },
   });
 
-  // Auto-select first question when data loads
+  // Auto-select first question when data loads — scoped to currentUserId
+  // so switching users resets the selection even if pulseData hasn't changed yet
+  React.useEffect(() => {
+    setSelectedQuestionId(null);
+  }, [currentUserId]);
+
   React.useEffect(() => {
     if (pulseData?.length && !selectedQuestionId) {
       setSelectedQuestionId(pulseData[0].question_id);
     }
-  }, [pulseData]);
+  }, [pulseData, currentUserId]);
 
   return (
     <PageLayout>
