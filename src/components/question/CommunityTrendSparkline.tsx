@@ -38,7 +38,7 @@ interface CommunityTrendSparklineProps {
 }
 
 export function CommunityTrendSparkline({ questionId }: CommunityTrendSparklineProps) {
-  const { data: points, isLoading } = useQuery<TrendPoint[]>({
+  const { data: points, isLoading, isError, error } = useQuery<TrendPoint[]>({
     queryKey: ["community-trend", questionId],
     staleTime: 10 * 60_000,
     queryFn: async () => {
@@ -50,12 +50,19 @@ export function CommunityTrendSparkline({ questionId }: CommunityTrendSparklineP
         p_days:         7,
         p_question_id:  questionId,
       });
-      if (error) return [];
+      if (error) {
+        console.error("[CommunityTrendSparkline] RPC error:", error);
+        return [];
+      }
+      console.log("[CommunityTrendSparkline] points:", data);
       return (data ?? []) as TrendPoint[];
     },
   });
 
-  if (isLoading || !points || points.length < 2) return null;
+  if (isLoading || !points || points.length < 2) {
+    console.log("[CommunityTrendSparkline] returning null —", { isLoading, isError, pointsLength: points?.length });
+    return null;
+  }
 
   // Use all points for the sparkline — filtering out low-sample days leaves
   // too few points at early stage. Low-sample days are marked with a dimmed
