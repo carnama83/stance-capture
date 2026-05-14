@@ -57,10 +57,13 @@ export function CommunityTrendSparkline({ questionId }: CommunityTrendSparklineP
 
   if (isLoading || !points || points.length < 2) return null;
 
-  // Filter out low-sample days
-  const validPoints = points.filter((p) => !p.is_low_sample);
+  // Use all points for the sparkline — filtering out low-sample days leaves
+  // too few points at early stage. Low-sample days are marked with a dimmed
+  // dot on the line instead of being silently dropped.
+  const validPoints = points;
   if (validPoints.length < 2) return null;
 
+  const hasLowSample = points.some((p) => p.is_low_sample);
   const trend = trendDirection(validPoints);
 
   // Build SVG sparkline — shows pct_support as a line
@@ -115,6 +118,7 @@ export function CommunityTrendSparkline({ questionId }: CommunityTrendSparklineP
           cy={pts[pts.length - 1].y}
           r="2"
           fill={strokeColor}
+          opacity={validPoints[validPoints.length - 1].is_low_sample ? 0.4 : 1}
         />
       </svg>
 
@@ -124,6 +128,9 @@ export function CommunityTrendSparkline({ questionId }: CommunityTrendSparklineP
         <span className={`text-[10px] font-medium ${iconClass}`}>
           {trend.label}
         </span>
+        {hasLowSample && (
+          <span className="text-[10px] text-slate-400 font-normal ml-0.5">(early data)</span>
+        )}
       </div>
     </div>
   );
