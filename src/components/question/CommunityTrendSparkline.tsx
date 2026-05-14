@@ -46,7 +46,7 @@ export function CommunityTrendSparkline({ questionId }: CommunityTrendSparklineP
       if (!sb) return [];
       const { data, error } = await sb.rpc("get_macro_trends", {
         p_region_scope: "global",
-        p_region_key:   "Global",
+        p_region_key:   "global",
         p_days:         7,
         p_question_id:  questionId,
       });
