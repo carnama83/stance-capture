@@ -975,6 +975,49 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
     [allComments],
   );
 
+  // M-G06: Realtime subscription — invalidate reactions when any reaction changes
+  // for a comment currently in view. comment_reactions has no question_id column
+  // so we subscribe unfiltered and check the payload comment_id against the
+  // current allCommentIds set. removeChannel only — never realtime.disconnect().
+  React.useEffect(() => {
+    if (!sb || allCommentIds.length === 0) return;
+
+    const commentIdSet = new Set(allCommentIds);
+
+    const channel = sb
+      .channel(`comment-reactions-${questionId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "comment_reactions",
+        },
+        (payload) => {
+          // Extract comment_id from whichever record is available
+          const record = (payload.new ?? payload.old) as { comment_id?: string } | null;
+          if (!record?.comment_id) return;
+          // Only invalidate if the reaction belongs to a comment we're showing
+          if (!commentIdSet.has(record.comment_id)) return;
+          queryClient.invalidateQueries({ queryKey: ["comment-reactions", questionId] });
+        },
+      )
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          console.warn(`[comments:realtime] ${status} qId=${questionId.slice(0, 8)}`);
+        }
+      });
+
+    return () => {
+      // removeChannel only — do NOT call sb.realtime.disconnect() here.
+      // disconnect() destroys the singleton client's WebSocket transport,
+      // breaking subsequent subscriptions on the same client instance.
+      sb.removeChannel(channel);
+    };
+  // Resubscribe when the set of visible comment IDs changes (new page loaded)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sb, questionId, allCommentIds.join(",")]);
+
   // G2: Reactions query
   const reactionsQuery = useQuery({
     queryKey: ["comment-reactions", questionId, allCommentIds.join(",")],
