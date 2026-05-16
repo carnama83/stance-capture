@@ -1016,8 +1016,42 @@ export default function Signup() {
     addLog("onboarding.done");
   }
 
+  // Epic AG: read audience context signals baked into the URL at signup time.
+  // HashRouter stores params in the hash fragment e.g. #/signup?s=college_students.
+  // Falls back to normal query string for non-hash deployments.
+  function getAudienceSignalsFromUrl(): {
+    campaignAudience: string | null;
+    entryPath: string | null;
+  } {
+    try {
+      const hash = window.location.hash || "";
+      const qIndex = hash.indexOf("?");
+      const hashParams = qIndex >= 0
+        ? new URLSearchParams(hash.slice(qIndex + 1))
+        : new URLSearchParams();
+      const searchParams = new URLSearchParams(window.location.search);
+
+      const campaignAudience =
+        hashParams.get("s") ??
+        hashParams.get("audience") ??
+        searchParams.get("s") ??
+        searchParams.get("audience") ??
+        null;
+
+      // Entry path: hash path portion before any ?
+      // e.g. #/students?s=college_students → entryPath = '/students'
+      const hashPath = hash.replace(/^#/, "").split("?")[0] || null;
+
+      return { campaignAudience, entryPath: hashPath };
+    } catch {
+      return { campaignAudience: null, entryPath: null };
+    }
+  }
+
   function stashForFirstLogin() {
     try {
+      const { campaignAudience, entryPath } = getAudienceSignalsFromUrl();
+
       const payload = {
         username: username.trim(),
         dob,
@@ -1027,9 +1061,13 @@ export default function Signup() {
         stateCode,
         countyCode,
         cityId,
+        // Epic AG: audience intelligence signals — consumed by
+        // applySignupStashIfPresent() → initialize_user_context_from_signup()
+        campaignAudience,
+        entryPath,
       };
       window.localStorage.setItem("signup_stash_v1", JSON.stringify(payload));
-      addLog("stash.ok", { keys: Object.keys(payload) });
+      addLog("stash.ok", { keys: Object.keys(payload), campaignAudience, entryPath });
     } catch (e) {
       addLog("stash.error", safeErr(e));
       // ignore
