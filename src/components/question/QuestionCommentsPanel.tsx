@@ -1183,7 +1183,15 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
   return (
     <Card className="mt-6">
       <CardHeader>
-        <CardTitle className="text-sm font-semibold">Comments</CardTitle>
+        <CardTitle className="text-sm font-semibold flex items-center gap-2">
+          Comments
+          {/* M-G07: comment count badge — sourced from question_comment_sentiment.comment_count */}
+          {sentiment?.comment_count != null && sentiment.comment_count > 0 && (
+            <span className="inline-flex items-center justify-center rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
+              {sentiment.comment_count}
+            </span>
+          )}
+        </CardTitle>
         <p className="mt-1 text-xs text-slate-500">
           Share your reasoning, questions, or concerns. Your stance slider captures your position;
           comments capture your thinking.
