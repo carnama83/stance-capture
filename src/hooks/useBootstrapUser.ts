@@ -11,6 +11,9 @@ type SignupStashV1 = {
   stateCode?: string;
   countyCode?: string;
   cityId?: string;
+  // Epic AG: audience intelligence signals
+  campaignAudience?: string | null;  // from ?s= or ?audience= URL param at signup
+  entryPath?: string | null;         // hash path at time of signup e.g. '/students'
 };
 
 type Precision = "city" | "county" | "state" | "country" | "none";
@@ -85,6 +88,52 @@ async function resolveLocationFromStash(sb: any, stash: SignupStashV1) {
   return null;
 }
 
+// ── Epic AG: compute age band from DOB string ─────────────────────────────
+// DOB is available in the stash as plaintext (YYYY-MM-DD) before encryption.
+// We compute age here so the SQL function never needs to decrypt dob_encrypted.
+function computeAgeBand(dob: string | undefined | null): number | null {
+  if (!dob) return null;
+  try {
+    const birth = new Date(dob.trim());
+    if (isNaN(birth.getTime())) return null;
+    const today = new Date();
+    let age = today.getFullYear() - birth.getFullYear();
+    const monthDiff = today.getMonth() - birth.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+      age--;
+    }
+    return age >= 0 && age < 150 ? age : null;
+  } catch {
+    return null;
+  }
+}
+
+// ── Epic AG: resolve audience segment from stash signals ──────────────────
+async function applyAudienceSegmentFromStash(sb: any, stash: SignupStashV1, email: string | null) {
+  try {
+    const dobAgeBand = computeAgeBand(stash.dob);
+
+    const { data: resolvedKey, error } = await sb.rpc(
+      "initialize_user_context_from_signup",
+      {
+        p_email:             email ?? null,
+        p_dob_age_band:      dobAgeBand,
+        p_entry_path:        stash.entryPath ?? null,
+        p_campaign_audience: stash.campaignAudience ?? null,
+        p_share_ref:         null,  // reserved for future share-link inference
+      }
+    );
+
+    if (error) {
+      console.warn("[bootstrap] initialize_user_context_from_signup failed (non-fatal):", error);
+    } else {
+      console.info("[bootstrap] Audience segment resolved:", resolvedKey ?? "general");
+    }
+  } catch (e) {
+    console.warn("[bootstrap] Audience segment resolution exception (non-fatal):", e);
+  }
+}
+
 async function applySignupStashIfPresent(sb: any) {
   const raw = window.localStorage.getItem("signup_stash_v1");
   if (!raw) return;
@@ -98,7 +147,8 @@ async function applySignupStashIfPresent(sb: any) {
   }
 
   const { data: sessRes } = await sb.auth.getSession();
-const uid = sessRes.session?.user?.id;
+  const uid   = sessRes.session?.user?.id;
+  const email = sessRes.session?.user?.email ?? null;
   if (!uid) return;
 
   // Username (non-fatal)
@@ -153,6 +203,11 @@ const uid = sessRes.session?.user?.id;
       );
     }
   }
+
+  // ✅ Epic AG: Audience segment resolution (non-fatal)
+  // Runs after all other stash applications — order doesn't matter but
+  // keeping it last ensures DOB is already set if needed for future signals.
+  await applyAudienceSegmentFromStash(sb, stash, email);
 
   // Clear stash only after we attempted to apply it
   window.localStorage.removeItem("signup_stash_v1");
@@ -238,7 +293,7 @@ async function mergeEmbeddedStancesIfPending(sb: any) {
 async function runBootstrap(sb: any) {
   const r = await sb.rpc("bootstrap_user_after_login");
 
-  // ✅ Important: don’t abort stash application on 409
+  // ✅ Important: don't abort stash application on 409
   // 409 generally means "already bootstrapped / idempotent conflict", so continue.
   if (r.error) {
     if (isConflictError(r.error)) {
