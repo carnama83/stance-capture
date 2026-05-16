@@ -4,6 +4,7 @@
 // G2: upvote/downvote reactions + Most Helpful / Latest sorting (new)
 // G3: civility warning via OpenAI moderation before posting (new)
 // G4: report button with reason selection (new)
+// M-G01: inline comment edit with update_comment() RPC (new)
 
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -14,7 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useToast } from "@/components/ui/use-toast";
 import { getSentimentColorHex } from "@/lib/stanceColors";
-import { ThumbsUp, ThumbsDown, Flag, AlertTriangle } from "lucide-react";
+import { ThumbsUp, ThumbsDown, Flag, AlertTriangle, Pencil } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -206,6 +207,8 @@ type CommentThreadProps = {
   sessionUserId: string | null;
   onReply: (body: string) => Promise<void>;
   onReact: (commentId: string, reaction: "up" | "down") => Promise<void>;
+  // M-G01: edit callback — called with commentId + new body, returns updated row
+  onEdit: (commentId: string, newBody: string) => Promise<void>;
 };
 
 function CommentThread({
@@ -215,14 +218,21 @@ function CommentThread({
   sessionUserId,
   onReply,
   onReact,
+  onEdit,
 }: CommentThreadProps) {
   const [isReplying, setIsReplying] = React.useState(false);
   const [replyText, setReplyText] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
   const [reportingId, setReportingId] = React.useState<string | null>(null);
 
+  // M-G01: edit state
+  const [isEditing, setIsEditing] = React.useState(false);
+  const [editText, setEditText] = React.useState(node.body);
+  const [savingEdit, setSavingEdit] = React.useState(false);
+
   const maxDepth = 3;
   const canReply = depth < maxDepth;
+  const isOwn = sessionUserId !== null && node.user_id === sessionUserId;
   const r = reactions[node.id];
 
   const handleSubmitReply = async () => {
@@ -235,6 +245,29 @@ function CommentThread({
       setIsReplying(false);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  // M-G01: open edit mode, pre-fill with current body
+  const handleOpenEdit = () => {
+    setEditText(node.body);
+    setIsEditing(true);
+    setIsReplying(false); // close reply composer if open
+  };
+
+  // M-G01: save edit
+  const handleSaveEdit = async () => {
+    const trimmed = editText.trim();
+    if (!trimmed || trimmed === node.body) {
+      setIsEditing(false);
+      return;
+    }
+    setSavingEdit(true);
+    try {
+      await onEdit(node.id, trimmed);
+      setIsEditing(false);
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -256,68 +289,118 @@ function CommentThread({
         </Avatar>
 
         <div className="flex-1 min-w-0">
+          {/* Header: display name + timestamp + edited indicator */}
           <div className="flex items-center gap-2 text-[11px] text-slate-500">
             <span className="font-medium text-slate-800">{node.user_display ?? "Someone"}</span>
             <span>{timeAgo(node.created_at)}</span>
-          </div>
-
-          <div className="mt-0.5 text-sm text-slate-800 whitespace-pre-wrap leading-snug">
-            {node.body}
-          </div>
-
-          {/* G2: Reactions + actions row */}
-          <div className="mt-1.5 flex items-center gap-3 text-[11px] text-slate-500">
-            {/* Upvote */}
-            <button
-              type="button"
-              onClick={() => sessionUserId && onReact(node.id, "up")}
-              className={[
-                "flex items-center gap-1 hover:text-slate-900 transition-colors",
-                r?.my_reaction === "up" ? "text-emerald-600 font-medium" : "",
-                !sessionUserId ? "opacity-50 cursor-default" : "",
-              ].join(" ")}
-            >
-              <ThumbsUp className="h-3.5 w-3.5" />
-              <span>{r?.up_count ?? 0}</span>
-            </button>
-
-            {/* Downvote */}
-            <button
-              type="button"
-              onClick={() => sessionUserId && onReact(node.id, "down")}
-              className={[
-                "flex items-center gap-1 hover:text-slate-900 transition-colors",
-                r?.my_reaction === "down" ? "text-red-500 font-medium" : "",
-                !sessionUserId ? "opacity-50 cursor-default" : "",
-              ].join(" ")}
-            >
-              <ThumbsDown className="h-3.5 w-3.5" />
-              <span>{r?.down_count ?? 0}</span>
-            </button>
-
-            {/* Reply */}
-            {canReply && (
-              <button
-                type="button"
-                className="hover:text-slate-900 transition-colors"
-                onClick={() => setIsReplying((v) => !v)}
-              >
-                {isReplying ? "Cancel" : "Reply"}
-              </button>
-            )}
-
-            {/* G4: Report */}
-            {sessionUserId && (
-              <button
-                type="button"
-                className="flex items-center gap-1 hover:text-red-500 transition-colors ml-auto"
-                onClick={() => setReportingId(node.id)}
-                aria-label="Report comment"
-              >
-                <Flag className="h-3 w-3" />
-              </button>
+            {/* M-G01: edited_at indicator */}
+            {node.edited_at && (
+              <span className="text-slate-400 italic">· edited {timeAgo(node.edited_at)}</span>
             )}
           </div>
+
+          {/* M-G01: edit composer (replaces body when active) */}
+          {isEditing ? (
+            <div className="mt-1 space-y-2">
+              <Textarea
+                rows={3}
+                className="text-sm"
+                value={editText}
+                onChange={(e) => setEditText(e.target.value)}
+                disabled={savingEdit}
+                autoFocus
+              />
+              <div className="flex items-center gap-2 justify-end">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setIsEditing(false)}
+                  disabled={savingEdit}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleSaveEdit}
+                  disabled={savingEdit || !editText.trim() || editText.trim() === node.body}
+                >
+                  {savingEdit ? "Saving…" : "Save"}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="mt-0.5 text-sm text-slate-800 whitespace-pre-wrap leading-snug">
+              {node.body}
+            </div>
+          )}
+
+          {/* G2: Reactions + actions row — hidden while editing */}
+          {!isEditing && (
+            <div className="mt-1.5 flex items-center gap-3 text-[11px] text-slate-500">
+              {/* Upvote */}
+              <button
+                type="button"
+                onClick={() => sessionUserId && onReact(node.id, "up")}
+                className={[
+                  "flex items-center gap-1 hover:text-slate-900 transition-colors",
+                  r?.my_reaction === "up" ? "text-emerald-600 font-medium" : "",
+                  !sessionUserId ? "opacity-50 cursor-default" : "",
+                ].join(" ")}
+              >
+                <ThumbsUp className="h-3.5 w-3.5" />
+                <span>{r?.up_count ?? 0}</span>
+              </button>
+
+              {/* Downvote */}
+              <button
+                type="button"
+                onClick={() => sessionUserId && onReact(node.id, "down")}
+                className={[
+                  "flex items-center gap-1 hover:text-slate-900 transition-colors",
+                  r?.my_reaction === "down" ? "text-red-500 font-medium" : "",
+                  !sessionUserId ? "opacity-50 cursor-default" : "",
+                ].join(" ")}
+              >
+                <ThumbsDown className="h-3.5 w-3.5" />
+                <span>{r?.down_count ?? 0}</span>
+              </button>
+
+              {/* Reply */}
+              {canReply && (
+                <button
+                  type="button"
+                  className="hover:text-slate-900 transition-colors"
+                  onClick={() => setIsReplying((v) => !v)}
+                >
+                  {isReplying ? "Cancel" : "Reply"}
+                </button>
+              )}
+
+              {/* M-G01: Edit — own comments only */}
+              {isOwn && (
+                <button
+                  type="button"
+                  className="flex items-center gap-1 hover:text-slate-900 transition-colors"
+                  onClick={handleOpenEdit}
+                  aria-label="Edit comment"
+                >
+                  <Pencil className="h-3 w-3" />
+                </button>
+              )}
+
+              {/* G4: Report */}
+              {sessionUserId && (
+                <button
+                  type="button"
+                  className="flex items-center gap-1 hover:text-red-500 transition-colors ml-auto"
+                  onClick={() => setReportingId(node.id)}
+                  aria-label="Report comment"
+                >
+                  <Flag className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Reply composer */}
           {isReplying && canReply && (
@@ -355,6 +438,7 @@ function CommentThread({
               sessionUserId={sessionUserId}
               onReply={onReply}
               onReact={onReact}
+              onEdit={onEdit}
             />
           ))}
         </div>
@@ -471,6 +555,28 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["question-comments", questionId] });
       queryClient.invalidateQueries({ queryKey: ["question-thread-sentiment", questionId] });
+    },
+  });
+
+  // M-G01: Edit comment mutation
+  const editCommentMutation = useMutation({
+    mutationFn: async ({ commentId, body }: { commentId: string; body: string }) => {
+      const { data, error } = await sb.rpc("update_comment", {
+        p_comment_id: commentId,
+        p_body: body,
+      });
+      if (error) throw error;
+      return data as QuestionCommentRow;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["question-comments", questionId] });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Could not save edit",
+        description: err?.message ?? "Please try again.",
+        variant: "destructive",
+      });
     },
   });
 
@@ -659,6 +765,9 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
                   }}
                   onReact={async (commentId, reaction) => {
                     await reactMutation.mutateAsync({ commentId, reaction });
+                  }}
+                  onEdit={async (commentId, newBody) => {
+                    await editCommentMutation.mutateAsync({ commentId, body: newBody });
                   }}
                 />
               ))}
