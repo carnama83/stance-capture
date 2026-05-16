@@ -7,6 +7,7 @@
 // M-G01: inline comment edit with update_comment() RPC (new)
 // M-G02: soft-delete with tombstone render via delete_comment() RPC (new)
 // M-G03: URL highlighting in composers (contenteditable) + linkified body render (new)
+// M-G05: cursor-based pagination — root comments paged, replies always full (new)
 
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -17,7 +18,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useToast } from "@/components/ui/use-toast";
 import { getSentimentColorHex } from "@/lib/stanceColors";
-import { ThumbsUp, ThumbsDown, Flag, AlertTriangle, Pencil, Trash2 } from "lucide-react";
+import { ThumbsUp, ThumbsDown, Flag, AlertTriangle, Pencil, Trash2, Loader2 } from "lucide-react";
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const PAGE_SIZE = 20;
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -38,6 +43,12 @@ type QuestionCommentRow = {
 };
 
 type CommentNode = QuestionCommentRow & { children: CommentNode[] };
+
+// Cursor state for root comment pagination
+type PageCursor = {
+  created_at: string;
+  id: string;
+} | null;
 
 type ReactionRow = {
   comment_id: string;
@@ -193,7 +204,8 @@ const RichCommentInput = React.forwardRef<RichCommentInputHandle, RichCommentInp
         }
         const span = document.createElement("span");
         span.className = "url-highlight";
-        span.style.cssText = "color:#2563eb;text-decoration:underline;text-underline-offset:2px;word-break:break-all;";
+        span.style.cssText =
+          "color:#2563eb;text-decoration:underline;text-underline-offset:2px;word-break:break-all;";
         span.textContent = m[0];
         fragment.appendChild(span);
         last = m.index + m[0].length;
@@ -202,13 +214,9 @@ const RichCommentInput = React.forwardRef<RichCommentInputHandle, RichCommentInp
         fragment.appendChild(document.createTextNode(text.slice(last)));
       }
 
-      // Only update DOM if content changed (avoids unnecessary reflows)
-      const newText = fragment.textContent ?? "";
-      if (el.innerText !== newText || el.querySelector(".url-highlight") !== null || newText.match(URL_RE)) {
-        el.innerHTML = "";
-        el.appendChild(fragment);
-        setCaretOffset(el, offset);
-      }
+      el.innerHTML = "";
+      el.appendChild(fragment);
+      setCaretOffset(el, offset);
 
       highlighting.current = false;
     }
@@ -265,11 +273,12 @@ const RichCommentInput = React.forwardRef<RichCommentInputHandle, RichCommentInp
     }
 
     function handleKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
-      // Prevent Enter from inserting a <div> (default contenteditable behaviour)
-      // — allow Shift+Enter for newlines via insertText instead
+      // Prevent Enter from inserting a <div> (default contenteditable behaviour).
+      // Single Enter creates a newline via the browser's default insertText —
+      // that is the desired behaviour for multi-line comments.
+      // If Enter-to-submit is needed in future, add that logic here.
       if (e.key === "Enter" && !e.shiftKey) {
-        // Allow default — single Enter creates a newline which is fine for comments
-        // If you want Enter-to-submit, add that logic here.
+        // Allow default — browser inserts a newline text node, not a <div>
       }
     }
 
@@ -291,7 +300,6 @@ const RichCommentInput = React.forwardRef<RichCommentInputHandle, RichCommentInp
           "w-full rounded-md border border-input bg-background px-3 py-2 text-sm",
           "leading-relaxed whitespace-pre-wrap break-words outline-none",
           "focus:ring-1 focus:ring-ring focus:border-ring",
-          "disabled:opacity-50",
           disabled ? "opacity-50 cursor-not-allowed" : "",
           // Placeholder via CSS — shown when div is empty
           "empty:before:content-[attr(aria-placeholder)] empty:before:text-muted-foreground empty:before:pointer-events-none",
@@ -314,9 +322,10 @@ function buildCommentTree(rows: QuestionCommentRow[]): CommentNode[] {
     const node = map.get(row.id)!;
     if (row.parent_id && map.has(row.parent_id)) {
       map.get(row.parent_id)!.children.push(node);
-    } else {
+    } else if (!row.parent_id) {
       roots.push(node);
     }
+    // Replies whose parent isn't in the map (edge case) are silently dropped
   }
   return roots;
 }
@@ -447,6 +456,7 @@ function ReportModal({
 }
 
 // ── DeleteConfirmInline ────────────────────────────────────────────────────────
+// Inline confirm strip — no modal, renders beneath the comment body.
 
 function DeleteConfirmInline({
   onConfirm,
@@ -489,7 +499,9 @@ type CommentThreadProps = {
   sessionUserId: string | null;
   onReply: (body: string) => Promise<void>;
   onReact: (commentId: string, reaction: "up" | "down") => Promise<void>;
+  // M-G01
   onEdit: (commentId: string, newBody: string) => Promise<void>;
+  // M-G02
   onDelete: (commentId: string) => Promise<void>;
 };
 
@@ -521,6 +533,7 @@ function CommentThread({
   const maxDepth = 3;
   const canReply = depth < maxDepth;
   const isOwn = sessionUserId !== null && node.user_id === sessionUserId;
+  // M-G02: tombstone — deleted comments show placeholder, no actions
   const isDeleted = node.is_deleted;
   const r = reactions[node.id];
 
@@ -543,7 +556,6 @@ function CommentThread({
     setEditDirty(false);
     setIsReplying(false);
     setConfirmingDelete(false);
-    // setText is called after mount via useEffect in RichCommentInput (initialValue prop)
   };
 
   // M-G01: save edit
@@ -592,15 +604,16 @@ function CommentThread({
         </Avatar>
 
         <div className="flex-1 min-w-0">
-          {/* M-G02: tombstone */}
+          {/* M-G02: tombstone — no author, no actions, just placeholder */}
           {isDeleted ? (
             <p className="text-[11px] text-slate-400 italic">[deleted]</p>
           ) : (
             <>
-              {/* Header */}
+              {/* Header: display name + timestamp + edited indicator */}
               <div className="flex items-center gap-2 text-[11px] text-slate-500">
                 <span className="font-medium text-slate-800">{node.user_display ?? "Someone"}</span>
                 <span>{timeAgo(node.created_at)}</span>
+                {/* M-G01: edited_at indicator */}
                 {node.edited_at && (
                   <span className="text-slate-400 italic">· edited {timeAgo(node.edited_at)}</span>
                 )}
@@ -614,13 +627,24 @@ function CommentThread({
                     initialValue={node.body}
                     disabled={savingEdit}
                     minHeight={60}
-                    onChange={(text) => setEditDirty(text.trim() !== node.body && text.trim().length > 0)}
+                    onChange={(text) =>
+                      setEditDirty(text.trim() !== node.body && text.trim().length > 0)
+                    }
                   />
                   <div className="flex items-center gap-2 justify-end">
-                    <Button size="sm" variant="outline" onClick={() => setIsEditing(false)} disabled={savingEdit}>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setIsEditing(false)}
+                      disabled={savingEdit}
+                    >
                       Cancel
                     </Button>
-                    <Button size="sm" onClick={handleSaveEdit} disabled={savingEdit || !editDirty}>
+                    <Button
+                      size="sm"
+                      onClick={handleSaveEdit}
+                      disabled={savingEdit || !editDirty}
+                    >
                       {savingEdit ? "Saving…" : "Save"}
                     </Button>
                   </div>
@@ -632,7 +656,7 @@ function CommentThread({
                 </div>
               )}
 
-              {/* M-G02: inline delete confirm */}
+              {/* M-G02: inline delete confirm strip */}
               {confirmingDelete && !isEditing && (
                 <DeleteConfirmInline
                   onConfirm={handleConfirmDelete}
@@ -641,7 +665,7 @@ function CommentThread({
                 />
               )}
 
-              {/* G2: Reactions + actions row */}
+              {/* G2: Reactions + actions row — hidden while editing or confirming delete */}
               {!isEditing && !confirmingDelete && (
                 <div className="mt-1.5 flex items-center gap-3 text-[11px] text-slate-500">
                   {/* Upvote */}
@@ -683,7 +707,7 @@ function CommentThread({
                     </button>
                   )}
 
-                  {/* M-G01: Edit */}
+                  {/* M-G01: Edit — own comments only */}
                   {isOwn && (
                     <button
                       type="button"
@@ -695,12 +719,16 @@ function CommentThread({
                     </button>
                   )}
 
-                  {/* M-G02: Delete */}
+                  {/* M-G02: Delete — own comments only */}
                   {isOwn && (
                     <button
                       type="button"
                       className="flex items-center gap-1 hover:text-red-500 transition-colors"
-                      onClick={() => { setConfirmingDelete(true); setIsReplying(false); setIsEditing(false); }}
+                      onClick={() => {
+                        setConfirmingDelete(true);
+                        setIsReplying(false);
+                        setIsEditing(false);
+                      }}
                       aria-label="Delete comment"
                     >
                       <Trash2 className="h-3 w-3" />
@@ -733,10 +761,19 @@ function CommentThread({
                     disabled={submitting}
                   />
                   <div className="flex items-center gap-2 justify-end">
-                    <Button size="sm" variant="outline" onClick={() => setIsReplying(false)} disabled={submitting}>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setIsReplying(false)}
+                      disabled={submitting}
+                    >
                       Cancel
                     </Button>
-                    <Button size="sm" onClick={handleSubmitReply} disabled={submitting || !replyText.trim()}>
+                    <Button
+                      size="sm"
+                      onClick={handleSubmitReply}
+                      disabled={submitting || !replyText.trim()}
+                    >
                       {submitting ? "Replying…" : "Reply"}
                     </Button>
                   </div>
@@ -747,7 +784,7 @@ function CommentThread({
         </div>
       </div>
 
-      {/* Nested children — always rendered even under tombstone */}
+      {/* Nested children — always rendered, even under tombstone, to preserve threading */}
       {node.children.length > 0 && (
         <div className="mt-2 ml-6 border-l pl-4 space-y-3">
           {node.children.map((child) => (
@@ -779,6 +816,7 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
   const [sessionUserId, setSessionUserId] = React.useState<string | null>(null);
   const [posting, setPosting] = React.useState(false);
   const [sortMode, setSortMode] = React.useState<SortMode>("latest");
+  // G3: civility warning state
   const [civilityWarning, setCivilityWarning] = React.useState(false);
   const [checkingCivility, setCheckingCivility] = React.useState(false);
 
@@ -787,15 +825,26 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
   // Track whether the top-level composer has content (for button disabled state)
   const [newCommentHasContent, setNewCommentHasContent] = React.useState(false);
 
+  // M-G05: accumulated root pages + cursor state
+  const [allRoots, setAllRoots] = React.useState<QuestionCommentRow[]>([]);
+  const [cursor, setCursor] = React.useState<PageCursor>(null);
+  const [hasMore, setHasMore] = React.useState(false);
+  const [loadingMore, setLoadingMore] = React.useState(false);
+
+  // Sentiment workers (fire-and-forget — preserved from original)
   const runSentimentWorkers = React.useCallback((commentId: string, body: string) => {
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
     if (!supabaseUrl) return;
     const payload = { comment_id: commentId, body, question_id: questionId };
     void fetch(`${supabaseUrl}/functions/v1/comment-sentiment`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
     }).catch(() => {});
     void fetch(`${supabaseUrl}/functions/v1/thread-sentiment`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question_id: questionId }),
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question_id: questionId }),
     }).catch(() => {});
   }, [questionId]);
 
@@ -803,15 +852,108 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
     sb.auth.getUser().then(({ data }) => setSessionUserId(data?.user?.id ?? null));
   }, [sb]);
 
-  const commentsQuery = useQuery({
-    queryKey: ["question-comments", questionId],
+  // M-G05: fetch first page of root comments on mount / when questionId changes
+  const rootsQuery = useQuery({
+    queryKey: ["question-comments-roots", questionId],
     queryFn: async () => {
-      const { data, error } = await sb.rpc("list_question_comments", { p_question_id: questionId });
+      const { data, error } = await sb.rpc("list_root_comments_page", {
+        p_question_id: questionId,
+        p_limit: PAGE_SIZE,
+        p_before_created_at: null,
+        p_before_id: null,
+      });
       if (error) throw error;
       return (data ?? []) as QuestionCommentRow[];
     },
+    staleTime: 0, // always refetch after mutations
   });
 
+  // When first page loads, initialise allRoots and cursor
+  React.useEffect(() => {
+    if (!rootsQuery.data) return;
+    const page = rootsQuery.data;
+    setAllRoots(page);
+    setHasMore(page.length === PAGE_SIZE);
+    if (page.length > 0) {
+      const last = page[page.length - 1];
+      setCursor({ created_at: last.created_at, id: last.id });
+    } else {
+      setCursor(null);
+    }
+  }, [rootsQuery.data]);
+
+  // M-G05: derive root IDs for the replies query
+  const rootIds = React.useMemo(() => allRoots.map((r) => r.id), [allRoots]);
+
+  // M-G05: fetch all replies for loaded roots (re-fetches automatically when rootIds changes)
+  const repliesQuery = useQuery({
+    queryKey: ["question-comments-replies", questionId, rootIds.join(",")],
+    enabled: rootIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await sb.rpc("list_replies_for_roots", {
+        p_question_id: questionId,
+        p_root_ids: rootIds,
+      });
+      if (error) throw error;
+      return (data ?? []) as QuestionCommentRow[];
+    },
+    staleTime: 30_000,
+  });
+
+  // M-G05: merge roots + replies into flat list for tree builder
+  const allComments = React.useMemo((): QuestionCommentRow[] => {
+    const replies = repliesQuery.data ?? [];
+    // Roots are already newest-first from the RPC; tree builder needs all rows flat
+    return [...allRoots, ...replies];
+  }, [allRoots, repliesQuery.data]);
+
+  // M-G05: load next page of root comments
+  const handleLoadMore = async () => {
+    if (!cursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const { data, error } = await sb.rpc("list_root_comments_page", {
+        p_question_id: questionId,
+        p_limit: PAGE_SIZE,
+        p_before_created_at: cursor.created_at,
+        p_before_id: cursor.id,
+      });
+      if (error) throw error;
+      const page = (data ?? []) as QuestionCommentRow[];
+      setAllRoots((prev) => {
+        // Deduplicate by id in case of concurrent posts
+        const existingIds = new Set(prev.map((r) => r.id));
+        const fresh = page.filter((r) => !existingIds.has(r.id));
+        return [...prev, ...fresh];
+      });
+      setHasMore(page.length === PAGE_SIZE);
+      if (page.length > 0) {
+        const last = page[page.length - 1];
+        setCursor({ created_at: last.created_at, id: last.id });
+      }
+    } catch (err: any) {
+      toast({
+        title: "Could not load more comments",
+        description: err?.message ?? "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  // M-G05: reset pagination when mutations invalidate the roots query
+  // Called after create and delete — resets to page 1 so the new/removed
+  // comment is immediately reflected at the top of the list.
+  const resetPagination = React.useCallback(() => {
+    setAllRoots([]);
+    setCursor(null);
+    setHasMore(false);
+    queryClient.invalidateQueries({ queryKey: ["question-comments-roots", questionId] });
+    queryClient.invalidateQueries({ queryKey: ["question-comments-replies", questionId] });
+  }, [queryClient, questionId]);
+
+  // Thread sentiment
   const threadSentimentQuery = useQuery({
     enabled: !!questionId,
     queryKey: ["question-thread-sentiment", questionId],
@@ -827,17 +969,21 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
     staleTime: 30_000,
   });
 
+  // All comment IDs (roots + replies) for reactions batch fetch
   const allCommentIds = React.useMemo(
-    () => (commentsQuery.data ?? []).map((c) => c.id),
-    [commentsQuery.data],
+    () => allComments.map((c) => c.id),
+    [allComments],
   );
 
+  // G2: Reactions query
   const reactionsQuery = useQuery({
     queryKey: ["comment-reactions", questionId, allCommentIds.join(",")],
     enabled: allCommentIds.length > 0,
     staleTime: 30_000,
     queryFn: async () => {
-      const { data, error } = await sb.rpc("get_comment_reactions", { p_comment_ids: allCommentIds });
+      const { data, error } = await sb.rpc("get_comment_reactions", {
+        p_comment_ids: allCommentIds,
+      });
       if (error) throw error;
       const map: Record<string, ReactionRow> = {};
       for (const row of (data ?? []) as ReactionRow[]) map[row.comment_id] = row;
@@ -847,6 +993,7 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
 
   const reactions = reactionsQuery.data ?? {};
 
+  // G2: React mutation
   const reactMutation = useMutation({
     mutationFn: async ({ commentId, reaction }: { commentId: string; reaction: "up" | "down" }) => {
       const { data, error } = await sb.rpc("upsert_comment_reaction", {
@@ -861,6 +1008,7 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
     },
   });
 
+  // Create comment mutation
   const createCommentMutation = useMutation({
     mutationFn: async ({ body, parentId }: { body: string; parentId: string | null }) => {
       const { data, error } = await sb.rpc("create_question_comment", {
@@ -872,11 +1020,13 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
       return data as QuestionCommentRow;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["question-comments", questionId] });
+      // Reset pagination so the new comment appears at top of page 1
+      resetPagination();
       queryClient.invalidateQueries({ queryKey: ["question-thread-sentiment", questionId] });
     },
   });
 
+  // M-G01: Edit comment mutation
   const editCommentMutation = useMutation({
     mutationFn: async ({ commentId, body }: { commentId: string; body: string }) => {
       const { data, error } = await sb.rpc("update_comment", {
@@ -887,24 +1037,36 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
       return data as QuestionCommentRow;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["question-comments", questionId] });
+      // Edit doesn't change pagination order — only invalidate replies
+      queryClient.invalidateQueries({ queryKey: ["question-comments-replies", questionId] });
     },
     onError: (err: any) => {
-      toast({ title: "Could not save edit", description: err?.message ?? "Please try again.", variant: "destructive" });
+      toast({
+        title: "Could not save edit",
+        description: err?.message ?? "Please try again.",
+        variant: "destructive",
+      });
     },
   });
 
+  // M-G02: Delete comment mutation
   const deleteCommentMutation = useMutation({
     mutationFn: async ({ commentId }: { commentId: string }) => {
-      const { error } = await sb.rpc("delete_comment", { p_comment_id: commentId });
+      const { error } = await sb.rpc("delete_comment", {
+        p_comment_id: commentId,
+      });
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["question-comments", questionId] });
+      resetPagination();
       queryClient.invalidateQueries({ queryKey: ["question-thread-sentiment", questionId] });
     },
     onError: (err: any) => {
-      toast({ title: "Could not delete comment", description: err?.message ?? "Please try again.", variant: "destructive" });
+      toast({
+        title: "Could not delete comment",
+        description: err?.message ?? "Please try again.",
+        variant: "destructive",
+      });
     },
   });
 
@@ -917,16 +1079,18 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
     const body = (newCommentRef.current?.getText() ?? "").trim();
     if (!body) return;
 
+    // If warning already shown, allow posting anyway (user confirmed)
     if (!civilityWarning) {
       setCheckingCivility(true);
       const flagged = await checkCivility(body);
       setCheckingCivility(false);
       if (flagged) {
         setCivilityWarning(true);
-        return;
+        return; // show warning, don't post yet
       }
     }
 
+    // Post
     setCivilityWarning(false);
     setPosting(true);
     try {
@@ -935,20 +1099,27 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
       setNewCommentHasContent(false);
       if (saved?.id) {
         runSentimentWorkers(saved.id, body);
+        // H2: fire background toxicity score write with the real comment_id
         checkCivility(body, saved.id, sessionUserId ?? undefined);
       }
     } catch (err: any) {
-      toast({ title: "Could not post comment", description: err?.message ?? "Please try again.", variant: "destructive" });
+      toast({
+        title: "Could not post comment",
+        description: err?.message ?? "Please try again.",
+        variant: "destructive",
+      });
     } finally {
       setPosting(false);
     }
   };
 
+  // Build tree from merged flat list — logic unchanged from original
   const rawNodes = React.useMemo(
-    () => buildCommentTree(commentsQuery.data ?? []),
-    [commentsQuery.data],
+    () => buildCommentTree(allComments),
+    [allComments],
   );
 
+  // Sort root nodes only (children retain insertion order from replies RPC)
   const sortedNodes = React.useMemo(() => {
     if (sortMode === "helpful") {
       return [...rawNodes].sort((a, b) => {
@@ -957,14 +1128,14 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
         return bScore - aScore;
       });
     }
-    return [...rawNodes].sort(
-      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-    );
+    // Latest: roots already newest-first from the RPC — no re-sort needed
+    return rawNodes;
   }, [rawNodes, sortMode, reactions]);
 
   const sentiment = threadSentimentQuery.data;
   const avg = sentiment?.avg_sentiment ?? null;
   const trendingColor = getSentimentColorHex(avg);
+  const isInitialLoading = rootsQuery.isLoading;
 
   return (
     <Card className="mt-6">
@@ -985,10 +1156,15 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
               <span className="text-slate-500">Analyzing…</span>
             ) : sentiment ? (
               <>
-                <span className="inline-flex h-2 w-2 rounded-full" style={{ backgroundColor: trendingColor }} />
+                <span
+                  className="inline-flex h-2 w-2 rounded-full"
+                  style={{ backgroundColor: trendingColor }}
+                />
                 <span className="text-slate-600">{describeMood(avg)}</span>
                 {sentiment.comment_count != null && sentiment.comment_count > 0 && (
-                  <span className="text-slate-400">· {sentiment.comment_count} comment{sentiment.comment_count === 1 ? "" : "s"}</span>
+                  <span className="text-slate-400">
+                    · {sentiment.comment_count} comment{sentiment.comment_count === 1 ? "" : "s"}
+                  </span>
                 )}
               </>
             ) : null}
@@ -1024,13 +1200,19 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
           )}
 
           <div className="flex justify-between items-center">
-            <span className="text-[11px] text-slate-400">Be constructive and respectful.</span>
+            <span className="text-[11px] text-slate-400">
+              Be constructive and respectful.
+            </span>
             <div className="flex items-center gap-2">
               {civilityWarning && (
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => { setCivilityWarning(false); setPosting(false); void handlePostTopLevel(); }}
+                  onClick={() => {
+                    setCivilityWarning(false);
+                    setPosting(false);
+                    void handlePostTopLevel();
+                  }}
                   disabled={posting}
                   className="text-amber-700 border-amber-300"
                 >
@@ -1042,7 +1224,13 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
                 onClick={handlePostTopLevel}
                 disabled={!sessionUserId || posting || checkingCivility || !newCommentHasContent}
               >
-                {checkingCivility ? "Checking…" : posting ? "Posting…" : civilityWarning ? "Edit comment" : "Post comment"}
+                {checkingCivility
+                  ? "Checking…"
+                  : posting
+                  ? "Posting…"
+                  : civilityWarning
+                  ? "Edit comment"
+                  : "Post comment"}
               </Button>
             </div>
           </div>
@@ -1070,9 +1258,13 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
 
         {/* Comments list */}
         <div className={sortedNodes.length > 1 ? "" : "border-t pt-3 mt-2"}>
-          {commentsQuery.isLoading && <p className="text-xs text-slate-500">Loading comments…</p>}
-          {!commentsQuery.isLoading && sortedNodes.length === 0 && (
-            <p className="text-xs text-slate-500">No comments yet. Be the first to share your thoughts.</p>
+          {isInitialLoading && (
+            <p className="text-xs text-slate-500">Loading comments…</p>
+          )}
+          {!isInitialLoading && sortedNodes.length === 0 && (
+            <p className="text-xs text-slate-500">
+              No comments yet. Be the first to share your thoughts.
+            </p>
           )}
           {sortedNodes.length > 0 && (
             <div className="space-y-4">
@@ -1084,8 +1276,14 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
                   reactions={reactions}
                   sessionUserId={sessionUserId}
                   onReply={async (body) => {
-                    if (!sessionUserId) { toast({ title: "Sign in to reply", variant: "destructive" }); return; }
-                    const saved = await createCommentMutation.mutateAsync({ body, parentId: node.id });
+                    if (!sessionUserId) {
+                      toast({ title: "Sign in to reply", variant: "destructive" });
+                      return;
+                    }
+                    const saved = await createCommentMutation.mutateAsync({
+                      body,
+                      parentId: node.id,
+                    });
                     if (saved?.id) runSentimentWorkers(saved.id, body);
                   }}
                   onReact={async (commentId, reaction) => {
@@ -1099,6 +1297,28 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
                   }}
                 />
               ))}
+            </div>
+          )}
+
+          {/* M-G05: Show more button */}
+          {hasMore && (
+            <div className="mt-4 flex justify-center">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleLoadMore}
+                disabled={loadingMore}
+                className="text-xs text-slate-600"
+              >
+                {loadingMore ? (
+                  <span className="flex items-center gap-1.5">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    Loading…
+                  </span>
+                ) : (
+                  "Show more comments"
+                )}
+              </Button>
             </div>
           )}
         </div>
