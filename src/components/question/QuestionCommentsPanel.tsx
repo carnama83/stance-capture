@@ -876,8 +876,6 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
   const [cursor, setCursor] = React.useState<PageCursor>(null);
   const [hasMore, setHasMore] = React.useState(false);
   const [loadingMore, setLoadingMore] = React.useState(false);
-  // Holds fresh replies fetched directly after a reply post, bypassing query cache
-  const [replyOverride, setReplyOverride] = React.useState<QuestionCommentRow[] | null>(null);
 
   // Sentiment workers (fire-and-forget — preserved from original)
   const runSentimentWorkers = React.useCallback((commentId: string, body: string) => {
@@ -959,11 +957,9 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
 
   // M-G05: merge roots + replies into flat list for tree builder
   const allComments = React.useMemo((): QuestionCommentRow[] => {
-    // replyOverride: fresh replies set directly after a reply post via rpcFetch.
-    // Takes precedence over repliesQuery cache so new depth>1 replies appear immediately.
-    const replies = replyOverride ?? repliesQuery.data ?? [];
+    const replies = repliesQuery.data ?? [];
     return [...allRoots, ...replies];
-  }, [allRoots, repliesQuery.data, replyOverride]);
+  }, [allRoots, repliesQuery.data]);
 
   // M-G05: load next page of root comments
   const handleLoadMore = async () => {
@@ -1052,27 +1048,12 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
     }
   }, [rpcFetch, questionId, queryClient]);
 
-  // Fetch replies directly via rpcFetch for post-reply immediate refresh
-  const refreshReplies = React.useCallback(async (rootIdsToFetch: string[]) => {
-    if (rootIdsToFetch.length === 0) return;
-    try {
-      const data = await rpcFetch("list_replies_for_roots", {
-        p_question_id: questionId,
-        p_root_ids: rootIdsToFetch,
-      });
-      const replies = (Array.isArray(data) ? data : []) as QuestionCommentRow[];
-      // Set replyOverride so allComments updates immediately without waiting for cache
-      setReplyOverride(replies);
-      // Also update the query cache so repliesQuery stays in sync
-      queryClient.setQueryData(
-        ["question-comments-replies", questionId, rootIdsToFetch.join(",")],
-        replies
-      );
-    } catch {
-      // fallback: let query invalidation handle it
-      queryClient.refetchQueries({ queryKey: ["question-comments-replies", questionId] });
-    }
-  }, [rpcFetch, questionId, queryClient]);
+  // Refresh replies after a reply post - invalidate and refetch the query.
+  // repliesQuery uses sb.rpc() which is fine for reads (no mutex issue on reads).
+  // staleTime=0 ensures the refetch always gets fresh data.
+  const refreshReplies = React.useCallback(() => {
+    queryClient.refetchQueries({ queryKey: ["question-comments-replies", questionId] });
+  }, [questionId, queryClient]);
 
   const resetPagination = React.useCallback(() => {
     setCursor(null);
@@ -1193,7 +1174,7 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
         resetPagination();
       } else {
         // Reply: fetch fresh replies via rpcFetch and set cache directly
-        void refreshReplies(rootIds);
+        void refreshReplies();
       }
       queryClient.invalidateQueries({ queryKey: ["question-thread-sentiment", questionId] });
     },
