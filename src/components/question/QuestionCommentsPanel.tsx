@@ -989,15 +989,61 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
   // M-G05: reset pagination when mutations invalidate the roots query
   // Called after create and delete — resets to page 1 so the new/removed
   // comment is immediately reflected at the top of the list.
+  // Raw fetch helper - bypasses sb.auth.getSession() mutex (same pattern as setMyStance)
+  const rpcFetch = React.useCallback(async (fnName: string, params: Record<string, unknown>) => {
+    const jwt = sessionRef.current?.access_token;
+    if (!jwt) throw new Error("Not authenticated");
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+    const res = await fetch(`${supabaseUrl}/rest/v1/rpc/${fnName}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": anonKey,
+        "Authorization": `Bearer ${jwt}`,
+        "Prefer": "return=representation",
+      },
+      body: JSON.stringify(params),
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(body?.message ?? `HTTP ${res.status}`);
+    return body;
+  }, [sessionRef]);
+
+  // G2: React mutation
+  // Fetch page 1 of roots via rpcFetch (bypasses sb.rpc auth mutex) and
+  // directly update allRoots state so the list refreshes immediately after
+  // post/delete without waiting for the query cache cycle.
+  const refreshRoots = React.useCallback(async () => {
+    try {
+      const data = await rpcFetch("list_root_comments_page", {
+        p_question_id: questionId,
+        p_limit: PAGE_SIZE,
+        p_before_created_at: null,
+        p_before_id: null,
+      });
+      const page = (Array.isArray(data) ? data : []) as QuestionCommentRow[];
+      setAllRoots(page);
+      setHasMore(page.length === PAGE_SIZE);
+      if (page.length > 0) {
+        const last = page[page.length - 1];
+        setCursor({ created_at: last.created_at, id: last.id });
+      } else {
+        setCursor(null);
+      }
+      queryClient.invalidateQueries({ queryKey: ["question-comments-replies", questionId] });
+    } catch {
+      // fallback: let existing query cache handle it
+      queryClient.refetchQueries({ queryKey: ["question-comments-roots", questionId] });
+    }
+  }, [rpcFetch, questionId, queryClient]);
+
   const resetPagination = React.useCallback(() => {
     setCursor(null);
     setHasMore(false);
-    // refetchQueries forces an immediate re-fetch and triggers the useEffect
-    // on rootsQuery.data to repopulate allRoots. invalidateQueries alone
-    // marks stale but does not guarantee an immediate re-render.
-    queryClient.refetchQueries({ queryKey: ["question-comments-roots", questionId] });
-    queryClient.invalidateQueries({ queryKey: ["question-comments-replies", questionId] });
-  }, [queryClient, questionId]);
+    void refreshRoots();
+    queryClient.invalidateQueries({ queryKey: ["question-thread-sentiment", questionId] });
+  }, [refreshRoots, queryClient, questionId]);
 
   // Thread sentiment
   const threadSentimentQuery = useQuery({
@@ -1081,27 +1127,6 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
   });
 
   const reactions = reactionsQuery.data ?? {};
-
-  // Raw fetch helper - bypasses sb.auth.getSession() mutex (same pattern as setMyStance)
-  const rpcFetch = React.useCallback(async (fnName: string, params: Record<string, unknown>) => {
-    const jwt = sessionRef.current?.access_token;
-    if (!jwt) throw new Error("Not authenticated");
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
-    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
-    const res = await fetch(`${supabaseUrl}/rest/v1/rpc/${fnName}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "apikey": anonKey,
-        "Authorization": `Bearer ${jwt}`,
-        "Prefer": "return=representation",
-      },
-      body: JSON.stringify(params),
-    });
-    const body = await res.json().catch(() => null);
-    if (!res.ok) throw new Error(body?.message ?? `HTTP ${res.status}`);
-    return body;
-  }, [sessionRef]);
 
   // G2: React mutation
   const reactMutation = useMutation({
