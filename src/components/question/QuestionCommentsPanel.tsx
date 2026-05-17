@@ -576,7 +576,7 @@ function CommentThread({
   const [confirmingDelete, setConfirmingDelete] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
 
-  const maxDepth = 3;
+  const maxDepth = 2; // server rejects depth>=3 (0-indexed); hide Reply at depth>=2
   const canReply = depth < maxDepth;
   const isOwn = sessionUserId !== null && node.user_id === sessionUserId;
   // M-G02: tombstone — deleted comments show placeholder, no actions
