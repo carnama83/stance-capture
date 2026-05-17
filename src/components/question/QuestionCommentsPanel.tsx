@@ -945,12 +945,11 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
     queryKey: ["question-comments-replies", questionId, rootIds.join(",")],
     enabled: rootIds.length > 0,
     queryFn: async () => {
-      const { data, error } = await sb.rpc("list_replies_for_roots", {
+      const data = await rpcFetch("list_replies_for_roots", {
         p_question_id: questionId,
         p_root_ids: rootIds,
       });
-      if (error) throw error;
-      return (data ?? []) as QuestionCommentRow[];
+      return (Array.isArray(data) ? data : []) as QuestionCommentRow[];
     },
     staleTime: 30_000,
   });
@@ -1162,9 +1161,14 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
       });
       return (Array.isArray(data) ? data[0] : data) as QuestionCommentRow;
     },
-    onSuccess: () => {
-      // Reset pagination so the new comment appears at top of page 1
-      resetPagination();
+    onSuccess: (_data, variables) => {
+      if (variables.parentId === null) {
+        // Top-level post: reset to page 1 so new comment appears immediately
+        resetPagination();
+      } else {
+        // Reply: only invalidate replies query - roots don't change
+        queryClient.invalidateQueries({ queryKey: ["question-comments-replies", questionId] });
+      }
       queryClient.invalidateQueries({ queryKey: ["question-thread-sentiment", questionId] });
     },
   });
