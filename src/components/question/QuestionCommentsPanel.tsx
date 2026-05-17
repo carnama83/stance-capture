@@ -990,7 +990,9 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
   // Called after create and delete — resets to page 1 so the new/removed
   // comment is immediately reflected at the top of the list.
   const resetPagination = React.useCallback(() => {
-    setAllRoots([]);
+    // Do NOT clear allRoots eagerly - that causes a blank flash while the
+    // refetch is in flight. The useEffect on rootsQuery.data resets
+    // allRoots + cursor once the fresh page arrives.
     setCursor(null);
     setHasMore(false);
     queryClient.invalidateQueries({ queryKey: ["question-comments-roots", questionId] });
@@ -1288,7 +1290,7 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
           <RichCommentInput
             ref={newCommentRef}
             placeholder={sessionUserId ? "Add a comment…" : "Sign in to add a comment."}
-            disabled={!sessionUserId || posting || checkingCivility}
+            disabled={!sessionUserId || posting || checkingCivility || createCommentMutation.isPending}
             minHeight={72}
             onChange={(text) => {
               setNewCommentHasContent(text.trim().length > 0);
@@ -1334,7 +1336,7 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
               <Button
                 size="sm"
                 onClick={handlePostTopLevel}
-                disabled={!sessionUserId || posting || checkingCivility || !newCommentHasContent}
+                disabled={!sessionUserId || posting || checkingCivility || createCommentMutation.isPending || !newCommentHasContent}
               >
                 {checkingCivility
                   ? "Checking…"
