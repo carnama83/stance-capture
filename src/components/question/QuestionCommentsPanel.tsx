@@ -330,6 +330,17 @@ function buildCommentTree(rows: QuestionCommentRow[]): CommentNode[] {
   return roots;
 }
 
+// Resolves the display name using fresh profile data from list_question_comments()
+// JOIN. Fresh profile_username/profile_random_id takes precedence over the
+// denormalised user_display stored at write time (spec note 17).
+function resolveDisplayName(node: QuestionCommentRow): string {
+  if (node.profile_display_handle_mode === "username" && node.profile_username) {
+    return node.profile_username;
+  }
+  if (node.profile_random_id) return node.profile_random_id;
+  return node.user_display ?? "Someone";
+}
+
 function getInitials(name: string | null | undefined): string {
   if (!name) return "?";
   const parts = name.split(" ").filter(Boolean);
@@ -630,10 +641,10 @@ function CommentThread({
         {/* Avatar — kept even for tombstone so indentation holds */}
         <Avatar className="h-7 w-7 flex-shrink-0">
           {!isDeleted && node.profile_avatar_url ? (
-            <AvatarImage src={node.profile_avatar_url} alt={node.user_display ?? ""} />
+            <AvatarImage src={node.profile_avatar_url} alt={resolveDisplayName(node)} />
           ) : (
             <AvatarFallback className="text-[10px] bg-slate-100 text-slate-400">
-              {isDeleted ? "·" : getInitials(node.user_display)}
+              {isDeleted ? "·" : getInitials(resolveDisplayName(node))}
             </AvatarFallback>
           )}
         </Avatar>
@@ -646,7 +657,7 @@ function CommentThread({
             <>
               {/* Header: display name + timestamp + edited indicator */}
               <div className="flex items-center gap-2 text-[11px] text-slate-500">
-                <span className="font-medium text-slate-800">{node.user_display ?? "Someone"}</span>
+                <span className="font-medium text-slate-800">{resolveDisplayName(node)}</span>
                 <span>{timeAgo(node.created_at)}</span>
                 {/* M-G01: edited_at indicator */}
                 {node.edited_at && (
