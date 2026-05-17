@@ -421,11 +421,22 @@ function ReportModal({
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
-      const { error } = await sb.rpc("report_comment", {
-        p_comment_id: commentId,
-        p_reason: reason,
+      // Raw fetch to avoid sb.auth.getSession() mutex after window focus
+      const { data: { session } } = await sb.auth.getSession();
+      const jwt = session?.access_token;
+      if (!jwt) throw new Error("Not authenticated");
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+      const res = await fetch(`${supabaseUrl}/rest/v1/rpc/report_comment`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": anonKey,
+          "Authorization": `Bearer ${jwt}`,
+        },
+        body: JSON.stringify({ p_comment_id: commentId, p_reason: reason }),
       });
-      if (error) throw error;
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setDone(true);
       setTimeout(onClose, 2000);
     } catch {
@@ -1069,15 +1080,34 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
 
   const reactions = reactionsQuery.data ?? {};
 
+  // Raw fetch helper - bypasses sb.auth.getSession() mutex (same pattern as setMyStance)
+  const rpcFetch = React.useCallback(async (fnName: string, params: Record<string, unknown>) => {
+    const jwt = sessionRef.current?.access_token;
+    if (!jwt) throw new Error("Not authenticated");
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+    const res = await fetch(`${supabaseUrl}/rest/v1/rpc/${fnName}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": anonKey,
+        "Authorization": `Bearer ${jwt}`,
+        "Prefer": "return=representation",
+      },
+      body: JSON.stringify(params),
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(body?.message ?? `HTTP ${res.status}`);
+    return body;
+  }, [sessionRef]);
+
   // G2: React mutation
   const reactMutation = useMutation({
     mutationFn: async ({ commentId, reaction }: { commentId: string; reaction: "up" | "down" }) => {
-      const { data, error } = await sb.rpc("upsert_comment_reaction", {
+      return rpcFetch("upsert_comment_reaction", {
         p_comment_id: commentId,
         p_reaction: reaction,
       });
-      if (error) throw error;
-      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["comment-reactions", questionId] });
@@ -1087,13 +1117,12 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
   // Create comment mutation
   const createCommentMutation = useMutation({
     mutationFn: async ({ body, parentId }: { body: string; parentId: string | null }) => {
-      const { data, error } = await sb.rpc("create_question_comment", {
+      const data = await rpcFetch("create_question_comment", {
         p_question_id: questionId,
-        p_parent_comment_id: parentId,
+        p_parent_comment_id: parentId ?? null,
         p_body: body,
       });
-      if (error) throw error;
-      return data as QuestionCommentRow;
+      return (Array.isArray(data) ? data[0] : data) as QuestionCommentRow;
     },
     onSuccess: () => {
       // Reset pagination so the new comment appears at top of page 1
@@ -1105,12 +1134,11 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
   // M-G01: Edit comment mutation
   const editCommentMutation = useMutation({
     mutationFn: async ({ commentId, body }: { commentId: string; body: string }) => {
-      const { data, error } = await sb.rpc("update_comment", {
+      const data = await rpcFetch("update_comment", {
         p_comment_id: commentId,
         p_body: body,
       });
-      if (error) throw error;
-      return data as QuestionCommentRow;
+      return (Array.isArray(data) ? data[0] : data) as QuestionCommentRow;
     },
     onSuccess: () => {
       // Edit doesn't change pagination order — only invalidate replies
@@ -1128,10 +1156,9 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
   // M-G02: Delete comment mutation
   const deleteCommentMutation = useMutation({
     mutationFn: async ({ commentId }: { commentId: string }) => {
-      const { error } = await sb.rpc("delete_comment", {
+      await rpcFetch("delete_comment", {
         p_comment_id: commentId,
       });
-      if (error) throw error;
     },
     onSuccess: () => {
       resetPagination();
