@@ -925,11 +925,6 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
     staleTime: 0, // always refetch after mutations
   });
 
-  // Clear replyOverride when repliesQuery.data updates (fresh cache arrived)
-  React.useEffect(() => {
-    if (repliesQuery.data !== undefined) setReplyOverride(null);
-  }, [repliesQuery.data]);
-
   // When first page loads, initialise allRoots and cursor
   React.useEffect(() => {
     if (!rootsQuery.data) return;
@@ -970,6 +965,11 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
     const replies = replyOverride ?? repliesQuery.data ?? [];
     return [...allRoots, ...replies];
   }, [allRoots, repliesQuery.data, replyOverride]);
+
+  // Clear replyOverride when repliesQuery.data updates (fresh cache arrived)
+  React.useEffect(() => {
+    if (repliesQuery.data !== undefined) setReplyOverride(null);
+  }, [repliesQuery.data]);
 
   // M-G05: load next page of root comments
   const handleLoadMore = async () => {
