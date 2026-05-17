@@ -945,11 +945,12 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
     queryKey: ["question-comments-replies", questionId, rootIds.join(",")],
     enabled: rootIds.length > 0,
     queryFn: async () => {
-      const data = await rpcFetch("list_replies_for_roots", {
+      const { data, error } = await sb.rpc("list_replies_for_roots", {
         p_question_id: questionId,
         p_root_ids: rootIds,
       });
-      return (Array.isArray(data) ? data : []) as QuestionCommentRow[];
+      if (error) throw error;
+      return (data ?? []) as QuestionCommentRow[];
     },
     staleTime: 0,
   });
@@ -1045,6 +1046,26 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
     } catch {
       // fallback: let existing query cache handle it
       queryClient.refetchQueries({ queryKey: ["question-comments-roots", questionId] });
+    }
+  }, [rpcFetch, questionId, queryClient]);
+
+  // Fetch replies directly via rpcFetch for post-reply immediate refresh
+  const refreshReplies = React.useCallback(async (rootIdsToFetch: string[]) => {
+    if (rootIdsToFetch.length === 0) return;
+    try {
+      const data = await rpcFetch("list_replies_for_roots", {
+        p_question_id: questionId,
+        p_root_ids: rootIdsToFetch,
+      });
+      const replies = (Array.isArray(data) ? data : []) as QuestionCommentRow[];
+      // Update the query cache directly so repliesQuery.data reflects fresh data
+      queryClient.setQueryData(
+        ["question-comments-replies", questionId, rootIdsToFetch.join(",")],
+        replies
+      );
+    } catch {
+      // fallback: let query invalidation handle it
+      queryClient.refetchQueries({ queryKey: ["question-comments-replies", questionId] });
     }
   }, [rpcFetch, questionId, queryClient]);
 
@@ -1166,8 +1187,8 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
         // Top-level post: reset to page 1 so new comment appears immediately
         resetPagination();
       } else {
-        // Reply: force immediate refetch of replies - roots don't change
-        queryClient.refetchQueries({ queryKey: ["question-comments-replies", questionId] });
+        // Reply: fetch fresh replies via rpcFetch and set cache directly
+        void refreshReplies(rootIds);
       }
       queryClient.invalidateQueries({ queryKey: ["question-thread-sentiment", questionId] });
     },
