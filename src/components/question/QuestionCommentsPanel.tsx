@@ -876,6 +876,8 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
   const [cursor, setCursor] = React.useState<PageCursor>(null);
   const [hasMore, setHasMore] = React.useState(false);
   const [loadingMore, setLoadingMore] = React.useState(false);
+  // Holds fresh replies fetched directly after a reply post, bypassing query cache
+  const [replyOverride, setReplyOverride] = React.useState<QuestionCommentRow[] | null>(null);
 
   // Sentiment workers (fire-and-forget — preserved from original)
   const runSentimentWorkers = React.useCallback((commentId: string, body: string) => {
@@ -923,6 +925,11 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
     staleTime: 0, // always refetch after mutations
   });
 
+  // Clear replyOverride when repliesQuery.data updates (fresh cache arrived)
+  React.useEffect(() => {
+    if (repliesQuery.data !== undefined) setReplyOverride(null);
+  }, [repliesQuery.data]);
+
   // When first page loads, initialise allRoots and cursor
   React.useEffect(() => {
     if (!rootsQuery.data) return;
@@ -957,10 +964,12 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
 
   // M-G05: merge roots + replies into flat list for tree builder
   const allComments = React.useMemo((): QuestionCommentRow[] => {
-    const replies = repliesQuery.data ?? [];
-    // Roots are already newest-first from the RPC; tree builder needs all rows flat
+    // replyOverride: fresh replies fetched directly after a reply post via rpcFetch.
+    // Takes precedence over repliesQuery cache so new depth>1 replies appear immediately.
+    // Cleared when repliesQuery.data updates (staleTime=0 so it refetches shortly after).
+    const replies = replyOverride ?? repliesQuery.data ?? [];
     return [...allRoots, ...replies];
-  }, [allRoots, repliesQuery.data]);
+  }, [allRoots, repliesQuery.data, replyOverride]);
 
   // M-G05: load next page of root comments
   const handleLoadMore = async () => {
@@ -1058,11 +1067,8 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
         p_root_ids: rootIdsToFetch,
       });
       const replies = (Array.isArray(data) ? data : []) as QuestionCommentRow[];
-      // Update the query cache directly so repliesQuery.data reflects fresh data
-      queryClient.setQueryData(
-        ["question-comments-replies", questionId, rootIdsToFetch.join(",")],
-        replies
-      );
+      // Set replyOverride so allComments updates immediately without waiting for cache
+      setReplyOverride(replies);
     } catch {
       // fallback: let query invalidation handle it
       queryClient.refetchQueries({ queryKey: ["question-comments-replies", questionId] });
