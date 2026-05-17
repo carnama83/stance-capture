@@ -358,17 +358,41 @@ function timeAgo(iso: string): string {
 
 // G3: Call OpenAI moderation API via our Edge Function proxy
 // Returns true if the text is flagged as potentially harmful
-async function checkCivility(text: string, commentId?: string, userId?: string): Promise<boolean> {
+// Uses raw fetch with a pre-resolved JWT to avoid the sb.auth.getSession() mutex
+// that blocks after window focus triggers a background token refresh.
+async function checkCivility(
+  text: string,
+  jwt: string,
+  commentId?: string,
+  userId?: string,
+): Promise<boolean> {
   try {
-    const sb = getSupabase();
-    if (!sb) return false;
-    const { data, error } = await sb.functions.invoke("check-comment-civility", {
-      body: { text, comment_id: commentId ?? null, user_id: userId ?? null },
-    });
-    if (error) return false;
-    return data?.flagged === true;
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+    if (!supabaseUrl || !anonKey) return false;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5_000);
+
+    try {
+      const res = await fetch(`${supabaseUrl}/functions/v1/check-comment-civility`, {
+        method: "POST",
+        signal: controller.signal,
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": anonKey,
+          "Authorization": `Bearer ${jwt}`,
+        },
+        body: JSON.stringify({ text, comment_id: commentId ?? null, user_id: userId ?? null }),
+      });
+      if (!res.ok) return false;
+      const data = await res.json();
+      return data?.flagged === true;
+    } finally {
+      clearTimeout(timeoutId);
+    }
   } catch {
-    return false; // fail open — don't block posting if check fails
+    return false; // fail open - don't block posting if check fails
   }
 }
 
@@ -848,8 +872,17 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
     }).catch(() => {});
   }, [questionId]);
 
+  // Store the full session in a ref so checkCivility can use the JWT directly
+  // via raw fetch - avoids the sb.auth.getSession() async mutex that blocks
+  // after window focus triggers a background token refresh (same pattern as setMyStance).
+  const sessionRef = React.useRef<import("@supabase/supabase-js").Session | null>(null);
+
   React.useEffect(() => {
-    sb.auth.getUser().then(({ data }) => setSessionUserId(data?.user?.id ?? null));
+    const { data: { subscription } } = sb.auth.onAuthStateChange((_e, s) => {
+      sessionRef.current = s ?? null;
+      setSessionUserId(s?.user?.id ?? null);
+    });
+    return () => subscription.unsubscribe();
   }, [sb]);
 
   // M-G05: fetch first page of root comments on mount / when questionId changes
@@ -1125,7 +1158,8 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
     // If warning already shown, allow posting anyway (user confirmed)
     if (!civilityWarning) {
       setCheckingCivility(true);
-      const flagged = await checkCivility(body);
+      const jwt = sessionRef.current?.access_token ?? "";
+      const flagged = await checkCivility(body, jwt);
       setCheckingCivility(false);
       if (flagged) {
         setCivilityWarning(true);
@@ -1143,7 +1177,7 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
       if (saved?.id) {
         runSentimentWorkers(saved.id, body);
         // H2: fire background toxicity score write with the real comment_id
-        checkCivility(body, saved.id, sessionUserId ?? undefined);
+        checkCivility(body, sessionRef.current?.access_token ?? "", saved.id, sessionUserId ?? undefined);
       }
     } catch (err: any) {
       toast({
