@@ -367,41 +367,26 @@ function timeAgo(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { dateStyle: "medium" });
 }
 
-// G3: Call OpenAI moderation API via our Edge Function proxy
-// Returns true if the text is flagged as potentially harmful
-// Uses raw fetch with a pre-resolved JWT to avoid the sb.auth.getSession() mutex
-// that blocks after window focus triggers a background token refresh.
+// G3: Call OpenAI moderation API via our Edge Function proxy.
+// Uses sb.functions.invoke() so Supabase handles CORS and auth headers.
+// A 5s timeout races the invoke so a cold-start or mutex delay never blocks posting.
 async function checkCivility(
+  sb: ReturnType<typeof import("@/lib/supabaseClient").getSupabase>,
   text: string,
-  jwt: string,
   commentId?: string,
   userId?: string,
 ): Promise<boolean> {
+  if (!sb) return false;
   try {
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
-    if (!supabaseUrl || !anonKey) return false;
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5_000);
-
-    try {
-      const res = await fetch(`${supabaseUrl}/functions/v1/check-comment-civility`, {
-        method: "POST",
-        signal: controller.signal,
-        headers: {
-          "Content-Type": "application/json",
-          "apikey": anonKey,
-          "Authorization": `Bearer ${jwt}`,
-        },
-        body: JSON.stringify({ text, comment_id: commentId ?? null, user_id: userId ?? null }),
-      });
-      if (!res.ok) return false;
-      const data = await res.json();
-      return data?.flagged === true;
-    } finally {
-      clearTimeout(timeoutId);
-    }
+    const timeout = new Promise<{ data: null; error: Error }>((resolve) =>
+      setTimeout(() => resolve({ data: null, error: new Error("timeout") }), 5_000)
+    );
+    const invoke = sb.functions.invoke("check-comment-civility", {
+      body: { text, comment_id: commentId ?? null, user_id: userId ?? null },
+    });
+    const { data, error } = await Promise.race([invoke, timeout]);
+    if (error) return false;
+    return data?.flagged === true;
   } catch {
     return false; // fail open - don't block posting if check fails
   }
@@ -877,22 +862,17 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
   const [hasMore, setHasMore] = React.useState(false);
   const [loadingMore, setLoadingMore] = React.useState(false);
 
-  // Sentiment workers (fire-and-forget — preserved from original)
+  // Sentiment workers (fire-and-forget) - use sb.functions.invoke so Supabase
+  // handles CORS and auth headers correctly. These are background tasks so
+  // auth mutex delays don't matter here.
   const runSentimentWorkers = React.useCallback((commentId: string, body: string) => {
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-    if (!supabaseUrl) return;
-    const payload = { comment_id: commentId, body, question_id: questionId };
-    void fetch(`${supabaseUrl}/functions/v1/comment-sentiment`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+    void sb.functions.invoke("comment-sentiment", {
+      body: { comment_id: commentId, body, question_id: questionId },
     }).catch(() => {});
-    void fetch(`${supabaseUrl}/functions/v1/thread-sentiment`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question_id: questionId }),
+    void sb.functions.invoke("thread-sentiment", {
+      body: { question_id: questionId },
     }).catch(() => {});
-  }, [questionId]);
+  }, [sb, questionId]);
 
   // Store the full session in a ref so checkCivility can use the JWT directly
   // via raw fetch - avoids the sb.auth.getSession() async mutex that blocks
@@ -1234,8 +1214,7 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
     // If warning already shown, allow posting anyway (user confirmed)
     if (!civilityWarning) {
       setCheckingCivility(true);
-      const jwt = sessionRef.current?.access_token ?? "";
-      const flagged = await checkCivility(body, jwt);
+      const flagged = await checkCivility(sb, body);
       setCheckingCivility(false);
       if (flagged) {
         setCivilityWarning(true);
@@ -1253,7 +1232,7 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
       if (saved?.id) {
         runSentimentWorkers(saved.id, body);
         // H2: fire background toxicity score write with the real comment_id
-        checkCivility(body, sessionRef.current?.access_token ?? "", saved.id, sessionUserId ?? undefined);
+        void checkCivility(sb, body, saved.id, sessionUserId ?? undefined);
       }
     } catch (err: any) {
       toast({
