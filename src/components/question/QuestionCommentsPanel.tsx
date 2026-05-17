@@ -990,12 +990,12 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
   // Called after create and delete — resets to page 1 so the new/removed
   // comment is immediately reflected at the top of the list.
   const resetPagination = React.useCallback(() => {
-    // Do NOT clear allRoots eagerly - that causes a blank flash while the
-    // refetch is in flight. The useEffect on rootsQuery.data resets
-    // allRoots + cursor once the fresh page arrives.
     setCursor(null);
     setHasMore(false);
-    queryClient.invalidateQueries({ queryKey: ["question-comments-roots", questionId] });
+    // refetchQueries forces an immediate re-fetch and triggers the useEffect
+    // on rootsQuery.data to repopulate allRoots. invalidateQueries alone
+    // marks stale but does not guarantee an immediate re-render.
+    queryClient.refetchQueries({ queryKey: ["question-comments-roots", questionId] });
     queryClient.invalidateQueries({ queryKey: ["question-comments-replies", questionId] });
   }, [queryClient, questionId]);
 
