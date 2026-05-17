@@ -196,6 +196,9 @@ export default function AppTopBar({
     }
     await sb.from("profiles").update({ display_handle_mode: newMode }).eq("user_id", userId);
     queryClient.invalidateQueries({ queryKey: ["profile", userId] });
+    // Invalidate comment queries so display names refresh on the current QDP
+    queryClient.invalidateQueries({ queryKey: ["question-comments-roots"] });
+    queryClient.invalidateQueries({ queryKey: ["question-comments-replies"] });
   };
 
   // Check active route
