@@ -2851,7 +2851,7 @@ export default function IndexPage() {
   });
 
   const anonTrendingQuery = useInfiniteQuery({
-    enabled: !!sb && !isAuthed && !ipLoading,
+    enabled: !!sb && !isAuthed,
     queryKey: ["home-questions-anon", regionLabel],
     initialPageParam: 0,
     getNextPageParam: (
