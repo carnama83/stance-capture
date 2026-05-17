@@ -543,7 +543,7 @@ type CommentThreadProps = {
   depth: number;
   reactions: Record<string, ReactionRow>;
   sessionUserId: string | null;
-  onReply: (body: string) => Promise<void>;
+  onReply: (body: string, commentId: string) => Promise<void>;
   onReact: (commentId: string, reaction: "up" | "down") => Promise<void>;
   // M-G01
   onEdit: (commentId: string, newBody: string) => Promise<void>;
@@ -588,7 +588,7 @@ function CommentThread({
     if (!body) return;
     setSubmitting(true);
     try {
-      await onReply(body);
+      await onReply(body, node.id);
       setReplyText("");
       setIsReplying(false);
     } finally {
@@ -959,17 +959,11 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
 
   // M-G05: merge roots + replies into flat list for tree builder
   const allComments = React.useMemo((): QuestionCommentRow[] => {
-    // replyOverride: fresh replies fetched directly after a reply post via rpcFetch.
+    // replyOverride: fresh replies set directly after a reply post via rpcFetch.
     // Takes precedence over repliesQuery cache so new depth>1 replies appear immediately.
-    // Cleared when repliesQuery.data updates (staleTime=0 so it refetches shortly after).
     const replies = replyOverride ?? repliesQuery.data ?? [];
     return [...allRoots, ...replies];
   }, [allRoots, repliesQuery.data, replyOverride]);
-
-  // Clear replyOverride when repliesQuery.data updates (fresh cache arrived)
-  React.useEffect(() => {
-    if (repliesQuery.data !== undefined) setReplyOverride(null);
-  }, [repliesQuery.data]);
 
   // M-G05: load next page of root comments
   const handleLoadMore = async () => {
@@ -1069,6 +1063,11 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
       const replies = (Array.isArray(data) ? data : []) as QuestionCommentRow[];
       // Set replyOverride so allComments updates immediately without waiting for cache
       setReplyOverride(replies);
+      // Also update the query cache so repliesQuery stays in sync
+      queryClient.setQueryData(
+        ["question-comments-replies", questionId, rootIdsToFetch.join(",")],
+        replies
+      );
     } catch {
       // fallback: let query invalidation handle it
       queryClient.refetchQueries({ queryKey: ["question-comments-replies", questionId] });
@@ -1456,14 +1455,14 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
                   depth={0}
                   reactions={reactions}
                   sessionUserId={sessionUserId}
-                  onReply={async (body) => {
+                  onReply={async (body, commentId) => {
                     if (!sessionUserId) {
                       toast({ title: "Sign in to reply", variant: "destructive" });
                       return;
                     }
                     const saved = await createCommentMutation.mutateAsync({
                       body,
-                      parentId: node.id,
+                      parentId: commentId,
                     });
                     if (saved?.id) runSentimentWorkers(saved.id, body);
                   }}
