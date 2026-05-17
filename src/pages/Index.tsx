@@ -3013,7 +3013,7 @@ export default function IndexPage() {
   // Wait for session to resolve before trusting isLoading for anon users.
   // Without this, the hero stays in hero_loading forever when the session
   // check hasn't completed yet and the anonTrendingQuery fires then gets disabled.
-  const anonIsLoading = !sessionResolved || ipLoading || anonTrendingQuery.isLoading;
+  const anonIsLoading = anonTrendingQuery.isLoading;
   const anonIsError = anonTrendingQuery.isError;
   const authedIsLoading =
   !sessionResolved ||
