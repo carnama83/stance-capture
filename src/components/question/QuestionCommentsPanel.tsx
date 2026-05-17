@@ -951,7 +951,7 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
       });
       return (Array.isArray(data) ? data : []) as QuestionCommentRow[];
     },
-    staleTime: 30_000,
+    staleTime: 0,
   });
 
   // M-G05: merge roots + replies into flat list for tree builder
@@ -1166,8 +1166,8 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
         // Top-level post: reset to page 1 so new comment appears immediately
         resetPagination();
       } else {
-        // Reply: only invalidate replies query - roots don't change
-        queryClient.invalidateQueries({ queryKey: ["question-comments-replies", questionId] });
+        // Reply: force immediate refetch of replies - roots don't change
+        queryClient.refetchQueries({ queryKey: ["question-comments-replies", questionId] });
       }
       queryClient.invalidateQueries({ queryKey: ["question-thread-sentiment", questionId] });
     },
