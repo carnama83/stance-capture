@@ -5,7 +5,7 @@
 
 import * as React from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getSupabase } from "../lib/supabaseClient";
 import {
   DropdownMenu,
@@ -178,10 +178,24 @@ export default function AppTopBar({
     staleTime: 60_000,
   });
 
+  const queryClient = useQueryClient();
+
   const handleLogout = async () => {
     if (!sb) return;
     await sb.auth.signOut();
     navigate("/login");
+  };
+
+  const handleToggleDisplayMode = async () => {
+    if (!sb || !userId || !profile) return;
+    const newMode = profile.display_handle_mode === "username" ? "random_id" : "username";
+    // Only allow switching to username mode if a username is set
+    if (newMode === "username" && !profile.username) {
+      navigate("/settings/profile");
+      return;
+    }
+    await sb.from("profiles").update({ display_handle_mode: newMode }).eq("user_id", userId);
+    queryClient.invalidateQueries({ queryKey: ["profile", userId] });
   };
 
   // Check active route
@@ -373,6 +387,18 @@ export default function AppTopBar({
                     Privacy
                   </DropdownMenuItem>
                   
+                  <DropdownMenuSeparator />
+
+                  {profile && (
+                    <DropdownMenuItem onClick={handleToggleDisplayMode}>
+                      {profile.display_handle_mode === "username"
+                        ? `Switch to #${profile.random_id}`
+                        : profile.username
+                          ? `Switch to @${profile.username}`
+                          : "Set username to switch"}
+                    </DropdownMenuItem>
+                  )}
+
                   <DropdownMenuSeparator />
                   
                   <DropdownMenuItem 
