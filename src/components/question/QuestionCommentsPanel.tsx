@@ -898,6 +898,14 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
   const sessionRef = React.useRef<import("@supabase/supabase-js").Session | null>(null);
 
   React.useEffect(() => {
+    // Seed sessionRef immediately from cached session so rpcFetch works on first
+    // interaction after remount, before onAuthStateChange fires.
+    sb.auth.getSession().then(({ data }) => {
+      if (sessionRef.current === null && data.session) {
+        sessionRef.current = data.session;
+        setSessionUserId(data.session.user.id);
+      }
+    });
     const { data: { subscription } } = sb.auth.onAuthStateChange((_e, s) => {
       sessionRef.current = s ?? null;
       setSessionUserId(s?.user?.id ?? null);
