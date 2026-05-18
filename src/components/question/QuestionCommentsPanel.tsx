@@ -12,6 +12,7 @@
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getSupabase } from "@/lib/supabaseClient";
+import { useNavigate } from "react-router-dom";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -530,6 +531,7 @@ type CommentThreadProps = {
   sessionUserId: string | null;
   onReply: (body: string, commentId: string) => Promise<void>;
   onReact: (commentId: string, reaction: "up" | "down") => Promise<void>;
+  onLoginRedirect: () => void;
   // M-G01
   onEdit: (commentId: string, newBody: string) => Promise<void>;
   // M-G02
@@ -543,6 +545,7 @@ function CommentThread({
   sessionUserId,
   onReply,
   onReact,
+  onLoginRedirect,
   onEdit,
   onDelete,
 }: CommentThreadProps) {
@@ -702,7 +705,7 @@ function CommentThread({
                   {/* Upvote */}
                   <button
                     type="button"
-                    onClick={() => sessionUserId && onReact(node.id, "up")}
+                    onClick={() => sessionUserId ? onReact(node.id, "up") : onLoginRedirect()}
                     className={[
                       "flex items-center gap-1 hover:text-slate-900 transition-colors",
                       r?.my_reaction === "up" ? "text-emerald-600 font-medium" : "",
@@ -716,7 +719,7 @@ function CommentThread({
                   {/* Downvote */}
                   <button
                     type="button"
-                    onClick={() => sessionUserId && onReact(node.id, "down")}
+                    onClick={() => sessionUserId ? onReact(node.id, "down") : onLoginRedirect()}
                     className={[
                       "flex items-center gap-1 hover:text-slate-900 transition-colors",
                       r?.my_reaction === "down" ? "text-red-500 font-medium" : "",
@@ -732,7 +735,10 @@ function CommentThread({
                     <button
                       type="button"
                       className="hover:text-slate-900 transition-colors"
-                      onClick={() => setIsReplying((v) => !v)}
+                      onClick={() => {
+                        if (!sessionUserId) { onLoginRedirect(); return; }
+                        setIsReplying((v) => !v);
+                      }}
                     >
                       {isReplying ? "Cancel" : "Reply"}
                     </button>
@@ -827,6 +833,7 @@ function CommentThread({
               sessionUserId={sessionUserId}
               onReply={onReply}
               onReact={onReact}
+              onLoginRedirect={onLoginRedirect}
               onEdit={onEdit}
               onDelete={onDelete}
             />
@@ -843,6 +850,7 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
   const sb = getSupabase()!;
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const [sessionUserId, setSessionUserId] = React.useState<string | null>(null);
   const [posting, setPosting] = React.useState(false);
@@ -1205,7 +1213,7 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
   // G3: Post with civility check
   const handlePostTopLevel = async () => {
     if (!sessionUserId) {
-      toast({ title: "Sign in to comment", variant: "destructive" });
+      navigate("/login");
       return;
     }
     const body = (newCommentRef.current?.getText() ?? "").trim();
@@ -1415,9 +1423,10 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
                   depth={0}
                   reactions={reactions}
                   sessionUserId={sessionUserId}
+                  onLoginRedirect={() => navigate("/login")}
                   onReply={async (body, commentId) => {
                     if (!sessionUserId) {
-                      toast({ title: "Sign in to reply", variant: "destructive" });
+                      navigate("/login");
                       return;
                     }
                     const saved = await createCommentMutation.mutateAsync({
