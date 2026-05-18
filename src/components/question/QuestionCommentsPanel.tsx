@@ -1230,14 +1230,15 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
         void refreshReplies();
       }
       // Optimistically increment comment_count by 1 so badge/mood are correct
-      // immediately. Realtime will overwrite with the accurate DB value shortly.
+      // immediately. Realtime subscription overwrites with accurate DB value
+      // once thread-sentiment Edge Function completes. Do NOT refetch here -
+      // that would overwrite the optimistic value with the stale DB count.
       queryClient.setQueryData(
         ["question-thread-sentiment", questionId],
         (old: ThreadSentimentRow | null | undefined) => old
           ? { ...old, comment_count: (old.comment_count ?? 0) + 1 }
           : old
       );
-      queryClient.refetchQueries({ queryKey: ["question-thread-sentiment", questionId] });
     },
   });
 
