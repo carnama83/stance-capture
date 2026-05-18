@@ -1351,10 +1351,11 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
       <CardHeader>
         <CardTitle className="text-sm font-semibold flex items-center gap-2">
           Comments
-          {/* M-G07: comment count badge — derived from live allComments for instant update */}
-          {liveCommentCount > 0 && (
+          {/* M-G07: comment count badge — sentiment.comment_count is realtime-updated;
+               fall back to liveCommentCount before sentiment loads */}
+          {((sentiment?.comment_count ?? liveCommentCount) > 0) && (
             <span className="inline-flex items-center justify-center rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
-              {liveCommentCount}
+              {sentiment?.comment_count ?? liveCommentCount}
             </span>
           )}
         </CardTitle>
@@ -1378,9 +1379,9 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
                   style={{ backgroundColor: trendingColor }}
                 />
                 <span className="text-slate-600">{describeMood(avg)}</span>
-                {liveCommentCount > 0 && (
+                {((sentiment?.comment_count ?? liveCommentCount) > 0) && (
                   <span className="text-slate-400">
-                    · {liveCommentCount} comment{liveCommentCount === 1 ? "" : "s"}
+                    {(() => { const c = sentiment?.comment_count ?? liveCommentCount; return `· ${c} comment${c === 1 ? '' : 's'}`; })()}
                   </span>
                 )}
               </>
