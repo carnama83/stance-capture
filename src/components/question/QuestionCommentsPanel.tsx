@@ -867,8 +867,6 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
   const [sortMode, setSortMode] = React.useState<SortMode>("latest");
   // G3: civility warning state
   const [civilityWarning, setCivilityWarning] = React.useState(false);
-  // Poll thread-sentiment briefly after a post to catch async Edge Function update
-  const [sentimentPollActive, setSentimentPollActive] = React.useState(false);
   const [checkingCivility, setCheckingCivility] = React.useState(false);
 
   // M-G03: ref for the top-level composer RichCommentInput
@@ -1106,7 +1104,6 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
       return (data ?? null) as ThreadSentimentRow | null;
     },
     staleTime: 0,
-    refetchInterval: sentimentPollActive ? 2_000 : false,
   });
 
   // All comment IDs (roots + replies) for reactions batch fetch
@@ -1114,6 +1111,28 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
     () => allComments.map((c) => c.id),
     [allComments],
   );
+
+  // Realtime on question_comment_sentiment: Discussion Mood updates instantly
+  // when thread-sentiment Edge Function writes the row after a post.
+  React.useEffect(() => {
+    if (!sb || !questionId) return;
+    const channel = sb
+      .channel(`thread-sentiment-${questionId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "question_comment_sentiment",
+          filter: `question_id=eq.${questionId}`,
+        },
+        () => {
+          queryClient.refetchQueries({ queryKey: ["question-thread-sentiment", questionId] });
+        },
+      )
+      .subscribe();
+    return () => { sb.removeChannel(channel); };
+  }, [sb, questionId, queryClient]);
 
   // M-G06: Realtime subscription — invalidate reactions when any reaction changes
   // for a comment currently in view. comment_reactions has no question_id column
@@ -1211,9 +1230,6 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
         void refreshReplies();
       }
       queryClient.refetchQueries({ queryKey: ["question-thread-sentiment", questionId] });
-      // Poll sentiment for 10s to catch async Edge Function update
-      setSentimentPollActive(true);
-      setTimeout(() => setSentimentPollActive(false), 10_000);
     },
   });
 
