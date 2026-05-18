@@ -1325,10 +1325,10 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
       <CardHeader>
         <CardTitle className="text-sm font-semibold flex items-center gap-2">
           Comments
-          {/* M-G07: comment count badge — sourced from question_comment_sentiment.comment_count */}
-          {sentiment?.comment_count != null && sentiment.comment_count > 0 && (
+          {/* M-G07: comment count badge — derived from live allComments for instant update */}
+          {allComments.filter(c => !c.is_deleted).length > 0 && (
             <span className="inline-flex items-center justify-center rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
-              {sentiment.comment_count}
+              {allComments.filter(c => !c.is_deleted).length}
             </span>
           )}
         </CardTitle>
@@ -1352,9 +1352,9 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
                   style={{ backgroundColor: trendingColor }}
                 />
                 <span className="text-slate-600">{describeMood(avg)}</span>
-                {sentiment.comment_count != null && sentiment.comment_count > 0 && (
+                {allComments.filter(c => !c.is_deleted).length > 0 && (
                   <span className="text-slate-400">
-                    · {sentiment.comment_count} comment{sentiment.comment_count === 1 ? "" : "s"}
+                    · {allComments.filter(c => !c.is_deleted).length} comment{allComments.filter(c => !c.is_deleted).length === 1 ? "" : "s"}
                   </span>
                 )}
               </>
