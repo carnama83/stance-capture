@@ -707,12 +707,17 @@ function CommentThread({
                     type="button"
                     onClick={() => sessionUserId ? onReact(node.id, "up") : onLoginRedirect()}
                     className={[
-                      "flex items-center gap-1 hover:text-slate-900 transition-colors",
-                      r?.my_reaction === "up" ? "text-emerald-600 font-medium" : "",
+                      "flex items-center gap-1.5 px-2 py-0.5 rounded-full transition-all text-[11px]",
+                      r?.my_reaction === "up"
+                        ? "bg-emerald-100 text-emerald-700 font-semibold"
+                        : "hover:bg-slate-100 text-slate-500",
                       !sessionUserId ? "opacity-50 cursor-default" : "",
                     ].join(" ")}
                   >
-                    <ThumbsUp className="h-3.5 w-3.5" />
+                    <ThumbsUp className={[
+                      "h-3.5 w-3.5",
+                      r?.my_reaction === "up" ? "fill-emerald-500 text-emerald-600" : "",
+                    ].join(" ")} />
                     <span>{r?.up_count ?? 0}</span>
                   </button>
 
@@ -721,12 +726,17 @@ function CommentThread({
                     type="button"
                     onClick={() => sessionUserId ? onReact(node.id, "down") : onLoginRedirect()}
                     className={[
-                      "flex items-center gap-1 hover:text-slate-900 transition-colors",
-                      r?.my_reaction === "down" ? "text-red-500 font-medium" : "",
+                      "flex items-center gap-1.5 px-2 py-0.5 rounded-full transition-all text-[11px]",
+                      r?.my_reaction === "down"
+                        ? "bg-red-100 text-red-600 font-semibold"
+                        : "hover:bg-slate-100 text-slate-500",
                       !sessionUserId ? "opacity-50 cursor-default" : "",
                     ].join(" ")}
                   >
-                    <ThumbsDown className="h-3.5 w-3.5" />
+                    <ThumbsDown className={[
+                      "h-3.5 w-3.5",
+                      r?.my_reaction === "down" ? "fill-red-400 text-red-500" : "",
+                    ].join(" ")} />
                     <span>{r?.down_count ?? 0}</span>
                   </button>
 
