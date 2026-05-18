@@ -1344,7 +1344,7 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
 
       <CardContent className="space-y-4">
         {/* Discussion mood */}
-        {(sentiment || threadSentimentQuery.isLoading) && (
+        {(liveCommentCount > 0 || threadSentimentQuery.isLoading) && (
           <div className="rounded-md border bg-slate-50 px-3 py-2 text-[11px] flex items-center gap-2">
             <span className="font-semibold text-slate-900">Discussion mood</span>
             {threadSentimentQuery.isLoading ? (
