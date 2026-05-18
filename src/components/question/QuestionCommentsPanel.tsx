@@ -1157,7 +1157,7 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
   const reactionsQuery = useQuery({
     queryKey: ["comment-reactions", questionId, allCommentIds.join(",")],
     enabled: allCommentIds.length > 0,
-    staleTime: 30_000,
+    staleTime: 0,
     queryFn: async () => {
       const { data, error } = await sb.rpc("get_comment_reactions", {
         p_comment_ids: allCommentIds,
@@ -1180,7 +1180,7 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["comment-reactions", questionId] });
+      queryClient.refetchQueries({ queryKey: ["comment-reactions", questionId] });
     },
     onError: (err) => {
       console.error("[reactMutation] error:", err);
