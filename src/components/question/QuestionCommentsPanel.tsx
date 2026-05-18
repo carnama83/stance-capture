@@ -867,6 +867,8 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
   const [sortMode, setSortMode] = React.useState<SortMode>("latest");
   // G3: civility warning state
   const [civilityWarning, setCivilityWarning] = React.useState(false);
+  // Poll thread-sentiment briefly after a post to catch async Edge Function update
+  const [sentimentPollActive, setSentimentPollActive] = React.useState(false);
   const [checkingCivility, setCheckingCivility] = React.useState(false);
 
   // M-G03: ref for the top-level composer RichCommentInput
@@ -1087,7 +1089,7 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
     setCursor(null);
     setHasMore(false);
     void refreshRoots();
-    queryClient.invalidateQueries({ queryKey: ["question-thread-sentiment", questionId] });
+    queryClient.refetchQueries({ queryKey: ["question-thread-sentiment", questionId] });
   }, [refreshRoots, queryClient, questionId]);
 
   // Thread sentiment
@@ -1103,7 +1105,8 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
       if (error && (error as any).code !== "PGRST116") throw error;
       return (data ?? null) as ThreadSentimentRow | null;
     },
-    staleTime: 30_000,
+    staleTime: 0,
+    refetchInterval: sentimentPollActive ? 2_000 : false,
   });
 
   // All comment IDs (roots + replies) for reactions batch fetch
@@ -1207,7 +1210,10 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
         // Reply: fetch fresh replies via rpcFetch and set cache directly
         void refreshReplies();
       }
-      queryClient.invalidateQueries({ queryKey: ["question-thread-sentiment", questionId] });
+      queryClient.refetchQueries({ queryKey: ["question-thread-sentiment", questionId] });
+      // Poll sentiment for 10s to catch async Edge Function update
+      setSentimentPollActive(true);
+      setTimeout(() => setSentimentPollActive(false), 10_000);
     },
   });
 
@@ -1242,7 +1248,7 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
     },
     onSuccess: () => {
       resetPagination();
-      queryClient.invalidateQueries({ queryKey: ["question-thread-sentiment", questionId] });
+      queryClient.refetchQueries({ queryKey: ["question-thread-sentiment", questionId] });
     },
     onError: (err: any) => {
       toast({
@@ -1356,9 +1362,9 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
                   style={{ backgroundColor: trendingColor }}
                 />
                 <span className="text-slate-600">{describeMood(avg)}</span>
-                {sentiment?.comment_count != null && sentiment.comment_count > 0 && (
+                {liveCommentCount > 0 && (
                   <span className="text-slate-400">
-                    · {sentiment.comment_count} comment{sentiment.comment_count === 1 ? "" : "s"}
+                    · {liveCommentCount} comment{liveCommentCount === 1 ? "" : "s"}
                   </span>
                 )}
               </>
