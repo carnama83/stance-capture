@@ -1229,6 +1229,14 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
         // Reply: fetch fresh replies via rpcFetch and set cache directly
         void refreshReplies();
       }
+      // Optimistically increment comment_count by 1 so badge/mood are correct
+      // immediately. Realtime will overwrite with the accurate DB value shortly.
+      queryClient.setQueryData(
+        ["question-thread-sentiment", questionId],
+        (old: ThreadSentimentRow | null | undefined) => old
+          ? { ...old, comment_count: (old.comment_count ?? 0) + 1 }
+          : old
+      );
       queryClient.refetchQueries({ queryKey: ["question-thread-sentiment", questionId] });
     },
   });
