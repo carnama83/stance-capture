@@ -1087,8 +1087,8 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
     setCursor(null);
     setHasMore(false);
     void refreshRoots();
-    queryClient.refetchQueries({ queryKey: ["question-thread-sentiment", questionId] });
-  }, [refreshRoots, queryClient, questionId]);
+    // Thread sentiment is updated via realtime subscription - no need to refetch here
+  }, [refreshRoots]);
 
   // Thread sentiment
   const threadSentimentQuery = useQuery({
