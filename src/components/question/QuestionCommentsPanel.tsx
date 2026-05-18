@@ -1030,13 +1030,15 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
         jwt = raw ? JSON.parse(raw)?.access_token ?? null : null;
       } catch { jwt = null; }
     }
-    if (!jwt) throw new Error("Not authenticated");
+    // For read-only RPCs (e.g. get_comment_reactions), fall back to anon key
+    // so guests can still see reaction counts. Write RPCs will 401 server-side.
+    const authHeader = jwt ? `Bearer ${jwt}` : `Bearer ${anonKey}`;
     const res = await fetch(`${supabaseUrl}/rest/v1/rpc/${fnName}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "apikey": anonKey,
-        "Authorization": `Bearer ${jwt}`,
+        "Authorization": authHeader,
         "Prefer": "return=representation",
       },
       body: JSON.stringify(params),
@@ -1159,12 +1161,11 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
     enabled: allCommentIds.length > 0,
     staleTime: 0,
     queryFn: async () => {
-      const { data, error } = await sb.rpc("get_comment_reactions", {
+      const data = await rpcFetch("get_comment_reactions", {
         p_comment_ids: allCommentIds,
       });
-      if (error) throw error;
       const map: Record<string, ReactionRow> = {};
-      for (const row of (data ?? []) as ReactionRow[]) map[row.comment_id] = row;
+      for (const row of (Array.isArray(data) ? data : []) as ReactionRow[]) map[row.comment_id] = row;
       return map;
     },
   });
