@@ -369,25 +369,37 @@ function timeAgo(iso: string): string {
 }
 
 // G3: Call OpenAI moderation API via our Edge Function proxy.
-// Uses sb.functions.invoke() so Supabase handles CORS and auth headers.
-// A 5s timeout races the invoke so a cold-start or mutex delay never blocks posting.
+// Uses raw fetch with JWT from localStorage to bypass sb.auth.getSession()
+// mutex that blocks after window focus triggers a background token refresh.
+// Falls back to anon key if no JWT (guests). 5s timeout fails open.
 async function checkCivility(
-  sb: ReturnType<typeof import("@/lib/supabaseClient").getSupabase>,
+  supabaseUrl: string,
+  anonKey: string,
+  jwt: string | null,
   text: string,
   commentId?: string,
   userId?: string,
 ): Promise<boolean> {
-  if (!sb) return false;
   try {
-    const timeout = new Promise<{ data: null; error: Error }>((resolve) =>
-      setTimeout(() => resolve({ data: null, error: new Error("timeout") }), 5_000)
-    );
-    const invoke = sb.functions.invoke("check-comment-civility", {
-      body: { text, comment_id: commentId ?? null, user_id: userId ?? null },
-    });
-    const { data, error } = await Promise.race([invoke, timeout]);
-    if (error) return false;
-    return data?.flagged === true;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5_000);
+    try {
+      const res = await fetch(`${supabaseUrl}/functions/v1/check-comment-civility`, {
+        method: "POST",
+        signal: controller.signal,
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": anonKey,
+          "Authorization": `Bearer ${jwt ?? anonKey}`,
+        },
+        body: JSON.stringify({ text, comment_id: commentId ?? null, user_id: userId ?? null }),
+      });
+      if (!res.ok) return false;
+      const data = await res.json();
+      return data?.flagged === true;
+    } finally {
+      clearTimeout(timeoutId);
+    }
   } catch {
     return false; // fail open - don't block posting if check fails
   }
@@ -1285,6 +1297,16 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
   });
 
   // G3: Post with civility check
+  // Read JWT from localStorage synchronously - same bypass as rpcFetch
+  const getJwt = React.useCallback((): string | null => {
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+      const projectRef = supabaseUrl.split(".")[0].replace("https://", "");
+      const raw = localStorage.getItem(`sb-${projectRef}-auth-token`);
+      return raw ? JSON.parse(raw)?.access_token ?? null : null;
+    } catch { return null; }
+  }, []);
+
   const handlePostTopLevel = async () => {
     if (!sessionUserId) {
       navigate("/login");
@@ -1296,7 +1318,12 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
     // If warning already shown, allow posting anyway (user confirmed)
     if (!civilityWarning) {
       setCheckingCivility(true);
-      const flagged = await checkCivility(sb, body);
+      const flagged = await checkCivility(
+        import.meta.env.VITE_SUPABASE_URL as string,
+        import.meta.env.VITE_SUPABASE_ANON_KEY as string,
+        getJwt(),
+        body
+      );
       setCheckingCivility(false);
       if (flagged) {
         setCivilityWarning(true);
@@ -1314,7 +1341,14 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
       if (saved?.id) {
         runSentimentWorkers(saved.id, body);
         // H2: fire background toxicity score write with the real comment_id
-        void checkCivility(sb, body, saved.id, sessionUserId ?? undefined);
+        void checkCivility(
+          import.meta.env.VITE_SUPABASE_URL as string,
+          import.meta.env.VITE_SUPABASE_ANON_KEY as string,
+          getJwt(),
+          body,
+          saved.id,
+          sessionUserId ?? undefined
+        );
       }
     } catch (err: any) {
       toast({
