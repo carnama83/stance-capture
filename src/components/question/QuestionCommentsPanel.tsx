@@ -1356,9 +1356,9 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
                   style={{ backgroundColor: trendingColor }}
                 />
                 <span className="text-slate-600">{describeMood(avg)}</span>
-                {liveCommentCount > 0 && (
+                {sentiment?.comment_count != null && sentiment.comment_count > 0 && (
                   <span className="text-slate-400">
-                    · {liveCommentCount} comment{liveCommentCount === 1 ? "" : "s"}
+                    · {sentiment.comment_count} comment{sentiment.comment_count === 1 ? "" : "s"}
                   </span>
                 )}
               </>
