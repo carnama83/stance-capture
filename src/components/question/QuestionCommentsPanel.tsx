@@ -1103,7 +1103,7 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
       if (error && (error as any).code !== "PGRST116") throw error;
       return (data ?? null) as ThreadSentimentRow | null;
     },
-    staleTime: 0,
+    staleTime: 60_000, // realtime handles updates; no need for frequent polling
   });
 
   // All comment IDs (roots + replies) for reactions batch fetch
