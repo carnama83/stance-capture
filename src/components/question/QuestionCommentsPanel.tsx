@@ -1015,12 +1015,22 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
   // M-G05: reset pagination when mutations invalidate the roots query
   // Called after create and delete — resets to page 1 so the new/removed
   // comment is immediately reflected at the top of the list.
-  // Raw fetch helper - bypasses sb.auth.getSession() mutex (same pattern as setMyStance)
+  // Raw fetch helper - reads JWT directly from localStorage at call time,
+  // bypassing sb.auth.getSession() mutex entirely. Works even during background
+  // token refresh because the stored token is still valid until the new one lands.
   const rpcFetch = React.useCallback(async (fnName: string, params: Record<string, unknown>) => {
-    const jwt = sessionRef.current?.access_token;
-    if (!jwt) throw new Error("Not authenticated");
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
     const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+    // Read JWT fresh from localStorage on every call - no mutex, no async
+    let jwt: string | null = sessionRef.current?.access_token ?? null;
+    if (!jwt) {
+      try {
+        const projectRef = supabaseUrl.split(".")[0].replace("https://", "");
+        const raw = localStorage.getItem(`sb-${projectRef}-auth-token`);
+        jwt = raw ? JSON.parse(raw)?.access_token ?? null : null;
+      } catch { jwt = null; }
+    }
+    if (!jwt) throw new Error("Not authenticated");
     const res = await fetch(`${supabaseUrl}/rest/v1/rpc/${fnName}`, {
       method: "POST",
       headers: {
@@ -1171,6 +1181,10 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["comment-reactions", questionId] });
+    },
+    onError: (err) => {
+      console.error("[reactMutation] error:", err);
+      toast({ title: "Could not save reaction. Please try again.", variant: "destructive" });
     },
   });
 
