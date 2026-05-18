@@ -898,14 +898,24 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
   const sessionRef = React.useRef<import("@supabase/supabase-js").Session | null>(null);
 
   React.useEffect(() => {
-    // Seed sessionRef immediately from cached session so rpcFetch works on first
-    // interaction after remount, before onAuthStateChange fires.
-    sb.auth.getSession().then(({ data }) => {
-      if (sessionRef.current === null && data.session) {
-        sessionRef.current = data.session;
-        setSessionUserId(data.session.user.id);
+    // Seed sessionRef synchronously from localStorage before onAuthStateChange fires.
+    // Supabase stores the session under 'sb-<project-ref>-auth-token'.
+    // This avoids the async mutex that blocks getSession() after window focus.
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string ?? "";
+      const projectRef = supabaseUrl.split(".")[0].replace("https://", "");
+      const raw = localStorage.getItem(`sb-${projectRef}-auth-token`);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const accessToken = parsed?.access_token;
+        const userId = parsed?.user?.id;
+        if (accessToken && sessionRef.current === null) {
+          sessionRef.current = parsed as import("@supabase/supabase-js").Session;
+          if (userId) setSessionUserId(userId);
+        }
       }
-    });
+    } catch { /* ignore parse errors */ }
+
     const { data: { subscription } } = sb.auth.onAuthStateChange((_e, s) => {
       sessionRef.current = s ?? null;
       setSessionUserId(s?.user?.id ?? null);
