@@ -87,6 +87,21 @@ const STATUS_FILTERS = [
   { value: "all",      label: "All" },
 ];
 
+const SEVERITY_FILTERS = [
+  { value: "",    label: "All severity",  minToxicity: null },
+  { value: "high",   label: "High risk (≥70%)", minToxicity: 0.7  },
+  { value: "medium", label: "Medium (≥40%)",    minToxicity: 0.4  },
+  { value: "low",    label: "Low (≥0%)",        minToxicity: 0.0  },
+];
+
+// Returns ISO string for "now minus N hours", or null for "any time"
+const AGE_FILTERS = [
+  { value: "",     label: "Any time",    hours: null },
+  { value: "24h",  label: "Last 24h",   hours: 24   },
+  { value: "7d",   label: "Last 7 days", hours: 168  },
+  { value: "30d",  label: "Last 30 days",hours: 720  },
+];
+
 // ── Action confirmation modal ──────────────────────────────────────────────────
 
 function ActionModal({
@@ -282,8 +297,10 @@ export default function AdminModerationPage() {
   const sb = getSupabase()!;
   const queryClient = useQueryClient();
 
-  const [reasonFilter, setReasonFilter] = React.useState("");
-  const [statusFilter, setStatusFilter] = React.useState("pending");
+  const [reasonFilter,   setReasonFilter]   = React.useState("");
+  const [statusFilter,   setStatusFilter]   = React.useState("pending");
+  const [severityFilter, setSeverityFilter] = React.useState("");
+  const [ageFilter,      setAgeFilter]      = React.useState("");
   const [activeModal, setActiveModal] = React.useState<{
     report: ReportRow;
     action: ActionType;
@@ -291,14 +308,23 @@ export default function AdminModerationPage() {
 
   // Fetch reports
   const { data: reports, isLoading, refetch } = useQuery<ReportRow[]>({
-    queryKey: ["moderation-reports", reasonFilter, statusFilter],
+    queryKey: ["moderation-reports", reasonFilter, statusFilter, severityFilter, ageFilter],
     staleTime: 30_000,
     queryFn: async () => {
+      const severityEntry = SEVERITY_FILTERS.find((f) => f.value === severityFilter);
+      const ageEntry      = AGE_FILTERS.find((f) => f.value === ageFilter);
+      const pAfter        = ageEntry?.hours
+        ? new Date(Date.now() - ageEntry.hours * 3_600_000).toISOString()
+        : null;
+
       const { data, error } = await sb.rpc("list_comment_reports", {
-        p_limit:  100,
-        p_offset: 0,
-        p_reason: reasonFilter || null,
-        p_status: statusFilter,
+        p_limit:        100,
+        p_offset:       0,
+        p_reason:       reasonFilter || null,
+        p_status:       statusFilter,
+        p_min_toxicity: severityEntry?.minToxicity ?? null,
+        p_after:        pAfter,
+        p_before:       null,
       });
       if (error) throw error;
       return (data ?? []) as ReportRow[];
@@ -393,6 +419,26 @@ export default function AdminModerationPage() {
           className="rounded-md border border-slate-200 px-3 py-1.5 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-300"
         >
           {REASON_FILTERS.map((f) => (
+            <option key={f.value} value={f.value}>{f.label}</option>
+          ))}
+        </select>
+
+        <select
+          value={severityFilter}
+          onChange={(e) => setSeverityFilter(e.target.value)}
+          className="rounded-md border border-slate-200 px-3 py-1.5 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-300"
+        >
+          {SEVERITY_FILTERS.map((f) => (
+            <option key={f.value} value={f.value}>{f.label}</option>
+          ))}
+        </select>
+
+        <select
+          value={ageFilter}
+          onChange={(e) => setAgeFilter(e.target.value)}
+          className="rounded-md border border-slate-200 px-3 py-1.5 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-300"
+        >
+          {AGE_FILTERS.map((f) => (
             <option key={f.value} value={f.value}>{f.label}</option>
           ))}
         </select>
