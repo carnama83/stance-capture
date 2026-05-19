@@ -9,7 +9,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getSupabase } from "@/lib/supabaseClient";
 import {
   AlertTriangle, CheckCircle2, EyeOff, Eye, XCircle,
-  Shield, Loader2, RefreshCw, Flag, ArrowDownNarrowWide, ArrowUpNarrowWide
+  Shield, Loader2, RefreshCw, Flag, ArrowDownNarrowWide, ArrowUpNarrowWide,
+  UserX, Ban
 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -28,7 +29,7 @@ type ReportRow = {
   action_at: string | null;
 };
 
-type ActionType = "hide_comment" | "restore_comment" | "dismiss_report" | "warn_user";
+type ActionType = "hide_comment" | "restore_comment" | "dismiss_report" | "warn_user" | "restrict_user" | "ban_user";
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -124,6 +125,8 @@ function ActionModal({
     restore_comment: "Restore comment",
     dismiss_report:  "Dismiss report",
     warn_user:       "Warn user",
+    restrict_user:   "Restrict user",
+    ban_user:        "Ban user",
   };
 
   const descriptions: Record<ActionType, string> = {
@@ -131,6 +134,8 @@ function ActionModal({
     restore_comment: "The comment will be made visible again.",
     dismiss_report:  "The report will be marked as resolved with no action taken.",
     warn_user:       "A notification will be sent to the user about their comment.",
+    restrict_user:   "The user will be restricted from posting. They will be notified. This can be lifted later.",
+    ban_user:        "The user will be permanently banned. They will be notified. This action is severe — use with care.",
   };
 
   return (
@@ -270,6 +275,22 @@ function ReportCard({
           >
             <XCircle className="h-3.5 w-3.5" />
             Dismiss
+          </button>
+          <button
+            type="button"
+            onClick={() => onAction(report, "restrict_user")}
+            className="flex items-center gap-1.5 rounded-md border border-orange-200 px-3 py-1.5 text-[11px] font-medium text-orange-700 hover:bg-orange-50 transition-colors"
+          >
+            <UserX className="h-3.5 w-3.5" />
+            Restrict user
+          </button>
+          <button
+            type="button"
+            onClick={() => onAction(report, "ban_user")}
+            className="flex items-center gap-1.5 rounded-md border border-red-300 px-3 py-1.5 text-[11px] font-medium text-red-800 hover:bg-red-50 transition-colors"
+          >
+            <Ban className="h-3.5 w-3.5" />
+            Ban user
           </button>
         </div>
       )}
