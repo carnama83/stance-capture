@@ -9,7 +9,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getSupabase } from "@/lib/supabaseClient";
 import {
   AlertTriangle, CheckCircle2, EyeOff, Eye, XCircle,
-  Shield, Loader2, RefreshCw, Flag, ArrowDownNarrowWide
+  Shield, Loader2, RefreshCw, Flag, ArrowDownNarrowWide, ArrowUpNarrowWide
 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -301,6 +301,7 @@ export default function AdminModerationPage() {
   const [statusFilter,   setStatusFilter]   = React.useState("pending");
   const [severityFilter, setSeverityFilter] = React.useState("");
   const [ageFilter,      setAgeFilter]      = React.useState("");
+  const [sortOrder,    setSortOrder]      = React.useState<"toxicity" | "date">("toxicity");
   const [activeModal, setActiveModal] = React.useState<{
     report: ReportRow;
     action: ActionType;
@@ -308,7 +309,7 @@ export default function AdminModerationPage() {
 
   // Fetch reports
   const { data: reports, isLoading, refetch } = useQuery<ReportRow[]>({
-    queryKey: ["moderation-reports", reasonFilter, statusFilter, severityFilter, ageFilter],
+    queryKey: ["moderation-reports", reasonFilter, statusFilter, severityFilter, ageFilter, sortOrder],
     staleTime: 30_000,
     queryFn: async () => {
       const severityEntry = SEVERITY_FILTERS.find((f) => f.value === severityFilter);
@@ -325,6 +326,7 @@ export default function AdminModerationPage() {
         p_min_toxicity: severityEntry?.minToxicity ?? null,
         p_after:        pAfter,
         p_before:       null,
+        p_order_by:     sortOrder,
       });
       if (error) throw error;
       return (data ?? []) as ReportRow[];
@@ -372,10 +374,16 @@ export default function AdminModerationPage() {
           </h1>
           <p className="text-sm text-slate-500 mt-0.5 flex items-center gap-2">
             Review reported comments and take action.
-            <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
-              <ArrowDownNarrowWide className="h-3 w-3" />
-              Highest risk first
-            </span>
+            <button
+              type="button"
+              onClick={() => setSortOrder((s) => s === "toxicity" ? "date" : "toxicity")}
+              className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600 hover:bg-slate-200 transition-colors"
+              title={sortOrder === "toxicity" ? "Switch to most recent first" : "Switch to highest risk first"}
+            >
+              {sortOrder === "toxicity"
+                ? <><ArrowDownNarrowWide className="h-3 w-3" />Highest risk first</>
+                : <><ArrowUpNarrowWide  className="h-3 w-3" />Most recent first</>}
+            </button>
           </p>
         </div>
         <button
