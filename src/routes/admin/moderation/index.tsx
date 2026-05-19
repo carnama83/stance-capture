@@ -9,7 +9,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getSupabase } from "@/lib/supabaseClient";
 import {
   AlertTriangle, CheckCircle2, EyeOff, Eye, XCircle,
-  Shield, Loader2, RefreshCw, Flag
+  Shield, Loader2, RefreshCw, Flag, ArrowDownNarrowWide
 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -344,8 +344,12 @@ export default function AdminModerationPage() {
             <Shield className="h-5 w-5 text-slate-600" />
             Moderation Queue
           </h1>
-          <p className="text-sm text-slate-500 mt-0.5">
-            Review reported comments and take action. Sorted by toxicity score.
+          <p className="text-sm text-slate-500 mt-0.5 flex items-center gap-2">
+            Review reported comments and take action.
+            <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
+              <ArrowDownNarrowWide className="h-3 w-3" />
+              Highest risk first
+            </span>
           </p>
         </div>
         <button
