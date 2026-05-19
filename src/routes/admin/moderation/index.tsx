@@ -481,31 +481,59 @@ export default function AdminModerationPage() {
         </div>
       )}
 
-      {/* Empty state */}
-      {!isLoading && (reports ?? []).length === 0 && (
-        <div className="rounded-lg border border-slate-100 bg-slate-50 px-6 py-10 text-center">
-          <CheckCircle2 className="h-8 w-8 text-emerald-400 mx-auto mb-2" />
-          <p className="text-sm font-medium text-slate-700">
-            {statusFilter === "pending" ? "No pending reports" : "No reports found"}
-          </p>
-          <p className="text-xs text-slate-500 mt-1">
-            {statusFilter === "pending"
-              ? "All reports have been actioned."
-              : "Try adjusting your filters."}
-          </p>
-        </div>
-      )}
+      {/* Two-section layout: Pending + Resolved always shown */}
+      {!isLoading && (
+        <div className="space-y-6">
 
-      {/* Report list */}
-      {!isLoading && (reports ?? []).length > 0 && (
-        <div className="space-y-3">
-          {(reports ?? []).map((report) => (
-            <ReportCard
-              key={report.report_id}
-              report={report}
-              onAction={(r, action) => setActiveModal({ report: r, action })}
-            />
-          ))}
+          {/* Pending section */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-semibold text-slate-700">Pending</h2>
+              <span className="rounded-full bg-red-100 text-red-700 px-2 py-0.5 text-[10px] font-semibold">
+                {pending.length}
+              </span>
+            </div>
+            {pending.length === 0 ? (
+              <div className="rounded-lg border border-slate-100 bg-slate-50 px-6 py-8 text-center">
+                <CheckCircle2 className="h-7 w-7 text-emerald-400 mx-auto mb-2" />
+                <p className="text-sm font-medium text-slate-700">No pending reports</p>
+                <p className="text-xs text-slate-500 mt-1">All reports have been actioned.</p>
+              </div>
+            ) : (
+              pending.map((report) => (
+                <ReportCard
+                  key={report.report_id}
+                  report={report}
+                  onAction={(r, action) => setActiveModal({ report: r, action })}
+                />
+              ))
+            )}
+          </div>
+
+          {/* Resolved section */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-semibold text-slate-700">Resolved</h2>
+              <span className="rounded-full bg-slate-100 text-slate-600 px-2 py-0.5 text-[10px] font-semibold">
+                {resolved.length}
+              </span>
+            </div>
+            {resolved.length === 0 ? (
+              <div className="rounded-lg border border-slate-100 bg-slate-50 px-6 py-8 text-center">
+                <p className="text-sm font-medium text-slate-700">No resolved reports</p>
+                <p className="text-xs text-slate-500 mt-1">No reports have been actioned yet.</p>
+              </div>
+            ) : (
+              resolved.map((report) => (
+                <ReportCard
+                  key={report.report_id}
+                  report={report}
+                  onAction={(r, action) => setActiveModal({ report: r, action })}
+                />
+              ))
+            )}
+          </div>
+
         </div>
       )}
 
