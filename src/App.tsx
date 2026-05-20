@@ -9,6 +9,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import AuthReadyGate from "./components/AuthReadyGate";
 import { Protected, PublicOnly } from "./auth/route-guards";
 import AdminOnly from "./auth/AdminOnly";
+import ModeratorOnly from "./auth/ModeratorOnly";
 import { ROUTES } from "@/routes/paths";
 import { useShareClickTracker } from "@/hooks/useShareClickTracker";
 import AdminTopicsPage from "@/routes/admin/topics/Index";
@@ -300,9 +301,22 @@ const App: React.FC = () => {
                 <Route path="scoring-config" element={<ScoringConfigPage />} />
                 <Route path="curated-feed" element={<AdminCuratedFeedPage />} />
                 <Route path="cognitive-states" element={<AdminCognitiveStatesPage />} />
-                <Route path="moderation" element={<AdminModerationPage />} />
                 {/* FIX 3: Publisher approval queue */}
                 <Route path="publishers" element={<AdminPublishersPage />} />
+              </Route>
+
+              {/* Moderation — accessible to admins AND moderators */}
+              <Route
+                path="/admin/moderation"
+                element={
+                  <Protected>
+                    <ModeratorOnly>
+                      <AdminLayout />
+                    </ModeratorOnly>
+                  </Protected>
+                }
+              >
+                <Route index element={<AdminModerationPage />} />
               </Route>
 
               {/* Admin special page */}
