@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { getSupabase } from "../lib/supabaseClient";
 import PageLayout from "../components/PageLayout";
 import { FollowTopicButton } from "@/components/FollowTopicButton";
+import { TopicMuteButton } from "@/components/TopicMuteButton";
 import TopicMomentumTimeline from "@/components/insights/TopicMomentumTimeline";
 import { QuestionPhaseBadge } from "@/components/question/QuestionPhaseBadge";
 
@@ -564,7 +565,8 @@ export default function TopicDetailPage() {
                 <h1 className="text-lg sm:text-xl font-semibold text-slate-900 leading-snug">
                   {topic.title}
                 </h1>
-                <div className="shrink-0">
+                <div className="shrink-0 flex items-center gap-2">
+                  <TopicMuteButton topicId={topic.id} />
                   <FollowTopicButton topicId={topic.id} />
                 </div>
               </div>
