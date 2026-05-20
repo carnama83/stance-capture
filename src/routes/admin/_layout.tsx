@@ -21,6 +21,7 @@ import {
   Activity,      // J: Pipeline run ledger
   Inbox,         // W4: X Reply Review
   Bookmark,      // M-C05: Curated Feed
+  Tag,           // Topics nav
 } from "lucide-react";
 
 import {
@@ -119,6 +120,11 @@ export default function AdminLayout() {
             label="Live Questions"
           />
           <AdminLink
+            to="/admin/topics"
+            icon={<Tag className="h-4 w-4" />}
+            label="Topics"
+          />
+          <AdminLink
             to="/admin/news"
             icon={<FileText className="h-4 w-4" />}
             label="News"
@@ -161,7 +167,7 @@ export default function AdminLayout() {
 
           {/* Impact & Curation (Epic P) */}
           <div className="px-2 text-[10px] font-medium tracking-wide text-muted-foreground uppercase mb-1">
-            Impact &amp; Curation (Epic P)
+            Impact &amp; Curation
           </div>
           <AdminLink
             to="/admin/impact-dashboard"
