@@ -23,6 +23,7 @@ import {
   Bookmark,      // M-C05: Curated Feed
   Tag,           // Topics nav
   Vote,          // Epic EL — Elections nav
+  Users,         // Epic EL — Party Library nav
 } from "lucide-react";
 
 import {
@@ -162,6 +163,11 @@ export default function AdminLayout() {
             to="/admin/elections"
             icon={<Vote className="h-4 w-4" />}
             label="Elections"
+          />
+          <AdminLink
+            to="/admin/parties"
+            icon={<Users className="h-4 w-4" />}
+            label="Party Library"
           />
           
           <Separator className="my-2" />
