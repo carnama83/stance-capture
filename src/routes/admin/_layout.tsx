@@ -22,6 +22,7 @@ import {
   Inbox,         // W4: X Reply Review
   Bookmark,      // M-C05: Curated Feed
   Tag,           // Topics nav
+  Vote,          // Epic EL — Elections nav
 } from "lucide-react";
 
 import {
@@ -149,6 +150,18 @@ export default function AdminLayout() {
             to="/admin/publishers"
             icon={<Building2 className="h-4 w-4" />}
             label="Publishers"
+          />
+
+          <Separator className="my-2" />
+
+          {/* Epic EL — Election Intelligence */}
+          <div className="px-2 text-[10px] font-medium tracking-wide text-muted-foreground uppercase mb-1">
+            Elections (Epic EL)
+          </div>
+          <AdminLink
+            to="/admin/elections"
+            icon={<Vote className="h-4 w-4" />}
+            label="Elections"
           />
           
           <Separator className="my-2" />
