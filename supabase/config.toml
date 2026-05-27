@@ -31,3 +31,23 @@ entrypoint = "./functions/generate/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/generate/*.html" ]
+
+
+
+[functions.detect-and-translate]
+enabled = true
+verify_jwt = false
+import_map = "./functions/detect-and-translate/deno.json"
+entrypoint = "./functions/detect-and-translate/index.ts"
+
+[functions.generate-party-policy-questions]
+enabled = true
+verify_jwt = false
+import_map = "./functions/generate-party-policy-questions/deno.json"
+entrypoint = "./functions/generate-party-policy-questions/index.ts"
+
+[functions.generate-candidate-statement-questions]
+enabled = true
+verify_jwt = false
+import_map = "./functions/generate-candidate-statement-questions/deno.json"
+entrypoint = "./functions/generate-candidate-statement-questions/index.ts"
