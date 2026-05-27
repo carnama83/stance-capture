@@ -67,6 +67,7 @@ import AdminCognitiveStatesPage from '@/routes/admin/cognitive-states';
 // Epic EL — Election Intelligence
 import AdminElectionsPage from '@/routes/admin/elections/Index';
 import AdminElectionNewPage from '@/routes/admin/elections/New';
+import AdminPartiesPage from '@/routes/admin/parties/Index';
 import AdminModerationPage from '@/routes/admin/moderation/index';
 import CognitiveInsightsPage from '@/routes/me/cognitive-insights';
 import PersonalInsightsPage from '@/pages/PersonalInsightsPage';
@@ -309,6 +310,7 @@ const App: React.FC = () => {
                 {/* Epic EL — Election Intelligence */}
                 <Route path="elections" element={<AdminElectionsPage />} />
                 <Route path="elections/new" element={<AdminElectionNewPage />} />
+                <Route path="parties" element={<AdminPartiesPage />} />
               </Route>
 
               {/* Moderation — accessible to admins AND moderators */}
