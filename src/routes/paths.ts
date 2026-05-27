@@ -29,6 +29,10 @@ export const ROUTES = {
   ADMIN_DRAFTS: "/admin/drafts" as const,
   ADMIN_IDENTIFIERS: "/admin/identifiers" as const, // optional standalone page
 
+  // Admin (Epic EL — Election Intelligence)
+  ADMIN_ELECTIONS: "/admin/elections" as const,
+  ADMIN_ELECTIONS_NEW: "/admin/elections/new" as const,
+
   // Fallback
   NOT_FOUND: "/404" as const, // optional if you want a direct link
 } as const;
