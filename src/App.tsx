@@ -69,6 +69,8 @@ import AdminElectionsPage from '@/routes/admin/elections/Index';
 import AdminElectionNewPage from '@/routes/admin/elections/New';
 import AdminPartiesPage from '@/routes/admin/parties/Index';
 import AdminCandidatesPage from '@/routes/admin/candidates/Index';
+import AdminElectionReviewPage from '@/routes/admin/election-review/Index';
+import ConstituencySetupPage from '@/pages/settings/ConstituencySetup';
 import AdminModerationPage from '@/routes/admin/moderation/index';
 import CognitiveInsightsPage from '@/routes/me/cognitive-insights';
 import PersonalInsightsPage from '@/pages/PersonalInsightsPage';
@@ -220,6 +222,7 @@ const App: React.FC = () => {
                 <Route path="notifications" element={<SettingsNotifications />} />
                 <Route path="privacy" element={<SettingsPrivacy />} />
                 <Route path="account" element={<SettingsAccount />} />
+                <Route path="constituency" element={<ConstituencySetupPage />} />
               </Route>
 
               <Route
@@ -313,6 +316,7 @@ const App: React.FC = () => {
                 <Route path="elections/new" element={<AdminElectionNewPage />} />
                 <Route path="parties" element={<AdminPartiesPage />} />
                 <Route path="candidates" element={<AdminCandidatesPage />} />
+                <Route path="election-review" element={<AdminElectionReviewPage />} />
               </Route>
 
               {/* Moderation — accessible to admins AND moderators */}
