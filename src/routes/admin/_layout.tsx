@@ -24,6 +24,7 @@ import {
   Tag,           // Topics nav
   Vote,          // Epic EL — Elections nav
   Users,         // Epic EL — Party Library nav
+  FileText as FileTextIcon, // Epic EL — Candidates nav (aliased to avoid conflict)
 } from "lucide-react";
 
 import {
@@ -168,6 +169,11 @@ export default function AdminLayout() {
             to="/admin/parties"
             icon={<Users className="h-4 w-4" />}
             label="Party Library"
+          />
+          <AdminLink
+            to="/admin/candidates"
+            icon={<FileTextIcon className="h-4 w-4" />}
+            label="Candidates & Docs"
           />
           
           <Separator className="my-2" />
