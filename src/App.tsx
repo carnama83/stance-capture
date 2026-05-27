@@ -64,6 +64,9 @@ import AdminPublishersPage from "@/routes/admin/publishers/Index";
 
 // Cognitive State Pages
 import AdminCognitiveStatesPage from '@/routes/admin/cognitive-states';
+// Epic EL — Election Intelligence
+import AdminElectionsPage from '@/routes/admin/elections/Index';
+import AdminElectionNewPage from '@/routes/admin/elections/New';
 import AdminModerationPage from '@/routes/admin/moderation/index';
 import CognitiveInsightsPage from '@/routes/me/cognitive-insights';
 import PersonalInsightsPage from '@/pages/PersonalInsightsPage';
@@ -303,6 +306,9 @@ const App: React.FC = () => {
                 <Route path="cognitive-states" element={<AdminCognitiveStatesPage />} />
                 {/* FIX 3: Publisher approval queue */}
                 <Route path="publishers" element={<AdminPublishersPage />} />
+                {/* Epic EL — Election Intelligence */}
+                <Route path="elections" element={<AdminElectionsPage />} />
+                <Route path="elections/new" element={<AdminElectionNewPage />} />
               </Route>
 
               {/* Moderation — accessible to admins AND moderators */}
