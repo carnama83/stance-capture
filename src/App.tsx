@@ -68,6 +68,7 @@ import AdminCognitiveStatesPage from '@/routes/admin/cognitive-states';
 import AdminElectionsPage from '@/routes/admin/elections/Index';
 import AdminElectionNewPage from '@/routes/admin/elections/New';
 import AdminPartiesPage from '@/routes/admin/parties/Index';
+import AdminCandidatesPage from '@/routes/admin/candidates/Index';
 import AdminModerationPage from '@/routes/admin/moderation/index';
 import CognitiveInsightsPage from '@/routes/me/cognitive-insights';
 import PersonalInsightsPage from '@/pages/PersonalInsightsPage';
@@ -311,6 +312,7 @@ const App: React.FC = () => {
                 <Route path="elections" element={<AdminElectionsPage />} />
                 <Route path="elections/new" element={<AdminElectionNewPage />} />
                 <Route path="parties" element={<AdminPartiesPage />} />
+                <Route path="candidates" element={<AdminCandidatesPage />} />
               </Route>
 
               {/* Moderation — accessible to admins AND moderators */}
