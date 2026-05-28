@@ -11,7 +11,6 @@
 
 import * as React from "react";
 import { Link } from "react-router-dom";
-import { getSupabase } from "@/lib/supabaseClient";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -200,7 +199,6 @@ function ElectionCard({ row }: { row: ElectionRow }) {
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function AdminElectionsPage() {
-  const sb = getSupabase()!;
   const { toast } = useToast();
 
   const [elections, setElections] = React.useState<ElectionRow[]>([]);
@@ -210,28 +208,35 @@ export default function AdminElectionsPage() {
   const fetchElections = React.useCallback(async () => {
     setLoading(true);
     try {
-      let q = sb
-        .from("elections")
-        .select("*")
-        .order("created_at", { ascending: false });
+      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+      const projectRef = supabaseUrl.replace("https://", "").split(".")[0];
+      let jwt = anonKey;
+      try {
+        const raw = localStorage.getItem(`sb-${projectRef}-auth-token`);
+        if (raw) { const p = JSON.parse(raw); if (p?.access_token) jwt = p.access_token; }
+      } catch {}
 
-      if (filter === "active") {
-        q = q.in("state", ["CAMPAIGN_ACTIVE", "MCC_ACTIVE", "SILENCE", "POLLING", "COUNTING"]);
-      } else if (filter === "upcoming") {
-        q = q.eq("state", "UPCOMING");
-      } else if (filter === "archived") {
-        q = q.in("state", ["RESULT_DECLARED", "ARCHIVED"]);
-      }
+      const headers = { "apikey": anonKey, "Authorization": `Bearer ${jwt}` };
 
-      const { data, error } = await q;
-      if (error) throw error;
-      setElections(data ?? []);
+      const STATE_FILTERS: Record<string, string> = {
+        active:   "state=in.(CAMPAIGN_ACTIVE,MCC_ACTIVE,SILENCE,POLLING,COUNTING)",
+        upcoming: "state=eq.UPCOMING",
+        archived: "state=in.(RESULT_DECLARED,ARCHIVED)",
+      };
+
+      const filterParam = filter !== "all" ? `&${STATE_FILTERS[filter]}` : "";
+      const url = `${supabaseUrl}/rest/v1/elections?select=*&order=created_at.desc${filterParam}`;
+
+      const res = await fetch(url, { headers });
+      if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b?.message ?? `HTTP ${res.status}`); }
+      setElections(await res.json());
     } catch (err: any) {
       toast({ title: "Failed to load elections", description: err.message, variant: "destructive" });
     } finally {
       setLoading(false);
     }
-  }, [sb, filter, toast]);
+  }, [filter, toast]);
 
   React.useEffect(() => { fetchElections(); }, [fetchElections]);
 
