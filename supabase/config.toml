@@ -68,3 +68,15 @@ enabled = true
 verify_jwt = false
 import_map = "./functions/aggregate-election-stances/deno.json"
 entrypoint = "./functions/aggregate-election-stances/index.ts"
+
+[functions.detect-election-anomalies]
+enabled = true
+verify_jwt = false
+import_map = "./functions/detect-election-anomalies/deno.json"
+entrypoint = "./functions/detect-election-anomalies/index.ts"
+
+[functions.notify-election-updates]
+enabled = true
+verify_jwt = false
+import_map = "./functions/notify-election-updates/deno.json"
+entrypoint = "./functions/notify-election-updates/index.ts"
