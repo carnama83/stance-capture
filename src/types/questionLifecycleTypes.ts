@@ -159,6 +159,32 @@ export interface QuestionWithLifecycle {
   // Relations (optional, loaded via joins)
   engagement?: QuestionEngagementMetrics;
   state_history?: QuestionStateHistory[];
+
+  // ── Epic EL: Election question fields ──────────────────────────────────────
+  // Populated only when is_election_question = true
+  is_election_question?:          boolean;
+  election_id?:                   string | null;
+  election_party_id?:             string | null;
+  election_candidate_id?:         string | null;
+  election_party_colour?:         string | null;
+  election_party_abbreviation?:   string | null;
+  election_candidate_name?:       string | null;
+  election_constituency_name?:    string | null;
+  election_constituency_id?:      string | null;
+  election_disclosure_text?:      string | null;
+  election_issue_tag?:            string | null;
+  election_question_type?:        string | null;
+  election_framing_style?:        string | null;
+  slider_low_label?:              string | null;
+  slider_high_label?:             string | null;
+
+  // Option C: local candidate cross-link
+  // For party-level questions — the party's candidate in the user's constituency
+  local_candidate_id?:            string | null;
+  local_candidate_name?:          string | null;
+  local_candidate_name_local?:    string | null;
+  local_candidate_photo_path?:    string | null;
+  local_candidate_status?:        string | null;
 }
 
 // ============================================================================
