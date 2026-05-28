@@ -744,16 +744,38 @@ export default function AdminElectionNewPage() {
     setStepError(null);
 
     try {
-      // Look up tier_id from tier_code
-      const { data: tierRow, error: tierErr } = await sb
-        .from("election_tiers")
-        .select("id, tier_code, country")
-        .eq("tier_code", form.tier_code)
-        .single();
+      // ── rpcFetch pattern throughout — never use sb.* for mutations ──────────
+      // Avoids Supabase JS auth mutex bug (getSession() lock blocks all SDK calls)
+      const projectRef = import.meta.env.VITE_SUPABASE_URL
+        ?.replace("https://", "")
+        ?.split(".")[0] ?? "";
+      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
 
-      if (tierErr || !tierRow) {
-        throw new Error(`Tier not found: ${form.tier_code}`);
-      }
+      let jwt = anonKey;
+      try {
+        const raw = localStorage.getItem(`sb-${projectRef}-auth-token`);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed?.access_token) jwt = parsed.access_token;
+        }
+      } catch { /* use anon fallback */ }
+
+      const restHeaders = {
+        "Content-Type": "application/json",
+        "apikey":        anonKey,
+        "Authorization": `Bearer ${jwt}`,
+      };
+
+      // Look up tier_id via raw fetch — never through SDK
+      const tierRes = await fetch(
+        `${supabaseUrl}/rest/v1/election_tiers?tier_code=eq.${form.tier_code}&select=id,tier_code,country&limit=1`,
+        { headers: restHeaders }
+      );
+      if (!tierRes.ok) throw new Error(`Tier lookup failed: HTTP ${tierRes.status}`);
+      const tierRows = await tierRes.json();
+      if (!tierRows.length) throw new Error(`Tier not found: ${form.tier_code}`);
+      const tierRow = tierRows[0];
 
       // Build insert payload
       const payload: Record<string, any> = {
@@ -788,31 +810,10 @@ export default function AdminElectionNewPage() {
         payload.parent_election_id = form.parent_election_id.trim() || null;
       }
 
-      // Use rpcFetch pattern — raw fetch with JWT from localStorage
-      // to avoid Supabase auth mutex blocking after navigation
-      const projectRef = import.meta.env.VITE_SUPABASE_URL
-        ?.replace("https://", "")
-        ?.split(".")[0] ?? "";
-      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
-
-      let jwt = anonKey;
-      try {
-        const raw = localStorage.getItem(`sb-${projectRef}-auth-token`);
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (parsed?.access_token) jwt = parsed.access_token;
-        }
-      } catch { /* use anon fallback */ }
-
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+      // Use rpcFetch pattern — raw fetch already set up above
       const res = await fetch(`${supabaseUrl}/rest/v1/elections`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "apikey":        anonKey,
-          "Authorization": `Bearer ${jwt}`,
-          "Prefer":        "return=representation",
-        },
+        headers: { ...restHeaders, "Prefer": "return=representation" },
         body: JSON.stringify(payload),
       });
 
