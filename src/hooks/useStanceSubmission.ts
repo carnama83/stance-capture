@@ -53,6 +53,38 @@ export function useStanceSubmission({
         throw new Error('You must be logged in to submit a stance');
       }
 
+      // Epic EL-6: Election silence gate — check before ANY write
+      // Calls check_election_silence(question_id) which returns HTTP 451
+      // if the election is in SILENCE or POLLING state.
+      // Non-election questions return { allowed: true } immediately.
+      try {
+        const { data: silenceCheck } = await supabase.rpc('check_election_silence', {
+          p_question_id: questionId,
+        });
+        if (silenceCheck && silenceCheck.allowed === false) {
+          if (silenceCheck.http_code === 451) {
+            throw new Error(
+              silenceCheck.message ??
+              'Stance submission is suspended during the electoral silence period.'
+            );
+          }
+          if (silenceCheck.http_code === 423) {
+            throw new Error(
+              silenceCheck.message ??
+              'This election has not yet opened for stance submission.'
+            );
+          }
+        }
+      } catch (e: any) {
+        // Re-throw silence errors directly; swallow RPC-not-found errors
+        // (non-election questions on pre-EL instances won't have the RPC)
+        if (e.message?.includes('silence') || e.message?.includes('electoral') || e.message?.includes('polling')) {
+          throw e;
+        }
+        // Otherwise: RPC missing or network error — allow submission to proceed
+        console.warn('EL-6 silence check unavailable, proceeding:', e.message);
+      }
+
       // 1. Submit the stance via the canonical RPC (matches set_question_stance in DB)
       const { error: stanceError } = await supabase
         .from('question_stances')
@@ -104,9 +136,14 @@ export function useStanceSubmission({
 
     onError: (error: Error) => {
       console.error('Stance submission error:', error);
-      
+
+      const isSilence =
+        error.message?.includes('silence') ||
+        error.message?.includes('electoral') ||
+        error.message?.includes('polling');
+
       toast({
-        title: 'Failed to submit stance',
+        title: isSilence ? 'Submission paused' : 'Failed to submit stance',
         description: error.message,
         variant: 'destructive',
       });
