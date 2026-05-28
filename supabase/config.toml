@@ -61,3 +61,10 @@ enabled = true
 verify_jwt = true
 import_map = "./functions/record-stance-reveal-switch/deno.json"
 entrypoint = "./functions/record-stance-reveal-switch/index.ts"
+
+
+[functions.aggregate-election-stances]
+enabled = true
+verify_jwt = false
+import_map = "./functions/aggregate-election-stances/deno.json"
+entrypoint = "./functions/aggregate-election-stances/index.ts"
