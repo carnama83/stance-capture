@@ -457,7 +457,6 @@ function DraftRow({
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function AdminElectionReviewPage() {
-  const sb = getSupabase()!;
   const { toast } = useToast();
 
   const [elections, setElections] = React.useState<Election[]>([]);
@@ -478,59 +477,77 @@ export default function AdminElectionReviewPage() {
   // Load elections
   React.useEffect(() => {
     (async () => {
-      const { data } = await sb.from("elections").select("id,name,tier_code,state").order("created_at", { ascending: false });
+      const { anonKey, jwt, baseUrl } = getRpcFetchHeaders();
+      const res = await fetch(`${baseUrl}/rest/v1/elections?select=id,name,tier_code,state&order=created_at.desc`, {
+        headers: { "apikey": anonKey, "Authorization": `Bearer ${jwt}` },
+      });
+      if (!res.ok) return;
+      const data = await res.json();
       setElections(data ?? []);
       if (data?.length) setSelectedElectionId(data[0].id);
     })();
-  }, [sb]);
+  }, []);
 
   // Fetch drafts
   const fetchDrafts = React.useCallback(async () => {
     if (!selectedElectionId) return;
     setLoadingDrafts(true);
     try {
-      let q = sb
-        .from("election_question_drafts")
-        .select(`
-          *,
-          election_parties!party_id(name,abbreviation,brand_colour),
-          election_candidates!candidate_id(full_name),
-          election_constituencies!constituency_id(name)
-        `)
-        .eq("election_id", selectedElectionId)
-        .order("created_at", { ascending: false });
+      const { anonKey, jwt, baseUrl } = getRpcFetchHeaders();
+      const headers = { "apikey": anonKey, "Authorization": `Bearer ${jwt}` };
+      const statusParam = statusFilter !== "all" ? `&status=eq.${statusFilter}` : "";
+      const res = await fetch(
+        `${baseUrl}/rest/v1/election_question_drafts?select=*&election_id=eq.${selectedElectionId}&order=created_at.desc${statusParam}`,
+        { headers }
+      );
+      if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b?.message ?? `HTTP ${res.status}`); }
+      const raw: any[] = await res.json();
 
-      if (statusFilter !== "all") q = q.eq("status", statusFilter);
+      // Enrich with party + candidate + constituency
+      const partyIds  = [...new Set(raw.map((d) => d.party_id).filter(Boolean))];
+      const candIds   = [...new Set(raw.map((d) => d.candidate_id).filter(Boolean))];
+      const constIds  = [...new Set(raw.map((d) => d.constituency_id).filter(Boolean))];
 
-      const { data, error } = await q;
-      if (error) throw error;
+      const [partyRes, candRes, constRes] = await Promise.all([
+        partyIds.length  ? fetch(`${baseUrl}/rest/v1/election_parties?select=id,name,abbreviation,brand_colour&id=in.(${partyIds.join(",")})`, { headers }) : Promise.resolve(null),
+        candIds.length   ? fetch(`${baseUrl}/rest/v1/election_candidates?select=id,full_name&id=in.(${candIds.join(",")})`, { headers }) : Promise.resolve(null),
+        constIds.length  ? fetch(`${baseUrl}/rest/v1/election_constituencies?select=id,name&id=in.(${constIds.join(",")})`, { headers }) : Promise.resolve(null),
+      ]);
 
-      const enriched = (data ?? []).map((d: any) => ({
+      const pm  = new Map((partyRes?.ok  ? await partyRes.json()  : []).map((x: any) => [x.id, x]));
+      const cm  = new Map((candRes?.ok   ? await candRes.json()   : []).map((x: any) => [x.id, x]));
+      const com = new Map((constRes?.ok  ? await constRes.json()  : []).map((x: any) => [x.id, x]));
+
+      setDrafts(raw.map((d: any) => ({
         ...d,
-        party_name: d.election_parties?.name,
-        party_abbreviation: d.election_parties?.abbreviation,
-        party_colour: d.election_parties?.brand_colour,
-        candidate_name: d.election_candidates?.full_name,
-        constituency_name: d.election_constituencies?.name,
-      }));
-      setDrafts(enriched);
+        party_name:         (pm.get(d.party_id) as any)?.name,
+        party_abbreviation: (pm.get(d.party_id) as any)?.abbreviation,
+        party_colour:       (pm.get(d.party_id) as any)?.brand_colour,
+        candidate_name:     (cm.get(d.candidate_id) as any)?.full_name,
+        constituency_name:  (com.get(d.constituency_id) as any)?.name,
+      })));
     } catch (e: any) {
       toast({ title: "Failed to load drafts", description: e.message, variant: "destructive" });
     } finally { setLoadingDrafts(false); }
-  }, [sb, selectedElectionId, statusFilter, toast]);
+  }, [selectedElectionId, statusFilter, toast]);
 
   // Fetch balance
   const fetchBalance = React.useCallback(async () => {
     if (!selectedElectionId) return;
     setLoadingBalance(true);
     try {
-      const { data, error } = await sb.rpc("get_question_draft_balance", { p_election_id: selectedElectionId });
-      if (error) throw error;
-      setBalance(data ?? []);
+      const { anonKey, jwt, baseUrl } = getRpcFetchHeaders();
+      const res = await fetch(`${baseUrl}/rest/v1/rpc/get_question_draft_balance`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "apikey": anonKey, "Authorization": `Bearer ${jwt}` },
+        body: JSON.stringify({ p_election_id: selectedElectionId }),
+      });
+      if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b?.message ?? `HTTP ${res.status}`); }
+      setBalance(await res.json());
     } catch (e: any) {
       toast({ title: "Failed to load balance", description: e.message, variant: "destructive" });
     } finally { setLoadingBalance(false); }
-  }, [sb, selectedElectionId, toast]);
+  }, [selectedElectionId, toast]);
 
   React.useEffect(() => {
     if (selectedElectionId) { fetchDrafts(); fetchBalance(); }
