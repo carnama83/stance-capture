@@ -9,6 +9,8 @@ import { formatAgeDays, calculateAgeDays } from '@/types/questionLifecycleTypes'
 import { Badge } from '@/components/ui/badge';
 import { MessageSquare } from 'lucide-react';
 import { ShareButton } from '@/components/share/ShareButton';
+// Epic EL: election question card variant
+import { ElectionQuestionCard } from './ElectionQuestionCard';
 
 interface QuestionCardProps {
   question: QuestionWithLifecycle & {
@@ -26,6 +28,16 @@ export function QuestionCard({
   className = '',
 }: QuestionCardProps) {
   const ageDays = calculateAgeDays(question.published_at);
+
+  // Epic EL: dispatch to election card variant for election questions
+  if (question.is_election_question) {
+    return (
+      <ElectionQuestionCard
+        question={question}
+        className={className}
+      />
+    );
+  }
   
   return (
     <Link 
