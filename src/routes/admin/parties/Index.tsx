@@ -125,7 +125,6 @@ function RegionalPresencePanel({
   party: Party;
   onClose: () => void;
 }) {
-  const sb = getSupabase()!;
   const { toast } = useToast();
   const [regions, setRegions] = React.useState<RegionRow[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -268,7 +267,6 @@ function AllianceMembersPanel({
   allParties: Party[];
   onClose: () => void;
 }) {
-  const sb = getSupabase()!;
   const { toast } = useToast();
   const [members, setMembers] = React.useState<AllianceMember[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -669,7 +667,6 @@ function PartyRow({
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function AdminPartiesPage() {
-  const sb = getSupabase()!;
   const { toast } = useToast();
 
   const [parties, setParties] = React.useState<Party[]>([]);
@@ -681,15 +678,21 @@ export default function AdminPartiesPage() {
   const fetchParties = React.useCallback(async () => {
     setLoading(true);
     try {
-      let q = sb.from("election_parties").select("*").eq("country", "IN").order("party_type").order("name");
-      if (filter !== "all") q = q.eq("party_type", filter);
-      const { data, error } = await q;
-      if (error) throw error;
-      setParties(data ?? []);
+      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+      const projectRef = supabaseUrl.replace("https://", "").split(".")[0];
+      let jwt = anonKey;
+      try { const r = localStorage.getItem(`sb-${projectRef}-auth-token`); if (r) { const p = JSON.parse(r); if (p?.access_token) jwt = p.access_token; } } catch {}
+      const headers = { "apikey": anonKey, "Authorization": `Bearer ${jwt}` };
+      const typeParam = filter !== "all" ? `&party_type=eq.${filter}` : "";
+      const url = `${supabaseUrl}/rest/v1/election_parties?select=*&country=eq.IN&order=party_type,name${typeParam}`;
+      const res = await fetch(url, { headers });
+      if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b?.message ?? `HTTP ${res.status}`); }
+      setParties(await res.json());
     } catch (e: any) {
       toast({ title: "Failed to load parties", description: e.message, variant: "destructive" });
     } finally { setLoading(false); }
-  }, [sb, filter, toast]);
+  }, [filter, toast]);
 
   React.useEffect(() => { fetchParties(); }, [fetchParties]);
 
