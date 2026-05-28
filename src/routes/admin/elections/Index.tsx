@@ -108,8 +108,31 @@ function fmtDate(iso: string | null) {
 
 // ─── Election Card ─────────────────────────────────────────────────────────────
 
-function ElectionCard({ row }: { row: ElectionRow }) {
+function ElectionCard({ row, onDeleted }: { row: ElectionRow; onDeleted: () => void }) {
+  const { toast } = useToast();
+  const [confirming, setConfirming] = React.useState(false);
+  const [deleting, setDeleting] = React.useState(false);
   const isPhased = (row.total_phases ?? 1) > 1;
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+      const projectRef = supabaseUrl.replace("https://", "").split(".")[0];
+      let jwt = anonKey;
+      try { const r = localStorage.getItem(`sb-${projectRef}-auth-token`); if (r) { const p = JSON.parse(r); if (p?.access_token) jwt = p.access_token; } } catch {}
+      const res = await fetch(`${supabaseUrl}/rest/v1/elections?id=eq.${row.id}`, {
+        method: "DELETE",
+        headers: { "apikey": anonKey, "Authorization": `Bearer ${jwt}` },
+      });
+      if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b?.message ?? `HTTP ${res.status}`); }
+      toast({ title: "Election deleted", description: row.name });
+      onDeleted();
+    } catch (e: any) {
+      toast({ title: "Delete failed", description: e.message, variant: "destructive" });
+    } finally { setDeleting(false); setConfirming(false); }
+  };
 
   return (
     <Card className="p-4 space-y-3">
@@ -190,6 +213,47 @@ function ElectionCard({ row }: { row: ElectionRow }) {
         <div className="flex items-center gap-2 rounded bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
           <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
           Legal review not completed — election cannot advance to Campaign Active.
+        </div>
+      )}
+
+      {/* Delete confirmation */}
+      {confirming ? (
+        <div className="flex items-center gap-3 rounded bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-800">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+          <span className="flex-1">
+            <strong>Delete "{row.name}"?</strong> This will cascade-delete all candidates,
+            documents, and question drafts for this election. This cannot be undone.
+          </span>
+          <Button
+            size="sm"
+            variant="destructive"
+            className="h-7 text-xs"
+            onClick={handleDelete}
+            disabled={deleting}
+          >
+            {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
+            Yes, delete
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 text-xs"
+            onClick={() => setConfirming(false)}
+            disabled={deleting}
+          >
+            Cancel
+          </Button>
+        </div>
+      ) : (
+        <div className="flex justify-end">
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 text-xs text-red-500 hover:text-red-700 hover:bg-red-50"
+            onClick={() => setConfirming(true)}
+          >
+            Delete
+          </Button>
         </div>
       )}
     </Card>
@@ -313,7 +377,7 @@ export default function AdminElectionsPage() {
       ) : (
         <div className="space-y-3">
           {elections.map((e) => (
-            <ElectionCard key={e.id} row={e} />
+            <ElectionCard key={e.id} row={e} onDeleted={fetchElections} />
           ))}
         </div>
       )}
