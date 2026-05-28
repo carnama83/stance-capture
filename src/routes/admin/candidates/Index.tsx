@@ -50,7 +50,7 @@ import { useToast } from "@/components/ui/use-toast";
 import {
   RefreshCw, Loader2, Plus, Upload, Users,
   FileText, ChevronDown, ChevronRight, AlertTriangle,
-  CheckCircle2, XCircle, Clock, Info,
+  CheckCircle2, XCircle, Clock, Info, Play,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -164,7 +164,6 @@ function CsvImportDialog({
   onClose: () => void;
   onImported: () => void;
 }) {
-  const sb = getSupabase()!;
   const { toast } = useToast();
   const [csvText, setCsvText] = React.useState("");
   const [importing, setImporting] = React.useState(false);
@@ -186,13 +185,19 @@ function CsvImportDialog({
       });
 
       const batchId = `csv_${Date.now()}`;
-      const { data, error } = await sb.rpc("bulk_import_candidates", {
-        p_election_id: electionId,
-        p_import_batch: batchId,
-        p_candidates: rows,
+      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+      const projectRef = supabaseUrl.replace("https://", "").split(".")[0];
+      let jwt = anonKey;
+      try { const r = localStorage.getItem(`sb-${projectRef}-auth-token`); if (r) { const p = JSON.parse(r); if (p?.access_token) jwt = p.access_token; } } catch {}
+      const rpcRes = await fetch(`${supabaseUrl}/rest/v1/rpc/bulk_import_candidates`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "apikey": anonKey, "Authorization": `Bearer ${jwt}` },
+        body: JSON.stringify({ p_election_id: electionId, p_import_batch: batchId, p_candidates: rows }),
       });
+      if (!rpcRes.ok) { const b = await rpcRes.json().catch(() => ({})); throw new Error(b?.message ?? `HTTP ${rpcRes.status}`); }
+      const data = await rpcRes.json();
 
-      if (error) throw error;
       setResult(data);
       toast({
         title: "Import complete",
@@ -443,7 +448,6 @@ function CandidateRow({
   parties: Party[];
   onRefresh: () => void;
 }) {
-  const sb = getSupabase()!;
   const { toast } = useToast();
   const [updating, setUpdating] = React.useState(false);
   const [showPartySwitch, setShowPartySwitch] = React.useState(false);
@@ -645,7 +649,6 @@ function DocumentRow({ doc }: { doc: SourceDocument }) {
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function AdminCandidatesPage() {
-  const sb = getSupabase()!;
   const { toast } = useToast();
 
   // State
@@ -662,67 +665,135 @@ export default function AdminCandidatesPage() {
   const [loadingDocs, setLoadingDocs] = React.useState(false);
   const [showCsvImport, setShowCsvImport] = React.useState(false);
   const [showAddDoc, setShowAddDoc] = React.useState(false);
+  const [runningPipeline, setRunningPipeline] = React.useState(false);
+
+  // Run full ingestion pipeline for selected election:
+  // Step 1: ingest-election-document → Step 2: detect-and-translate → Step 3: generate-party-policy-questions
+  const runPipeline = React.useCallback(async () => {
+    if (!selectedElectionId) return;
+    setRunningPipeline(true);
+    const { jwt, baseUrl } = getRpcFetchHeaders();
+    const steps = [
+      { name: "Ingest documents",  fn: "ingest-election-document" },
+      { name: "Translate",         fn: "detect-and-translate" },
+      { name: "Generate questions",fn: "generate-party-policy-questions" },
+    ];
+    try {
+      for (const step of steps) {
+        toast({ title: `Pipeline: ${step.name}…` });
+        const res = await fetch(`${baseUrl}/functions/v1/${step.fn}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${jwt}` },
+          body: JSON.stringify({ election_id: selectedElectionId }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data?.error ?? `${step.name} failed: HTTP ${res.status}`);
+        toast({ title: `✓ ${step.name}`, description: `${data.succeeded ?? data.processed ?? 0} processed` });
+      }
+      toast({ title: "Pipeline complete", description: "Check Question Review for new drafts." });
+      fetchDocuments();
+    } catch (e: any) {
+      toast({ title: "Pipeline error", description: e.message, variant: "destructive" });
+    } finally {
+      setRunningPipeline(false);
+    }
+  }, [selectedElectionId, fetchDocuments, toast]);
 
   const [searchCandidate, setSearchCandidate] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState("all");
 
+  // Shared rpcFetch helper
+  const getHeaders = React.useCallback(() => {
+    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+    const projectRef = supabaseUrl.replace("https://", "").split(".")[0];
+    let jwt = anonKey;
+    try { const r = localStorage.getItem(`sb-${projectRef}-auth-token`); if (r) { const p = JSON.parse(r); if (p?.access_token) jwt = p.access_token; } } catch {}
+    return { headers: { "apikey": anonKey, "Authorization": `Bearer ${jwt}` }, supabaseUrl };
+  }, []);
+
   // Load elections on mount
   React.useEffect(() => {
     (async () => {
-      const { data } = await sb.from("elections").select("id,name,tier_code,state").order("created_at", { ascending: false });
+      const { headers, supabaseUrl } = getHeaders();
+      const res = await fetch(`${supabaseUrl}/rest/v1/elections?select=id,name,tier_code,state&order=created_at.desc`, { headers });
+      if (!res.ok) return;
+      const data = await res.json();
       setElections(data ?? []);
       if (data?.length) setSelectedElectionId(data[0].id);
     })();
-  }, [sb]);
+  }, [getHeaders]);
 
   // Load parties
   React.useEffect(() => {
     (async () => {
-      const { data } = await sb.from("election_parties").select("id,name,abbreviation,brand_colour").eq("country","IN").eq("party_type","PARTY").order("name");
-      setParties(data ?? []);
+      const { headers, supabaseUrl } = getHeaders();
+      const res = await fetch(`${supabaseUrl}/rest/v1/election_parties?select=id,name,abbreviation,brand_colour&country=eq.IN&party_type=eq.PARTY&order=name`, { headers });
+      if (!res.ok) return;
+      setParties(await res.json());
     })();
-  }, [sb]);
+  }, [getHeaders]);
 
   // Load candidates
   const fetchCandidates = React.useCallback(async () => {
     if (!selectedElectionId) return;
     setLoadingCandidates(true);
     try {
-      const { data, error } = await sb
-        .from("election_candidates")
-        .select(`
-          *,
-          election_parties!party_id(name,abbreviation,brand_colour),
-          election_constituencies!constituency_id(name)
-        `)
-        .eq("election_id", selectedElectionId)
-        .order("full_name");
-      if (error) throw error;
-      const enriched = (data ?? []).map((c: any) => ({
+      const { headers, supabaseUrl } = getHeaders();
+      // Fetch candidates with party and constituency via separate requests (avoids embed join mutex issue)
+      const res = await fetch(
+        `${supabaseUrl}/rest/v1/election_candidates?select=*&election_id=eq.${selectedElectionId}&order=full_name`,
+        { headers }
+      );
+      if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b?.message ?? `HTTP ${res.status}`); }
+      const raw: any[] = await res.json();
+
+      // Batch enrich with party + constituency data
+      const partyIds = [...new Set(raw.map((c) => c.party_id).filter(Boolean))];
+      const constIds = [...new Set(raw.map((c) => c.constituency_id).filter(Boolean))];
+
+      const [partyRes, constRes] = await Promise.all([
+        partyIds.length
+          ? fetch(`${supabaseUrl}/rest/v1/election_parties?select=id,name,abbreviation,brand_colour&id=in.(${partyIds.join(",")})`, { headers })
+          : Promise.resolve(null),
+        constIds.length
+          ? fetch(`${supabaseUrl}/rest/v1/election_constituencies?select=id,name&id=in.(${constIds.join(",")})`, { headers })
+          : Promise.resolve(null),
+      ]);
+
+      const partiesMap = new Map((partyRes?.ok ? await partyRes.json() : []).map((p: any) => [p.id, p]));
+      const constsMap = new Map((constRes?.ok ? await constRes.json() : []).map((c: any) => [c.id, c]));
+
+      const enriched = raw.map((c: any) => ({
         ...c,
-        party_name: c.election_parties?.name,
-        party_abbreviation: c.election_parties?.abbreviation,
-        party_colour: c.election_parties?.brand_colour,
-        constituency_name: c.election_constituencies?.name,
+        party_name:         (partiesMap.get(c.party_id) as any)?.name,
+        party_abbreviation: (partiesMap.get(c.party_id) as any)?.abbreviation,
+        party_colour:       (partiesMap.get(c.party_id) as any)?.brand_colour,
+        constituency_name:  (constsMap.get(c.constituency_id) as any)?.name,
       }));
       setCandidates(enriched);
     } catch (e: any) {
       toast({ title: "Failed to load candidates", description: e.message, variant: "destructive" });
     } finally { setLoadingCandidates(false); }
-  }, [sb, selectedElectionId, toast]);
+  }, [selectedElectionId, getHeaders, toast]);
 
   // Load documents
   const fetchDocuments = React.useCallback(async () => {
     if (!selectedElectionId) return;
     setLoadingDocs(true);
     try {
-      const { data, error } = await sb.rpc("get_document_pipeline_status", { p_election_id: selectedElectionId });
-      if (error) throw error;
-      setDocuments(data ?? []);
+      const { headers, supabaseUrl } = getHeaders();
+      const res = await fetch(`${supabaseUrl}/rest/v1/rpc/get_document_pipeline_status`, {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ p_election_id: selectedElectionId }),
+      });
+      if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b?.message ?? `HTTP ${res.status}`); }
+      setDocuments(await res.json());
     } catch (e: any) {
       toast({ title: "Failed to load documents", description: e.message, variant: "destructive" });
     } finally { setLoadingDocs(false); }
-  }, [sb, selectedElectionId, toast]);
+  }, [selectedElectionId, getHeaders, toast]);
 
   React.useEffect(() => {
     if (selectedElectionId) { fetchCandidates(); fetchDocuments(); }
@@ -865,6 +936,19 @@ export default function AdminCandidatesPage() {
                 <div className="flex gap-2">
                   <Button variant="ghost" size="icon" className="h-8 w-8" onClick={fetchDocuments} disabled={loadingDocs}>
                     {loadingDocs ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={runPipeline}
+                    disabled={runningPipeline}
+                    title="Ingest → Translate → Generate questions"
+                  >
+                    {runningPipeline
+                      ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+                      : <Play className="h-3.5 w-3.5 mr-1" />
+                    }
+                    Run Pipeline
                   </Button>
                   <Button size="sm" onClick={() => setShowAddDoc(true)}>
                     <Plus className="h-3.5 w-3.5 mr-1" /> Add Document
