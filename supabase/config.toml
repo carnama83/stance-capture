@@ -81,5 +81,14 @@ verify_jwt = false
 import_map = "./functions/notify-election-updates/deno.json"
 entrypoint = "./functions/notify-election-updates/index.ts"
 
+
+
 [functions.whatsapp-flow-webhook]
+enabled = true
 verify_jwt = false
+entrypoint = "./functions/whatsapp-flow-webhook/index.ts"
+
+[functions.whatsapp-send-flow]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/whatsapp-send-flow/index.ts"
