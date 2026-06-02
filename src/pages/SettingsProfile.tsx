@@ -303,11 +303,25 @@ function WhatsAppPhoneSection({ sb, uid }: WhatsAppPhoneSectionProps) {
     setBusy(true);
     try {
       const supabaseUrl = (sb as any).supabaseUrl as string;
+
+      // Read JWT from localStorage using the established mutex-bypass pattern.
+      // The Edge Function needs the token to write to whatsapp_phone_verifications
+      // as service-role and to associate the OTP row with this user.
+      const PROJECT_REF = supabaseUrl.replace("https://", "").split(".")[0];
+      let jwt = "";
+      try {
+        const raw = localStorage.getItem(`sb-${PROJECT_REF}-auth-token`);
+        jwt = raw ? JSON.parse(raw)?.access_token ?? "" : "";
+      } catch { /* no jwt — function will still run if JWT verification is disabled */ }
+
       const res = await fetch(
         `${supabaseUrl}/functions/v1/whatsapp-send-flow`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type":  "application/json",
+            ...(jwt ? { "Authorization": `Bearer ${jwt}` } : {}),
+          },
           body: JSON.stringify({
             phone_number:      phone,
             question_id:       "00000000-0000-0000-0000-000000000000",
@@ -317,12 +331,21 @@ function WhatsAppPhoneSection({ sb, uid }: WhatsAppPhoneSectionProps) {
           }),
         }
       );
+
+      // Surface HTTP-level errors before trying to parse JSON
+      if (!res.ok && res.status !== 200) {
+        const text = await res.text().catch(() => "");
+        throw new Error(`Edge Function error ${res.status}: ${text.slice(0, 200)}`);
+      }
+
       const data = await res.json();
       if (!data.sent) {
+        // Surface the real reason so we can diagnose — shown in red below the field
+        const reason = data.reason ?? data.error ?? data.message ?? "unknown";
         throw new Error(
           data.reason === "opted_out"
             ? "This number has opted out of WhatsApp messages. Reply START on WhatsApp first."
-            : "Could not send verification message. Check the number and try again."
+            : `Could not send verification message (${reason}). Check the Supabase Edge Function logs for details.`
         );
       }
       // Store verification token returned by the Edge Function
