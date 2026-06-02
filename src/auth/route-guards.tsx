@@ -11,15 +11,45 @@ const Spinner = () => (
   </div>
 );
 
+// ── localStorage fast-path (bypass auth mutex) ────────────────────────────────
+// getSession() acquires an async lock during background token refresh.
+// Reading directly from localStorage is synchronous and lock-free.
+// Established pattern: see supabaseClient.ts sessionRef seed.
+const PROJECT_REF = "yzxzpnomcarnxixhjlba";
+const AUTH_STORAGE_KEY = `sb-${PROJECT_REF}-auth-token`;
+
+function readSessionFromStorage(): boolean {
+  try {
+    const raw = localStorage.getItem(AUTH_STORAGE_KEY);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw);
+    // Check token exists and is not expired
+    if (!parsed?.access_token) return false;
+    const expiresAt = parsed?.expires_at;
+    if (expiresAt && Date.now() / 1000 > expiresAt) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * useAuthStatus
  * Robustly determines the user's auth state without racing:
- * - Subscribes to auth changes BEFORE calling getSession()
- * - Resolves to one of: "loading" | "authed" | "anon"
+ * - Fast path: reads session from localStorage synchronously (no lock)
+ * - Subscribes to auth changes for future state transitions
+ * - Falls back to getSession() for validation after fast-path resolves
  */
 function useAuthStatus(): "loading" | "authed" | "anon" {
   const sb = React.useMemo(getSupabase, []);
-  const [status, setStatus] = React.useState<"loading" | "authed" | "anon">("loading");
+
+  // ── Synchronous fast-path initialisation ───────────────────────────────────
+  // Seed from localStorage so Protected routes never flash the spinner
+  // when a valid session already exists in storage.
+  const [status, setStatus] = React.useState<"loading" | "authed" | "anon">(() => {
+    const hasSession = readSessionFromStorage();
+    return hasSession ? "authed" : "loading";
+  });
 
   React.useEffect(() => {
     if (!sb) {
@@ -27,30 +57,39 @@ function useAuthStatus(): "loading" | "authed" | "anon" {
       return;
     }
     let mounted = true;
-    let resolved = false;
+    let resolved = status === "authed"; // already resolved if fast-path found session
 
     const resolve = (s: "authed" | "anon") => {
-      if (!mounted || resolved) return;
+      if (!mounted) return;
       resolved = true;
       setStatus(s);
     };
 
-    // 1) Subscribe first to catch INITIAL_SESSION immediately
+    // 1) Subscribe to auth changes — handles login, logout, token refresh
     const { data: sub } = sb.auth.onAuthStateChange((_evt, session) => {
+      if (!mounted) return;
       resolve(session ? "authed" : "anon");
     });
 
-    // 2) Also query current session; whichever finishes first wins
-    sb.auth.getSession()
-      .then(({ data }) => resolve(data.session ? "authed" : "anon"))
-      .catch(() => resolve("anon"));
+    // 2) If fast-path did NOT find a session, also call getSession() as fallback
+    //    (handles edge cases where localStorage is stale but session is valid)
+    if (!resolved) {
+      sb.auth.getSession()
+        .then(({ data }) => resolve(data.session ? "authed" : "anon"))
+        .catch(() => resolve("anon"));
 
-    // 3) Safety net: never hang indefinitely
-    const timeout = setTimeout(() => resolve("anon"), 3000);
+      // Safety net: never hang indefinitely
+      const timeout = setTimeout(() => resolve("anon"), 3000);
+
+      return () => {
+        mounted = false;
+        clearTimeout(timeout);
+        sub?.subscription?.unsubscribe?.();
+      };
+    }
 
     return () => {
       mounted = false;
-      clearTimeout(timeout);
       sub?.subscription?.unsubscribe?.();
     };
   }, [sb]);
@@ -65,10 +104,8 @@ export function Protected({ children }: { children: React.ReactNode }) {
 
   if (status === "loading") return <Spinner />;
   if (status === "anon") {
-    // preserve intended location to return after login
     return <Navigate to={ROUTES.LOGIN} replace state={{ from: loc }} />;
   }
-  // authed
   return <>{children}</>;
 }
 
@@ -78,6 +115,5 @@ export function PublicOnly({ children }: { children: React.ReactNode }) {
 
   if (status === "loading") return <Spinner />;
   if (status === "authed") return <Navigate to={ROUTES.HOME} replace />;
-  // anon
   return <>{children}</>;
 }
