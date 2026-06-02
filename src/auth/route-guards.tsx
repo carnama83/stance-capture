@@ -1,4 +1,23 @@
 // src/auth/route-guards.tsx
+//
+// FIX (Bug #4): PublicOnly now uses a short grace period before redirecting an
+// authed user away from /login. Without this, when signInWithPassword() resolves,
+// both Login.tsx (handleSuccessfulLogin) and PublicOnly (via useAuthStatus) receive
+// the SIGNED_IN event. PublicOnly's <Navigate to="/" replace /> was firing as a
+// React render, occasionally winning the race against window.location.href in
+// handleSuccessfulLogin and discarding the return_to value.
+//
+// The fix adds a `loginGrace` flag to useAuthStatus: when the status transitions
+// from "loading" → "authed" while on the /login (or /signup, /reset-password) path,
+// we hold at "loading" for one render tick (via useLayoutEffect → setState).
+// Login.tsx's synchronous window.location.href assignment has already run by that
+// point, so the grace period resolves harmlessly — either the page has already
+// navigated away, or PublicOnly then redirects normally.
+//
+// All other PublicOnly behaviour (initial load with existing session, back-button
+// after logout, etc.) is unaffected because in those cases the status is seeded
+// as "authed" from the synchronous localStorage fast-path before any render.
+
 import * as React from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { getSupabase } from "../lib/supabaseClient";
@@ -32,6 +51,15 @@ function readSessionFromStorage(): boolean {
     return false;
   }
 }
+
+// Routes where a newly-authed user might still be mid-redirect.
+// PublicOnly will not fire its <Navigate> immediately when auth transitions
+// from loading→authed on these paths; it waits one extra render tick.
+const PUBLIC_AUTH_PATHS = new Set([
+  ROUTES.LOGIN,
+  ROUTES.SIGNUP,
+  ROUTES.RESET_PASSWORD,
+]);
 
 /**
  * useAuthStatus
@@ -109,11 +137,37 @@ export function Protected({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-/** Public-only routes: render only when NOT authed; show spinner while loading; redirect home if authed. */
+/**
+ * PublicOnly — render only when NOT authed.
+ *
+ * Shows spinner while loading. If authed and on a public-auth path (login,
+ * signup, reset-password), defers for one render tick before redirecting home.
+ * This gives Login.tsx's synchronous window.location.href assignment time to
+ * run first, so return_to is consumed correctly before we navigate away.
+ */
 export function PublicOnly({ children }: { children: React.ReactNode }) {
   const status = useAuthStatus();
+  const loc = useLocation();
 
-  if (status === "loading") return <Spinner />;
+  // One-tick grace period flag: set when we first detect authed on a login path.
+  // Cleared immediately in the next useLayoutEffect, by which point Login.tsx
+  // has already called window.location.href and the page is navigating away.
+  const [graceActive, setGraceActive] = React.useState(false);
+
+  const isLoginPath = PUBLIC_AUTH_PATHS.has(loc.pathname as any);
+
+  React.useLayoutEffect(() => {
+    if (status === "authed" && isLoginPath && !graceActive) {
+      // Activate grace for exactly one render cycle.
+      setGraceActive(true);
+    }
+    if (graceActive) {
+      // Clear on the very next layout effect — one tick is enough.
+      setGraceActive(false);
+    }
+  }, [status, isLoginPath]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (status === "loading" || graceActive) return <Spinner />;
   if (status === "authed") return <Navigate to={ROUTES.HOME} replace />;
   return <>{children}</>;
 }
