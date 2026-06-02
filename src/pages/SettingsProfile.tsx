@@ -9,6 +9,7 @@
 //        If clear_my_dob is not yet deployed the section shows a support-contact fallback.
 // M-A07: show_age toggle — requires profiles.show_age boolean column (see migration below).
 //        Renders "Age: X" on public profile if opted in.
+// AA2.2: WhatsApp phone number field with OTP verification.
 //
 // MIGRATION REQUIRED (run once in Supabase SQL editor):
 //   ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS show_age boolean NOT NULL DEFAULT false;
@@ -60,7 +61,6 @@ async function fetchUsernameQuota(
   const used = data.length;
   let resetsInDays: number | null = null;
   if (used > 0 && data[0]?.changed_at) {
-    // oldest change within the window determines when window opens back up
     const oldestMs = new Date(data[0].changed_at).getTime();
     const resetMs  = oldestMs + 30 * 86_400_000;
     resetsInDays   = Math.max(1, Math.ceil((resetMs - Date.now()) / 86_400_000));
@@ -118,7 +118,6 @@ function DobCorrectionSection({ sb, onDobCleared }: DobCorrectionSectionProps) {
     setBusy(true);
     setErr("");
     try {
-      // Step 1: clear the existing dob_encrypted via admin-gated RPC
       const { error: clearErr } = await sb.rpc("clear_my_dob");
       if (clearErr) {
         if (clearErr.message?.includes("function") || clearErr.code === "PGRST202") {
@@ -129,7 +128,6 @@ function DobCorrectionSection({ sb, onDobCleared }: DobCorrectionSectionProps) {
         }
         throw clearErr;
       }
-      // Step 2: set the new DOB
       const { error: setErr2 } = await sb.rpc("profile_set_dob_checked", { p_dob_text: newDob });
       if (setErr2) throw setErr2;
 
@@ -257,6 +255,248 @@ function DobSetSection({ sb, onDobSet }: DobSetSectionProps) {
   );
 }
 
+// ── AA2.2: WhatsApp phone number section ─────────────────────────────────────
+
+type WhatsAppPhoneStep = "idle" | "enter_phone" | "enter_otp" | "verified";
+
+interface WhatsAppPhoneSectionProps {
+  sb: ReturnType<typeof getSupabase>;
+  uid: string;
+}
+
+function WhatsAppPhoneSection({ sb, uid }: WhatsAppPhoneSectionProps) {
+  const [step, setStep]       = React.useState<WhatsAppPhoneStep>("idle");
+  const [phone, setPhone]     = React.useState("");
+  const [otp, setOtp]         = React.useState("");
+  const [busy, setBusy]       = React.useState(false);
+  const [err, setErr]         = React.useState("");
+  const [msg, setMsg]         = React.useState("");
+
+  // Load verified phone hash presence on mount
+  React.useEffect(() => {
+    if (!sb || !uid) return;
+    (async () => {
+      const { data } = await sb
+        .from("profiles")
+        .select("verified_phone_hash")
+        .eq("user_id", uid)
+        .maybeSingle();
+      if (data?.verified_phone_hash) setStep("verified");
+    })();
+  }, [sb, uid]);
+
+  function isValidE164(p: string) {
+    return /^\+[1-9]\d{6,14}$/.test(p);
+  }
+
+  async function handleSendOtp() {
+    setErr("");
+    if (!isValidE164(phone)) {
+      setErr("Enter a valid number in international format, e.g. +919876543210 or +19787993684");
+      return;
+    }
+    setBusy(true);
+    try {
+      const supabaseUrl = (sb as any).supabaseUrl as string;
+      const res = await fetch(
+        `${supabaseUrl}/functions/v1/whatsapp-send-flow`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            phone_number:      phone,
+            question_id:       "00000000-0000-0000-0000-000000000000",
+            question_text:     "Phone verification",
+            question_summary:  "verification_otp",
+            verification_mode: true,
+          }),
+        }
+      );
+      const data = await res.json();
+      if (!data.sent) {
+        throw new Error(
+          data.reason === "opted_out"
+            ? "This number has opted out of WhatsApp messages. Reply START on WhatsApp first."
+            : "Could not send verification message. Check the number and try again."
+        );
+      }
+      setStep("enter_otp");
+      setMsg("A 6-digit verification code has been sent to your WhatsApp.");
+    } catch (e: any) {
+      setErr(e.message ?? "Failed to send verification message.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleVerifyOtp() {
+    setErr("");
+    if (!otp || otp.length !== 6) {
+      setErr("Enter the 6-digit code from WhatsApp.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const { error } = await sb!.rpc("verify_whatsapp_phone", {
+        p_phone_number: phone,
+        p_otp:          otp,
+      });
+      if (error) {
+        throw new Error(
+          error.message.toLowerCase().includes("invalid")
+            ? "Incorrect code. Please try again."
+            : error.message
+        );
+      }
+      setStep("verified");
+      setMsg("WhatsApp number verified. You can now send interactive stance questions to contacts.");
+      setPhone("");
+      setOtp("");
+    } catch (e: any) {
+      setErr(e.message ?? "Verification failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleRemove() {
+    setErr("");
+    setBusy(true);
+    try {
+      const { error } = await sb!
+        .from("profiles")
+        .update({ verified_phone_hash: null })
+        .eq("user_id", uid);
+      if (error) throw error;
+      setStep("idle");
+      setMsg("WhatsApp number removed.");
+    } catch (e: any) {
+      setErr(e.message ?? "Failed to remove number.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="rounded border p-3 space-y-3">
+      <div className="text-sm font-medium">WhatsApp number</div>
+      <p className="text-xs text-slate-500">
+        Add your WhatsApp number to send interactive stance questions directly to your contacts.
+        Your number is stored as a one-way hash — it cannot be read or shared.
+      </p>
+
+      {msg && <p className="text-xs text-emerald-600">{msg}</p>}
+      {err && <p className="text-xs text-rose-600">{err}</p>}
+
+      {/* Verified state */}
+      {step === "verified" && (
+        <div className="flex items-center justify-between rounded border border-emerald-200 bg-emerald-50 px-3 py-2">
+          <div className="flex items-center gap-2">
+            <span className="text-emerald-600 text-sm">✓</span>
+            <span className="text-sm text-emerald-800 font-medium">WhatsApp number verified</span>
+          </div>
+          <button
+            type="button"
+            className="text-xs text-slate-500 underline hover:text-rose-600"
+            onClick={handleRemove}
+            disabled={busy}
+          >
+            Remove
+          </button>
+        </div>
+      )}
+
+      {/* Idle state */}
+      {step === "idle" && (
+        <button
+          type="button"
+          className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:border-slate-400 transition-colors"
+          onClick={() => { setStep("enter_phone"); setErr(""); setMsg(""); }}
+        >
+          Add WhatsApp number
+        </button>
+      )}
+
+      {/* Enter phone */}
+      {step === "enter_phone" && (
+        <div className="space-y-2">
+          <input
+            type="tel"
+            placeholder="+919876543210"
+            className="w-full border rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value.trim())}
+            autoComplete="tel"
+          />
+          <p className="text-[11px] text-slate-400">
+            Include your country code, e.g. +91 for India, +1 for US.
+          </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              className="flex-1 border rounded px-3 py-1.5 text-sm"
+              onClick={() => { setStep("idle"); setErr(""); setPhone(""); }}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="flex-1 rounded bg-slate-900 text-white px-3 py-1.5 text-sm disabled:opacity-50"
+              onClick={handleSendOtp}
+              disabled={busy || !phone}
+            >
+              {busy ? "Sending…" : "Send verification code"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Enter OTP */}
+      {step === "enter_otp" && (
+        <div className="space-y-2">
+          <p className="text-xs text-slate-500">
+            Enter the 6-digit code sent to <span className="font-medium">{phone}</span> on WhatsApp.
+          </p>
+          <input
+            type="text"
+            placeholder="123456"
+            maxLength={6}
+            className="w-full border rounded px-3 py-1.5 text-sm tracking-widest text-center focus:outline-none focus:ring-2 focus:ring-slate-300"
+            value={otp}
+            onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            autoComplete="one-time-code"
+          />
+          <div className="flex gap-2">
+            <button
+              type="button"
+              className="flex-1 border rounded px-3 py-1.5 text-sm"
+              onClick={() => { setStep("enter_phone"); setErr(""); setOtp(""); }}
+            >
+              Back
+            </button>
+            <button
+              type="button"
+              className="flex-1 rounded bg-slate-900 text-white px-3 py-1.5 text-sm disabled:opacity-50"
+              onClick={handleVerifyOtp}
+              disabled={busy || otp.length !== 6}
+            >
+              {busy ? "Verifying…" : "Verify"}
+            </button>
+          </div>
+          <button
+            type="button"
+            className="text-xs text-slate-400 underline"
+            onClick={handleSendOtp}
+            disabled={busy}
+          >
+            Resend code
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main page ────────────────────────────────────────────────────────────────
 
 export default function SettingsProfile() {
@@ -282,17 +522,13 @@ export default function SettingsProfile() {
     display_handle_mode: "random_id" as DisplayHandleMode,
     bio: "",
     avatar_url: "",
-    // M-A03: store path alongside URL
     avatar_path: "" as string | null,
-    // M-A07: age opt-in
     show_age: false,
   });
 
   const [handle, setHandle] = React.useState<string>("");
 
-  // Release any held Supabase auth lock on unmount to prevent getSession hangs
-  // on remount. This occurs because autoRefreshToken uses a localStorage mutex
-  // that can get stuck if the component unmounts mid-refresh.
+  // Release any held Supabase auth lock on unmount
   React.useEffect(() => {
     return () => {
       if (!sb) return;
@@ -423,7 +659,6 @@ export default function SettingsProfile() {
       queryClient.invalidateQueries({ queryKey: ["profile", uid] });
       if (form.display_handle_mode === "username") setHandle(desired || randomId);
 
-      // M-A05: refresh quota display
       const quota = await fetchUsernameQuota(sb, uid);
       setUsernameQuota(quota);
     } catch (e: any) {
@@ -434,7 +669,7 @@ export default function SettingsProfile() {
     }
   }
 
-  // Trigger M-A05 quota load on initial mount once uid is known
+  // M-A05: load quota on mount
   React.useEffect(() => {
     if (!sb || !uid) return;
     let cancelled = false;
@@ -610,7 +845,6 @@ export default function SettingsProfile() {
             <p className="text-xs text-slate-500">
               Your date of birth is set and encrypted. It cannot be viewed, only corrected.
             </p>
-            {/* Greyed-out locked indicator */}
             <div className="flex items-center gap-2 rounded border border-slate-200 bg-slate-50 px-3 py-2 opacity-60 cursor-not-allowed select-none">
               <span className="text-sm text-slate-500">••••-••-••</span>
               <span className="text-xs text-slate-400 ml-auto">Locked</span>
@@ -642,6 +876,9 @@ export default function SettingsProfile() {
         currentPath={form.avatar_path}
         onChange={(url, path) => setForm(f => ({ ...f, avatar_url: url || "", avatar_path: path }))}
       />
+
+      {/* AA2.2: WhatsApp phone number */}
+      <WhatsAppPhoneSection sb={sb} uid={uid} />
 
       {/* Save profile (bio + avatar + show_age) */}
       <button
