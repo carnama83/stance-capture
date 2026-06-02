@@ -1,5 +1,16 @@
 // src/auth/route-guards.tsx
 //
+// FIX (Bug #5 — PRIMARY / IMMEDIATE): readSessionFromStorage() was returning
+// `true` for any token whose `expires_at` field was missing, zero, or NaN.
+// The guard was `if (expiresAt && ...)` — falsy for all three cases — so it
+// skipped the expiry check entirely and reported the token as valid. A stale
+// token left in localStorage from a previous session (or written by
+// OAuthCallbackPage's seedSessionToStorage with parseInt(undefined) → NaN)
+// caused PublicOnly to treat the user as already authenticated, immediately
+// bouncing them from /login back to "/" before the login page ever rendered.
+// Fix: require expires_at to be a finite positive number and treat anything
+// else as expired (fall through to the async getSession() validation path).
+//
 // FIX (Bug #4): PublicOnly now uses a short grace period before redirecting an
 // authed user away from /login. Without this, when signInWithPassword() resolves,
 // both Login.tsx (handleSuccessfulLogin) and PublicOnly (via useAuthStatus) receive
@@ -7,16 +18,9 @@
 // React render, occasionally winning the race against window.location.href in
 // handleSuccessfulLogin and discarding the return_to value.
 //
-// The fix adds a `loginGrace` flag to useAuthStatus: when the status transitions
-// from "loading" → "authed" while on the /login (or /signup, /reset-password) path,
-// we hold at "loading" for one render tick (via useLayoutEffect → setState).
-// Login.tsx's synchronous window.location.href assignment has already run by that
-// point, so the grace period resolves harmlessly — either the page has already
-// navigated away, or PublicOnly then redirects normally.
-//
-// All other PublicOnly behaviour (initial load with existing session, back-button
-// after logout, etc.) is unaffected because in those cases the status is seeded
-// as "authed" from the synchronous localStorage fast-path before any render.
+// The fix adds a `loginGrace` flag: when status transitions from "loading" → "authed"
+// while on a public-auth path, we hold at "loading" for one render tick so
+// Login.tsx's synchronous window.location.href assignment can run first.
 
 import * as React from "react";
 import { Navigate, useLocation } from "react-router-dom";
@@ -42,10 +46,24 @@ function readSessionFromStorage(): boolean {
     const raw = localStorage.getItem(AUTH_STORAGE_KEY);
     if (!raw) return false;
     const parsed = JSON.parse(raw);
-    // Check token exists and is not expired
     if (!parsed?.access_token) return false;
-    const expiresAt = parsed?.expires_at;
-    if (expiresAt && Date.now() / 1000 > expiresAt) return false;
+
+    // FIX (Bug #5): The original guard was `if (expiresAt && ...)`.
+    // That is falsy when expiresAt is 0, NaN, null, or undefined — all of which
+    // caused the check to be skipped and the token incorrectly marked as valid.
+    // Sources of bad expiresAt values:
+    //   - OAuthCallbackPage.seedSessionToStorage writes parseInt(expiresAt) where
+    //     expiresAt may be undefined → parseInt(undefined) = NaN
+    //   - Old session entries in localStorage written before this field was added
+    //   - Any token stored without an expiry (e.g. during testing)
+    //
+    // Rule: if expires_at is absent or not a finite positive number, treat the
+    // token as unverifiable and fall through to the async getSession() path
+    // (which validates with the server). Do NOT assume it is valid.
+    const expiresAtNum = Number(parsed?.expires_at);
+    if (!Number.isFinite(expiresAtNum) || expiresAtNum <= 0) return false;
+    if (Date.now() / 1000 > expiresAtNum) return false;
+
     return true;
   } catch {
     return false;
@@ -143,7 +161,7 @@ export function Protected({ children }: { children: React.ReactNode }) {
  * Shows spinner while loading. If authed and on a public-auth path (login,
  * signup, reset-password), defers for one render tick before redirecting home.
  * This gives Login.tsx's synchronous window.location.href assignment time to
- * run first, so return_to is consumed correctly before we navigate away.
+ * run first, so return_to is always consumed correctly before we navigate away.
  */
 export function PublicOnly({ children }: { children: React.ReactNode }) {
   const status = useAuthStatus();
