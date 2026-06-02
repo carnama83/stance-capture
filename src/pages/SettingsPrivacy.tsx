@@ -7,12 +7,13 @@
 //   L1c: Comment visibility (follows display mode vs always anonymous)
 //   L1d: Profile visibility (private vs public)
 //   W5:  Social stance ingestion opt-out
+//   AA5: WhatsApp Flow message opt-out
 
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Shield, Eye, MessageSquare, User, Share2 } from "lucide-react";
+import { Loader2, Shield, Eye, MessageSquare, User, Share2, MessageCircleOff } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -21,7 +22,8 @@ type PrivacySettings = {
   stance_visibility:        "aggregate_only" | "public";
   comment_visibility:       "display_mode" | "always_anonymous";
   profile_visibility:       "private" | "public";
-  allow_social_ingestion:   boolean; // W5 — added field
+  allow_social_ingestion:   boolean; // W5
+  whatsapp_flow_enabled:    boolean; // AA5
 };
 
 // ── Fetch / save hooks ─────────────────────────────────────────────────────────
@@ -33,8 +35,11 @@ function usePrivacySettings() {
     queryFn: async () => {
       const { data, error } = await supabase.rpc("get_my_privacy_settings");
       if (error) throw error;
-      // Default allow_social_ingestion to true if not yet in DB
-      return { allow_social_ingestion: true, ...(data as PrivacySettings) };
+      return {
+        allow_social_ingestion: true,
+        whatsapp_flow_enabled:  true,
+        ...(data as PrivacySettings),
+      };
     },
   });
 }
@@ -44,19 +49,81 @@ function useSavePrivacy() {
   return useMutation({
     mutationFn: async (patch: Partial<PrivacySettings>) => {
       const { data, error } = await supabase.rpc("update_my_privacy_settings", {
-        p_display_mode:             patch.display_mode             ?? null,
-        p_stance_visibility:        patch.stance_visibility        ?? null,
-        p_comment_visibility:       patch.comment_visibility       ?? null,
-        p_profile_visibility:       patch.profile_visibility       ?? null,
-        p_allow_social_ingestion:   patch.allow_social_ingestion   ?? null, // W5
+        p_display_mode:           patch.display_mode           ?? null,
+        p_stance_visibility:      patch.stance_visibility      ?? null,
+        p_comment_visibility:     patch.comment_visibility     ?? null,
+        p_profile_visibility:     patch.profile_visibility     ?? null,
+        p_allow_social_ingestion: patch.allow_social_ingestion ?? null,
       });
       if (error) throw error;
-      return { allow_social_ingestion: true, ...(data as PrivacySettings) };
+      return {
+        allow_social_ingestion: true,
+        whatsapp_flow_enabled:  true,
+        ...(data as PrivacySettings),
+      };
     },
     onSuccess: (updated) => {
       queryClient.setQueryData(["privacy-settings"], updated);
     },
   });
+}
+
+// ── AA5: WhatsApp opt-out — direct profile update ─────────────────────────────
+// whatsapp_flow_enabled is stored on profiles, not in the privacy settings RPC.
+// We update it directly and also write to whatsapp_optouts via Edge Function.
+
+function useSaveWhatsAppOptOut() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return async (enabled: boolean, onOptimisticUpdate: (enabled: boolean) => void) => {
+    // Optimistic update
+    onOptimisticUpdate(enabled);
+
+    try {
+      // 1. Update profiles.whatsapp_flow_enabled
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .update({ whatsapp_flow_enabled: enabled })
+        .eq("user_id", (await supabase.auth.getUser()).data.user?.id ?? "");
+
+      if (profileError) throw profileError;
+
+      // 2. If opting out, write to whatsapp_optouts via Edge Function
+      //    If opting in, update whatsapp_optouts.is_active = false
+      if (!enabled) {
+        // Call webhook function to process opt-out
+        // We simulate a STOP message by calling the opt-out endpoint directly
+        await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-manage-optout`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "opt_out" }),
+          }
+        );
+      } else {
+        await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-manage-optout`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "opt_in" }),
+          }
+        );
+      }
+
+      queryClient.invalidateQueries({ queryKey: ["privacy-settings"] });
+      toast({ title: enabled ? "WhatsApp messages re-enabled." : "WhatsApp messages disabled." });
+    } catch (err: any) {
+      // Revert optimistic update on error
+      onOptimisticUpdate(!enabled);
+      toast({
+        title: "Failed to update WhatsApp setting. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
 }
 
 // ── UI primitives ──────────────────────────────────────────────────────────────
@@ -137,6 +204,7 @@ export default function SettingsPrivacy() {
   const { data: prefs, isLoading } = usePrivacySettings();
   const { mutate: save, isPending } = useSavePrivacy();
   const { toast } = useToast();
+  const saveWhatsAppOptOut = useSaveWhatsAppOptOut();
 
   // Local state mirrors server — updates optimistically
   const [local, setLocal] = React.useState<PrivacySettings | null>(null);
@@ -151,9 +219,15 @@ export default function SettingsPrivacy() {
     save(patch, {
       onSuccess: () => toast({ title: "Privacy settings saved." }),
       onError: () => {
-        setLocal(local); // revert on error
+        setLocal(local);
         toast({ title: "Failed to save. Please try again.", variant: "destructive" });
       },
+    });
+  };
+
+  const handleWhatsAppToggle = (enabled: boolean) => {
+    saveWhatsAppOptOut(enabled, (optimisticValue) => {
+      setLocal((prev) => prev ? { ...prev, whatsapp_flow_enabled: optimisticValue } : prev);
     });
   };
 
@@ -318,6 +392,37 @@ export default function SettingsPrivacy() {
             Account settings
           </a>
           .
+        </p>
+      </SectionCard>
+
+      {/* AA5: WhatsApp messages */}
+      <SectionCard
+        icon={MessageCircleOff}
+        title="WhatsApp messages"
+        description="Whether you receive Stance Capture questions via WhatsApp."
+      >
+        <RadioGroup
+          value={local.whatsapp_flow_enabled ? "on" : "off"}
+          onChange={(v) => handleWhatsAppToggle(v === "on")}
+          disabled={isPending}
+          options={[
+            {
+              value: "on",
+              label: "Enabled (default)",
+              description:
+                "You may receive stance questions via WhatsApp when someone shares a question with you or an admin broadcasts to your number.",
+            },
+            {
+              value: "off",
+              label: "Disable WhatsApp messages",
+              description:
+                "You will no longer receive Stance Capture questions on WhatsApp. You can re-enable at any time, or reply START to any Stance Capture WhatsApp message.",
+            },
+          ]}
+        />
+        <p className="text-[11px] text-slate-400 pt-1">
+          You can also opt out at any time by replying <span className="font-mono">STOP</span> to
+          any Stance Capture WhatsApp message.
         </p>
       </SectionCard>
 
