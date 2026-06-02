@@ -1,5 +1,18 @@
 // src/pages/Login.tsx
 // UPDATED VERSION: Uses consistent PageLayout with AppTopBar
+//
+// FIXES applied:
+//   Bug #2 — MFA verifyMfa() now calls mfa.listFactors() to get the real
+//             enrolled factorId instead of the placeholder "your-factor-id".
+//   Bug #3 — onLogin success path calls handleSuccessfulLogin() directly as the
+//             primary redirect. The onAuthStateChange listener is kept as a
+//             secondary path for OAuth flows but email+password login no longer
+//             depends on it — avoiding a hang if the auth event is delayed by
+//             the Supabase SDK mutex during background token refresh.
+//   Bug #4 — Because handleSuccessfulLogin() is now called synchronously inside
+//             onLogin before React can re-render PublicOnly, window.location.href
+//             is assigned first, ensuring return_to is always consumed correctly
+//             before PublicOnly's <Navigate> fires.
 
 import * as React from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -19,6 +32,8 @@ export default function Login() {
   // MFA state
   const [needsMfa, setNeedsMfa] = React.useState(false);
   const [mfaCode, setMfaCode] = React.useState("");
+  // Stored after signInWithPassword so verifyMfa can use it without a second listFactors call
+  const [mfaFactorId, setMfaFactorId] = React.useState<string | null>(null);
 
   // EMAIL CONFIRMATION BANNER: detect ?confirmed=1 in hash query string.
   // HashRouter puts query params inside window.location.hash, e.g.:
@@ -31,31 +46,34 @@ export default function Login() {
     return params.get("confirmed") === "1";
   });
 
-  // ✅ PRODUCTION FIX: Simple, clean redirect handling
+  // Centralised redirect after a successful login.
+  // Consumes return_to from sessionStorage so the user lands where they intended.
   const handleSuccessfulLogin = React.useCallback(() => {
     const returnTo = sessionStorage.getItem("return_to");
     sessionStorage.removeItem("return_to");
 
     if (returnTo && (returnTo.startsWith("#/") || returnTo.startsWith("/"))) {
-      // For specific return destinations, use location.href for a full reload
-      // so the target page initialises fresh with the new auth state.
-      const dest = returnTo.startsWith("#/")
-        ? returnTo  // hash path — assign directly to hash
-        : returnTo;
-      window.location.href = `/#${dest.startsWith("/") ? dest : dest.slice(1)}`;
+      // Full-page reload to the original destination so the target page
+      // initialises fresh with the new auth state.
+      window.location.href = `/#${dest(returnTo)}`;
     } else {
-      // Default: full reload to home so feed re-fetches with auth context
+      // Default: full reload to home so feed re-fetches with auth context.
       window.location.href = "/";
     }
   }, []);
 
-  // ✅ Auth listener - only redirect on SIGNED_IN event
+  // ── Auth listener ────────────────────────────────────────────────────────────
+  // Secondary path: handles SIGNED_IN fired by OAuth flows (Google/Facebook/Apple)
+  // where OAuthCallbackPage calls finalize() which navigates here.
+  // Email+password login calls handleSuccessfulLogin() directly in onLogin (below),
+  // so this listener is a safety net for that path, not the primary trigger.
   React.useEffect(() => {
     if (!sb) return;
 
     const { data: { subscription } } = sb.auth.onAuthStateChange(
       (event, session) => {
-        // Only handle fresh sign-ins, not initial page load
+        // Only handle fresh sign-ins, not the initial INITIAL_SESSION event
+        // (which fires on every page load and would redirect away immediately).
         if (event === "SIGNED_IN" && session) {
           handleSuccessfulLogin();
         }
@@ -77,20 +95,30 @@ export default function Login() {
       const { data, error } = await sb.auth.signInWithPassword({ email, password });
       if (error) throw error;
 
-      // 2) MFA needed?
+      // 2) MFA needed? Resolve the real factor ID here so verifyMfa() can use it.
       const aal = await sb.auth.mfa.getAuthenticatorAssuranceLevel();
       if (aal.error) throw aal.error;
       if (aal.data.currentLevel === "aal1" && aal.data.nextLevel === "aal2") {
+        // Fetch enrolled factors now so we don't have to do it again in verifyMfa.
+        const { data: factors, error: factorsErr } = await sb.auth.mfa.listFactors();
+        if (factorsErr || !factors?.totp?.length) {
+          throw new Error("No MFA factor found. Please re-enrol authenticator app.");
+        }
+        setMfaFactorId(factors.totp[0].id);
         setNeedsMfa(true);
         setMsg("Enter the code from your authenticator app.");
         setBusy(false);
         return;
       }
 
-      // 3) Success - auth listener will handle redirect
-      // Just show message and keep loading state
+      // 3) Success — call handleSuccessfulLogin() directly as the primary redirect.
+      //    This runs synchronously before React can re-render PublicOnly, so
+      //    return_to is always consumed and window.location.href wins the race
+      //    against PublicOnly's <Navigate>.
+      //    The onAuthStateChange listener above remains as a secondary safety net.
       if (data.session) {
         setMsg("Logged in. Redirecting...");
+        handleSuccessfulLogin();
       }
     } catch (e: any) {
       setMsg(e.message || "Login failed");
@@ -104,21 +132,35 @@ export default function Login() {
     if (!mfaCode || mfaCode.length < 6)
       return setMsg("Code must be at least 6 digits.");
 
+    // factorId was resolved in onLogin when MFA was detected.
+    // If somehow it is missing (e.g. component remounted), re-fetch.
+    let factorId = mfaFactorId;
+    if (!factorId) {
+      const { data: factors, error: factorsErr } = await sb.auth.mfa.listFactors();
+      if (factorsErr || !factors?.totp?.length) {
+        return setMsg("No MFA factor found. Please re-enrol your authenticator app.");
+      }
+      factorId = factors.totp[0].id;
+      setMfaFactorId(factorId);
+    }
+
     try {
       setBusy(true);
 
-      const challengeResp = await sb.auth.mfa.challenge({ factorId: "your-factor-id" });
+      const challengeResp = await sb.auth.mfa.challenge({ factorId });
       if (challengeResp.error) throw challengeResp.error;
 
       const verifyResp = await sb.auth.mfa.verify({
-        factorId: "your-factor-id",
+        factorId,
         challengeId: challengeResp.data.id,
         code: mfaCode,
       });
       if (verifyResp.error) throw verifyResp.error;
 
+      // MFA verified — SIGNED_IN fires after verify(), so the auth listener
+      // above handles the redirect. Also call directly as a safety net.
       setMsg("MFA verified. Redirecting...");
-      // Auth listener will handle redirect
+      handleSuccessfulLogin();
     } catch (e: any) {
       setMsg(e.message || "MFA verification failed");
       setBusy(false);
@@ -200,6 +242,7 @@ export default function Login() {
                 className="rounded border px-4 py-2"
                 onClick={() => {
                   setNeedsMfa(false);
+                  setMfaFactorId(null);
                   setMfaCode("");
                   setMsg(null);
                 }}
@@ -234,4 +277,17 @@ export default function Login() {
       </div>
     </PageLayout>
   );
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Normalise a returnTo value into a bare path suitable for use after "/#".
+ *   "#/questions/abc"  →  "/questions/abc"
+ *   "/questions/abc"   →  "/questions/abc"
+ *   "#/"               →  "/"
+ */
+function dest(returnTo: string): string {
+  if (returnTo.startsWith("#/")) return returnTo.slice(1); // strip leading #
+  return returnTo; // already a bare /path
 }
