@@ -514,9 +514,14 @@ export function useHeroController({
 
   // ── Initialise hero from allQuestions ──
 
+  // Ref so init effect can read current status synchronously without
+  // needing status as a reactive dependency (which would cause infinite loops).
+  const statusRef = React.useRef(status);
+  React.useEffect(() => { statusRef.current = status; }, [status]);
+
   React.useEffect(() => {
-    if (status !== "hero_loading") {
-      if (status === "hero_waiting_next" && allQuestions.length > 0) {
+    if (statusRef.current !== "hero_loading") {
+      if (statusRef.current === "hero_waiting_next" && allQuestions.length > 0) {
         // First pass: unanswered questions not yet shown this session
         let eligible = allQuestions.filter(
           (q) => !usedQuestionIds.current.has(q.question_id) && !q.user_has_answered
@@ -568,7 +573,13 @@ export function useHeroController({
     setStatus("hero_ready");
     fireAnalytics("hero_question_impression", { questionId: first.question_id });
     fetchDistributionFresh(first.question_id);
-  }, [allQuestions, isLoading, status, doTransition, checkReplenish, fetchDistributionFresh]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // FIX: `status` removed from deps. Having it here caused the effect to re-run
+  // every time status changed (including after it set status='hero_ready'), which
+  // re-invoked checkReplenish → onRequestReplenish → fetchNextPage on every cycle.
+  // The statusRef below gives the effect synchronous access to current status
+  // without making it a reactive dependency.
+  }, [allQuestions, isLoading, doTransition, checkReplenish, fetchDistributionFresh]);
 
   // ── Sync queue when allQuestions grows (replenishment) ──
 
