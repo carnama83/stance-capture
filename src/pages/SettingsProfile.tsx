@@ -255,7 +255,11 @@ function DobSetSection({ sb, onDobSet }: DobSetSectionProps) {
   );
 }
 
-// ── AA2.2: WhatsApp phone number section ─────────────────────────────────────
+// REPLACEMENT for the WhatsAppPhoneSection component in SettingsProfile.tsx
+// Changes from previous version:
+//   - handleSendOtp stores verification_token returned by whatsapp-send-flow
+//   - handleVerifyOtp passes p_verification_token (uuid) + p_otp to verify_whatsapp_phone RPC
+//   - phone state kept only for display — not passed to verify RPC
 
 type WhatsAppPhoneStep = "idle" | "enter_phone" | "enter_otp" | "verified";
 
@@ -265,12 +269,13 @@ interface WhatsAppPhoneSectionProps {
 }
 
 function WhatsAppPhoneSection({ sb, uid }: WhatsAppPhoneSectionProps) {
-  const [step, setStep]       = React.useState<WhatsAppPhoneStep>("idle");
-  const [phone, setPhone]     = React.useState("");
-  const [otp, setOtp]         = React.useState("");
-  const [busy, setBusy]       = React.useState(false);
-  const [err, setErr]         = React.useState("");
-  const [msg, setMsg]         = React.useState("");
+  const [step, setStep]                     = React.useState<WhatsAppPhoneStep>("idle");
+  const [phone, setPhone]                   = React.useState("");
+  const [otp, setOtp]                       = React.useState("");
+  const [verificationToken, setVerificationToken] = React.useState<string | null>(null);
+  const [busy, setBusy]                     = React.useState(false);
+  const [err, setErr]                       = React.useState("");
+  const [msg, setMsg]                       = React.useState("");
 
   // Load verified phone hash presence on mount
   React.useEffect(() => {
@@ -320,6 +325,8 @@ function WhatsAppPhoneSection({ sb, uid }: WhatsAppPhoneSectionProps) {
             : "Could not send verification message. Check the number and try again."
         );
       }
+      // Store verification token returned by the Edge Function
+      setVerificationToken(data.verification_token);
       setStep("enter_otp");
       setMsg("A 6-digit verification code has been sent to your WhatsApp.");
     } catch (e: any) {
@@ -335,16 +342,22 @@ function WhatsAppPhoneSection({ sb, uid }: WhatsAppPhoneSectionProps) {
       setErr("Enter the 6-digit code from WhatsApp.");
       return;
     }
+    if (!verificationToken) {
+      setErr("Verification session expired. Please request a new code.");
+      setStep("enter_phone");
+      return;
+    }
     setBusy(true);
     try {
+      // Pass verification_token (uuid) + otp — RPC looks up stored phone hash
       const { error } = await sb!.rpc("verify_whatsapp_phone", {
-        p_phone_number: phone,
-        p_otp:          otp,
+        p_verification_token: verificationToken,
+        p_otp:                otp,
       });
       if (error) {
         throw new Error(
           error.message.toLowerCase().includes("invalid")
-            ? "Incorrect code. Please try again."
+            ? "Incorrect or expired code. Please try again."
             : error.message
         );
       }
@@ -352,6 +365,7 @@ function WhatsAppPhoneSection({ sb, uid }: WhatsAppPhoneSectionProps) {
       setMsg("WhatsApp number verified. You can now send interactive stance questions to contacts.");
       setPhone("");
       setOtp("");
+      setVerificationToken(null);
     } catch (e: any) {
       setErr(e.message ?? "Verification failed.");
     } finally {
@@ -470,7 +484,7 @@ function WhatsAppPhoneSection({ sb, uid }: WhatsAppPhoneSectionProps) {
             <button
               type="button"
               className="flex-1 border rounded px-3 py-1.5 text-sm"
-              onClick={() => { setStep("enter_phone"); setErr(""); setOtp(""); }}
+              onClick={() => { setStep("enter_phone"); setErr(""); setOtp(""); setVerificationToken(null); }}
             >
               Back
             </button>
