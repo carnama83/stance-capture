@@ -24,13 +24,32 @@ type Profile = {
 };
 
 // ---------- Session Hook ----------
+// FIX: removed sb.auth.getSession() — it acquires the SDK mutex during token
+// refresh and can stall for seconds, causing AppTopBar to show stale auth state
+// and contending with AuthReadyGate / Index.tsx for the same lock.
+// onAuthStateChange fires INITIAL_SESSION from localStorage immediately on
+// subscribe, giving us the session with no network round-trip.
 function useSupabaseSession() {
   const sb = React.useMemo(getSupabase, []);
-  const [session, setSession] = React.useState<any>(null);
+  const [session, setSession] = React.useState<any>(() => {
+    // Synchronous fast-path: read session from localStorage before first render
+    // so the top bar never flashes the logged-out state for authenticated users.
+    try {
+      const url = import.meta.env.VITE_SUPABASE_URL as string;
+      const ref = url?.replace('https://', '').split('.')[0];
+      if (!ref) return null;
+      const raw = localStorage.getItem(`sb-${ref}-auth-token`);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      const expiresAtNum = Number(parsed?.expires_at);
+      if (!Number.isFinite(expiresAtNum) || expiresAtNum <= 0) return null;
+      if (Date.now() / 1000 > expiresAtNum) return null;
+      return parsed;
+    } catch { return null; }
+  });
 
   React.useEffect(() => {
     if (!sb) return;
-    sb.auth.getSession().then(({ data }) => setSession(data.session ?? null));
     const {
       data: { subscription },
     } = sb.auth.onAuthStateChange((_e, s) => setSession(s ?? null));
