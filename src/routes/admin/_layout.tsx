@@ -26,6 +26,7 @@ import {
   Users,         // Epic EL — Party Library nav
   FileText as FileTextIcon, // Epic EL — Candidates nav (aliased to avoid conflict)
   ListFilter,    // Epic EL — Question Review nav
+  MessageSquareDot, // Epic AA — WhatsApp nav
 } from "lucide-react";
 
 import {
@@ -181,7 +182,29 @@ export default function AdminLayout() {
             icon={<ListFilter className="h-4 w-4" />}
             label="Question Review"
           />
-          
+
+          <Separator className="my-2" />
+
+          {/* Epic AA — WhatsApp */}
+          <div className="px-2 text-[10px] font-medium tracking-wide text-muted-foreground uppercase mb-1">
+            WhatsApp (Epic AA)
+          </div>
+          <AdminLink
+            to="/admin/whatsapp"
+            icon={<MessageSquareDot className="h-4 w-4" />}
+            label="WA Settings"
+          />
+          <AdminLink
+            to="/admin/whatsapp/broadcasts"
+            icon={<MessageSquareDot className="h-4 w-4" />}
+            label="Broadcasts"
+          />
+          <AdminLink
+            to="/admin/whatsapp/contacts"
+            icon={<MessageSquareDot className="h-4 w-4" />}
+            label="Contact Lists"
+          />
+
           <Separator className="my-2" />
 
           {/* Moderation (Epic H) */}
