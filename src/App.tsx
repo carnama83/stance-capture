@@ -72,6 +72,11 @@ import AdminCandidatesPage from '@/routes/admin/candidates/Index';
 import AdminElectionReviewPage from '@/routes/admin/election-review/Index';
 import ConstituencySetupPage from '@/pages/settings/ConstituencySetup';
 import AdminModerationPage from '@/routes/admin/moderation/index';
+// Epic AA — WhatsApp admin pages
+import AdminWhatsAppSettingsPage from '@/routes/admin/whatsapp/Index';
+import AdminWhatsAppBroadcastsPage from '@/routes/admin/whatsapp/Broadcasts';
+import AdminWhatsAppBroadcastDetailPage from '@/routes/admin/whatsapp/BroadcastDetail';
+import AdminWhatsAppContactsPage from '@/routes/admin/whatsapp/Contacts';
 import CognitiveInsightsPage from '@/routes/me/cognitive-insights';
 import PersonalInsightsPage from '@/pages/PersonalInsightsPage';
 import InsightsPage from '@/pages/InsightsPage';
@@ -317,6 +322,11 @@ const App: React.FC = () => {
                 <Route path="parties" element={<AdminPartiesPage />} />
                 <Route path="candidates" element={<AdminCandidatesPage />} />
                 <Route path="election-review" element={<AdminElectionReviewPage />} />
+                {/* Epic AA — WhatsApp */}
+                <Route path="whatsapp" element={<AdminWhatsAppSettingsPage />} />
+                <Route path="whatsapp/broadcasts" element={<AdminWhatsAppBroadcastsPage />} />
+                <Route path="whatsapp/broadcasts/:id" element={<AdminWhatsAppBroadcastDetailPage />} />
+                <Route path="whatsapp/contacts" element={<AdminWhatsAppContactsPage />} />
               </Route>
 
               {/* Moderation — accessible to admins AND moderators */}
