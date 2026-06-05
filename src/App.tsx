@@ -9,7 +9,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import AuthReadyGate from "./components/AuthReadyGate";
 import { Protected, PublicOnly } from "./auth/route-guards";
 import AdminOnly from "./auth/AdminOnly";
-import ModeratorOnly from "./auth/moderatoronly";
+import moderatoronly from "./auth/moderatoronly";
 import { ROUTES } from "@/routes/paths";
 import { useShareClickTracker } from "@/hooks/useShareClickTracker";
 import AdminTopicsPage from "@/routes/admin/topics/Index";
@@ -334,9 +334,9 @@ const App: React.FC = () => {
                 path="/admin/moderation"
                 element={
                   <Protected>
-                    <ModeratorOnly>
+                    <moderatoronly>
                       <AdminLayout />
-                    </ModeratorOnly>
+                    </moderatoronly>
                   </Protected>
                 }
               >
