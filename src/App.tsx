@@ -52,7 +52,7 @@ import EmbedAnalyticsPage from "@/routes/admin/embed-analytics/Index";
 import AdminNewsIndex from "@/routes/admin/news/Index";
 import AdminLiveQuestionsPage from "@/routes/admin/live-questions/Index";
 import AdminLiveQuestionShowPage from "@/routes/admin/live-questions/Show";
-import AdminAiDraftsPage from "@/routes/admin/ai-drafts/Index";
+import AdminAiDraftsPage from "@/routes/admin/ai-drafts/index";
 import AdminPromptsPage from "@/routes/admin/prompts/Index";
 import AdminImpactDashboardPage from "@/routes/admin/impact-dashboard/Index";
 import AdminCronJobsPage from "@/routes/admin/cron-jobs/Index";
