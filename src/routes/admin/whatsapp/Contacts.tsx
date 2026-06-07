@@ -7,20 +7,12 @@
 import * as React from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/components/ui/use-toast";
-import {
 import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_PROJECT_REF, getJwt } from "@/lib/env";
+import {
   Plus, Trash2, RefreshCw, Loader2, Users, Upload, CheckCircle2,
 } from "lucide-react";
 
-const SUPABASE_URL = (SUPABASE_URL ?? "").replace(/\/+$/, "");
-const PROJECT_REF = SUPABASE_URL.replace("https://", "").split(".")[0];
 
-function getJwt(): string {
-  try {
-    const raw = localStorage.getItem(`sb-${PROJECT_REF}-auth-token`);
-    return raw ? JSON.parse(raw)?.access_token ?? "" : "";
-  } catch { return ""; }
-}
 
 type ContactList = {
   id: string;

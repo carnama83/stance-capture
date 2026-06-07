@@ -14,19 +14,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
 import {
+import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_PROJECT_REF, getJwt } from "@/lib/env";
   CheckCircle2, XCircle, AlertCircle, Loader2,
   RefreshCw, Plug, Unplug, MessageSquareMore, Webhook,
 } from "lucide-react";
 
-const PROJECT_REF = "yzxzpnomcarnxixhjlba";
-const SUPABASE_URL = `https://${PROJECT_REF}.supabase.co`;
 
-function getJwt(): string {
-  try {
-    const raw = localStorage.getItem(`sb-${PROJECT_REF}-auth-token`);
-    return raw ? JSON.parse(raw)?.access_token ?? "" : "";
-  } catch { return ""; }
-}
 
 function rpcFetch(path: string, body?: unknown) {
   const jwt = getJwt();
@@ -34,7 +27,7 @@ function rpcFetch(path: string, body?: unknown) {
     method: body !== undefined ? "POST" : "GET",
     headers: {
       "Content-Type": "application/json",
-      "apikey": import.meta.env.VITE_SUPABASE_ANON_KEY ?? "",
+      "apikey": SUPABASE_ANON_KEY ?? "",
       "Authorization": `Bearer ${jwt}`,
       ...(body === undefined ? {} : {}),
     },
@@ -86,7 +79,7 @@ export default function AdminWhatsAppSettingsPage() {
         `${SUPABASE_URL}/rest/v1/whatsapp_config?select=*&limit=1`,
         {
           headers: {
-            "apikey": import.meta.env.VITE_SUPABASE_ANON_KEY ?? "",
+            "apikey": SUPABASE_ANON_KEY ?? "",
             "Authorization": `Bearer ${jwt}`,
           },
         }
@@ -136,7 +129,7 @@ export default function AdminWhatsAppSettingsPage() {
             method: "PATCH",
             headers: {
               "Content-Type": "application/json",
-              "apikey": import.meta.env.VITE_SUPABASE_ANON_KEY ?? "",
+              "apikey": SUPABASE_ANON_KEY ?? "",
               "Authorization": `Bearer ${jwt}`,
               "Prefer": "return=representation",
             },
@@ -149,7 +142,7 @@ export default function AdminWhatsAppSettingsPage() {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "apikey": import.meta.env.VITE_SUPABASE_ANON_KEY ?? "",
+            "apikey": SUPABASE_ANON_KEY ?? "",
             "Authorization": `Bearer ${jwt}`,
             "Prefer": "return=representation",
           },
@@ -218,7 +211,7 @@ export default function AdminWhatsAppSettingsPage() {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
-        "apikey": import.meta.env.VITE_SUPABASE_ANON_KEY ?? "",
+        "apikey": SUPABASE_ANON_KEY ?? "",
         "Authorization": `Bearer ${jwt}`,
       },
       body: JSON.stringify({ status: "disconnected", updated_at: new Date().toISOString() }),

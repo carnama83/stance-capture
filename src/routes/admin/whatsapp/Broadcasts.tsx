@@ -18,15 +18,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_PROJECT_REF, getJwt } from "@
   XCircle, Pause, AlertTriangle, BarChart3, MessageSquareDot,
 } from "lucide-react";
 
-const SUPABASE_URL = (SUPABASE_URL ?? "").replace(/\/+$/, "");
-const PROJECT_REF = SUPABASE_URL.replace("https://", "").split(".")[0];
 
-function getJwt(): string {
-  try {
-    const raw = localStorage.getItem(`sb-${PROJECT_REF}-auth-token`);
-    return raw ? JSON.parse(raw)?.access_token ?? "" : "";
-  } catch { return ""; }
-}
 
 type BroadcastStatus = "draft" | "scheduled" | "sending" | "completed" | "partially_failed" | "cancelled";
 
