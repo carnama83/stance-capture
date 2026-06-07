@@ -27,6 +27,7 @@ import PageLayout from "../components/PageLayout";
 import { Download, BookOpen, Loader2 } from "lucide-react";
 import { buildStanceLabels } from "@/lib/stanceColors";
 import { useToast } from "@/components/ui/use-toast";
+import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_PROJECT_REF, getJwt } from "@/lib/env";
 
 type Session = import("@supabase/supabase-js").Session;
 
@@ -142,8 +143,8 @@ async function runExport(
     const { data: { session } } = await sb.auth.getSession();
     if (!session) throw new Error("Not authenticated");
 
-    const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL as string).replace(/\/+$/, "");
-    const anonKey     = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+    const supabaseUrl = (SUPABASE_URL).replace(/\/+$/, "");
+    const anonKey     = SUPABASE_ANON_KEY;
 
     const res = await fetch(`${supabaseUrl}/functions/v1/generate-export`, {
       method: "POST",

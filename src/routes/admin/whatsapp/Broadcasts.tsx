@@ -13,12 +13,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
 import {
+import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_PROJECT_REF, getJwt } from "@/lib/env";
   Plus, RefreshCw, Loader2, Send, Clock, CheckCircle2,
   XCircle, Pause, AlertTriangle, BarChart3, MessageSquareDot,
 } from "lucide-react";
 
-const PROJECT_REF = "yzxzpnomcarnxixhjlba";
-const SUPABASE_URL = `https://${PROJECT_REF}.supabase.co`;
+const SUPABASE_URL = (SUPABASE_URL ?? "").replace(/\/+$/, "");
+const PROJECT_REF = SUPABASE_URL.replace("https://", "").split(".")[0];
 
 function getJwt(): string {
   try {
@@ -103,7 +104,7 @@ function NewBroadcastModal({ onClose, onCreated }: NewBroadcastModalProps) {
   React.useEffect(() => {
     const jwt = getJwt();
     const headers = {
-      "apikey": import.meta.env.VITE_SUPABASE_ANON_KEY ?? "",
+      "apikey": SUPABASE_ANON_KEY ?? "",
       "Authorization": `Bearer ${jwt}`,
     };
     // Load live questions
@@ -166,7 +167,7 @@ function NewBroadcastModal({ onClose, onCreated }: NewBroadcastModalProps) {
       const jwt = getJwt();
       const headers = {
         "Content-Type": "application/json",
-        "apikey": import.meta.env.VITE_SUPABASE_ANON_KEY ?? "",
+        "apikey": SUPABASE_ANON_KEY ?? "",
         "Authorization": `Bearer ${jwt}`,
         "Prefer": "return=representation",
       };
@@ -372,7 +373,7 @@ export default function AdminWhatsAppBroadcastsPage() {
         `${SUPABASE_URL}/rest/v1/whatsapp_broadcasts?select=*&order=created_at.desc&limit=50`,
         {
           headers: {
-            "apikey": import.meta.env.VITE_SUPABASE_ANON_KEY ?? "",
+            "apikey": SUPABASE_ANON_KEY ?? "",
             "Authorization": `Bearer ${jwt}`,
           },
         }
@@ -394,7 +395,7 @@ export default function AdminWhatsAppBroadcastsPage() {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
-        "apikey": import.meta.env.VITE_SUPABASE_ANON_KEY ?? "",
+        "apikey": SUPABASE_ANON_KEY ?? "",
         "Authorization": `Bearer ${jwt}`,
       },
       body: JSON.stringify({ status: "scheduled", scheduled_at: new Date(Date.now() + 3_600_000).toISOString() }),
@@ -410,7 +411,7 @@ export default function AdminWhatsAppBroadcastsPage() {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
-        "apikey": import.meta.env.VITE_SUPABASE_ANON_KEY ?? "",
+        "apikey": SUPABASE_ANON_KEY ?? "",
         "Authorization": `Bearer ${jwt}`,
       },
       body: JSON.stringify({ status: "cancelled" }),

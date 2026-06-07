@@ -48,6 +48,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
 import {
+import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_PROJECT_REF, getJwt } from "@/lib/env";
   RefreshCw, Loader2, Plus, Upload, Users,
   FileText, ChevronDown, ChevronRight, AlertTriangle,
   CheckCircle2, XCircle, Clock, Info, Play,
@@ -141,14 +142,14 @@ function PipelineStep({ label, status }: { label: string; status: string }) {
 
 // rpcFetch helper
 function getRpcFetchHeaders() {
-  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
-  const projectRef = import.meta.env.VITE_SUPABASE_URL?.replace("https://","")?.split(".")[0] ?? "";
+  const anonKey = SUPABASE_ANON_KEY;
+  const projectRef = SUPABASE_URL?.replace("https://","")?.split(".")[0] ?? "";
   let jwt = anonKey;
   try {
     const raw = localStorage.getItem(`sb-${projectRef}-auth-token`);
     if (raw) { const p = JSON.parse(raw); if (p?.access_token) jwt = p.access_token; }
   } catch {}
-  return { anonKey, jwt, baseUrl: import.meta.env.VITE_SUPABASE_URL as string };
+  return { anonKey, jwt, baseUrl: SUPABASE_URL };
 }
 
 // ─── CSV Import Dialog ────────────────────────────────────────────────────────
@@ -185,8 +186,8 @@ function CsvImportDialog({
       });
 
       const batchId = `csv_${Date.now()}`;
-      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+      const anonKey = SUPABASE_ANON_KEY;
+      const supabaseUrl = SUPABASE_URL;
       const projectRef = supabaseUrl.replace("https://", "").split(".")[0];
       let jwt = anonKey;
       try { const r = localStorage.getItem(`sb-${projectRef}-auth-token`); if (r) { const p = JSON.parse(r); if (p?.access_token) jwt = p.access_token; } } catch {}
@@ -704,8 +705,8 @@ export default function AdminCandidatesPage() {
 
   // Shared rpcFetch helper
   const getHeaders = React.useCallback(() => {
-    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+    const anonKey = SUPABASE_ANON_KEY;
+    const supabaseUrl = SUPABASE_URL;
     const projectRef = supabaseUrl.replace("https://", "").split(".")[0];
     let jwt = anonKey;
     try { const r = localStorage.getItem(`sb-${projectRef}-auth-token`); if (r) { const p = JSON.parse(r); if (p?.access_token) jwt = p.access_token; } } catch {}

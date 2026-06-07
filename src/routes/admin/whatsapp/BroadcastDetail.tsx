@@ -14,12 +14,13 @@ import {
   Users, Send, BarChart3, TrendingUp,
 } from "lucide-react";
 import {
+import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_PROJECT_REF, getJwt } from "@/lib/env";
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell,
 } from "recharts";
 
-const PROJECT_REF = "yzxzpnomcarnxixhjlba";
-const SUPABASE_URL = `https://${PROJECT_REF}.supabase.co`;
+const SUPABASE_URL = (SUPABASE_URL ?? "").replace(/\/+$/, "");
+const PROJECT_REF = SUPABASE_URL.replace("https://", "").split(".")[0];
 
 function getJwt(): string {
   try {
@@ -78,7 +79,7 @@ export default function AdminWhatsAppBroadcastDetailPage() {
     setLoading(true);
     const jwt = getJwt();
     const headers = {
-      "apikey": import.meta.env.VITE_SUPABASE_ANON_KEY ?? "",
+      "apikey": SUPABASE_ANON_KEY ?? "",
       "Authorization": `Bearer ${jwt}`,
     };
 

@@ -8,11 +8,12 @@ import * as React from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/components/ui/use-toast";
 import {
+import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_PROJECT_REF, getJwt } from "@/lib/env";
   Plus, Trash2, RefreshCw, Loader2, Users, Upload, CheckCircle2,
 } from "lucide-react";
 
-const PROJECT_REF = "yzxzpnomcarnxixhjlba";
-const SUPABASE_URL = `https://${PROJECT_REF}.supabase.co`;
+const SUPABASE_URL = (SUPABASE_URL ?? "").replace(/\/+$/, "");
+const PROJECT_REF = SUPABASE_URL.replace("https://", "").split(".")[0];
 
 function getJwt(): string {
   try {
@@ -79,7 +80,7 @@ function UploadModal({ onClose, onUploaded }: UploadModalProps) {
       const jwt = getJwt();
       const headers = {
         "Content-Type": "application/json",
-        "apikey": import.meta.env.VITE_SUPABASE_ANON_KEY ?? "",
+        "apikey": SUPABASE_ANON_KEY ?? "",
         "Authorization": `Bearer ${jwt}`,
         "Prefer": "return=representation",
       };
@@ -187,7 +188,7 @@ export default function AdminWhatsAppContactsPage() {
         `${SUPABASE_URL}/rest/v1/whatsapp_contact_lists?select=*&order=created_at.desc`,
         {
           headers: {
-            "apikey": import.meta.env.VITE_SUPABASE_ANON_KEY ?? "",
+            "apikey": SUPABASE_ANON_KEY ?? "",
             "Authorization": `Bearer ${jwt}`,
           },
         }
@@ -210,14 +211,14 @@ export default function AdminWhatsAppContactsPage() {
     await fetch(`${SUPABASE_URL}/rest/v1/whatsapp_contact_list_numbers?contact_list_id=eq.${id}`, {
       method: "DELETE",
       headers: {
-        "apikey": import.meta.env.VITE_SUPABASE_ANON_KEY ?? "",
+        "apikey": SUPABASE_ANON_KEY ?? "",
         "Authorization": `Bearer ${jwt}`,
       },
     });
     await fetch(`${SUPABASE_URL}/rest/v1/whatsapp_contact_lists?id=eq.${id}`, {
       method: "DELETE",
       headers: {
-        "apikey": import.meta.env.VITE_SUPABASE_ANON_KEY ?? "",
+        "apikey": SUPABASE_ANON_KEY ?? "",
         "Authorization": `Bearer ${jwt}`,
       },
     });

@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ChevronDown, Plus, Search, Compass, X } from "lucide-react";
 import { NotificationsBell } from "@/components/notifications/NotificationsBell";
+import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_PROJECT_REF, getJwt } from "@/lib/env";
 
 type Profile = {
   random_id: string;
@@ -35,7 +36,7 @@ function useSupabaseSession() {
     // Synchronous fast-path: read session from localStorage before first render
     // so the top bar never flashes the logged-out state for authenticated users.
     try {
-      const url = import.meta.env.VITE_SUPABASE_URL as string;
+      const url = SUPABASE_URL;
       const ref = url?.replace('https://', '').split('.')[0];
       if (!ref) return null;
       const raw = localStorage.getItem(`sb-${ref}-auth-token`);

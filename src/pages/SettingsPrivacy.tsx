@@ -14,6 +14,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Shield, Eye, MessageSquare, User, Share2, MessageCircleOff } from "lucide-react";
+import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_PROJECT_REF, getJwt } from "@/lib/env";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -95,7 +96,7 @@ function useSaveWhatsAppOptOut() {
         // Call webhook function to process opt-out
         // We simulate a STOP message by calling the opt-out endpoint directly
         await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-manage-optout`,
+          `${SUPABASE_URL}/functions/v1/whatsapp-manage-optout`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -104,7 +105,7 @@ function useSaveWhatsAppOptOut() {
         );
       } else {
         await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whatsapp-manage-optout`,
+          `${SUPABASE_URL}/functions/v1/whatsapp-manage-optout`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },

@@ -14,6 +14,7 @@ import { useParams, useSearchParams } from "react-router-dom";
 import { getSupabase } from "@/lib/supabaseClient";
 import { CommunityStanceBar } from "@/components/question/CommunityStanceBar";
 import { Loader2, CheckCircle2, ExternalLink } from "lucide-react";
+import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_PROJECT_REF, getJwt } from "@/lib/env";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -231,8 +232,8 @@ export default function EmbedPage() {
 
     try {
       const fp = await getDeviceFingerprint();
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
-      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+      const supabaseUrl = SUPABASE_URL;
+      const anonKey = SUPABASE_ANON_KEY;
 
       // Get session token if available
       let authHeader = `Bearer ${anonKey}`;

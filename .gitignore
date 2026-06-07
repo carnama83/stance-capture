@@ -23,10 +23,11 @@ dist-ssr
 *.sln
 *.sw?
 # Environment variables
-.env
-.env.*
+# .env is committed (blank template, no secrets)
+# .env.*.example files are committed (documentation)
+# Actual env files with secrets are gitignored:
 .env.local
+.env.development
+.env.uat
 .env.production
-
-# Supabase temp files
-supabase/.temp/
+.env.*.local
