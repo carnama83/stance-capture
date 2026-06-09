@@ -46,7 +46,6 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
 import {
-import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_PROJECT_REF, getJwt } from "@/lib/env";
   CheckCircle2,
   ChevronRight,
   ChevronLeft,
@@ -55,6 +54,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_PROJECT_REF, getJwt } from "@
   Vote,
   Info,
 } from "lucide-react";
+import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_PROJECT_REF, getJwt } from "@/lib/env";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 

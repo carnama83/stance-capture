@@ -49,6 +49,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { ExternalLink, Edit2, RefreshCw, Loader2, Cpu } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
+import { SUPABASE_URL, SUPABASE_ANON_KEY, getJwt } from "@/lib/env";
 
 type DraftStatus = "draft" | "approved" | "rejected";
 
@@ -714,10 +715,32 @@ export default function TopicDraftsPage() {
     }, 2000);
 
     try {
-      // Trigger the RPC, but NEVER block the UI timer.
-      // Timeout raised to 120s to match polling window and fix prior 60s timeout error.
-      const rpcPromise = supabase.rpc("run_cluster_http");
-      await withTimeout(rpcPromise as any, 120_000, "run_cluster_http");
+      // Try RPC first. Falls back to direct edge call if pg_net is not enabled.
+      let rpcFailed = false;
+      try {
+        const rpcPromise = supabase.rpc("run_cluster_http");
+        await withTimeout(rpcPromise as any, 30_000, "run_cluster_http");
+      } catch (rpcErr: any) {
+        console.warn("run_cluster_http RPC failed, trying direct edge call:", rpcErr?.message);
+        rpcFailed = true;
+      }
+
+      if (rpcFailed) {
+        const jwt = getJwt();
+        const edgeResp = await fetch(`${SUPABASE_URL}/functions/v1/cluster`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${jwt}`,
+            "apikey": SUPABASE_ANON_KEY,
+          },
+          body: JSON.stringify({}),
+        });
+        if (!edgeResp.ok) {
+          const errText = await edgeResp.text().catch(() => edgeResp.status.toString());
+          throw new Error(`Cluster edge function failed: ${errText}`);
+        }
+      }
     } catch (e: any) {
       console.error("run_cluster_http error/timeout:", e);
 

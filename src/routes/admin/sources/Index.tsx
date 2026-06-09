@@ -24,6 +24,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { getSupabase } from "@/lib/supabaseClient";
 import { ROUTES } from "@/routes/paths";
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/env";
 
 type SourceKind = "rss" | "api" | "social";
 
@@ -212,28 +213,11 @@ function getAccessTokenFromLocalStorage(): string | null {
   return null;
 }
 
-function getSupabaseUrlAndKey(sb: any): { url: string; anonKey: string } {
-  const env = (import.meta as any).env ?? {};
-  const url =
-    sb?.supabaseUrl ||
-    sb?.rest?.url?.replace(/\/rest\/v1\/?$/, "") ||
-    env.VITE_SUPABASE_URL ||
-    env.VITE_SUPABASE_PROJECT_URL;
-
-  const anonKey =
-    sb?.supabaseKey ||
-    sb?.anonKey ||
-    env.VITE_SUPABASE_ANON_KEY ||
-    env.VITE_SUPABASE_PUBLISHABLE_KEY ||
-    env.VITE_SUPABASE_KEY;
-
-  if (!url) throw new Error("Missing Supabase URL for raw save fallback");
-  if (!anonKey)
-    throw new Error(
-      "Missing Supabase anon/publishable key for raw save fallback",
-    );
-
-  return { url: String(url).replace(/\/$/, ""), anonKey: String(anonKey) };
+function getSupabaseUrlAndKey(_sb: any): { url: string; anonKey: string } {
+  // All env values now come from env.ts; no need to read import.meta.env here.
+  if (!SUPABASE_URL) throw new Error("Missing Supabase URL for raw save fallback");
+  if (!SUPABASE_ANON_KEY) throw new Error("Missing Supabase anon key for raw save fallback");
+  return { url: SUPABASE_URL, anonKey: SUPABASE_ANON_KEY };
 }
 
 async function getAccessTokenFast(
@@ -827,7 +811,7 @@ export default function AdminSourcesIndex() {
             supabase.functions.invoke("ingest", {
               body: { source_id: source.id },
             }),
-            15000,
+            55000,
             `bulk ingest edge ${source.name}`,
           );
 
@@ -843,7 +827,7 @@ export default function AdminSourcesIndex() {
 
         const { error: rpcError } = await withTimeout(
           supabase.rpc("admin_ingest_source", { p_source_id: source.id }),
-          15000,
+          55000,
           `bulk ingest rpc ${source.name}`,
         );
 

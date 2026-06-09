@@ -37,6 +37,7 @@ import {
   RefreshCw, Loader2, CheckCircle2, XCircle, Pencil, AlertTriangle,
   Info, BarChart3, ListFilter, Vote, ChevronDown, ChevronRight,
 } from "lucide-react";
+import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_PROJECT_REF, getJwt } from "@/lib/env";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -95,14 +96,14 @@ function checkAdvocacy(text: string): string | null {
 }
 
 function getRpcFetchHeaders() {
-  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
-  const projectRef = import.meta.env.VITE_SUPABASE_URL?.replace("https://", "")?.split(".")[0] ?? "";
+  const anonKey = SUPABASE_ANON_KEY;
+  const projectRef = SUPABASE_URL?.replace("https://", "")?.split(".")[0] ?? "";
   let jwt = anonKey;
   try {
     const raw = localStorage.getItem(`sb-${projectRef}-auth-token`);
     if (raw) { const p = JSON.parse(raw); if (p?.access_token) jwt = p.access_token; }
   } catch {}
-  return { anonKey, jwt, baseUrl: import.meta.env.VITE_SUPABASE_URL as string };
+  return { anonKey, jwt, baseUrl: SUPABASE_URL };
 }
 
 function ConfidenceBadge({ score }: { score: number | null }) {

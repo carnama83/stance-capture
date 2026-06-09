@@ -24,6 +24,7 @@ import {
   AlertTriangle,
   Vote,
 } from "lucide-react";
+import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_PROJECT_REF, getJwt } from "@/lib/env";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -117,8 +118,8 @@ function ElectionCard({ row, onDeleted }: { row: ElectionRow; onDeleted: () => v
   const handleDelete = async () => {
     setDeleting(true);
     try {
-      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+      const anonKey = SUPABASE_ANON_KEY;
+      const supabaseUrl = SUPABASE_URL;
       const projectRef = supabaseUrl.replace("https://", "").split(".")[0];
       let jwt = anonKey;
       try { const r = localStorage.getItem(`sb-${projectRef}-auth-token`); if (r) { const p = JSON.parse(r); if (p?.access_token) jwt = p.access_token; } } catch {}
@@ -272,8 +273,8 @@ export default function AdminElectionsPage() {
   const fetchElections = React.useCallback(async () => {
     setLoading(true);
     try {
-      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+      const anonKey = SUPABASE_ANON_KEY;
+      const supabaseUrl = SUPABASE_URL;
       const projectRef = supabaseUrl.replace("https://", "").split(".")[0];
       let jwt = anonKey;
       try {
