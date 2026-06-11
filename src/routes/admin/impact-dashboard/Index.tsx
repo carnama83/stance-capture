@@ -2,6 +2,7 @@
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getSupabase } from "@/lib/supabaseClient";
+import { getJwt, supabaseHeaders, SUPABASE_URL } from "@/lib/env";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -143,39 +144,48 @@ function timeAgoHygiene(iso: string): string {
 }
 
 function FeedHygienePanel() {
-  const sb = React.useMemo(getSupabase, []);
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   const [lastResult, setLastResult] = React.useState<HygieneResult | null>(null);
   const [running, setRunning] = React.useState(false);
 
-  // Load auto-suppressed/archived questions from v_hygiene_suppressed view
+  // Load auto-suppressed/archived questions from v_hygiene_suppressed view.
+  // Raw fetch used — SDK getSession() mutex hangs after navigation.
   const { data: hygieneRows, isLoading } = useQuery<HygieneRow[]>({
     queryKey: ["admin-hygiene-rows"],
     staleTime: 2 * 60_000,
     queryFn: async () => {
-      if (!sb) return [];
-      const { data, error } = await sb
-        .from("v_hygiene_suppressed")
-        .select("*")
-        .limit(50);
-      if (error) return [];
+      const jwt = getJwt();
+      const res = await fetch(
+        `${SUPABASE_URL}/rest/v1/v_hygiene_suppressed?select=*&limit=50`,
+        { headers: supabaseHeaders(jwt) }
+      );
+      if (!res.ok) return [];
+      const data = await res.json();
       return (data ?? []) as HygieneRow[];
     },
   });
 
   async function runHygiene(dryRun: boolean) {
-    if (!sb) return;
     setRunning(true);
     try {
-      const { data, error } = await sb.rpc("apply_feed_hygiene", { p_dry_run: dryRun });
-      if (error) throw error;
-      setLastResult(data as HygieneResult);
+      const jwt = getJwt();
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/apply_feed_hygiene`, {
+        method: "POST",
+        headers: supabaseHeaders(jwt),
+        body: JSON.stringify({ p_dry_run: dryRun }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.message ?? body?.error ?? `HTTP ${res.status}`);
+      }
+      const data = await res.json() as HygieneResult;
+      setLastResult(data);
       if (!dryRun) {
         queryClient.invalidateQueries({ queryKey: ["admin-hygiene-rows"] });
         queryClient.invalidateQueries({ queryKey: ["admin-impact-rows"] });
-        toast({ title: `Hygiene run complete — ${(data as HygieneResult).suppressed} suppressed, ${(data as HygieneResult).archived} archived, ${(data as HygieneResult).boosted} boosted.` });
+        toast({ title: `Hygiene run complete — ${data.suppressed} suppressed, ${data.archived} archived, ${data.boosted} boosted.` });
       }
     } catch (e: any) {
       toast({ title: "Hygiene run failed", description: e.message, variant: "destructive" });
@@ -321,23 +331,22 @@ export default function AdminImpactDashboardPage() {
 const { data, isLoading, isError, error, refetch } = useQuery<QuestionImpactRow[]>({
   queryKey: ["impact-dashboard", "v_question_impact_admin"],
   queryFn: async () => {
-    const { data, error } = await supabase
-      .from("v_question_impact_admin")
-      .select("*")
-      .order("composite_score", { ascending: false, nullsFirst: false })  // ← ADD nullsFirst: false
-      .order("question_published_at", { ascending: false })  // ← ADD secondary sort
-      .limit(100);
-
-    if (error) {
-      console.error("Error loading v_question_impact_admin:", error);
-      throw error;
+    // Raw fetch — SDK getSession() mutex hangs after navigation (known arch pattern).
+    const jwt = getJwt();
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/v_question_impact_admin?select=*&order=composite_score.desc.nullslast,question_published_at.desc&limit=100`,
+      { headers: supabaseHeaders(jwt) }
+    );
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body?.message ?? body?.error ?? `HTTP ${res.status}`);
     }
-    return (data ?? []) as QuestionImpactRow[];
+    return (await res.json()) as QuestionImpactRow[];
   },
   staleTime: 0,
   gcTime: 0,
-  refetchOnMount: true,  // ← ADD THIS
-  refetchOnWindowFocus: false,  // ← ADD THIS (prevent unnecessary refetches)
+  refetchOnMount: true,
+  refetchOnWindowFocus: false,
 });
 
   // -----------------------------
@@ -349,27 +358,50 @@ const { data, isLoading, isError, error, refetch } = useQuery<QuestionImpactRow[
       visibility: QuestionVisibilityEnum;
     }) => {
       const { question_id, visibility } = params;
-      const { data, error } = await supabase.rpc("set_question_visibility", {
-        p_question_id: question_id,
-        p_visibility: visibility,
-        p_reason: `Set via Impact Dashboard (${visibility})`,
+      // Raw fetch bypasses the Supabase SDK getSession() mutex which hangs
+      // after navigation events. This is the standard pattern for all mutations.
+      const jwt = getJwt();
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/set_question_visibility`, {
+        method: "POST",
+        headers: supabaseHeaders(jwt),
+        body: JSON.stringify({
+          p_question_id: question_id,
+          p_visibility: visibility,
+          p_reason: `Set via Impact Dashboard (${visibility})`,
+        }),
       });
-
-      if (error) {
-        console.error("set_question_visibility error:", error);
-        throw error;
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        const msg = body?.message ?? body?.error ?? `HTTP ${res.status}`;
+        console.error("set_question_visibility error:", msg);
+        throw new Error(msg);
       }
-      return data;
+      return res.json();
+    },
+    onMutate: ({ question_id, visibility }) => {
+      // Optimistic update: patch the cache immediately so the dropdown
+      // reflects the new value without waiting for the refetch round-trip.
+      queryClient.setQueryData<QuestionImpactRow[]>(
+        ["impact-dashboard", "v_question_impact_admin"],
+        (old) =>
+          old?.map((row) =>
+            row.question_id === question_id
+              ? { ...row, visibility, visibility_reason: `Set via Impact Dashboard (${visibility})` }
+              : row
+          ) ?? []
+      );
     },
     onSuccess: () => {
       toast({
         title: "Visibility updated",
         description: "Question visibility has been updated.",
       });
-      // FIX 2: Force refetch instead of just invalidating
-      refetch();
+      // Refetch after a short delay to let the DB view refresh.
+      setTimeout(() => refetch(), 300);
     },
-    onError: (err: any) => {
+    onError: (err: any, _vars, _ctx) => {
+      // Roll back the optimistic update on error.
+      refetch();
       toast({
         title: "Error updating visibility",
         description: err?.message ?? "Unknown error",
@@ -381,11 +413,20 @@ const { data, isLoading, isError, error, refetch } = useQuery<QuestionImpactRow[
   // P: Toggle is_featured
   const setFeaturedMutation = useMutation({
     mutationFn: async ({ question_id, featured }: { question_id: string; featured: boolean }) => {
-      const { error } = await supabase
-        .from("questions")
-        .update({ is_featured: featured })
-        .eq("id", question_id);
-      if (error) throw error;
+      // Raw fetch — same mutex-bypass pattern as setVisibilityMutation.
+      const jwt = getJwt();
+      const res = await fetch(
+        `${SUPABASE_URL}/rest/v1/questions?id=eq.${question_id}`,
+        {
+          method: "PATCH",
+          headers: supabaseHeaders(jwt, { "Prefer": "return=minimal" }),
+          body: JSON.stringify({ is_featured: featured }),
+        }
+      );
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.message ?? body?.error ?? `HTTP ${res.status}`);
+      }
     },
     onSuccess: () => {
       toast({ title: "Featured status updated" });
@@ -480,9 +521,14 @@ const { data, isLoading, isError, error, refetch } = useQuery<QuestionImpactRow[
           + `. Applying visibility rules...`,
       });
 
-      // Step 2: Apply visibility rules
-      const { data: visibilityResult } = await supabase.rpc('update_visibility_rules');
-      const visibilityCount = visibilityResult?.length || 0;
+      // Step 2: Apply visibility rules (raw fetch — SDK mutex bypass)
+      const _vRes = await fetch(`${SUPABASE_URL}/rest/v1/rpc/update_visibility_rules`, {
+        method: 'POST',
+        headers: supabaseHeaders(getJwt()),
+        body: JSON.stringify({}),
+      });
+      const visibilityResult = _vRes.ok ? await _vRes.json().catch(() => []) : [];
+      const visibilityCount = Array.isArray(visibilityResult) ? visibilityResult.length : 0;
 
       const remaining = allRows.length - SCORE_BATCH_SIZE;
       toast({
@@ -578,12 +624,20 @@ const handleRescoreSingle = async (questionId: string | null) => {
   // =============================
   const applyVisibilityRulesMutation = useMutation({
     mutationFn: async () => {
-      const { data, error } = await supabase.rpc("update_visibility_rules");
-      if (error) {
-        console.error("update_visibility_rules error:", error);
-        throw error;
+      // Raw fetch — SDK mutex bypass pattern.
+      const jwt = getJwt();
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/update_visibility_rules`, {
+        method: "POST",
+        headers: supabaseHeaders(jwt),
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        const msg = body?.message ?? body?.error ?? `HTTP ${res.status}`;
+        console.error("update_visibility_rules error:", msg);
+        throw new Error(msg);
       }
-      return data;
+      return res.json();
     },
     onSuccess: (result) => {
       const count = result?.length || 0;
