@@ -20,6 +20,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getSupabase } from "../lib/supabaseClient";
 import { QuestionStanceSlider } from "@/components/question/QuestionStanceSlider";
 import { QuestionPhaseBadge } from "@/components/question/QuestionPhaseBadge";
+import { ManifestoProvenance } from "@/components/question/ManifestoProvenance";
 import { useToast } from "@/components/ui/use-toast";
 
 import { FollowTopicButton } from "@/components/FollowTopicButton";
@@ -55,6 +56,8 @@ type LiveQuestion = {
   context_version?: number | null;
   slider_low_label?: string | null;
   slider_high_label?: string | null;
+  source?: string | null;
+  source_meta?: unknown;
 };
 
 type TopicLite = {
@@ -150,7 +153,7 @@ async function fetchQuestionById(id: string): Promise<LiveQuestion | null> {
   const { data, error } = await sb
     .from("questions")
     .select(
-      "id, topic_id, question, summary, tags, location_label, published_at, status, phase, cover_image_url, state, archive_reason, archived_at, context_version, slider_low_label, slider_high_label"
+      "id, topic_id, question, summary, tags, location_label, published_at, status, phase, cover_image_url, state, archive_reason, archived_at, context_version, slider_low_label, slider_high_label, source, source_meta"
     )
     .eq("id", id)
     .limit(1);
@@ -1321,6 +1324,9 @@ export default function QuestionDetailPage() {
               {question.question}
             </h1>
 
+            {/* Epic MP: verbatim manifesto quote + provenance for manifesto-promise questions */}
+            <ManifestoProvenance sourceMeta={question.source_meta} />
+
             {/* Phase badge */}
             {question.phase && question.phase !== "initial" && (
               <div><QuestionPhaseBadge phase={question.phase} size="md" /></div>
@@ -1332,7 +1338,7 @@ export default function QuestionDetailPage() {
               <QuestionContextUpdates questionId={question.id} />
             )}
 
-            {question.summary && (
+            {question.summary && question.source !== "manifesto_promise" && (
               <p className="max-w-[44rem] font-normal text-base md:text-lg text-slate-600 leading-relaxed md:leading-[1.6] text-left">
                 {question.summary}
               </p>
@@ -1446,6 +1452,8 @@ export default function QuestionDetailPage() {
                 avgScore={communityStats?.avgScore ?? null}
                 isLoading={communityStatsLoading}
                 isEmpty={!communityStatsLoading && !communityStats}
+                lowLabel={question.slider_low_label ?? null}
+                highLabel={question.slider_high_label ?? null}
               />
 
               {isAuthed && stats?.regions && (

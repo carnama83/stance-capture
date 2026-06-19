@@ -31,6 +31,11 @@ import SettingsSessions from "./pages/SettingsSessions";
 import AdminIdentifiers from "./pages/AdminIdentifiers";
 import NotFound from "./pages/NotFound";
 
+// Public legal/about pages + site footer
+import About from "./pages/About";
+import PrivacyPolicy from "./pages/PrivacyPolicy";
+import Footer from "./components/Footer";
+
 // Question detail page (user-facing)
 import QuestionDetailPage from "./pages/QuestionDetailPage";
 
@@ -69,6 +74,7 @@ import AdminElectionsPage from '@/routes/admin/elections/Index';
 import AdminElectionNewPage from '@/routes/admin/elections/New';
 import AdminPartiesPage from '@/routes/admin/parties/Index';
 import AdminCandidatesPage from '@/routes/admin/candidates/Index';
+import AdminManifestoPromisesPage from '@/routes/admin/manifesto-promises/Index';
 import AdminElectionReviewPage from '@/routes/admin/election-review/Index';
 import ConstituencySetupPage from '@/pages/settings/ConstituencySetup';
 import AdminModerationPage from '@/routes/admin/moderation/index';
@@ -175,6 +181,8 @@ const App: React.FC = () => {
               <Route path="/for-you" element={<Protected><ForYouFeedPage /></Protected>} />
               <Route path="/pulse" element={<UserKeyedPulsePage />} />
               <Route path="/insights" element={<InsightsPage />} />
+              <Route path="/about" element={<About />} />
+              <Route path="/privacy" element={<PrivacyPolicy />} />
               
               <Route
                 path={ROUTES.SIGNUP}
@@ -322,6 +330,7 @@ const App: React.FC = () => {
                 <Route path="parties" element={<AdminPartiesPage />} />
                 <Route path="candidates" element={<AdminCandidatesPage />} />
                 <Route path="election-review" element={<AdminElectionReviewPage />} />
+                <Route path="manifesto-promises" element={<AdminManifestoPromisesPage />} />
                 {/* Epic AA — WhatsApp */}
                 <Route path="whatsapp" element={<AdminWhatsAppSettingsPage />} />
                 <Route path="whatsapp/broadcasts" element={<AdminWhatsAppBroadcastsPage />} />
@@ -358,6 +367,7 @@ const App: React.FC = () => {
               {/* 404 */}
               <Route path="*" element={<NotFound />} />
             </Routes>
+            <Footer />
           </AuthReadyGate>
         </Router>
       </TooltipProvider>

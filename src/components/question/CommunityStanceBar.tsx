@@ -17,6 +17,7 @@
 
 import * as React from "react";
 import { RefreshCw } from "lucide-react";
+import { resolvePoleLabels, distinctPoleLabels } from "@/lib/poleLabels";
 
 // ── Props ──────────────────────────────────────────────────────────────────────
 
@@ -41,6 +42,14 @@ export interface CommunityStanceBarProps {
   onRefresh?: () => void;
   /** Compact mode — tighter spacing, smaller text. Used in hero. */
   compact?: boolean;
+  /**
+   * Negative-pole label for this question (slider_low_label). When provided
+   * (with highLabel), the legend reads in the question's own terms instead of
+   * "Oppose". Omit for pre-QF questions to keep the generic frame.
+   */
+  lowLabel?: string | null;
+  /** Positive-pole label for this question (slider_high_label). See lowLabel. */
+  highLabel?: string | null;
 }
 
 // ── S3: Conviction vs noise indicator ────────────────────────────────────────
@@ -110,7 +119,16 @@ export function CommunityStanceBar({
   isEmpty = false,
   onRefresh,
   compact = false,
+  lowLabel,
+  highLabel,
 }: CommunityStanceBarProps) {
+
+  // Pole-aware labels: use the question's own poles when present, otherwise the
+  // generic oppose/support frame. Pure relabel — numbers/percentages unchanged.
+  // Negative pole (opposePct / red) → low label; positive pole (supportPct /
+  // green) → high label.
+  const { negFull, posFull } = resolvePoleLabels(lowLabel, highLabel);
+  const { negShort, posShort } = distinctPoleLabels(negFull, posFull);
 
   // ── Loading state ──
   if (isLoading) {
@@ -135,17 +153,17 @@ export function CommunityStanceBar({
           aria-label="No stances recorded yet"
         />
         <div className={`flex items-center justify-between ${compact ? "text-[11px]" : "text-xs"} text-slate-400`}>
-          <span>
+          <span title={negFull}>
             <span className="inline-block h-2 w-2 rounded-full bg-slate-200 mr-1 align-middle" />
-            Oppose 0%
+            {negShort} 0%
           </span>
           <span>
             <span className="inline-block h-2 w-2 rounded-full bg-slate-200 mr-1 align-middle" />
             Neutral 0%
           </span>
-          <span>
+          <span title={posFull}>
             <span className="inline-block h-2 w-2 rounded-full bg-slate-200 mr-1 align-middle" />
-            Support 0%
+            {posShort} 0%
           </span>
         </div>
         <p className={`${compact ? "text-[11px]" : "text-xs"} text-slate-400`}>
@@ -181,7 +199,7 @@ export function CommunityStanceBar({
         className="flex w-full overflow-hidden rounded-full"
         style={{ height: compact ? 8 : 10 }}
         role="img"
-        aria-label={`Community stance: ${formatPct(opposePct)} oppose, ${formatPct(neutralPct)} neutral, ${formatPct(supportPct)} support`}
+        aria-label={`Community stance: ${formatPct(opposePct)} ${negFull}, ${formatPct(neutralPct)} neutral, ${formatPct(supportPct)} ${posFull}`}
       >
         {oW > 0 && (
           <div
@@ -213,17 +231,17 @@ export function CommunityStanceBar({
           compact ? "text-[11px]" : "text-xs"
         } text-slate-600`}
       >
-        <span>
+        <span title={negFull}>
           <span className="inline-block h-2 w-2 rounded-full bg-red-400 mr-1 align-middle" />
-          Oppose {formatPct(opposePct)}
+          {negShort} {formatPct(opposePct)}
         </span>
         <span>
           <span className="inline-block h-2 w-2 rounded-full bg-slate-300 mr-1 align-middle" />
           Neutral {formatPct(neutralPct)}
         </span>
-        <span>
+        <span title={posFull}>
           <span className="inline-block h-2 w-2 rounded-full bg-emerald-400 mr-1 align-middle" />
-          Support {formatPct(supportPct)}
+          {posShort} {formatPct(supportPct)}
         </span>
       </div>
 

@@ -291,7 +291,8 @@ export default function TopicDraftsPage() {
         const { data: qds, error: qErr } = await supabase
           .from("question_drafts")
           .select("topic_draft_id")
-          .in("topic_draft_id", ids);
+          .in("topic_draft_id", ids)
+	  .neq("status", "rejected");   // rejected drafts no longer block re-creation;
 
         if (qErr) {
           console.warn("Failed to load question_drafts mapping:", qErr);

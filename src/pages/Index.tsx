@@ -205,6 +205,7 @@ type AlignmentSnapshotRow = {
   user_id?: string;
   region: string;
   alignment_pct: number;
+  comparable_count: number;
   minority_count: number;
   most_divergent_question_id: string | null;
   most_divergent_question_text: string | null;
@@ -1531,11 +1532,15 @@ function CompactAnsweredStrip({
   stanceValue,
   globalRegion,
   onExpand,
+  lowLabel,
+  highLabel,
 }: {
   questionText: string;
   stanceValue: number | null | undefined;
   globalRegion: RegionalStat | null;
   onExpand: () => void;
+  lowLabel?: string | null;
+  highLabel?: string | null;
 }) {
   return (
     <button
@@ -1567,6 +1572,8 @@ function CompactAnsweredStrip({
           userStance={stanceValue ?? null}
           showCount={true}
           size="sm"
+          lowLabel={lowLabel ?? null}
+          highLabel={highLabel ?? null}
         />
       )}
     </button>
@@ -1698,6 +1705,8 @@ function FeaturedQuestionCard({
           questionText={q.question_text}
           stanceValue={q.user_stance_value}
           globalRegion={globalRegion}
+          lowLabel={q.slider_low_label ?? null}
+          highLabel={q.slider_high_label ?? null}
           onExpand={() => setCollapsed(false)}
         />
       </div>
@@ -1784,6 +1793,8 @@ function FeaturedQuestionCard({
                   userStance={q.user_stance_value ?? null}
                   showCount={true}
                   size="sm"
+                  lowLabel={q.slider_low_label ?? null}
+                  highLabel={q.slider_high_label ?? null}
                 />
               </div>
             )}
@@ -1926,6 +1937,8 @@ function GridQuestionCard({
           questionText={q.question_text}
           stanceValue={q.user_stance_value}
           globalRegion={globalRegion}
+          lowLabel={q.slider_low_label ?? null}
+          highLabel={q.slider_high_label ?? null}
           onExpand={() => setCollapsed(false)}
         />
       </div>
@@ -1992,6 +2005,8 @@ function GridQuestionCard({
                     userStance={q.user_stance_value ?? null}
                     showCount={true}
                     size="sm"
+                    lowLabel={q.slider_low_label ?? null}
+                    highLabel={q.slider_high_label ?? null}
                   />
                 </div>
               )}
@@ -2577,6 +2592,9 @@ export default function IndexPage() {
         avgScore: typeof t.avg_score === "number" ? t.avg_score : 0,
         answerCount: t.n ?? 0,
         scorePct: Math.round(((typeof t.avg_score === "number" ? t.avg_score : 0) / 2) * 100),
+        latestScore: t.latest_score == null ? null : Number(t.latest_score),
+        latestLowLabel: t.latest_low_label ?? null,
+        latestHighLabel: t.latest_high_label ?? null,
       }));
       return {
         totalAnswered: raw?.total_answered ?? 0,

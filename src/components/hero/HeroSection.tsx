@@ -33,6 +33,7 @@ import * as React from "react";
 import { Link } from "react-router-dom";
 import { QuestionStanceSlider } from "@/components/question/QuestionStanceSlider";
 import { CommunityStanceBar } from "@/components/question/CommunityStanceBar";
+import { clampPole } from "@/lib/poleLabels";
 import {
   useHeroController,
   deriveTeaserLabel,
@@ -57,6 +58,11 @@ export interface TopicStanceItem {
   avgScore: number;
   answerCount: number;
   scorePct: number; // -100..+100
+  // Latest answered question in this topic — lets the row name the user's most
+  // recent position in that question's own poles (a topic-level average can't).
+  latestScore?: number | null; // -2..+2
+  latestLowLabel?: string | null;
+  latestHighLabel?: string | null;
 }
 
 export interface MyStanceSnapshot {
@@ -122,6 +128,7 @@ export interface HeroSectionProps {
 // Minimal alignment snapshot shape (matches AlignmentSnapshotRow in Index.tsx)
 export interface AlignmentSnapshotShape {
   alignment_pct: number;
+  comparable_count?: number;
   minority_count: number;
   most_divergent_question_id: string | null;
   most_divergent_question_text: string | null;
@@ -537,7 +544,9 @@ function AlignmentRing({
       >
         {isEmpty ? "—" : `${Math.round(clamped)}%`}
       </text>
-      {/* Center: "Overall Alignment" sublabel */}
+      {/* Center: pole-neutral sublabel — describes being in step with the
+          crowd ("with the majority"), not agreement with a correct answer.
+          Consistent with the "minority" wording used elsewhere in the panel. */}
       <text
         x="50%"
         y="62%"
@@ -547,7 +556,7 @@ function AlignmentRing({
         fill="#94a3b8"
         fontWeight="500"
       >
-        Overall Alignment
+        with the majority
       </text>
     </svg>
   );
@@ -749,12 +758,46 @@ function StanceHistoryRow({
   index: number;
 }) {
   const color = TOPIC_PALETTE[index % TOPIC_PALETTE.length];
-  const barWidth = Math.max(4, Math.min(48, Math.abs(topic.scorePct) * 0.48));
-  const sign = topic.scorePct > 0 ? "+" : topic.scorePct < 0 ? "" : "";
-  const pctLabel = `${sign}${topic.scorePct}%`;
+
+  // Show the user's LATEST position in this topic, named in that question's own
+  // poles — the meaningful readout for trade-off questions. A topic-level score
+  // average blends questions with different poles and can't name a side, so we
+  // use the most recent answered question. Falls back to a neutral strength word
+  // only when that question has no poles (older, pre-QF rows).
+  const low = topic.latestLowLabel?.trim() || null;
+  const high = topic.latestHighLabel?.trim() || null;
+  const hasPoles = !!(low && high);
+  const score = typeof topic.latestScore === "number" ? topic.latestScore : null;
+  const dir = score == null ? 0 : score > 0 ? 1 : score < 0 ? -1 : 0;
+
+  let leanText: string;
+  let leanTitle: string;
+  let muted = false;
+
+  if (hasPoles && dir !== 0) {
+    const full = (dir > 0 ? high : low) as string;
+    leanText = clampPole(full, 3);
+    leanTitle =
+      `Your latest position — leans toward "${full}"` +
+      (topic.answerCount > 1 ? ` · ${topic.answerCount} answered` : "");
+  } else if (hasPoles && dir === 0) {
+    leanText = "Middle ground";
+    leanTitle = "Your latest position — right in the middle";
+    muted = true;
+  } else {
+    // No poles on the latest question — neutral strength descriptor only.
+    const mag = Math.min(100, Math.abs(topic.scorePct));
+    leanText =
+      mag >= 67 ? "Strong view"
+      : mag >= 34 ? "Clear view"
+      : mag >= 1 ? "Slight view"
+      : "No strong view";
+    leanTitle = "Your average position on this topic";
+    muted = true;
+  }
 
   return (
-    <div className="flex items-center gap-2 py-0.5">
+    <div className="flex items-center gap-2 py-0.5" title={leanTitle}>
       {/* Colored dot */}
       <span
         className="h-2 w-2 flex-shrink-0 rounded-full"
@@ -764,24 +807,12 @@ function StanceHistoryRow({
       <span className="flex-1 text-xs text-slate-700 font-medium truncate min-w-0">
         {topic.topicTitle}
       </span>
-      {/* Mini bar */}
-      <div className="flex-shrink-0" style={{ width: 48 }}>
-        <div
-          className="h-1 rounded-full"
-          style={{
-            width: barWidth,
-            backgroundColor: color,
-            opacity: 0.75,
-            marginLeft: "auto",
-          }}
-        />
-      </div>
-      {/* Signed percent */}
+      {/* Latest position, named in the question's poles (full text on hover) */}
       <span
-        className="text-xs font-semibold flex-shrink-0 w-10 text-right"
-        style={{ color }}
+        className="text-[11px] font-medium flex-shrink-0 max-w-[48%] truncate text-right"
+        style={{ color: muted ? "#94a3b8" : color }}
       >
-        {pctLabel}
+        {leanText}
       </span>
     </div>
   );
@@ -974,15 +1005,30 @@ function SectionBAuthed({
   const isEmpty = totalAnswered === 0;
   const isForming = totalAnswered > 0 && totalAnswered < 3;
   const alignmentPct = snap?.alignment_pct ?? 0;
+  // How many of the user's answers have a real crowd to compare against.
+  // When 0, "% with the majority" is not meaningful (the user is first/only
+  // respondent), so we show a forming state rather than a misleading 0%.
+  const comparableCount = snap?.comparable_count ?? 0;
+  const noCommunityData = totalAnswered > 0 && comparableCount === 0;
+  const ringEmpty = isEmpty || noCommunityData;
   const topics = myStanceSnapshot?.topics ?? [];
   const hasPulse = pulseChips.length > 0;
 
-  // Insight line: use backend label if available; softer copy for low data
+  // Insight line: pole-neutral, majority/minority framing derived from the same
+  // alignment_pct the ring shows, but only once there's a crowd to compare
+  // against. Avoids agree/disagree wording so it reads correctly for trade-off
+  // questions (no implied "right" side). Softer copy for low / no data.
   const insightLine = isEmpty
     ? "Answer a few questions to see where you stand"
+    : noCommunityData
+    ? "Not enough community data yet to compare"
     : isForming
     ? "Your profile is still forming"
-    : (myStanceSnapshot?.alignmentLabel ?? "");
+    : alignmentPct >= 65
+    ? "You're usually in step with the majority"
+    : alignmentPct >= 40
+    ? "Sometimes with the majority, sometimes not"
+    : "You often take the less common view";
 
   return (
     <div className="flex flex-col h-full p-4 gap-3 overflow-y-auto">
@@ -999,7 +1045,7 @@ function SectionBAuthed({
 
         {/* Large centered ring */}
         <div className="flex justify-center mb-2">
-          <AlignmentRing pct={alignmentPct} isEmpty={isEmpty} />
+          <AlignmentRing pct={alignmentPct} isEmpty={ringEmpty} />
         </div>
 
         {/* Insight line */}
@@ -1211,6 +1257,8 @@ function SectionAQuestion({
                 isEmpty={!distribution || (distribution.responses ?? 0) === 0}
                 onRefresh={onRefreshDistribution}
                 compact={true}
+                lowLabel={question.slider_low_label ?? null}
+                highLabel={question.slider_high_label ?? null}
               />
               {status === "hero_answered_result" && hasQueue && (
                 <button

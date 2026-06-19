@@ -41,6 +41,10 @@ export function getSupabase(): SupabaseClient | null {
       // OAuthCallbackPage calls setSession() manually after extracting the token.
       detectSessionInUrl: false,
       flowType: "implicit",
+      // Pass-through lock: avoids the @supabase/auth-js navigator.locks deadlock
+      // where a request hangs after the tab regains focus (visibility-triggered
+      // token refresh holding the Web Lock). Single-user app: no cross-tab lock needed.
+      lock: async (_name: string, _acquireTimeout: number, fn: () => Promise<any>) => fn(),
     },
   });
 

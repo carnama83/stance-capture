@@ -13,6 +13,7 @@
 //   - No external dependencies beyond React + Tailwind
 
 import * as React from "react";
+import { resolvePoleLabels, distinctPoleLabels } from "@/lib/poleLabels";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -35,6 +36,14 @@ export interface StanceDistributionBarProps {
   size?: "sm" | "md";
   /** Show response count */
   showCount?: boolean;
+  /**
+   * Negative-pole label (slider_low_label). When provided with highLabel, the
+   * bar and alignment line read in the question's own terms instead of
+   * oppose/support. Omit for pre-QF questions to keep the generic frame.
+   */
+  lowLabel?: string | null;
+  /** Positive-pole label (slider_high_label). See lowLabel. */
+  highLabel?: string | null;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -77,14 +86,25 @@ function getAlignedPct(
 
 function deriveAlignmentText(
   bucket: "support" | "neutral" | "oppose" | null,
-  alignedPct: number | null
+  alignedPct: number | null,
+  poles?: { negFull: string; posFull: string; hasPoles: boolean },
 ): string | null {
   if (!bucket || alignedPct == null) return null;
+  const pct = Math.round(alignedPct);
+  // Pole-relative phrasing when the question supplied real poles.
+  if (poles?.hasPoles && (bucket === "support" || bucket === "oppose")) {
+    const pole = bucket === "support" ? poles.posFull : poles.negFull;
+    return `You align with ${pct}% of respondents — those leaning toward "${pole}"`;
+  }
+  if (poles?.hasPoles && bucket === "neutral") {
+    return `You align with ${pct}% of respondents — those in the middle`;
+  }
+  // Generic fallback (no poles / pre-QF questions).
   const bucketLabel =
     bucket === "support" ? "supportive"
     : bucket === "oppose" ? "opposed"
     : "neutral";
-  return `You align with ${Math.round(alignedPct)}% of respondents — the ${bucketLabel} group`;
+  return `You align with ${pct}% of respondents — the ${bucketLabel} group`;
 }
 
 // ─── Segmented bar segment ────────────────────────────────────────────────────
@@ -146,8 +166,14 @@ export function StanceDistributionBar({
   alignmentText,
   size = "md",
   showCount = false,
+  lowLabel,
+  highLabel,
 }: StanceDistributionBarProps) {
   const { support_pct, neutral_pct, oppose_pct, responses } = distribution;
+
+  // Pole-aware labels (negative/red → low label, positive/green → high label).
+  const poles = resolvePoleLabels(lowLabel, highLabel);
+  const { negShort, posShort } = distinctPoleLabels(poles.negFull, poles.posFull);
 
   // Normalise: if all null/zero, show placeholder
   const total =
@@ -161,7 +187,7 @@ export function StanceDistributionBar({
   const resolvedAlignmentText =
     alignmentText ??
     (showAlignment && hasData
-      ? deriveAlignmentText(bucket, alignedPct)
+      ? deriveAlignmentText(bucket, alignedPct, poles)
       : null);
 
   // Label sizes
@@ -176,7 +202,7 @@ export function StanceDistributionBar({
           <BarSegment
             pct={oppose_pct ?? 0}
             color="bg-rose-400"
-            label="Oppose"
+            label={poles.negFull}
             isUserBucket={bucket === "oppose"}
             size={size}
             position="left"
@@ -198,7 +224,7 @@ export function StanceDistributionBar({
           <BarSegment
             pct={support_pct ?? 0}
             color="bg-emerald-400"
-            label="Support"
+            label={poles.posFull}
             isUserBucket={bucket === "support"}
             size={size}
             position="right"
@@ -215,17 +241,17 @@ export function StanceDistributionBar({
 
       {/* ── Labels row ── */}
       <div className={`${textGap} flex justify-between ${labelSize} text-slate-500`}>
-        <span className="flex items-center gap-1">
+        <span className="flex items-center gap-1" title={poles.negFull}>
           <span className="inline-block h-1.5 w-1.5 rounded-full bg-rose-400" />
-          Oppose {hasData ? formatPct(oppose_pct) : "—"}
+          {negShort} {hasData ? formatPct(oppose_pct) : "—"}
         </span>
         <span className="flex items-center gap-1">
           <span className="inline-block h-1.5 w-1.5 rounded-full bg-slate-300" />
           Neutral {hasData ? formatPct(neutral_pct) : "—"}
         </span>
-        <span className="flex items-center gap-1">
+        <span className="flex items-center gap-1" title={poles.posFull}>
           <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400" />
-          Support {hasData ? formatPct(support_pct) : "—"}
+          {posShort} {hasData ? formatPct(support_pct) : "—"}
         </span>
       </div>
 

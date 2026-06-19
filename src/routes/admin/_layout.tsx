@@ -182,6 +182,11 @@ export default function AdminLayout() {
             icon={<ListFilter className="h-4 w-4" />}
             label="Question Review"
           />
+          <AdminLink
+            to="/admin/manifesto-promises"
+            icon={<FileTextIcon className="h-4 w-4" />}
+            label="Manifesto Performance"
+          />
 
           <Separator className="my-2" />
 
