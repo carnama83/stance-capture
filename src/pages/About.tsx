@@ -59,8 +59,8 @@ export default function About() {
           <h2 style={styles.h2}>Contact</h2>
           <p style={styles.body}>
             For questions, feedback, or press enquiries, reach us at{" "}
-            <a style={styles.link} href="mailto:your-email@gmail.com">
-              your-email@gmail.com
+            <a style={styles.link} href="mailto:no-reply@stance-capture.com">
+              no-reply@stance-capture.com
             </a>
             .
           </p>
