@@ -93,7 +93,8 @@ const PROVIDER_CONFIG: Record<
 // ─── OAuth redirect URL helper ─────────────────────────────────────────────────
 
 function getRedirectUrl(): string {
-  return window.location.origin;
+  const base = window.location.origin;
+  return `${base}/#/auth/callback`;   // hash route → reaches OAuthCallbackPage
 }
 
 // ─── Single provider button ────────────────────────────────────────────────────
