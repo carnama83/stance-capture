@@ -1,5 +1,5 @@
 import * as React from "react";
-import { HashRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import { HashRouter as Router, Routes, Route, Navigate, useLocation } from "react-router-dom";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -130,6 +130,14 @@ const queryClient = new QueryClient();
 function ShareClickTrackerMount() {
   useShareClickTracker();
   return null;
+}
+
+// Renders the global footer on every page EXCEPT the chrome-free embed and
+// publisher pages, where a footer would break the embedded layout.
+function SiteFooter() {
+  const { pathname } = useLocation();
+  if (pathname.startsWith("/embed") || pathname === "/publisher") return null;
+  return <Footer />;
 }
 
 const App: React.FC = () => {
@@ -367,7 +375,7 @@ const App: React.FC = () => {
               {/* 404 */}
               <Route path="*" element={<NotFound />} />
             </Routes>
-            <Footer />
+            <SiteFooter />
           </AuthReadyGate>
         </Router>
       </TooltipProvider>
