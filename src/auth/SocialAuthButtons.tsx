@@ -93,9 +93,7 @@ const PROVIDER_CONFIG: Record<
 // ─── OAuth redirect URL helper ─────────────────────────────────────────────────
 
 function getRedirectUrl(): string {
-  // In production this should be your domain; locally it's localhost
-  const base = window.location.origin;
-  return `${base}/auth/callback`;
+  return window.location.origin;
 }
 
 // ─── Single provider button ────────────────────────────────────────────────────
