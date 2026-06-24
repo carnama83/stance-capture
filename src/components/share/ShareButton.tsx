@@ -19,6 +19,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { getSupabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
+import { getMyForwardRef } from "@/lib/webStance";
 
 type Platform = "twitter" | "twitter_direct" | "facebook" | "whatsapp" | "linkedin" | "copy" | "native";
 type ShareType = "question" | "stance";
@@ -106,6 +107,14 @@ function useXPostStatus(): XTokenStatus {
 
 function buildShareUrl(questionId: string, platform: string, shareId: string): string {
   const base = window.location.origin;
+  // Web-forward chain: if THIS visitor has their own minted ref (they answered
+  // anonymously via a forwarded link), point at the /s/ share endpoint and carry
+  // their ref so the next hop is parented to them. `via` keeps platform analytics.
+  const fwd = getMyForwardRef(questionId);
+  if (fwd) {
+    return `${base}/s/${questionId}?ref=${fwd}&via=${platform}&sid=${shareId}`;
+  }
+  // Default (logged-in / no chain): existing behaviour.
   return `${base}/#/q/${questionId}?ref=${platform}&sid=${shareId}`;
 }
 
