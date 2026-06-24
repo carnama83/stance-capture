@@ -33,6 +33,10 @@ import { CommunityTrendSparkline } from "@/components/question/CommunityTrendSpa
 import WhyIsTrendingPanel from "@/components/insights/WhyIsTrendingPanel";
 import TradeoffExplorer from "@/components/insights/TradeoffExplorer";
 import { RationaleEditor } from "@/components/RationaleEditor";
+import { WebOptInCard } from "@/components/WebOptInCard";
+   // …in the sidebar/your-stance area, when !isAuthed && myStance != null:
+   {!isAuthed && myStance != null && <WebOptInCard questionId={questionId} />}
+
 import {
 
 } from "@/types/communityStance";
