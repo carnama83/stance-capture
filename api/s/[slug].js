@@ -67,7 +67,6 @@ export default async function handler(req, res) {
 <meta name="twitter:title" content="${title}">
 <meta name="twitter:description" content="${desc}">
 <meta name="twitter:image" content="${image}">
-<meta http-equiv="refresh" content="0; url=${esc(target)}">
 <script>location.replace(${JSON.stringify(target)});</script>
 </head>
 <body style="font-family:system-ui;padding:24px;text-align:center;color:#475569">
