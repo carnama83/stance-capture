@@ -1029,15 +1029,28 @@ export default function QuestionDetailPage() {
   // (before any async work in mutationFn) so no second slider commit can slip
   // through between the guard check and the actual mutate() call.
   const mutationInFlight = React.useRef(false);
-
+  const webRefRef = React.useRef<string | null>(null); // anonymous visitor's own forward ref
+  
   const stanceMutation = useMutation({
     mutationKey: ["set-stance", questionId],
     mutationFn: async (score: number | null) => {
       mutationInFlight.current = true;
       // Use the JWT from the session that React already has — no getSession() call.
-      // session is kept fresh by onAuthStateChange in useSupabaseSession.
       const jwt = session?.access_token;
-      if (!jwt) throw new Error("Not authenticated");
+
+      // ── Anonymous web-forward path ──────────────────────────────────────────
+      // No session — visitor typically arrived via a forwarded ?ref= link.
+      // record_web_stance reads the ref from the URL, dedups by device, mints
+      // this responder's OWN ref, writes the anonymous stance, and returns the
+      // live distribution. (Anonymous visitors can't "clear" a stance.)
+      if (!jwt) {
+        if (score === null) return null;
+        const { my_ref } = await recordWebStance(questionId, score);
+        webRefRef.current = my_ref;
+        console.log("[qdp:mutation] anonymous web stance recorded", { qid: debugQid, score, my_ref });
+        return score;
+      }
+
       console.log("[qdp:mutation] start", { qid: debugQid, requestedScore: score, queryMyStanceBefore: queryClient.getQueryData(["my-stance", questionId]) });
       const result = await setMyStance(questionId, score, jwt, supabaseUrl, supabaseAnonKey);
       console.log("[qdp:mutation] result", { qid: debugQid, requestedScore: score, returnedScore: result });

@@ -30,6 +30,7 @@ import SettingsSecurity from "./pages/SettingsSecurity";
 import SettingsSessions from "./pages/SettingsSessions";
 import AdminIdentifiers from "./pages/AdminIdentifiers";
 import NotFound from "./pages/NotFound";
+import { recordWebStance } from "@/lib/webStance";
 
 // Public legal/about pages + site footer
 import About from "./pages/About";
