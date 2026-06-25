@@ -34,6 +34,7 @@ import WhyIsTrendingPanel from "@/components/insights/WhyIsTrendingPanel";
 import TradeoffExplorer from "@/components/insights/TradeoffExplorer";
 import { RationaleEditor } from "@/components/RationaleEditor";
 import { WebOptInCard } from "@/components/WebOptInCard";
+import { recordWebStance } from "@/lib/webStance";
 
 import {
 
