@@ -34,8 +34,6 @@ import WhyIsTrendingPanel from "@/components/insights/WhyIsTrendingPanel";
 import TradeoffExplorer from "@/components/insights/TradeoffExplorer";
 import { RationaleEditor } from "@/components/RationaleEditor";
 import { WebOptInCard } from "@/components/WebOptInCard";
-   // …in the sidebar/your-stance area, when !isAuthed && myStance != null:
-   {!isAuthed && myStance != null && <WebOptInCard questionId={questionId} />}
 
 import {
 
@@ -803,6 +801,11 @@ function StanceCard({
               why they hold this stance and add supporting links. */}
           {isAuthed && myStance != null && (
             <RationaleEditor questionId={questionId} />
+          )}
+
+          {/* Anonymous web visitor → email / WhatsApp opt-in after answering */}
+          {!isAuthed && myStance != null && (
+            <WebOptInCard questionId={questionId} />
           )}
         </>
       )}
