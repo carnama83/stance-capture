@@ -1,26 +1,30 @@
 // src/components/WebOptInCard.tsx
 //
-// Shown after an anonymous web visitor answers. Two ways to opt in:
-//   1) Email magic-link (primary, robust) — creates a real account via Supabase
-//      Auth, then attaches that user to the visitor's forward node.
-//   2) WhatsApp click-to-chat — a wa.me button that prefills "SUBSCRIBE"; when
-//      they send it, the webhook records a global opt-in (no OTP, no template).
+// Shown after an anonymous web visitor STAGES a stance (moves the slider). Their
+// stance is recorded as theirs but does NOT count in the community total until they
+// commit by opting in — via email magic-link or WhatsApp click-to-chat. This card is
+// the commit step, framed around what they gain by joining.
 import * as React from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { getMyForwardRef } from "@/lib/webStance";
 
-// Your business WhatsApp number, digits only (from display +1 201-466-7244).
-const WA_BUSINESS_NUMBER = "12014667244";
+const WA_BUSINESS_NUMBER = "12014667244"; // +1 201-466-7244, digits only
 const PENDING_ATTACH_KEY = "sc_pending_attach_ref";
 
-export function WebOptInCard({ questionId }: { questionId: string }) {
+export function WebOptInCard({
+  questionId,
+  stanceLabel,
+}: {
+  questionId: string;
+  stanceLabel?: string | null; // e.g. "Strongly oppose" — shown back to them
+}) {
   const [email, setEmail] = React.useState("");
   const [emailSent, setEmailSent] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
-  // If the visitor returns already authenticated (clicked the magic link),
-  // attach their user to the forward node they created earlier.
+  // If they return already authenticated (clicked the magic link), commit the
+  // staged stance by attaching their user to the node.
   React.useEffect(() => {
     (async () => {
       const { data } = await supabase.auth.getSession();
@@ -40,7 +44,6 @@ export function WebOptInCard({ questionId }: { questionId: string }) {
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { setError("Enter a valid email address."); return; }
     setBusy(true);
     try {
-      // Stash the ref so we can attach after the round-trip through email.
       const ref = getMyForwardRef(questionId);
       if (ref) localStorage.setItem(PENDING_ATTACH_KEY, ref);
       const { error } = await supabase.auth.signInWithOtp({
@@ -54,17 +57,32 @@ export function WebOptInCard({ questionId }: { questionId: string }) {
     } finally { setBusy(false); }
   }
 
-  const waHref =
-    `https://wa.me/${WA_BUSINESS_NUMBER}?text=${encodeURIComponent("SUBSCRIBE")}`;
+  const waHref = `https://wa.me/${WA_BUSINESS_NUMBER}?text=${encodeURIComponent("SUBSCRIBE")}`;
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-4">
-      <p className="text-sm font-medium text-slate-700">Track your stances &amp; get updates</p>
+    <div className="rounded-xl border border-violet-200 bg-violet-50/40 p-4 space-y-4">
+      {/* Recorded → not yet counted */}
+      <div>
+        <p className="text-sm font-semibold text-slate-800">
+          ✓ Your stance{stanceLabel ? <> — <span className="text-violet-700">{stanceLabel}</span></> : null} is recorded
+        </p>
+        <p className="mt-1 text-sm text-slate-600">
+          It's not in the community total yet. Add your voice to make it count.
+        </p>
+      </div>
+
+      {/* Why join */}
+      <ul className="space-y-1.5 text-[13px] text-slate-600">
+        <li className="flex gap-2"><span>📈</span><span><b className="text-slate-700">Track how your view evolves</b> — see your stance change over time as the issue develops.</span></li>
+        <li className="flex gap-2"><span>🌍</span><span><b className="text-slate-700">Compare to your community</b> — your city, state, and country, not just the global number.</span></li>
+        <li className="flex gap-2"><span>🔔</span><span><b className="text-slate-700">Get notified when consensus shifts</b> — know when the community moves.</span></li>
+        <li className="flex gap-2"><span>📣</span><span><b className="text-slate-700">Strengthen the signal</b> — verified voices make the collective stance harder to ignore.</span></li>
+      </ul>
 
       {/* Track 1 — email magic-link */}
       {emailSent ? (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
-          ✅ Check your email for a sign-in link. Open it on this device to finish.
+          ✅ Check your email for a sign-in link. Open it on this device to add your voice.
         </div>
       ) : (
         <div className="space-y-2">
@@ -75,7 +93,7 @@ export function WebOptInCard({ questionId }: { questionId: string }) {
           />
           <button type="button" disabled={busy} onClick={sendMagicLink}
             className="w-full rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">
-            {busy ? "Sending…" : "Email me a sign-in link"}
+            {busy ? "Sending…" : "Add my voice — email me a link"}
           </button>
         </div>
       )}
@@ -90,10 +108,10 @@ export function WebOptInCard({ questionId }: { questionId: string }) {
         href={waHref} target="_blank" rel="noopener noreferrer"
         className="flex w-full items-center justify-center gap-2 rounded-lg border border-emerald-500 px-3 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-50"
       >
-        💬 Get updates on WhatsApp
+        💬 Add my voice on WhatsApp
       </a>
       <p className="text-[11px] leading-snug text-slate-400">
-        Opens WhatsApp with a pre-filled "SUBSCRIBE" message. Send it to opt in. Reply STOP anytime.
+        Opens WhatsApp with a pre-filled "SUBSCRIBE" message. Send it to count your stance and get updates. Reply STOP anytime.
       </p>
 
       {error && <p className="text-xs text-rose-600">{error}</p>}

@@ -699,26 +699,8 @@ function StanceCard({
         </div>
       )}
 
-      {!isAuthed && (
-        <div className="space-y-3">
-          <p className="text-sm font-medium text-slate-700">
-            Where do you stand on this issue?
-          </p>
-          <p className="text-xs text-slate-500">
-            Log in to record your stance and compare with your city, state,
-            country, and globally.
-          </p>
-          <button
-            type="button"
-            onClick={handleRequireLogin}
-            className="w-full rounded-xl bg-slate-900 text-white px-3 py-2 text-xs font-medium hover:bg-slate-700 transition-colors"
-          >
-            Log in to take stance
-          </button>
-        </div>
-      )}
 
-      {isAuthed && (
+      {(
         <>
           <p className="text-sm font-medium text-slate-700 mb-3">
             Where do you stand on this issue?
@@ -1474,6 +1456,8 @@ export default function QuestionDetailPage() {
                 isEmpty={!communityStatsLoading && !communityStats}
                 lowLabel={question.slider_low_label ?? null}
                 highLabel={question.slider_high_label ?? null}
+                myStanceScore={myStance}
+                myStanceCounted={isAuthed}
               />
 
               {isAuthed && stats?.regions && (

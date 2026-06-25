@@ -50,6 +50,14 @@ export interface CommunityStanceBarProps {
   lowLabel?: string | null;
   /** Positive-pole label for this question (slider_high_label). See lowLabel. */
   highLabel?: string | null;
+  /**
+   * The current viewer's own staged stance score (-2..+2). When provided, a
+   * ghost marker is drawn on the bar at that position. The stance is NOT part
+   * of the counted distribution — it's shown so they can see where they'd land.
+   */
+  myStanceScore?: number | null;
+  /** When true, the viewer's stance is already counted (hides the 'not counted' note). */
+  myStanceCounted?: boolean;
 }
 
 // ── S3: Conviction vs noise indicator ────────────────────────────────────────
@@ -121,6 +129,8 @@ export function CommunityStanceBar({
   compact = false,
   lowLabel,
   highLabel,
+  myStanceScore,
+  myStanceCounted = false,
 }: CommunityStanceBarProps) {
 
   // Pole-aware labels: use the question's own poles when present, otherwise the
@@ -129,6 +139,12 @@ export function CommunityStanceBar({
   // green) → high label.
   const { negFull, posFull } = resolvePoleLabels(lowLabel, highLabel);
   const { negShort, posShort } = distinctPoleLabels(negFull, posFull);
+
+  // Ghost marker position: map score -2..+2 to 0..100% across the bar.
+  const hasGhost = myStanceScore != null;
+  const ghostPos = hasGhost
+    ? Math.min(100, Math.max(0, ((myStanceScore! + 2) / 4) * 100))
+    : null;
 
   // ── Loading state ──
   if (isLoading) {
@@ -194,7 +210,8 @@ export function CommunityStanceBar({
       {/* Label row */}
       <Header compact={compact} onRefresh={onRefresh} isLoading={false} />
 
-      {/* Segmented bar */}
+      {/* Segmented bar (relative wrapper holds the ghost marker) */}
+      <div className="relative">
       <div
         className="flex w-full overflow-hidden rounded-full"
         style={{ height: compact ? 8 : 10 }}
@@ -222,6 +239,10 @@ export function CommunityStanceBar({
         {/* Full bar fallback if all zero */}
         {oW === 0 && nW === 0 && sW === 0 && (
           <div className="w-full bg-slate-200" />
+        )}
+      </div>
+        {hasGhost && ghostPos != null && (
+          <GhostMarker pos={ghostPos} counted={myStanceCounted} compact={compact} />
         )}
       </div>
 
@@ -259,6 +280,12 @@ export function CommunityStanceBar({
         )}
       </div>
 
+      {hasGhost && !myStanceCounted && (
+        <p className={`${compact ? "text-[10px]" : "text-[11px]"} text-violet-600`}>
+          ▲ Your stance isn't counted yet — opt in below to add it.
+        </p>
+      )}
+
       {/* S3: conviction vs noise indicator */}
       {conviction && !compact && (
         <div className="flex items-center gap-1.5 pt-0.5">
@@ -274,6 +301,30 @@ export function CommunityStanceBar({
           </span>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Ghost marker (viewer's own staged stance, not counted) ───────────────────
+
+function GhostMarker({ pos, counted, compact }: { pos: number; counted: boolean; compact?: boolean }) {
+  const color = counted ? "#059669" : "#7C3AED"; // emerald if counted, violet if staged
+  return (
+    <div
+      className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 flex flex-col items-center pointer-events-none"
+      style={{ left: `${pos}%` }}
+      title={counted ? "Your stance (counted)" : "Your stance — not counted yet"}
+    >
+      <span
+        className="block rounded-full ring-2 ring-white"
+        style={{ width: compact ? 8 : 10, height: compact ? 8 : 10, background: color }}
+      />
+      <span
+        className="absolute whitespace-nowrap font-semibold"
+        style={{ top: compact ? 10 : 12, fontSize: compact ? 9 : 10, color }}
+      >
+        you
+      </span>
     </div>
   );
 }
