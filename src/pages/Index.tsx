@@ -40,6 +40,8 @@ import PageLayout from "@/components/PageLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getSupabase } from "@/lib/supabaseClient";
 import { QuestionStanceSlider } from "@/components/question/QuestionStanceSlider";
+import { recordWebStance } from "@/lib/webStance";
+import { HomeOptInPrompt } from "@/components/HomeOptInPrompt";
 import { QuestionCoverImage } from "@/components/question/QuestionCoverImage";
 import { StanceDistributionBar } from "@/components/question/StanceDistributionBar";
 import { useGlobalAndCountryIds } from "@/hooks/useLocationIds";
@@ -747,6 +749,7 @@ function HeroQuestionModule({
   isAuthed,
   onSubmit,
   onLoginRedirect,
+  onStage,
   heroStats,
 }: {
   questions: TrendingHomepageQuestionRow[];
@@ -756,6 +759,7 @@ function HeroQuestionModule({
   isAuthed: boolean;
   onSubmit: (questionId: string, value: number) => Promise<void>;
   onLoginRedirect: () => void;
+  onStage?: (questionId: string, value: number) => void;
   heroStats?: QuestionStats | null;
 }) {
   // Resolve hero state once — Rule 1
@@ -970,34 +974,19 @@ function HeroQuestionModule({
           />
         ) : (
           <>
-            <div
-              onPointerUpCapture={onLoginRedirect}
-              onPointerCancelCapture={onLoginRedirect}
-              onMouseUpCapture={onLoginRedirect}
-              onTouchEndCapture={onLoginRedirect}
-              className="cursor-pointer"
-            >
-              <QuestionStanceSlider
-                key={`hero-anon-${heroQuestion.question_id}`}
-                questionId={heroQuestion.question_id}
-                questionText={heroQuestion.question_text}
-                summary={heroQuestion.summary}
-                initialValue={null}
-                onSubmit={onLoginRedirect}
-                sliderLowLabel={heroQuestion.slider_low_label ?? null}
-                sliderHighLabel={heroQuestion.slider_high_label ?? null}
-              />
-            </div>
-            <div className="mt-4 flex flex-col items-center gap-2">
-              <p className="text-xs text-slate-400">Log in to record your stance</p>
-              <button
-                type="button"
-                className="rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-700 transition-colors"
-                onClick={onLoginRedirect}
-              >
-                Log in to take stance
-              </button>
-            </div>
+            <QuestionStanceSlider
+              key={`hero-anon-${heroQuestion.question_id}`}
+              questionId={heroQuestion.question_id}
+              questionText={heroQuestion.question_text}
+              summary={heroQuestion.summary}
+              initialValue={null}
+              onSubmit={(v) => (onStage ? onStage(heroQuestion.question_id, v) : onLoginRedirect())}
+              sliderLowLabel={heroQuestion.slider_low_label ?? null}
+              sliderHighLabel={heroQuestion.slider_high_label ?? null}
+            />
+            <p className="mt-3 text-center text-xs text-slate-400">
+              Your stance is recorded anonymously — add your voice below to count it.
+            </p>
           </>
         )}
       </div>
@@ -1675,6 +1664,7 @@ function FeaturedQuestionCard({
   isAuthed,
   onSubmit,
   onLoginRedirect,
+  onStage,
   onOpen,
   featuredStats,
   submittingQuestionId,
@@ -1684,6 +1674,7 @@ function FeaturedQuestionCard({
   isAuthed: boolean;
   onSubmit: (questionId: string, value: number) => Promise<void>;
   onLoginRedirect: () => void;
+  onStage?: (questionId: string, value: number) => void;
   onOpen: (id: string) => void;
   featuredStats?: QuestionStats | null;
   submittingQuestionId?: string | null;
@@ -1801,10 +1792,6 @@ function FeaturedQuestionCard({
           </>
         ) : (
           <div
-            onPointerUpCapture={onLoginRedirect}
-            onPointerCancelCapture={onLoginRedirect}
-            onMouseUpCapture={onLoginRedirect}
-            onTouchEndCapture={onLoginRedirect}
             className="cursor-pointer"
           >
             <QuestionStanceSlider
@@ -1813,7 +1800,7 @@ function FeaturedQuestionCard({
               questionText={q.question_text}
               summary={q.summary}
               initialValue={null}
-              onSubmit={onLoginRedirect}
+              onSubmit={(v) => (onStage ? onStage(q.question_id, v) : onLoginRedirect())}
               sliderLowLabel={q.slider_low_label ?? null}
               sliderHighLabel={q.slider_high_label ?? null}
             />
@@ -1838,10 +1825,12 @@ function FeaturedQuestionCard({
 function FeaturedQuestionCardAnon({
   q,
   onLoginRedirect,
+  onStage,
   onOpen,
 }: {
   q: AnonQuestionRow;
   onLoginRedirect: () => void;
+  onStage?: (questionId: string, value: number) => void;
   onOpen: (id: string) => void;
 }) {
   return (
@@ -1872,19 +1861,13 @@ function FeaturedQuestionCardAnon({
           <p className="text-sm text-slate-500 line-clamp-2 mb-4">{q.summary}</p>
         )}
 
-        <div
-          onPointerUpCapture={onLoginRedirect}
-          onPointerCancelCapture={onLoginRedirect}
-          onMouseUpCapture={onLoginRedirect}
-          onTouchEndCapture={onLoginRedirect}
-          className="cursor-pointer"
-        >
+        <div className="cursor-pointer">
           <QuestionStanceSlider
             questionId={q.id}
             questionText={q.question}
             summary={q.summary}
             initialValue={null}
-            onSubmit={onLoginRedirect}
+            onSubmit={(v) => (onStage ? onStage(q.id, v) : onLoginRedirect())}
             sliderLowLabel={q.slider_low_label ?? null}
             sliderHighLabel={q.slider_high_label ?? null}
           />
@@ -1910,6 +1893,7 @@ function GridQuestionCard({
   isAuthed,
   onSubmit,
   onLoginRedirect,
+  onStage,
   onOpen,
   submittingQuestionId,
   cardStats,
@@ -1918,6 +1902,7 @@ function GridQuestionCard({
   isAuthed: boolean;
   onSubmit: (questionId: string, value: number) => Promise<void>;
   onLoginRedirect: () => void;
+  onStage?: (questionId: string, value: number) => void;
   onOpen: (id: string) => void;
   submittingQuestionId?: string | null;
   cardStats?: Map<string, QuestionStats>;
@@ -2013,10 +1998,6 @@ function GridQuestionCard({
             </>
           ) : (
             <div
-              onPointerUpCapture={onLoginRedirect}
-              onPointerCancelCapture={onLoginRedirect}
-              onMouseUpCapture={onLoginRedirect}
-              onTouchEndCapture={onLoginRedirect}
               className="cursor-pointer"
             >
               <QuestionStanceSlider
@@ -2024,7 +2005,7 @@ function GridQuestionCard({
                 questionText={q.question_text}
                 summary={q.summary}
                 initialValue={null}
-                onSubmit={onLoginRedirect}
+                onSubmit={(v) => (onStage ? onStage(q.question_id, v) : onLoginRedirect())}
                 sliderLowLabel={q.slider_low_label ?? null}
                 sliderHighLabel={q.slider_high_label ?? null}
               />
@@ -2047,10 +2028,12 @@ function GridQuestionCard({
 function GridQuestionCardAnon({
   q,
   onLoginRedirect,
+  onStage,
   onOpen,
 }: {
   q: AnonQuestionRow;
   onLoginRedirect: () => void;
+  onStage?: (questionId: string, value: number) => void;
   onOpen: (id: string) => void;
 }) {
   return (
@@ -2083,10 +2066,6 @@ function GridQuestionCardAnon({
 
         <div className="mt-auto pt-2">
           <div
-            onPointerUpCapture={onLoginRedirect}
-            onPointerCancelCapture={onLoginRedirect}
-            onMouseUpCapture={onLoginRedirect}
-            onTouchEndCapture={onLoginRedirect}
             className="cursor-pointer"
           >
             <QuestionStanceSlider
@@ -2094,7 +2073,7 @@ function GridQuestionCardAnon({
               questionText={q.question}
               summary={q.summary}
               initialValue={null}
-              onSubmit={onLoginRedirect}
+              onSubmit={(v) => (onStage ? onStage(q.id, v) : onLoginRedirect())}
               sliderLowLabel={q.slider_low_label ?? null}
               sliderHighLabel={q.slider_high_label ?? null}
             />
@@ -3299,6 +3278,32 @@ export default function IndexPage() {
 
   const loginRedirect = () => redirectToLogin("take_stances");
 
+  // ── Anonymous staging (homepage) ──
+  // Logged-out users can stage a stance on any card without a login bounce.
+  // We record it anonymously (web_forward, not counted) and surface ONE floating
+  // opt-in prompt. stagedQuestions tracks distinct questions staged this session.
+  const [stagedQuestions, setStagedQuestions] = React.useState<Set<string>>(new Set());
+  const [promptDismissed, setPromptDismissed] = React.useState(false);
+
+  const stageStance = React.useCallback(
+    async (questionId: string, value: number) => {
+      try {
+        await recordWebStance(questionId, value);
+        setStagedQuestions((prev) => {
+          const next = new Set(prev);
+          next.add(questionId);
+          return next;
+        });
+      } catch {
+        // If staging fails, fall back to the login path so the user isn't stuck.
+        loginRedirect();
+      }
+    },
+    // loginRedirect is stable enough for this fallback; intentionally minimal deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+
   // ── Impression recording (unchanged) ──
   React.useEffect(() => {
     if (!sb || !userId) return;
@@ -3404,6 +3409,7 @@ export default function IndexPage() {
             onRequestReplenish={fetchNextPage}
             onSubmitSuccess={submitStance}
             onLoginRedirect={loginRedirect}
+            onStage={stageStance}
             onNavigateToQuestion={goToQuestion}
             onLogin={() => navigate("/login")}
             onSignup={() => navigate("/signup")}
@@ -3485,6 +3491,7 @@ export default function IndexPage() {
                       isAuthed={true}
                       onSubmit={submitStance}
                       onLoginRedirect={loginRedirect}
+                      onStage={stageStance}
                       onOpen={goToQuestion}
                       featuredStats={featuredStatsQuery.data ?? null}
                       submittingQuestionId={submittingQuestionId}
@@ -3497,6 +3504,7 @@ export default function IndexPage() {
                   <FeaturedQuestionCardAnon
                     q={featuredAnonQ}
                     onLoginRedirect={loginRedirect}
+                    onStage={stageStance}
                     onOpen={goToQuestion}
                   />
                 ) : null}
@@ -3526,6 +3534,7 @@ export default function IndexPage() {
                           isAuthed={true}
                           onSubmit={submitStance}
                           onLoginRedirect={loginRedirect}
+                          onStage={stageStance}
                           onOpen={goToQuestion}
                           submittingQuestionId={submittingQuestionId}
                           cardStats={cardStats}
@@ -3552,6 +3561,7 @@ export default function IndexPage() {
                         key={q.id}
                         q={q}
                         onLoginRedirect={loginRedirect}
+                        onStage={stageStance}
                         onOpen={goToQuestion}
                       />
                     ))}
@@ -3684,6 +3694,14 @@ export default function IndexPage() {
           </Tabs>
         </div>
       </div>
+
+      {/* Floating opt-in: shown once a logged-out user has staged a stance. */}
+      {!isAuthed && !promptDismissed && (
+        <HomeOptInPrompt
+          stagedCount={stagedQuestions.size}
+          onDismiss={() => setPromptDismissed(true)}
+        />
+      )}
     </PageLayout>
   );
 }
