@@ -120,6 +120,7 @@ export interface HeroSectionProps {
   onRequestReplenish: () => void;
   onSubmitSuccess: (questionId: string, value: number) => Promise<void>;
   onLoginRedirect: () => void;
+  onStage?: (questionId: string, value: number) => void;
   onNavigateToQuestion: (id: string) => void;
   onLogin: () => void;
   onSignup: () => void;
@@ -1140,6 +1141,7 @@ function SectionAQuestion({
   onAdvanceNow,
   onRefreshDistribution,
   onGuestEngage,
+  onStage,
   isFallbackMode = false,
 }: {
   question: HeroQuestion;
@@ -1155,6 +1157,8 @@ function SectionAQuestion({
   onRefreshDistribution: () => void;
   // Guest-only: fires once on first slider interaction to transition right panel
   onGuestEngage: () => void;
+  // Guest-only: stages an anonymous stance instead of bouncing to login
+  onStage?: (questionId: string, value: number) => void;
   // True when showing fallback-scope content — surfaces a subtle chip on the card
   isFallbackMode?: boolean;
 }) {
@@ -1286,55 +1290,29 @@ function SectionAQuestion({
           </>
         ) : (
           <>
-            {/* Guest: slider first, then pill CTA, then community teaser */}
-            {/* onGuestEngage is wired only to the guest slider — NOT the authed path */}
-            <div
-              onPointerUpCapture={onLoginRedirect}
-              onPointerCancelCapture={onLoginRedirect}
-              onMouseUpCapture={onLoginRedirect}
-              onTouchEndCapture={onLoginRedirect}
-              className="cursor-pointer"
-            >
-              <QuestionStanceSlider
-                key={`hero-anon-${question.question_id}`}
-                questionId={question.question_id}
-                questionText={question.question_text}
-                summary={question.summary}
-                initialValue={null}
-                onSubmit={onLoginRedirect}
-                onInteractionStart={onGuestEngage}
-                sliderLowLabel={question.slider_low_label ?? null}
-                sliderHighLabel={question.slider_high_label ?? null}
-              />
-            </div>
+            {/* Guest: slider stages anonymously (no login bounce). */}
+            <QuestionStanceSlider
+              key={`hero-anon-${question.question_id}`}
+              questionId={question.question_id}
+              questionText={question.question_text}
+              summary={question.summary}
+              initialValue={null}
+              onSubmit={(v) => (onStage ? onStage(question.question_id, v) : onLoginRedirect())}
+              onInteractionStart={onGuestEngage}
+              sliderLowLabel={question.slider_low_label ?? null}
+              sliderHighLabel={question.slider_high_label ?? null}
+            />
 
-            {/* Share Your Stance pill CTA */}
             <div className="mt-5 flex flex-col items-center gap-2">
-              <button
-                type="button"
-                onClick={onLoginRedirect}
-                className="inline-flex items-center justify-center gap-2 rounded-full py-2.5 px-10 text-sm font-semibold text-white shadow-md transition-all duration-200 hover:brightness-110 active:scale-[0.98]"
-                style={{ backgroundColor: "#6048C0" }}
-              >
-                Share Your Stance →
-              </button>
-              <p className="flex items-center gap-1.5 text-xs text-slate-400">
-                <span>👁</span> See how society stands after you answer.
+              <p className="text-xs text-slate-400">
+                Your stance is recorded anonymously — add your voice below to count it.
               </p>
             </div>
 
             {/* Community teaser — replaces CommunityStanceBar for guests */}
             <div className="mt-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-center">
               <p className="text-xs font-medium text-slate-500">
-                💬 State your opinion to unlock how the community is thinking —{" "}
-                <button
-                  type="button"
-                  onClick={onLoginRedirect}
-                  className="font-semibold underline underline-offset-2 transition-colors"
-                  style={{ color: "#6048C0" }}
-                >
-                  sign in to see the full picture.
-                </button>
+                💬 Add your voice to unlock how the community is thinking.
               </p>
             </div>
           </>
@@ -1523,6 +1501,7 @@ export function HeroSection({
   onRequestReplenish,
   onSubmitSuccess,
   onLoginRedirect,
+  onStage,
   onNavigateToQuestion,
   onLogin,
   onSignup,
@@ -1623,6 +1602,7 @@ export function HeroSection({
                   onAdvanceNow={advanceNow}
                   onRefreshDistribution={refreshDistribution}
                   onGuestEngage={() => setGuestHasEngaged(true)}
+                  onStage={onStage}
                   isFallbackMode={isFallbackMode}
                 />
               )}
