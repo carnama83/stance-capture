@@ -49,8 +49,10 @@ export function WebOptInCard({
 
       // After auth, OAuthCallbackPage reads sessionStorage.return_to and navigates
       // back here, where the attach effect commits the staged stance.
+      // Use localStorage (survives the new tab the email link opens) — sessionStorage
+      // is per-tab and would be empty in the tab the magic link opens.
       const returnTo = `#/q/${questionId}`;
-      try { sessionStorage.setItem("return_to", returnTo); } catch { /* ignore */ }
+      try { localStorage.setItem("return_to", returnTo); } catch { /* ignore */ }
 
       // Magic link must land on the app's /auth/callback route (which extracts the
       // token and calls setSession) — NOT directly on the question page, which has
