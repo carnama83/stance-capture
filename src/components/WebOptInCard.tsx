@@ -46,9 +46,19 @@ export function WebOptInCard({
     try {
       const ref = getMyForwardRef(questionId);
       if (ref) localStorage.setItem(PENDING_ATTACH_KEY, ref);
+
+      // After auth, OAuthCallbackPage reads sessionStorage.return_to and navigates
+      // back here, where the attach effect commits the staged stance.
+      const returnTo = `#/q/${questionId}`;
+      try { sessionStorage.setItem("return_to", returnTo); } catch { /* ignore */ }
+
+      // Magic link must land on the app's /auth/callback route (which extracts the
+      // token and calls setSession) — NOT directly on the question page, which has
+      // no token-extraction logic under HashRouter.
+      const origin = window.location.origin;
       const { error } = await supabase.auth.signInWithOtp({
         email,
-        options: { emailRedirectTo: window.location.href },
+        options: { emailRedirectTo: `${origin}/#/auth/callback` },
       });
       if (error) throw error;
       setEmailSent(true);
