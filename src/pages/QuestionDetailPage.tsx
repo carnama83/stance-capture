@@ -745,6 +745,13 @@ function StanceCard({
             />
           </div>
 
+          {/* Anonymous web visitor → email / WhatsApp opt-in, shown right after
+              the slider so the "add your voice" prompt is in view the moment
+              they answer (not buried below the rationale/confidence blocks). */}
+          {!isAuthed && myStance != null && (
+            <WebOptInCard questionId={questionId} />
+          )}
+
           {/* W1: Post-stance share prompt */}
           {showSharePrompt && question && (
             <PostStanceSharePrompt
@@ -784,11 +791,6 @@ function StanceCard({
               why they hold this stance and add supporting links. */}
           {isAuthed && myStance != null && (
             <RationaleEditor questionId={questionId} />
-          )}
-
-          {/* Anonymous web visitor → email / WhatsApp opt-in after answering */}
-          {!isAuthed && myStance != null && (
-            <WebOptInCard questionId={questionId} />
           )}
         </>
       )}
