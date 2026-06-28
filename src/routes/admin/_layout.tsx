@@ -125,6 +125,11 @@ export default function AdminLayout() {
             label="Live Questions"
           />
           <AdminLink
+            to="/admin/ugq-queue"
+            icon={<Inbox className="h-4 w-4" />}
+            label="UGQ Queue"
+          />
+          <AdminLink
             to="/admin/topics"
             icon={<Tag className="h-4 w-4" />}
             label="Topics"

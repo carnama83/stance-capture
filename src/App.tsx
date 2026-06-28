@@ -49,6 +49,7 @@ import AdminSourcesPage from "@/routes/admin/sources/Index";
 import AdminIngestionPage from "@/routes/admin/ingestion/Index";
 import AdminDraftsPage from "@/routes/admin/drafts/Index";
 import AdminQuestionsPage from "@/routes/admin/questions/Index";
+import AdminUGQQueuePage from "@/routes/admin/ugq-queue/Index";
 import ShareAnalyticsPage from "@/routes/admin/share-analytics/Index";
 import AdminIngestionReviewPage from "@/routes/admin/ingestion-review/Index";
 import AdminPipelineRunsPage from "@/routes/admin/pipeline-runs/Index";
@@ -90,6 +91,7 @@ import InsightsPage from '@/pages/InsightsPage';
 
 // My stances
 import MyStancesPage from "./pages/MyStancesPage";
+import MyProposalsPage from "./pages/MyProposalsPage";
 
 import SettingsLayout from "./pages/SettingsLayout";
 import SettingsLocation from "./pages/SettingsLocation";
@@ -286,6 +288,16 @@ const App: React.FC = () => {
                 }
               />
 
+              {/* Epic UGQ: my proposals (protected) */}
+              <Route
+                path="/profile/proposals"
+                element={
+                  <Protected>
+                    <MyProposalsPage />
+                  </Protected>
+                }
+              />
+
               {/* Profile route redirects to Settings Profile */}
               <Route
                 path={ROUTES.PROFILE}
@@ -319,6 +331,7 @@ const App: React.FC = () => {
                 <Route path="share-analytics" element={<ShareAnalyticsPage />} />
                 <Route path="embed-analytics" element={<EmbedAnalyticsPage />} />
                 <Route path="live-questions" element={<AdminLiveQuestionsPage />} />
+                <Route path="ugq-queue" element={<AdminUGQQueuePage />} />
                 <Route
                   path="live-questions/:id"
                   element={<AdminLiveQuestionShowPage />}

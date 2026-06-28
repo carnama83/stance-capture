@@ -20,6 +20,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getSupabase } from "../lib/supabaseClient";
 import { QuestionStanceSlider } from "@/components/question/QuestionStanceSlider";
 import { QuestionPhaseBadge } from "@/components/question/QuestionPhaseBadge";
+import { ProposerBadge } from "@/components/ugq/ProposerBadge";
 import { ManifestoProvenance } from "@/components/question/ManifestoProvenance";
 import { useToast } from "@/components/ui/use-toast";
 
@@ -1331,6 +1332,9 @@ export default function QuestionDetailPage() {
 
             {/* Epic MP: verbatim manifesto quote + provenance for manifesto-promise questions */}
             <ManifestoProvenance sourceMeta={question.source_meta} />
+
+            {/* Epic UGQ: attribution for community-proposed questions */}
+            <ProposerBadge questionId={question.id} source={question.source} />
 
             {/* Phase badge */}
             {question.phase && question.phase !== "initial" && (
