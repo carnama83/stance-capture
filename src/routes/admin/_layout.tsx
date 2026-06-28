@@ -130,6 +130,11 @@ export default function AdminLayout() {
             label="UGQ Queue"
           />
           <AdminLink
+            to="/admin/proposers"
+            icon={<Users className="h-4 w-4" />}
+            label="Proposers"
+          />
+          <AdminLink
             to="/admin/topics"
             icon={<Tag className="h-4 w-4" />}
             label="Topics"
