@@ -20,6 +20,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getSupabase } from "../lib/supabaseClient";
 import { QuestionStanceSlider } from "@/components/question/QuestionStanceSlider";
 import { QuestionPhaseBadge } from "@/components/question/QuestionPhaseBadge";
+import { ProposerBadge } from "@/components/ugq/ProposerBadge";
+import { ManifestoProvenance } from "@/components/question/ManifestoProvenance";
 import { useToast } from "@/components/ui/use-toast";
 
 import { FollowTopicButton } from "@/components/FollowTopicButton";
@@ -32,6 +34,9 @@ import { CommunityTrendSparkline } from "@/components/question/CommunityTrendSpa
 import WhyIsTrendingPanel from "@/components/insights/WhyIsTrendingPanel";
 import TradeoffExplorer from "@/components/insights/TradeoffExplorer";
 import { RationaleEditor } from "@/components/RationaleEditor";
+import { WebOptInCard } from "@/components/WebOptInCard";
+import { recordWebStance } from "@/lib/webStance";
+
 import {
 
 } from "@/types/communityStance";
@@ -55,6 +60,8 @@ type LiveQuestion = {
   context_version?: number | null;
   slider_low_label?: string | null;
   slider_high_label?: string | null;
+  source?: string | null;
+  source_meta?: unknown;
 };
 
 type TopicLite = {
@@ -150,7 +157,7 @@ async function fetchQuestionById(id: string): Promise<LiveQuestion | null> {
   const { data, error } = await sb
     .from("questions")
     .select(
-      "id, topic_id, question, summary, tags, location_label, published_at, status, phase, cover_image_url, state, archive_reason, archived_at, context_version, slider_low_label, slider_high_label"
+      "id, topic_id, question, summary, tags, location_label, published_at, status, phase, cover_image_url, state, archive_reason, archived_at, context_version, slider_low_label, slider_high_label, source, source_meta"
     )
     .eq("id", id)
     .limit(1);
@@ -694,26 +701,8 @@ function StanceCard({
         </div>
       )}
 
-      {!isAuthed && (
-        <div className="space-y-3">
-          <p className="text-sm font-medium text-slate-700">
-            Where do you stand on this issue?
-          </p>
-          <p className="text-xs text-slate-500">
-            Log in to record your stance and compare with your city, state,
-            country, and globally.
-          </p>
-          <button
-            type="button"
-            onClick={handleRequireLogin}
-            className="w-full rounded-xl bg-slate-900 text-white px-3 py-2 text-xs font-medium hover:bg-slate-700 transition-colors"
-          >
-            Log in to take stance
-          </button>
-        </div>
-      )}
 
-      {isAuthed && (
+      {(
         <>
           <p className="text-sm font-medium text-slate-700 mb-3">
             Where do you stand on this issue?
@@ -756,6 +745,13 @@ function StanceCard({
               sliderHighLabel={question.slider_high_label ?? null}
             />
           </div>
+
+          {/* Anonymous web visitor → email / WhatsApp opt-in, shown right after
+              the slider so the "add your voice" prompt is in view the moment
+              they answer (not buried below the rationale/confidence blocks). */}
+          {!isAuthed && myStance != null && (
+            <WebOptInCard questionId={questionId} />
+          )}
 
           {/* W1: Post-stance share prompt */}
           {showSharePrompt && question && (
@@ -1026,15 +1022,28 @@ export default function QuestionDetailPage() {
   // (before any async work in mutationFn) so no second slider commit can slip
   // through between the guard check and the actual mutate() call.
   const mutationInFlight = React.useRef(false);
-
+  const webRefRef = React.useRef<string | null>(null); // anonymous visitor's own forward ref
+  
   const stanceMutation = useMutation({
     mutationKey: ["set-stance", questionId],
     mutationFn: async (score: number | null) => {
       mutationInFlight.current = true;
       // Use the JWT from the session that React already has — no getSession() call.
-      // session is kept fresh by onAuthStateChange in useSupabaseSession.
       const jwt = session?.access_token;
-      if (!jwt) throw new Error("Not authenticated");
+
+      // ── Anonymous web-forward path ──────────────────────────────────────────
+      // No session — visitor typically arrived via a forwarded ?ref= link.
+      // record_web_stance reads the ref from the URL, dedups by device, mints
+      // this responder's OWN ref, writes the anonymous stance, and returns the
+      // live distribution. (Anonymous visitors can't "clear" a stance.)
+      if (!jwt) {
+        if (score === null) return null;
+        const { my_ref } = await recordWebStance(questionId, score);
+        webRefRef.current = my_ref;
+        console.log("[qdp:mutation] anonymous web stance recorded", { qid: debugQid, score, my_ref });
+        return score;
+      }
+
       console.log("[qdp:mutation] start", { qid: debugQid, requestedScore: score, queryMyStanceBefore: queryClient.getQueryData(["my-stance", questionId]) });
       const result = await setMyStance(questionId, score, jwt, supabaseUrl, supabaseAnonKey);
       console.log("[qdp:mutation] result", { qid: debugQid, requestedScore: score, returnedScore: result });
@@ -1321,6 +1330,12 @@ export default function QuestionDetailPage() {
               {question.question}
             </h1>
 
+            {/* Epic MP: verbatim manifesto quote + provenance for manifesto-promise questions */}
+            <ManifestoProvenance sourceMeta={question.source_meta} />
+
+            {/* Epic UGQ: attribution for community-proposed questions */}
+            <ProposerBadge questionId={question.id} source={question.source} />
+
             {/* Phase badge */}
             {question.phase && question.phase !== "initial" && (
               <div><QuestionPhaseBadge phase={question.phase} size="md" /></div>
@@ -1332,7 +1347,7 @@ export default function QuestionDetailPage() {
               <QuestionContextUpdates questionId={question.id} />
             )}
 
-            {question.summary && (
+            {question.summary && question.source !== "manifesto_promise" && (
               <p className="max-w-[44rem] font-normal text-base md:text-lg text-slate-600 leading-relaxed md:leading-[1.6] text-left">
                 {question.summary}
               </p>
@@ -1446,6 +1461,10 @@ export default function QuestionDetailPage() {
                 avgScore={communityStats?.avgScore ?? null}
                 isLoading={communityStatsLoading}
                 isEmpty={!communityStatsLoading && !communityStats}
+                lowLabel={question.slider_low_label ?? null}
+                highLabel={question.slider_high_label ?? null}
+                myStanceScore={myStance}
+                myStanceCounted={isAuthed}
               />
 
               {isAuthed && stats?.regions && (

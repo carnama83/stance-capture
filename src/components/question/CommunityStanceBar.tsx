@@ -17,6 +17,7 @@
 
 import * as React from "react";
 import { RefreshCw } from "lucide-react";
+import { resolvePoleLabels, distinctPoleLabels } from "@/lib/poleLabels";
 
 // ── Props ──────────────────────────────────────────────────────────────────────
 
@@ -41,6 +42,22 @@ export interface CommunityStanceBarProps {
   onRefresh?: () => void;
   /** Compact mode — tighter spacing, smaller text. Used in hero. */
   compact?: boolean;
+  /**
+   * Negative-pole label for this question (slider_low_label). When provided
+   * (with highLabel), the legend reads in the question's own terms instead of
+   * "Oppose". Omit for pre-QF questions to keep the generic frame.
+   */
+  lowLabel?: string | null;
+  /** Positive-pole label for this question (slider_high_label). See lowLabel. */
+  highLabel?: string | null;
+  /**
+   * The current viewer's own staged stance score (-2..+2). When provided, a
+   * ghost marker is drawn on the bar at that position. The stance is NOT part
+   * of the counted distribution — it's shown so they can see where they'd land.
+   */
+  myStanceScore?: number | null;
+  /** When true, the viewer's stance is already counted (hides the 'not counted' note). */
+  myStanceCounted?: boolean;
 }
 
 // ── S3: Conviction vs noise indicator ────────────────────────────────────────
@@ -110,7 +127,24 @@ export function CommunityStanceBar({
   isEmpty = false,
   onRefresh,
   compact = false,
+  lowLabel,
+  highLabel,
+  myStanceScore,
+  myStanceCounted = false,
 }: CommunityStanceBarProps) {
+
+  // Pole-aware labels: use the question's own poles when present, otherwise the
+  // generic oppose/support frame. Pure relabel — numbers/percentages unchanged.
+  // Negative pole (opposePct / red) → low label; positive pole (supportPct /
+  // green) → high label.
+  const { negFull, posFull } = resolvePoleLabels(lowLabel, highLabel);
+  const { negShort, posShort } = distinctPoleLabels(negFull, posFull);
+
+  // Ghost marker position: map score -2..+2 to 0..100% across the bar.
+  const hasGhost = myStanceScore != null;
+  const ghostPos = hasGhost
+    ? Math.min(100, Math.max(0, ((myStanceScore! + 2) / 4) * 100))
+    : null;
 
   // ── Loading state ──
   if (isLoading) {
@@ -135,17 +169,17 @@ export function CommunityStanceBar({
           aria-label="No stances recorded yet"
         />
         <div className={`flex items-center justify-between ${compact ? "text-[11px]" : "text-xs"} text-slate-400`}>
-          <span>
+          <span title={negFull}>
             <span className="inline-block h-2 w-2 rounded-full bg-slate-200 mr-1 align-middle" />
-            Oppose 0%
+            {negShort} 0%
           </span>
           <span>
             <span className="inline-block h-2 w-2 rounded-full bg-slate-200 mr-1 align-middle" />
             Neutral 0%
           </span>
-          <span>
+          <span title={posFull}>
             <span className="inline-block h-2 w-2 rounded-full bg-slate-200 mr-1 align-middle" />
-            Support 0%
+            {posShort} 0%
           </span>
         </div>
         <p className={`${compact ? "text-[11px]" : "text-xs"} text-slate-400`}>
@@ -176,12 +210,13 @@ export function CommunityStanceBar({
       {/* Label row */}
       <Header compact={compact} onRefresh={onRefresh} isLoading={false} />
 
-      {/* Segmented bar */}
+      {/* Segmented bar (relative wrapper holds the ghost marker) */}
+      <div className="relative">
       <div
         className="flex w-full overflow-hidden rounded-full"
         style={{ height: compact ? 8 : 10 }}
         role="img"
-        aria-label={`Community stance: ${formatPct(opposePct)} oppose, ${formatPct(neutralPct)} neutral, ${formatPct(supportPct)} support`}
+        aria-label={`Community stance: ${formatPct(opposePct)} ${negFull}, ${formatPct(neutralPct)} neutral, ${formatPct(supportPct)} ${posFull}`}
       >
         {oW > 0 && (
           <div
@@ -206,6 +241,10 @@ export function CommunityStanceBar({
           <div className="w-full bg-slate-200" />
         )}
       </div>
+        {hasGhost && ghostPos != null && (
+          <GhostMarker pos={ghostPos} counted={myStanceCounted} compact={compact} />
+        )}
+      </div>
 
       {/* Legend row */}
       <div
@@ -213,17 +252,17 @@ export function CommunityStanceBar({
           compact ? "text-[11px]" : "text-xs"
         } text-slate-600`}
       >
-        <span>
+        <span title={negFull}>
           <span className="inline-block h-2 w-2 rounded-full bg-red-400 mr-1 align-middle" />
-          Oppose {formatPct(opposePct)}
+          {negShort} {formatPct(opposePct)}
         </span>
         <span>
           <span className="inline-block h-2 w-2 rounded-full bg-slate-300 mr-1 align-middle" />
           Neutral {formatPct(neutralPct)}
         </span>
-        <span>
+        <span title={posFull}>
           <span className="inline-block h-2 w-2 rounded-full bg-emerald-400 mr-1 align-middle" />
-          Support {formatPct(supportPct)}
+          {posShort} {formatPct(supportPct)}
         </span>
       </div>
 
@@ -241,6 +280,12 @@ export function CommunityStanceBar({
         )}
       </div>
 
+      {hasGhost && !myStanceCounted && (
+        <p className={`${compact ? "text-[10px]" : "text-[11px]"} text-violet-600`}>
+          ▲ Your stance isn't counted yet — opt in below to add it.
+        </p>
+      )}
+
       {/* S3: conviction vs noise indicator */}
       {conviction && !compact && (
         <div className="flex items-center gap-1.5 pt-0.5">
@@ -256,6 +301,30 @@ export function CommunityStanceBar({
           </span>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Ghost marker (viewer's own staged stance, not counted) ───────────────────
+
+function GhostMarker({ pos, counted, compact }: { pos: number; counted: boolean; compact?: boolean }) {
+  const color = counted ? "#059669" : "#7C3AED"; // emerald if counted, violet if staged
+  return (
+    <div
+      className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 flex flex-col items-center pointer-events-none"
+      style={{ left: `${pos}%` }}
+      title={counted ? "Your stance (counted)" : "Your stance — not counted yet"}
+    >
+      <span
+        className="block rounded-full ring-2 ring-white"
+        style={{ width: compact ? 8 : 10, height: compact ? 8 : 10, background: color }}
+      />
+      <span
+        className="absolute whitespace-nowrap font-semibold"
+        style={{ top: compact ? 10 : 12, fontSize: compact ? 9 : 10, color }}
+      >
+        you
+      </span>
     </div>
   );
 }

@@ -3,12 +3,16 @@
 // detectSessionInUrl is DISABLED because this app uses HashRouter, which
 // produces /#/auth/callback#access_token=... — a double-hash that Supabase
 // cannot auto-parse. OAuthCallbackPage handles token extraction manually.
+//
+// Reads credentials from src/lib/env.ts — never reads import.meta.env directly.
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { SUPABASE_URL, SUPABASE_ANON_KEY, IS_DEV } from "@/lib/env";
 
 console.log("[ENV CHECK]", {
-  url: import.meta.env.VITE_SUPABASE_URL,
-  keyPresent: Boolean(import.meta.env.VITE_SUPABASE_ANON_KEY),
+  mode: import.meta.env.MODE,
+  url: SUPABASE_URL,
+  keyPresent: Boolean(SUPABASE_ANON_KEY),
 });
 
 let cached: SupabaseClient | null = null;
@@ -17,20 +21,18 @@ let warned = false;
 export function getSupabase(): SupabaseClient | null {
   if (cached) return cached;
 
-  const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
-
-  if (!url || !anonKey) {
-    if (!warned && import.meta.env.DEV) {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    if (!warned && IS_DEV) {
       console.warn(
-        "[Supabase] Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY. Returning null."
+        "[Supabase] Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY.\n" +
+        "Create a .env.development file — see .env.development.example for the template."
       );
       warned = true;
     }
     return null;
   }
 
-  cached = createClient(url, anonKey, {
+  cached = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
@@ -39,6 +41,10 @@ export function getSupabase(): SupabaseClient | null {
       // OAuthCallbackPage calls setSession() manually after extracting the token.
       detectSessionInUrl: false,
       flowType: "implicit",
+      // Pass-through lock: avoids the @supabase/auth-js navigator.locks deadlock
+      // where a request hangs after the tab regains focus (visibility-triggered
+      // token refresh holding the Web Lock). Single-user app: no cross-tab lock needed.
+      lock: async (_name: string, _acquireTimeout: number, fn: () => Promise<any>) => fn(),
     },
   });
 

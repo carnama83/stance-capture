@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getSupabase } from "@/lib/supabaseClient";
 import PageLayout from "@/components/PageLayout";
+import { ProposeQuestionButton } from "@/components/ugq/ProposeQuestionButton";
 import { Loader2, Sparkles } from "lucide-react";
 
 type ForYouQuestion = {
@@ -139,6 +140,9 @@ export default function ForYouFeedPage() {
           </div>
         )}
       </div>
+
+      {/* Epic UGQ — persistent propose entry point (signed-in users only) */}
+      <ProposeQuestionButton variant="fab" />
     </PageLayout>
   );
 }

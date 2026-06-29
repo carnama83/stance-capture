@@ -16,16 +16,9 @@ import {
   Plus, RefreshCw, Loader2, Send, Clock, CheckCircle2,
   XCircle, Pause, AlertTriangle, BarChart3, MessageSquareDot,
 } from "lucide-react";
+import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_PROJECT_REF, getJwt } from "@/lib/env";
 
-const PROJECT_REF = "yzxzpnomcarnxixhjlba";
-const SUPABASE_URL = `https://${PROJECT_REF}.supabase.co`;
 
-function getJwt(): string {
-  try {
-    const raw = localStorage.getItem(`sb-${PROJECT_REF}-auth-token`);
-    return raw ? JSON.parse(raw)?.access_token ?? "" : "";
-  } catch { return ""; }
-}
 
 type BroadcastStatus = "draft" | "scheduled" | "sending" | "completed" | "partially_failed" | "cancelled";
 
@@ -103,7 +96,7 @@ function NewBroadcastModal({ onClose, onCreated }: NewBroadcastModalProps) {
   React.useEffect(() => {
     const jwt = getJwt();
     const headers = {
-      "apikey": import.meta.env.VITE_SUPABASE_ANON_KEY ?? "",
+      "apikey": SUPABASE_ANON_KEY ?? "",
       "Authorization": `Bearer ${jwt}`,
     };
     // Load live questions
@@ -166,7 +159,7 @@ function NewBroadcastModal({ onClose, onCreated }: NewBroadcastModalProps) {
       const jwt = getJwt();
       const headers = {
         "Content-Type": "application/json",
-        "apikey": import.meta.env.VITE_SUPABASE_ANON_KEY ?? "",
+        "apikey": SUPABASE_ANON_KEY ?? "",
         "Authorization": `Bearer ${jwt}`,
         "Prefer": "return=representation",
       };
@@ -372,7 +365,7 @@ export default function AdminWhatsAppBroadcastsPage() {
         `${SUPABASE_URL}/rest/v1/whatsapp_broadcasts?select=*&order=created_at.desc&limit=50`,
         {
           headers: {
-            "apikey": import.meta.env.VITE_SUPABASE_ANON_KEY ?? "",
+            "apikey": SUPABASE_ANON_KEY ?? "",
             "Authorization": `Bearer ${jwt}`,
           },
         }
@@ -394,7 +387,7 @@ export default function AdminWhatsAppBroadcastsPage() {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
-        "apikey": import.meta.env.VITE_SUPABASE_ANON_KEY ?? "",
+        "apikey": SUPABASE_ANON_KEY ?? "",
         "Authorization": `Bearer ${jwt}`,
       },
       body: JSON.stringify({ status: "scheduled", scheduled_at: new Date(Date.now() + 3_600_000).toISOString() }),
@@ -410,7 +403,7 @@ export default function AdminWhatsAppBroadcastsPage() {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
-        "apikey": import.meta.env.VITE_SUPABASE_ANON_KEY ?? "",
+        "apikey": SUPABASE_ANON_KEY ?? "",
         "Authorization": `Bearer ${jwt}`,
       },
       body: JSON.stringify({ status: "cancelled" }),

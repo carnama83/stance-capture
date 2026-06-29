@@ -54,6 +54,7 @@ import {
   Vote,
   Info,
 } from "lucide-react";
+import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_PROJECT_REF, getJwt } from "@/lib/env";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -746,11 +747,11 @@ export default function AdminElectionNewPage() {
     try {
       // ── rpcFetch pattern throughout — never use sb.* for mutations ──────────
       // Avoids Supabase JS auth mutex bug (getSession() lock blocks all SDK calls)
-      const projectRef = import.meta.env.VITE_SUPABASE_URL
+      const projectRef = SUPABASE_URL
         ?.replace("https://", "")
         ?.split(".")[0] ?? "";
-      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+      const anonKey = SUPABASE_ANON_KEY;
+      const supabaseUrl = SUPABASE_URL;
 
       let jwt = anonKey;
       try {

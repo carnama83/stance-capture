@@ -105,6 +105,17 @@ export default function QuestionDraftsPage() {
   const [loading, setLoading] = React.useState(false);
   const [generating, setGenerating] = React.useState(false);
   const [reframing, setReframing] = React.useState(false);
+  const [reframeElapsed, setReframeElapsed] = React.useState(0);
+  const [reframeProgress, setReframeProgress] = React.useState("");
+  const [reframeTotal, setReframeTotal] = React.useState<number | null>(null);
+  const [reframeDone, setReframeDone] = React.useState<number | null>(null);
+  const reframeIntervalRef = React.useRef<number | null>(null);
+  const clearReframeInterval = React.useCallback(() => {
+    if (reframeIntervalRef.current != null) {
+      window.clearInterval(reframeIntervalRef.current);
+      reframeIntervalRef.current = null;
+    }
+  }, []);
   const [bulkApproving, setBulkApproving] = React.useState(false);
   const [bulkPublishing, setBulkPublishing] = React.useState(false);
   const [generateCooldown, setGenerateCooldown] = React.useState(0);
@@ -129,8 +140,9 @@ export default function QuestionDraftsPage() {
         window.clearInterval(cooldownRef.current);
         cooldownRef.current = null;
       }
+      clearReframeInterval();
     };
-  }, []);
+  }, [clearReframeInterval]);
 
   const startGenerateCooldown = React.useCallback((seconds: number) => {
     if (cooldownRef.current != null) {
@@ -281,27 +293,71 @@ export default function QuestionDraftsPage() {
   }
 }, [generating, generateCooldown, supabase, toast, load, startGenerateCooldown]);
 
+  const pollReframeProgress = React.useCallback(async () => {
+    const [pendingRes, doneRes] = await Promise.all([
+      supabase.from("question_drafts").select("*", { count: "exact", head: true }).in("status", ["draft", "reframing", "reframe_failed"]),
+      supabase.from("question_drafts").select("*", { count: "exact", head: true }).eq("status", "reframed"),
+    ]);
+    if (pendingRes.error) throw pendingRes.error;
+    if (doneRes.error) throw doneRes.error;
+    return { pending: pendingRes.count ?? 0, reframed: doneRes.count ?? 0 };
+  }, [supabase]);
+
   const handleReframe = React.useCallback(async () => {
     if (reframing) return;
+    clearReframeInterval();
     setReframing(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("reframe");
-      if (error) {
-        toast({ title: "Reframe failed", description: error.message, variant: "destructive" });
+    setReframeElapsed(0);
+    setReframeProgress("Counting...");
+    setReframeTotal(null);
+    setReframeDone(null);
+    const startTime = Date.now();
+    let baselineReframed: number | null = null;
+    let totalPending: number | null = null;
+
+    reframeIntervalRef.current = window.setInterval(async () => {
+      const elapsed = Math.floor((Date.now() - startTime) / 1000);
+      setReframeElapsed(elapsed);
+      if (elapsed > 120) {
+        clearReframeInterval(); setReframing(false);
+        toast({ title: "Reframe timeout", description: "Stopped after 120s. Check Edge Function logs.", variant: "destructive" });
         return;
       }
-      const { reframed = 0, failed = 0, skipped = 0 } = (data as any) ?? {};
-      toast({
-        title: "Reframe complete ✅",
-        description: `Reframed: ${reframed} · Failed: ${failed} · Skipped: ${skipped}`,
-      });
-      setTimeout(() => { void load(); }, 2000);
+      try {
+        const { pending, reframed } = await pollReframeProgress();
+        if (baselineReframed === null) {
+          baselineReframed = reframed; totalPending = pending;
+          setReframeTotal(totalPending); setReframeDone(0);
+          setReframeProgress(totalPending === 0 ? "Nothing to reframe" : `0 / ${totalPending} reframed`);
+          if (totalPending === 0) { clearReframeInterval(); setReframing(false); toast({ title: "Nothing to reframe", description: "All drafts already reframed." }); return; }
+          return;
+        }
+        const newlyReframed = reframed - baselineReframed;
+        const remaining = Math.max(0, (totalPending ?? 0) - newlyReframed);
+        setReframeDone(newlyReframed);
+        setReframeProgress(`${newlyReframed} / ${totalPending ?? "?"} reframed — ${remaining} remaining`);
+        if (remaining === 0 && newlyReframed > 0) {
+          clearReframeInterval(); setReframing(false);
+          toast({ title: "Reframe complete ✅", description: `${newlyReframed} drafts reframed in ${elapsed}s.` });
+          void load();
+        }
+      } catch (err) { console.warn("pollReframeProgress:", err); }
+    }, 2000);
+
+    try {
+      const { data, error } = await supabase.functions.invoke("reframe");
+      if (error) { clearReframeInterval(); setReframing(false); toast({ title: "Reframe failed", description: error.message, variant: "destructive" }); return; }
+      const { reframed: done = 0, failed = 0, skipped = 0 } = (data as any) ?? {};
+      if (done > 0 || failed > 0 || skipped > 0) {
+        clearReframeInterval(); setReframing(false);
+        toast({ title: "Reframe complete ✅", description: `Reframed: ${done} · Failed: ${failed} · Skipped: ${skipped}` });
+        void load();
+      }
     } catch (e: any) {
+      clearReframeInterval(); setReframing(false);
       toast({ title: "Reframe error", description: e?.message ?? String(e), variant: "destructive" });
-    } finally {
-      setReframing(false);
     }
-  }, [reframing, supabase, toast, load]);
+  }, [reframing, supabase, toast, load, clearReframeInterval, pollReframeProgress]);
 
 const chunk = <T,>(arr: T[], size: number): T[][] => {
     const out: T[][] = [];
@@ -509,7 +565,9 @@ const chunk = <T,>(arr: T[], size: number): T[][] => {
               title="Run Reframe Now"
             >
               {reframing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {reframing ? "Reframing..." : "✨ Run Reframe Now"}
+              {reframing
+                ? `Reframing... ${reframeElapsed}s (${reframeProgress})`
+                : "✨ Run Reframe Now"}
             </Button>
           </div>
         </div>

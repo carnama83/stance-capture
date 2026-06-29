@@ -128,7 +128,9 @@ function useDebouncedAiStanceTip(
   questionId: string,
   stance: number,
   questionText?: string | null,
-  summary?: string | null
+  summary?: string | null,
+  lowLabel?: string | null,
+  highLabel?: string | null
 ) {
   const supabase = getSupabase()!;
   const [debouncedStance, setDebouncedStance] = React.useState(stance);
@@ -141,7 +143,7 @@ function useDebouncedAiStanceTip(
   }, [stance]);
 
   return useQuery({
-    queryKey: ["ai-stance-tip", questionId, debouncedStance, questionText, summary],
+    queryKey: ["ai-stance-tip", questionId, debouncedStance, questionText, summary, lowLabel, highLabel],
     enabled: !!questionId && Number.isFinite(debouncedStance),
     staleTime: 10 * 60_000,
     queryFn: async () => {
@@ -151,6 +153,8 @@ function useDebouncedAiStanceTip(
           stance: debouncedStance,
           question_text: questionText ?? null,
           summary: summary ?? null,
+          low_label: lowLabel ?? null,
+          high_label: highLabel ?? null,
         },
       });
 
@@ -227,7 +231,9 @@ export function QuestionStanceSlider({
     questionId,
     value,
     questionText,
-    summary
+    summary,
+    sliderLowLabel,
+    sliderHighLabel
   );
 
   const stanceLabels = buildStanceLabels(sliderLowLabel, sliderHighLabel);

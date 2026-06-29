@@ -33,6 +33,7 @@ import * as React from "react";
 import { Link } from "react-router-dom";
 import { QuestionStanceSlider } from "@/components/question/QuestionStanceSlider";
 import { CommunityStanceBar } from "@/components/question/CommunityStanceBar";
+import { clampPole } from "@/lib/poleLabels";
 import {
   useHeroController,
   deriveTeaserLabel,
@@ -57,6 +58,11 @@ export interface TopicStanceItem {
   avgScore: number;
   answerCount: number;
   scorePct: number; // -100..+100
+  // Latest answered question in this topic — lets the row name the user's most
+  // recent position in that question's own poles (a topic-level average can't).
+  latestScore?: number | null; // -2..+2
+  latestLowLabel?: string | null;
+  latestHighLabel?: string | null;
 }
 
 export interface MyStanceSnapshot {
@@ -114,6 +120,7 @@ export interface HeroSectionProps {
   onRequestReplenish: () => void;
   onSubmitSuccess: (questionId: string, value: number) => Promise<void>;
   onLoginRedirect: () => void;
+  onStage?: (questionId: string, value: number) => void;
   onNavigateToQuestion: (id: string) => void;
   onLogin: () => void;
   onSignup: () => void;
@@ -122,6 +129,7 @@ export interface HeroSectionProps {
 // Minimal alignment snapshot shape (matches AlignmentSnapshotRow in Index.tsx)
 export interface AlignmentSnapshotShape {
   alignment_pct: number;
+  comparable_count?: number;
   minority_count: number;
   most_divergent_question_id: string | null;
   most_divergent_question_text: string | null;
@@ -537,7 +545,9 @@ function AlignmentRing({
       >
         {isEmpty ? "—" : `${Math.round(clamped)}%`}
       </text>
-      {/* Center: "Overall Alignment" sublabel */}
+      {/* Center: pole-neutral sublabel — describes being in step with the
+          crowd ("with the majority"), not agreement with a correct answer.
+          Consistent with the "minority" wording used elsewhere in the panel. */}
       <text
         x="50%"
         y="62%"
@@ -547,7 +557,7 @@ function AlignmentRing({
         fill="#94a3b8"
         fontWeight="500"
       >
-        Overall Alignment
+        with the majority
       </text>
     </svg>
   );
@@ -749,12 +759,46 @@ function StanceHistoryRow({
   index: number;
 }) {
   const color = TOPIC_PALETTE[index % TOPIC_PALETTE.length];
-  const barWidth = Math.max(4, Math.min(48, Math.abs(topic.scorePct) * 0.48));
-  const sign = topic.scorePct > 0 ? "+" : topic.scorePct < 0 ? "" : "";
-  const pctLabel = `${sign}${topic.scorePct}%`;
+
+  // Show the user's LATEST position in this topic, named in that question's own
+  // poles — the meaningful readout for trade-off questions. A topic-level score
+  // average blends questions with different poles and can't name a side, so we
+  // use the most recent answered question. Falls back to a neutral strength word
+  // only when that question has no poles (older, pre-QF rows).
+  const low = topic.latestLowLabel?.trim() || null;
+  const high = topic.latestHighLabel?.trim() || null;
+  const hasPoles = !!(low && high);
+  const score = typeof topic.latestScore === "number" ? topic.latestScore : null;
+  const dir = score == null ? 0 : score > 0 ? 1 : score < 0 ? -1 : 0;
+
+  let leanText: string;
+  let leanTitle: string;
+  let muted = false;
+
+  if (hasPoles && dir !== 0) {
+    const full = (dir > 0 ? high : low) as string;
+    leanText = clampPole(full, 3);
+    leanTitle =
+      `Your latest position — leans toward "${full}"` +
+      (topic.answerCount > 1 ? ` · ${topic.answerCount} answered` : "");
+  } else if (hasPoles && dir === 0) {
+    leanText = "Middle ground";
+    leanTitle = "Your latest position — right in the middle";
+    muted = true;
+  } else {
+    // No poles on the latest question — neutral strength descriptor only.
+    const mag = Math.min(100, Math.abs(topic.scorePct));
+    leanText =
+      mag >= 67 ? "Strong view"
+      : mag >= 34 ? "Clear view"
+      : mag >= 1 ? "Slight view"
+      : "No strong view";
+    leanTitle = "Your average position on this topic";
+    muted = true;
+  }
 
   return (
-    <div className="flex items-center gap-2 py-0.5">
+    <div className="flex items-center gap-2 py-0.5" title={leanTitle}>
       {/* Colored dot */}
       <span
         className="h-2 w-2 flex-shrink-0 rounded-full"
@@ -764,24 +808,12 @@ function StanceHistoryRow({
       <span className="flex-1 text-xs text-slate-700 font-medium truncate min-w-0">
         {topic.topicTitle}
       </span>
-      {/* Mini bar */}
-      <div className="flex-shrink-0" style={{ width: 48 }}>
-        <div
-          className="h-1 rounded-full"
-          style={{
-            width: barWidth,
-            backgroundColor: color,
-            opacity: 0.75,
-            marginLeft: "auto",
-          }}
-        />
-      </div>
-      {/* Signed percent */}
+      {/* Latest position, named in the question's poles (full text on hover) */}
       <span
-        className="text-xs font-semibold flex-shrink-0 w-10 text-right"
-        style={{ color }}
+        className="text-[11px] font-medium flex-shrink-0 max-w-[48%] truncate text-right"
+        style={{ color: muted ? "#94a3b8" : color }}
       >
-        {pctLabel}
+        {leanText}
       </span>
     </div>
   );
@@ -974,15 +1006,30 @@ function SectionBAuthed({
   const isEmpty = totalAnswered === 0;
   const isForming = totalAnswered > 0 && totalAnswered < 3;
   const alignmentPct = snap?.alignment_pct ?? 0;
+  // How many of the user's answers have a real crowd to compare against.
+  // When 0, "% with the majority" is not meaningful (the user is first/only
+  // respondent), so we show a forming state rather than a misleading 0%.
+  const comparableCount = snap?.comparable_count ?? 0;
+  const noCommunityData = totalAnswered > 0 && comparableCount === 0;
+  const ringEmpty = isEmpty || noCommunityData;
   const topics = myStanceSnapshot?.topics ?? [];
   const hasPulse = pulseChips.length > 0;
 
-  // Insight line: use backend label if available; softer copy for low data
+  // Insight line: pole-neutral, majority/minority framing derived from the same
+  // alignment_pct the ring shows, but only once there's a crowd to compare
+  // against. Avoids agree/disagree wording so it reads correctly for trade-off
+  // questions (no implied "right" side). Softer copy for low / no data.
   const insightLine = isEmpty
     ? "Answer a few questions to see where you stand"
+    : noCommunityData
+    ? "Not enough community data yet to compare"
     : isForming
     ? "Your profile is still forming"
-    : (myStanceSnapshot?.alignmentLabel ?? "");
+    : alignmentPct >= 65
+    ? "You're usually in step with the majority"
+    : alignmentPct >= 40
+    ? "Sometimes with the majority, sometimes not"
+    : "You often take the less common view";
 
   return (
     <div className="flex flex-col h-full p-4 gap-3 overflow-y-auto">
@@ -999,7 +1046,7 @@ function SectionBAuthed({
 
         {/* Large centered ring */}
         <div className="flex justify-center mb-2">
-          <AlignmentRing pct={alignmentPct} isEmpty={isEmpty} />
+          <AlignmentRing pct={alignmentPct} isEmpty={ringEmpty} />
         </div>
 
         {/* Insight line */}
@@ -1094,6 +1141,7 @@ function SectionAQuestion({
   onAdvanceNow,
   onRefreshDistribution,
   onGuestEngage,
+  onStage,
   isFallbackMode = false,
 }: {
   question: HeroQuestion;
@@ -1109,6 +1157,8 @@ function SectionAQuestion({
   onRefreshDistribution: () => void;
   // Guest-only: fires once on first slider interaction to transition right panel
   onGuestEngage: () => void;
+  // Guest-only: stages an anonymous stance instead of bouncing to login
+  onStage?: (questionId: string, value: number) => void;
   // True when showing fallback-scope content — surfaces a subtle chip on the card
   isFallbackMode?: boolean;
 }) {
@@ -1211,6 +1261,8 @@ function SectionAQuestion({
                 isEmpty={!distribution || (distribution.responses ?? 0) === 0}
                 onRefresh={onRefreshDistribution}
                 compact={true}
+                lowLabel={question.slider_low_label ?? null}
+                highLabel={question.slider_high_label ?? null}
               />
               {status === "hero_answered_result" && hasQueue && (
                 <button
@@ -1238,55 +1290,29 @@ function SectionAQuestion({
           </>
         ) : (
           <>
-            {/* Guest: slider first, then pill CTA, then community teaser */}
-            {/* onGuestEngage is wired only to the guest slider — NOT the authed path */}
-            <div
-              onPointerUpCapture={onLoginRedirect}
-              onPointerCancelCapture={onLoginRedirect}
-              onMouseUpCapture={onLoginRedirect}
-              onTouchEndCapture={onLoginRedirect}
-              className="cursor-pointer"
-            >
-              <QuestionStanceSlider
-                key={`hero-anon-${question.question_id}`}
-                questionId={question.question_id}
-                questionText={question.question_text}
-                summary={question.summary}
-                initialValue={null}
-                onSubmit={onLoginRedirect}
-                onInteractionStart={onGuestEngage}
-                sliderLowLabel={question.slider_low_label ?? null}
-                sliderHighLabel={question.slider_high_label ?? null}
-              />
-            </div>
+            {/* Guest: slider stages anonymously (no login bounce). */}
+            <QuestionStanceSlider
+              key={`hero-anon-${question.question_id}`}
+              questionId={question.question_id}
+              questionText={question.question_text}
+              summary={question.summary}
+              initialValue={null}
+              onSubmit={(v) => (onStage ? onStage(question.question_id, v) : onLoginRedirect())}
+              onInteractionStart={onGuestEngage}
+              sliderLowLabel={question.slider_low_label ?? null}
+              sliderHighLabel={question.slider_high_label ?? null}
+            />
 
-            {/* Share Your Stance pill CTA */}
             <div className="mt-5 flex flex-col items-center gap-2">
-              <button
-                type="button"
-                onClick={onLoginRedirect}
-                className="inline-flex items-center justify-center gap-2 rounded-full py-2.5 px-10 text-sm font-semibold text-white shadow-md transition-all duration-200 hover:brightness-110 active:scale-[0.98]"
-                style={{ backgroundColor: "#6048C0" }}
-              >
-                Share Your Stance →
-              </button>
-              <p className="flex items-center gap-1.5 text-xs text-slate-400">
-                <span>👁</span> See how society stands after you answer.
+              <p className="text-xs text-slate-400">
+                Your stance is recorded anonymously — add your voice below to count it.
               </p>
             </div>
 
             {/* Community teaser — replaces CommunityStanceBar for guests */}
             <div className="mt-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-center">
               <p className="text-xs font-medium text-slate-500">
-                💬 State your opinion to unlock how the community is thinking —{" "}
-                <button
-                  type="button"
-                  onClick={onLoginRedirect}
-                  className="font-semibold underline underline-offset-2 transition-colors"
-                  style={{ color: "#6048C0" }}
-                >
-                  sign in to see the full picture.
-                </button>
+                💬 Add your voice to unlock how the community is thinking.
               </p>
             </div>
           </>
@@ -1475,6 +1501,7 @@ export function HeroSection({
   onRequestReplenish,
   onSubmitSuccess,
   onLoginRedirect,
+  onStage,
   onNavigateToQuestion,
   onLogin,
   onSignup,
@@ -1575,6 +1602,7 @@ export function HeroSection({
                   onAdvanceNow={advanceNow}
                   onRefreshDistribution={refreshDistribution}
                   onGuestEngage={() => setGuestHasEngaged(true)}
+                  onStage={onStage}
                   isFallbackMode={isFallbackMode}
                 />
               )}

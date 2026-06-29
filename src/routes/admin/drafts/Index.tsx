@@ -49,6 +49,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { ExternalLink, Edit2, RefreshCw, Loader2, Cpu } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
+import { SUPABASE_URL, SUPABASE_ANON_KEY, getJwt } from "@/lib/env";
 
 type DraftStatus = "draft" | "approved" | "rejected";
 
@@ -290,7 +291,8 @@ export default function TopicDraftsPage() {
         const { data: qds, error: qErr } = await supabase
           .from("question_drafts")
           .select("topic_draft_id")
-          .in("topic_draft_id", ids);
+          .in("topic_draft_id", ids)
+	  .neq("status", "rejected");   // rejected drafts no longer block re-creation;
 
         if (qErr) {
           console.warn("Failed to load question_drafts mapping:", qErr);
@@ -567,22 +569,24 @@ export default function TopicDraftsPage() {
     }
   }, [embedLoading, supabase, toast, pollEmbedProgress, clearEmbedInterval]);
 
-  // Cluster progress polling — mirrors embed pattern:
-  //   eligible  = items with embeddings not yet assigned to a cluster (finished_at IS NULL)
-  //   clustered = items already processed this run (finished_at IS NOT NULL, delta from baseline)
-  //   clusters  = total topic_clusters rows (delta from baseline)
+  // Cluster progress polling — uses topic_cluster_items as source of truth.
+  //   eligible  = ingestion_queue items with embeddings (total candidates)
+  //   clustered = topic_cluster_items rows (actual items assigned to a cluster)
+  //   clusters  = total topic_clusters rows
+  //
+  // NOTE: ingestion_queue.finished_at is NOT set by the cluster function,
+  // so it cannot be used to track clustering progress. topic_cluster_items
+  // is the correct source of truth — one row per article assigned to a cluster.
   const pollClusterProgress = React.useCallback(async () => {
     const [eligibleRes, clusteredRes, clusterCountRes] = await Promise.all([
       supabase
         .from("ingestion_queue")
         .select("*", { count: "exact", head: true })
         .not("embedding", "is", null)
-        .eq("embed_status", "done")
-        .is("finished_at", null),
+        .eq("embed_status", "done"),
       supabase
-        .from("ingestion_queue")
-        .select("*", { count: "exact", head: true })
-        .not("finished_at", "is", null),
+        .from("topic_cluster_items")
+        .select("*", { count: "exact", head: true }),
       supabase
         .from("topic_clusters")
         .select("*", { count: "exact", head: true }),
@@ -652,10 +656,14 @@ export default function TopicDraftsPage() {
           totalEligible     = current.eligible;
           setClusterEligible(totalEligible);
           setClusterClustered(0);
+          const alreadyClustered = current.clustered;
+          const unclustered = Math.max(0, (totalEligible ?? 0) - alreadyClustered);
           setClusterProgress(
             totalEligible === 0
               ? "Nothing eligible"
-              : `0 / ${totalEligible} clustered`
+              : unclustered === 0
+              ? `All ${alreadyClustered} articles already clustered`
+              : `0 / ${unclustered} unclustered articles to process`
           );
 
           if (totalEligible === 0) {
@@ -663,24 +671,37 @@ export default function TopicDraftsPage() {
             setClusterLoading(false);
             toast({
               title: "Nothing to cluster",
-              description: "No embedded articles waiting to be clustered.",
+              description: "No embedded articles found.",
+            });
+          } else if (unclustered === 0) {
+            clearClusterInterval();
+            setClusterLoading(false);
+            toast({
+              title: "Already clustered ✅",
+              description: `All ${alreadyClustered} articles are already assigned to clusters. Proceed to step 4.`,
             });
           }
           return; // wait for next tick before tracking progress
         }
 
         // Subsequent polls: delta from baseline
+        // current.clustered = total topic_cluster_items (absolute, not delta)
+        // newlyClustered    = items added to clusters THIS run
         const newlyClustered = current.clustered - baselineClustered;
         const newClusters    = current.clusters  - (baselineClusters ?? 0);
-        const remaining      = Math.max(0, (totalEligible ?? 0) - newlyClustered);
+        // remaining = items that have embeddings but are not yet in any cluster
+        const totalClustered = current.clustered;
+        const remaining      = Math.max(0, (totalEligible ?? 0) - totalClustered);
 
         setClusterClustered(newlyClustered);
         setClusterProgress(
-          `${newlyClustered} / ${totalEligible ?? "?"} clustered — ${remaining} remaining, ${newClusters} clusters`
+          remaining === 0
+            ? `All ${totalClustered} articles clustered — ${newClusters} new clusters`
+            : `${newlyClustered} newly clustered — ${remaining} remaining, ${newClusters} clusters`
         );
 
         // Fast-path: all eligible items clustered in one run
-        if (newlyClustered > 0 && remaining === 0) {
+        if (remaining === 0) {
           clearClusterInterval();
           setClusterLoading(false);
           toast({
@@ -714,10 +735,32 @@ export default function TopicDraftsPage() {
     }, 2000);
 
     try {
-      // Trigger the RPC, but NEVER block the UI timer.
-      // Timeout raised to 120s to match polling window and fix prior 60s timeout error.
-      const rpcPromise = supabase.rpc("run_cluster_http");
-      await withTimeout(rpcPromise as any, 120_000, "run_cluster_http");
+      // Try RPC first. Falls back to direct edge call if pg_net is not enabled.
+      let rpcFailed = false;
+      try {
+        const rpcPromise = supabase.rpc("run_cluster_http");
+        await withTimeout(rpcPromise as any, 30_000, "run_cluster_http");
+      } catch (rpcErr: any) {
+        console.warn("run_cluster_http RPC failed, trying direct edge call:", rpcErr?.message);
+        rpcFailed = true;
+      }
+
+      if (rpcFailed) {
+        const jwt = getJwt();
+        const edgeResp = await fetch(`${SUPABASE_URL}/functions/v1/cluster`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${jwt}`,
+            "apikey": SUPABASE_ANON_KEY,
+          },
+          body: JSON.stringify({}),
+        });
+        if (!edgeResp.ok) {
+          const errText = await edgeResp.text().catch(() => edgeResp.status.toString());
+          throw new Error(`Cluster edge function failed: ${errText}`);
+        }
+      }
     } catch (e: any) {
       console.error("run_cluster_http error/timeout:", e);
 

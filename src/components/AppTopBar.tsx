@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ChevronDown, Plus, Search, Compass, X } from "lucide-react";
 import { NotificationsBell } from "@/components/notifications/NotificationsBell";
+import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_PROJECT_REF, getJwt } from "@/lib/env";
 
 type Profile = {
   random_id: string;
@@ -35,7 +36,7 @@ function useSupabaseSession() {
     // Synchronous fast-path: read session from localStorage before first render
     // so the top bar never flashes the logged-out state for authenticated users.
     try {
-      const url = import.meta.env.VITE_SUPABASE_URL as string;
+      const url = SUPABASE_URL;
       const ref = url?.replace('https://', '').split('.')[0];
       if (!ref) return null;
       const raw = localStorage.getItem(`sb-${ref}-auth-token`);
@@ -228,18 +229,43 @@ export default function AppTopBar({
       <div className="container mx-auto flex h-16 items-center justify-between px-4">
         
         {/* LEFT: Logo / Brand */}
-        <Link 
-          to="/" 
-          className="flex items-center space-x-2 group"
-          title="Track how views change over time"
-        >
-          <span className="text-xl font-bold text-foreground">
-            Stance
-          </span>
-          <span className="text-xs text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity hidden sm:inline">
-            Track evolving views
-          </span>
-        </Link>
+        {/* LEFT: Logo / Brand */}
+<Link
+  to="/"
+  className="flex items-center space-x-2 group"
+  title="Track how views change over time"
+>
+  <svg
+    className="h-7 w-7 shrink-0"
+    viewBox="0 0 100 100"
+    xmlns="http://www.w3.org/2000/svg"
+    aria-hidden="true"
+  >
+    <defs>
+      <linearGradient id="scLogoGradient" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stopColor="#6366F1" />
+        <stop offset="0.55" stopColor="#8B5CF6" />
+        <stop offset="1" stopColor="#EC4899" />
+      </linearGradient>
+    </defs>
+    <rect width="100" height="100" rx="26" fill="url(#scLogoGradient)" />
+    <rect x="22" y="45.5" width="56" height="9" rx="4.5" fill="#fff" opacity="0.5" />
+    <g fill="#fff" opacity="0.45">
+      <rect x="20.5" y="42" width="3" height="16" rx="1.5" />
+      <rect x="34.5" y="42" width="3" height="16" rx="1.5" />
+      <rect x="48.5" y="42" width="3" height="16" rx="1.5" />
+      <rect x="62.5" y="42" width="3" height="16" rx="1.5" />
+      <rect x="76.5" y="42" width="3" height="16" rx="1.5" />
+    </g>
+    <circle cx="64" cy="50" r="12" fill="#fff" />
+  </svg>
+  <span className="text-xl font-bold text-foreground">
+    Stance
+  </span>
+  <span className="text-xs text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity hidden sm:inline">
+    Track evolving views
+  </span>
+</Link>
 
         {/* CENTER: Core Navigation */}
         <nav className="hidden md:flex items-center space-x-1">
@@ -399,6 +425,10 @@ export default function AppTopBar({
                   
                   <DropdownMenuItem onClick={() => navigate("/settings/profile")}>
                     Profile
+                  </DropdownMenuItem>
+
+                  <DropdownMenuItem onClick={() => navigate("/profile/proposals")}>
+                    My Proposals
                   </DropdownMenuItem>
                   
                   <DropdownMenuItem onClick={() => navigate("/settings/location")}>

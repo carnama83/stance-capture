@@ -125,6 +125,16 @@ export default function AdminLayout() {
             label="Live Questions"
           />
           <AdminLink
+            to="/admin/ugq-queue"
+            icon={<Inbox className="h-4 w-4" />}
+            label="UGQ Queue"
+          />
+          <AdminLink
+            to="/admin/proposers"
+            icon={<Users className="h-4 w-4" />}
+            label="Proposers"
+          />
+          <AdminLink
             to="/admin/topics"
             icon={<Tag className="h-4 w-4" />}
             label="Topics"
@@ -181,6 +191,11 @@ export default function AdminLayout() {
             to="/admin/election-review"
             icon={<ListFilter className="h-4 w-4" />}
             label="Question Review"
+          />
+          <AdminLink
+            to="/admin/manifesto-promises"
+            icon={<FileTextIcon className="h-4 w-4" />}
+            label="Manifesto Performance"
           />
 
           <Separator className="my-2" />
