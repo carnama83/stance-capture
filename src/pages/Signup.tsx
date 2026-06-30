@@ -1107,6 +1107,12 @@ export default function Signup() {
       const { error: signErr, data: signData } = await sb.auth.signUp({
         email,
         password, // NEVER log password
+        options: {
+          // EMAIL CONFIRMATION FIX: route the confirmation link to /auth/callback
+          // so oauthHashHandler -> OAuthCallbackPage (verifyOtp) consumes it.
+          // window.location.origin is environment-safe (Dev / UAT / Prod).
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+        },
       });
       if (signErr) {
         addLog("auth.signUp.error", safeErr(signErr));
