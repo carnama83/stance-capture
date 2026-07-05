@@ -275,11 +275,17 @@ export default function AppTopBar({
               <NavItem to="/topics" active={isActive("/topics")}>
                 Explore
               </NavItem>
+              <NavItem to="/for-you" active={isActive("/for-you")}>
+                For You
+              </NavItem>
               <NavItem to="/me/stances" active={isActive("/me/stances")}>
                 My Stances
               </NavItem>
               <NavItem to="/insights" active={isActive("/insights")}>
                 Insights
+              </NavItem>
+              <NavItem to="/profile/proposals" active={isActive("/profile/proposals")}>
+                My Proposals
               </NavItem>
             </>
           ) : (
@@ -505,6 +511,16 @@ export default function AppTopBar({
               Explore
             </Link>
             <Link
+              to="/for-you"
+              className={`flex-1 text-center py-2 text-xs font-medium ${
+                isActive("/for-you")
+                  ? "text-foreground"
+                  : "text-muted-foreground"
+              }`}
+            >
+              For You
+            </Link>
+            <Link
               to="/me/stances"
               className={`flex-1 text-center py-2 text-xs font-medium ${
                 isActive("/me/stances")
@@ -523,6 +539,16 @@ export default function AppTopBar({
               }`}
             >
               Insights
+            </Link>
+            <Link
+              to="/profile/proposals"
+              className={`flex-1 text-center py-2 text-xs font-medium ${
+                isActive("/profile/proposals")
+                  ? "text-foreground"
+                  : "text-muted-foreground"
+              }`}
+            >
+              Proposals
             </Link>
           </nav>
         </div>

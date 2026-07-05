@@ -50,6 +50,7 @@ type QueueRow = {
 };
 
 const STATUS_TABS: { value: string; label: string }[] = [
+  { value: "proposed", label: "New" },
   { value: "in_review", label: "In review" },
   { value: "approved", label: "Approved" },
   { value: "reframing", label: "Reframing" },
@@ -132,20 +133,42 @@ function ModerationPanel({ row, topics, onDone }: { row: QueueRow; topics: Topic
   const [note, setNote] = React.useState("");
   const [busy, setBusy] = React.useState<string | null>(null);
 
-  // Only actionable while awaiting a decision.
-  if (!["in_review", "approved"].includes(row.status)) return null;
-
   async function run(payload: Record<string, unknown>, label: string) {
     setBusy(label);
     const { ok, message, error } = await moderate(payload);
     setBusy(null);
     if (ok) {
-      toast({ title: label === "reject" ? "Proposal rejected" : label === "flag" ? "Proposer flagged" : "Question published" });
+      toast({
+        title:
+          label === "reject" ? "Proposal rejected"
+          : label === "flag" ? "Proposer flagged"
+          : label === "rescreen" ? "Re-screen complete"
+          : "Question published",
+      });
       onDone();
     } else {
       toast({ title: error ?? "Action failed", description: message, variant: "destructive" });
     }
   }
+
+  // New (proposed): the only action is to (re-)run Gate 1 screening, which
+  // resolves the proposal to In review, Approved, or Rejected.
+  if (row.status === "proposed") {
+    return (
+      <div className="rounded-md border border-slate-200 p-3">
+        <Button size="sm" disabled={!!busy}
+          onClick={() => run({ proposal_id: row.id, action: "rescreen" }, "rescreen")}>
+          {busy === "rescreen" ? "Screening…" : "Re-screen (Gate 1)"}
+        </Button>
+        <p className="mt-2 text-xs text-slate-500">
+          Runs the AI pre-screen. On success this proposal moves to In review (or Approved / Rejected).
+        </p>
+      </div>
+    );
+  }
+
+  // Only actionable while awaiting a decision.
+  if (!["in_review", "approved"].includes(row.status)) return null;
 
   return (
     <div className="rounded-md border border-slate-200 p-3 space-y-3">
