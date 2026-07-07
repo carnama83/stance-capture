@@ -81,7 +81,11 @@ verify_jwt = false
 import_map = "./functions/notify-election-updates/deno.json"
 entrypoint = "./functions/notify-election-updates/index.ts"
 
+[functions.ugq-screen]
+verify_jwt = false
 
+[functions.ugq-publish]
+verify_jwt = false
 
 [functions.whatsapp-flow-webhook]
 enabled = true
