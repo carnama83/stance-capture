@@ -68,6 +68,8 @@ import AdminCuratedFeedPage from "@/routes/admin/curated-feed/Index";
 
 // FIX 3: Publisher approval queue
 import AdminPublishersPage from "@/routes/admin/publishers/Index";
+import AdminAdAccountsPage from "@/routes/admin/ad-accounts/Index"; // Epic Y — Ad Accounts
+import AdminCampaignsPage from "@/routes/admin/campaigns/Index"; // Epic Y — Campaigns
 
 // Cognitive State Pages
 import AdminCognitiveStatesPage from '@/routes/admin/cognitive-states';
@@ -358,6 +360,9 @@ const App: React.FC = () => {
                 <Route path="whatsapp/broadcasts" element={<AdminWhatsAppBroadcastsPage />} />
                 <Route path="whatsapp/broadcasts/:id" element={<AdminWhatsAppBroadcastDetailPage />} />
                 <Route path="whatsapp/contacts" element={<AdminWhatsAppContactsPage />} />
+                {/* Epic Y — Ad Campaigns */}
+                <Route path="ad-accounts" element={<AdminAdAccountsPage />} />
+                <Route path="campaigns" element={<AdminCampaignsPage />} />
               </Route>
 
               {/* Moderation — accessible to admins AND moderators */}

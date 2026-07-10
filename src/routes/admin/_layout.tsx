@@ -27,6 +27,8 @@ import {
   FileText as FileTextIcon, // Epic EL — Candidates nav (aliased to avoid conflict)
   ListFilter,    // Epic EL — Question Review nav
   MessageSquareDot, // Epic AA — WhatsApp nav
+  Megaphone,     // Epic Y — Ad Accounts nav
+  Rocket,        // Epic Y — Campaigns nav
 } from "lucide-react";
 
 import {
@@ -164,6 +166,23 @@ export default function AdminLayout() {
             to="/admin/publishers"
             icon={<Building2 className="h-4 w-4" />}
             label="Publishers"
+          />
+
+          <Separator className="my-2" />
+
+          {/* Epic Y — Ad Campaigns */}
+          <div className="px-2 text-[10px] font-medium tracking-wide text-muted-foreground uppercase mb-1">
+            Ad Campaigns (Epic Y)
+          </div>
+          <AdminLink
+            to="/admin/ad-accounts"
+            icon={<Megaphone className="h-4 w-4" />}
+            label="Ad Accounts"
+          />
+          <AdminLink
+            to="/admin/campaigns"
+            icon={<Rocket className="h-4 w-4" />}
+            label="Campaigns"
           />
 
           <Separator className="my-2" />
