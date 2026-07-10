@@ -99,7 +99,8 @@ function useEligibleQuestions() {
       const { data, error } = await supabase
         .from("questions")
         .select("id, question")
-        .eq("state", "active")
+        .eq("status", "active")            // live/answerable (state machine keeps this in sync)
+        .not("published_at", "is", null)   // only published questions are valid ad targets
         .eq("campaign_eligible", true)
         .order("created_at", { ascending: false })
         .limit(200);
