@@ -14,6 +14,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, getJwt } from "@/lib/env";
 import {
   Rocket, Loader2, Plus, X, CheckCircle2, XCircle, Clock, Pause,
   Ban, FileEdit, Facebook, Linkedin, DollarSign, MousePointerClick, Eye, Users2,
+  RefreshCw,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -134,6 +135,32 @@ async function callLaunch(platform: Platform, campaignId: string, activate: bool
   }
 }
 
+// Generic POST to a campaign edge function (pause / cancel / sync).
+async function callCampaignFn(fn: string, payload: Record<string, unknown>) {
+  const token = getJwt();
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 45_000);
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/${fn}`, {
+      method: "POST",
+      signal: ctrl.signal,
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${token || SUPABASE_ANON_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data?.ok === false) {
+      throw new Error(data?.error || data?.meta_error?.message || `HTTP ${res.status}`);
+    }
+    return data;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // ─── Status badge ─────────────────────────────────────────────────────────────
 
 function StatusBadge({ status }: { status: CampaignStatus }) {
@@ -226,9 +253,33 @@ function LaunchDialog({ campaign, onClose }: { campaign: Campaign; onClose: () =
 // ─── Campaign card ────────────────────────────────────────────────────────────
 
 function CampaignCard({ c }: { c: Campaign }) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
   const [showLaunch, setShowLaunch] = React.useState(false);
-  const launchable = c.status === "draft";
+  const [confirmCancel, setConfirmCancel] = React.useState(false);
   const usd = (n: number) => `$${Number(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+
+  const refresh = () => qc.invalidateQueries({ queryKey: ["admin-campaigns"] });
+
+  const pauseMut = useMutation({
+    mutationFn: (action: "pause" | "resume") => callCampaignFn("pause-campaign", { campaign_id: c.id, action }),
+    onSuccess: (_d, action) => { refresh(); toast({ title: action === "pause" ? "Campaign paused" : "Campaign resumed" }); },
+    onError: (e: any) => toast({ title: "Action failed", description: e?.message, variant: "destructive" }),
+  });
+  const cancelMut = useMutation({
+    mutationFn: () => callCampaignFn("cancel-campaign", { campaign_id: c.id }),
+    onSuccess: () => { refresh(); setConfirmCancel(false); toast({ title: "Campaign cancelled" }); },
+    onError: (e: any) => toast({ title: "Cancel failed", description: e?.message, variant: "destructive" }),
+  });
+  const syncMut = useMutation({
+    mutationFn: () => callCampaignFn("sync-campaign-results", { campaign_id: c.id }),
+    onSuccess: () => { refresh(); toast({ title: "Results synced" }); },
+    onError: (e: any) => toast({ title: "Sync failed", description: e?.message, variant: "destructive" }),
+  });
+
+  const busy = pauseMut.isPending || cancelMut.isPending || syncMut.isPending;
+  const isTerminal = c.status === "cancelled" || c.status === "rejected";
+  const hasStats = c.status === "active" || c.status === "completed" || c.status === "paused";
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-5 space-y-3">
@@ -247,7 +298,7 @@ function CampaignCard({ c }: { c: Campaign }) {
             {c.platform_campaign_id && <> · platform id <code className="font-mono">{c.platform_campaign_id}</code></>}
           </p>
         </div>
-        {launchable && (
+        {c.status === "draft" && (
           <button
             type="button"
             onClick={() => setShowLaunch(true)}
@@ -258,7 +309,7 @@ function CampaignCard({ c }: { c: Campaign }) {
         )}
       </div>
 
-      {(c.status === "active" || c.status === "completed" || c.status === "paused") && (
+      {hasStats && (
         <div className="flex flex-wrap items-center gap-4 pt-1 border-t border-slate-100">
           <Stat icon={<Eye className="h-3.5 w-3.5" />} label="impressions" value={c.total_impressions.toLocaleString()} />
           <Stat icon={<MousePointerClick className="h-3.5 w-3.5" />} label="clicks" value={c.total_clicks.toLocaleString()} />
@@ -273,8 +324,70 @@ function CampaignCard({ c }: { c: Campaign }) {
         </div>
       )}
 
+      {/* Lifecycle actions */}
+      {!isTerminal && c.status !== "draft" && (
+        <div className="flex flex-wrap items-center gap-2 pt-1">
+          {c.status === "active" && (
+            <ActionBtn onClick={() => pauseMut.mutate("pause")} disabled={busy} icon={<Pause className="h-3 w-3" />} label="Pause" />
+          )}
+          {c.status === "paused" && (
+            <ActionBtn onClick={() => pauseMut.mutate("resume")} disabled={busy} icon={<Rocket className="h-3 w-3" />} label="Resume" />
+          )}
+          {(c.status === "active" || c.status === "paused" || c.status === "completed" || c.status === "pending_review") && (
+            <ActionBtn onClick={() => syncMut.mutate()} disabled={busy} icon={syncMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />} label="Sync now" />
+          )}
+          {c.status !== "completed" && (
+            confirmCancel ? (
+              <span className="inline-flex items-center gap-2">
+                <button type="button" onClick={() => cancelMut.mutate()} disabled={busy}
+                  className="flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50">
+                  {cancelMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Ban className="h-3 w-3" />} Confirm cancel
+                </button>
+                <button type="button" onClick={() => setConfirmCancel(false)} className="text-xs text-slate-500 hover:text-slate-700">Keep</button>
+              </span>
+            ) : (
+              <ActionBtn onClick={() => setConfirmCancel(true)} disabled={busy} icon={<Ban className="h-3 w-3" />} label="Cancel" danger />
+            )
+          )}
+        </div>
+      )}
+
+      {c.status === "draft" && (
+        <div className="flex items-center gap-2 pt-1">
+          {confirmCancel ? (
+            <span className="inline-flex items-center gap-2">
+              <button type="button" onClick={() => cancelMut.mutate()} disabled={busy}
+                className="flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50">
+                {cancelMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Ban className="h-3 w-3" />} Discard draft
+              </button>
+              <button type="button" onClick={() => setConfirmCancel(false)} className="text-xs text-slate-500 hover:text-slate-700">Keep</button>
+            </span>
+          ) : (
+            <ActionBtn onClick={() => setConfirmCancel(true)} disabled={busy} icon={<Ban className="h-3 w-3" />} label="Discard" danger />
+          )}
+        </div>
+      )}
+
       {showLaunch && <LaunchDialog campaign={c} onClose={() => setShowLaunch(false)} />}
     </div>
+  );
+}
+
+function ActionBtn({ onClick, disabled, icon, label, danger }: { onClick: () => void; disabled?: boolean; icon: React.ReactNode; label: string; danger?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={[
+        "flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50",
+        danger
+          ? "border-slate-200 text-slate-600 hover:border-red-200 hover:text-red-600"
+          : "border-slate-200 text-slate-600 hover:border-blue-200 hover:text-blue-700",
+      ].join(" ")}
+    >
+      {icon}{label}
+    </button>
   );
 }
 
