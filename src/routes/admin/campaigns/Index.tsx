@@ -418,7 +418,8 @@ function NewCampaignModal({ onClose }: { onClose: () => void }) {
   const [accountId, setAccountId] = React.useState("");
   const [questionId, setQuestionId] = React.useState("");
   const [budgetType, setBudgetType] = React.useState<"daily" | "total">("daily");
-  const [budget, setBudget] = React.useState("5");
+  const [currency, setCurrency] = React.useState<"INR" | "USD">("INR");
+  const [budget, setBudget] = React.useState("200");
   const [startDate, setStartDate] = React.useState("");
   const [endDate, setEndDate] = React.useState("");
   const [countries, setCountries] = React.useState<string[]>(["IN"]);
@@ -441,6 +442,7 @@ function NewCampaignModal({ onClose }: { onClose: () => void }) {
         countries,
         age_min: Number(ageMin) || 18,
         age_max: Number(ageMax) || 65,
+        currency,
       };
       const { error } = await supabase.from("campaigns").insert({
         name: name.trim(),
@@ -467,8 +469,11 @@ function NewCampaignModal({ onClose }: { onClose: () => void }) {
     onError: (e: any) => toast({ title: "Couldn't create campaign", description: e?.message, variant: "destructive" }),
   });
 
+  const curSymbol = currency === "INR" ? "₹" : "$";
+  const minBudget = currency === "INR" ? 100 : 5;
+
   const canSubmit =
-    name.trim().length > 0 && questionId && accountId && Number(budget) >= 5;
+    name.trim().length > 0 && questionId && accountId && Number(budget) >= minBudget;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
@@ -516,18 +521,35 @@ function NewCampaignModal({ onClose }: { onClose: () => void }) {
             </select>
           </Field>
 
-          {/* Budget */}
-          <div className="grid grid-cols-2 gap-3">
+          {/* Currency + Budget */}
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="Currency">
+              <select
+                value={currency}
+                onChange={(e) => {
+                  const c = e.target.value as "INR" | "USD";
+                  setCurrency(c);
+                  setBudget(c === "INR" ? "200" : "5"); // sensible default per currency
+                }}
+                className={inputCls}
+              >
+                <option value="INR">INR ₹</option>
+                <option value="USD">USD $</option>
+              </select>
+            </Field>
             <Field label="Budget type">
               <select value={budgetType} onChange={(e) => setBudgetType(e.target.value as "daily" | "total")} className={inputCls}>
                 <option value="daily">Daily</option>
                 <option value="total">Total (lifetime)</option>
               </select>
             </Field>
-            <Field label="Amount (USD)" hint="Minimum $5.">
-              <input type="number" min={5} step={1} value={budget} onChange={(e) => setBudget(e.target.value)} className={inputCls} />
+            <Field label={`Amount (${curSymbol})`} hint={`Min ${curSymbol}${minBudget}.`}>
+              <input type="number" min={minBudget} step={1} value={budget} onChange={(e) => setBudget(e.target.value)} className={inputCls} />
             </Field>
           </div>
+          <p className="text-[11px] text-slate-400 -mt-2">
+            Pick the currency of the ad account you’re launching to — Meta bills in that account’s currency ({curSymbol} here).
+          </p>
 
           {/* Schedule */}
           <div className="grid grid-cols-2 gap-3">
