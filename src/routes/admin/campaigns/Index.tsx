@@ -407,6 +407,111 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
   );
 }
 
+// ─── Geo typeahead (state / city) ─────────────────────────────────────────────
+
+interface GeoItem {
+  key: string;
+  name: string;
+  type: string;
+  country_code: string | null;
+  country_name?: string | null;
+  region?: string | null;
+}
+
+async function searchGeo(query: string, types: string[], countryCode?: string): Promise<GeoItem[]> {
+  const token = getJwt();
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/search-ad-geo`, {
+    method: "POST",
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${token || SUPABASE_ANON_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ query, types, country_code: countryCode }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data?.ok === false) throw new Error(data?.error || `HTTP ${res.status}`);
+  return (data.results ?? []) as GeoItem[];
+}
+
+function GeoPicker({
+  label, placeholder, type, selected, onChange,
+}: {
+  label: string;
+  placeholder: string;
+  type: "region" | "city";
+  selected: GeoItem[];
+  onChange: (items: GeoItem[]) => void;
+}) {
+  const [q, setQ] = React.useState("");
+  const [results, setResults] = React.useState<GeoItem[]>([]);
+  const [loading, setLoading] = React.useState(false);
+  const [open, setOpen] = React.useState(false);
+
+  React.useEffect(() => {
+    if (q.trim().length < 2) { setResults([]); return; }
+    let cancelled = false;
+    setLoading(true);
+    const h = setTimeout(async () => {
+      try {
+        const r = await searchGeo(q.trim(), [type]);
+        if (!cancelled) { setResults(r); setOpen(true); }
+      } catch { if (!cancelled) setResults([]); }
+      finally { if (!cancelled) setLoading(false); }
+    }, 300); // debounce
+    return () => { cancelled = true; clearTimeout(h); };
+  }, [q, type]);
+
+  function add(item: GeoItem) {
+    if (!selected.some((s) => s.key === item.key)) onChange([...selected, item]);
+    setQ(""); setResults([]); setOpen(false);
+  }
+  function remove(key: string) { onChange(selected.filter((s) => s.key !== key)); }
+
+  return (
+    <div className="space-y-1.5">
+      <span className="text-xs font-medium text-slate-600">{label}</span>
+      {selected.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {selected.map((s) => (
+            <span key={s.key} className="inline-flex items-center gap-1 rounded-full bg-blue-50 border border-blue-200 px-2 py-0.5 text-[11px] text-blue-700">
+              {s.name}{s.region ? `, ${s.region}` : ""}{s.country_code ? ` (${s.country_code})` : ""}
+              <button type="button" onClick={() => remove(s.key)} className="text-blue-400 hover:text-blue-700"><X className="h-3 w-3" /></button>
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="relative">
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          onFocus={() => results.length && setOpen(true)}
+          placeholder={placeholder}
+          className={inputCls}
+        />
+        {loading && <Loader2 className="absolute right-2 top-2.5 h-3.5 w-3.5 animate-spin text-slate-300" />}
+        {open && results.length > 0 && (
+          <div className="absolute z-10 mt-1 w-full max-h-52 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg">
+            {results.map((r) => (
+              <button
+                key={r.key}
+                type="button"
+                onClick={() => add(r)}
+                className="block w-full text-left px-3 py-2 text-xs text-slate-700 hover:bg-slate-50"
+              >
+                {r.name}
+                <span className="text-slate-400">
+                  {r.region ? `, ${r.region}` : ""}{r.country_name ? ` · ${r.country_name}` : ""}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function NewCampaignModal({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -423,6 +528,8 @@ function NewCampaignModal({ onClose }: { onClose: () => void }) {
   const [startDate, setStartDate] = React.useState("");
   const [endDate, setEndDate] = React.useState("");
   const [countries, setCountries] = React.useState<string[]>(["IN"]);
+  const [regions, setRegions] = React.useState<GeoItem[]>([]);
+  const [cities, setCities] = React.useState<GeoItem[]>([]);
   const [ageMin, setAgeMin] = React.useState("18");
   const [ageMax, setAgeMax] = React.useState("65");
   const [headline, setHeadline] = React.useState("");
@@ -440,6 +547,8 @@ function NewCampaignModal({ onClose }: { onClose: () => void }) {
       const uid = userRes?.user?.id ?? null;
       const targeting: Record<string, unknown> = {
         countries,
+        regions: regions.map((r) => ({ key: r.key, name: r.name, country_code: r.country_code })),
+        cities: cities.map((c) => ({ key: c.key, name: c.name, country_code: c.country_code, radius: 25, distance_unit: "mile" })),
         age_min: Number(ageMin) || 18,
         age_max: Number(ageMax) || 65,
         currency,
@@ -573,6 +682,30 @@ function NewCampaignModal({ onClose }: { onClose: () => void }) {
               <Field label="Age min"><input type="number" min={13} max={65} value={ageMin} onChange={(e) => setAgeMin(e.target.value)} className={inputCls} /></Field>
               <Field label="Age max"><input type="number" min={13} max={65} value={ageMax} onChange={(e) => setAgeMax(e.target.value)} className={inputCls} /></Field>
             </div>
+
+            {/* State/region + city typeahead (Meta geo keys) */}
+            <div className="pt-1 space-y-3">
+              <GeoPicker
+                label="States / regions (optional)"
+                placeholder="Search a state — e.g. Maharashtra"
+                type="region"
+                selected={regions}
+                onChange={setRegions}
+              />
+              <GeoPicker
+                label="Cities (optional)"
+                placeholder="Search a city — e.g. Pune"
+                type="city"
+                selected={cities}
+                onChange={setCities}
+              />
+              {(regions.length > 0 || cities.length > 0) && (
+                <p className="text-[11px] text-slate-400">
+                  When states or cities are selected, they narrow delivery within the chosen country. Cities use a 25-mile radius.
+                </p>
+              )}
+            </div>
+
             <p className="text-[11px] text-slate-400">Civic campaigns run under Meta’s political ad category, which limits detailed-interest targeting — geo + age only.</p>
           </div>
 
