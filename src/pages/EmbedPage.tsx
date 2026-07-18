@@ -14,6 +14,7 @@ import { useParams, useSearchParams } from "react-router-dom";
 import { getSupabase } from "@/lib/supabaseClient";
 import { CommunityStanceBar } from "@/components/question/CommunityStanceBar";
 import { Loader2, CheckCircle2, ExternalLink } from "lucide-react";
+import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_PROJECT_REF, getJwt } from "@/lib/env";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -25,6 +26,8 @@ interface EmbedQuestion {
   summary: string | null;
   state: string;
   tags: string[];
+  slider_low_label: string | null;
+  slider_high_label: string | null;
 }
 
 interface CommunityStats {
@@ -119,7 +122,15 @@ function EmbedSlider({
 
 // ─── Community bar wrapper ────────────────────────────────────────────────────
 
-function EmbedCommunityBar({ stats }: { stats: CommunityStats | null }) {
+function EmbedCommunityBar({
+  stats,
+  lowLabel,
+  highLabel,
+}: {
+  stats: CommunityStats | null;
+  lowLabel?: string | null;
+  highLabel?: string | null;
+}) {
   if (!stats) return null;
 
   const totalCount = stats.total_count ?? 0;
@@ -138,6 +149,8 @@ function EmbedCommunityBar({ stats }: { stats: CommunityStats | null }) {
         opposePct={pctDisagree}
         neutralPct={pctNeutral}
         compact
+        lowLabel={lowLabel ?? null}
+        highLabel={highLabel ?? null}
       />
     </div>
   );
@@ -183,7 +196,7 @@ export default function EmbedPage() {
     if (!questionId || !sb) return;
 
     sb.from("questions")
-      .select("id, question, summary, state, tags")
+      .select("id, question, summary, state, tags, slider_low_label, slider_high_label")
       .eq("id", questionId)
       .single()
       .then(({ data, error: err }) => {
@@ -231,8 +244,8 @@ export default function EmbedPage() {
 
     try {
       const fp = await getDeviceFingerprint();
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
-      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+      const supabaseUrl = SUPABASE_URL;
+      const anonKey = SUPABASE_ANON_KEY;
 
       // Get session token if available
       let authHeader = `Bearer ${anonKey}`;
@@ -369,7 +382,11 @@ export default function EmbedPage() {
             <span>Stance recorded — {STANCE_LABELS[selectedStance]?.short}</span>
           </div>
 
-          <EmbedCommunityBar stats={communityStats} />
+          <EmbedCommunityBar
+            stats={communityStats}
+            lowLabel={question?.slider_low_label ?? null}
+            highLabel={question?.slider_high_label ?? null}
+          />
 
           {/* CTA */}
           {!authUser && (

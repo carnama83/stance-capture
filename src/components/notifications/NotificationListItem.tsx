@@ -14,7 +14,7 @@ import * as React from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Bell, TrendingUp, BookOpen, MapPin, Globe,
-  RefreshCcw, Newspaper, AlertCircle,
+  RefreshCcw, Newspaper, AlertCircle, Lightbulb,
 } from "lucide-react";
 import { type UserNotification, type NotificationType } from "@/hooks/notificationTypes";
 import { cn } from "@/lib/utils";
@@ -52,6 +52,13 @@ function NotificationIcon({
       return <RefreshCcw className="h-4 w-4 text-emerald-500 shrink-0" />;
     case "new_local_topic":
       return <Newspaper className="h-4 w-4 text-sky-500 shrink-0" />;
+    case "ugq_submitted":
+    case "ugq_published":
+    case "ugq_rejected":
+    case "ugq_milestone":
+    case "ugq_flagged":
+    case "ugq_unflagged":
+      return <Lightbulb className="h-4 w-4 text-amber-500 shrink-0" />;
     default:
       return <Bell className="h-4 w-4 text-slate-400 shrink-0" />;
   }

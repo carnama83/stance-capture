@@ -52,6 +52,7 @@ import {
   Pencil,
   X,
 } from "lucide-react";
+import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_PROJECT_REF, getJwt } from "@/lib/env";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -149,11 +150,11 @@ function RegionalPresencePanel({
     if (!newState.trim()) return;
     setAdding(true);
     try {
-      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
-      const projectRef = import.meta.env.VITE_SUPABASE_URL?.replace("https://","")?.split(".")[0] ?? "";
+      const anonKey = SUPABASE_ANON_KEY;
+      const projectRef = SUPABASE_URL?.replace("https://","")?.split(".")[0] ?? "";
       let jwt = anonKey;
       try { const r = localStorage.getItem(`sb-${projectRef}-auth-token`); if (r) { const p = JSON.parse(r); if (p?.access_token) jwt = p.access_token; } } catch {}
-      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/election_party_regions`, {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/election_party_regions`, {
         method: "POST",
         headers: { "Content-Type":"application/json","apikey":anonKey,"Authorization":`Bearer ${jwt}`,"Prefer":"return=minimal" },
         body: JSON.stringify({
@@ -172,11 +173,11 @@ function RegionalPresencePanel({
   };
 
   const removeRegion = async (regionId: string) => {
-    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
-    const projectRef = import.meta.env.VITE_SUPABASE_URL?.replace("https://","")?.split(".")[0] ?? "";
+    const anonKey = SUPABASE_ANON_KEY;
+    const projectRef = SUPABASE_URL?.replace("https://","")?.split(".")[0] ?? "";
     let jwt = anonKey;
     try { const r = localStorage.getItem(`sb-${projectRef}-auth-token`); if (r) { const p = JSON.parse(r); if (p?.access_token) jwt = p.access_token; } } catch {}
-    await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/election_party_regions?id=eq.${regionId}`, {
+    await fetch(`${SUPABASE_URL}/rest/v1/election_party_regions?id=eq.${regionId}`, {
       method: "DELETE",
       headers: { "apikey": anonKey, "Authorization": `Bearer ${jwt}` },
     });
@@ -297,11 +298,11 @@ function AllianceMembersPanel({
     if (!selectedMemberId) return;
     setAdding(true);
     try {
-      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
-      const projectRef = import.meta.env.VITE_SUPABASE_URL?.replace("https://","")?.split(".")[0] ?? "";
+      const anonKey = SUPABASE_ANON_KEY;
+      const projectRef = SUPABASE_URL?.replace("https://","")?.split(".")[0] ?? "";
       let jwt = anonKey;
       try { const r = localStorage.getItem(`sb-${projectRef}-auth-token`); if (r) { const p = JSON.parse(r); if (p?.access_token) jwt = p.access_token; } } catch {}
-      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/party_alliance_members`, {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/party_alliance_members`, {
         method: "POST",
         headers: { "Content-Type":"application/json","apikey":anonKey,"Authorization":`Bearer ${jwt}`,"Prefer":"return=minimal" },
         body: JSON.stringify({
@@ -447,8 +448,8 @@ function CreatePartyDialog({
     setSaving(true);
     setError(null);
     try {
-      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
-      const projectRef = import.meta.env.VITE_SUPABASE_URL?.replace("https://","")?.split(".")[0] ?? "";
+      const anonKey = SUPABASE_ANON_KEY;
+      const projectRef = SUPABASE_URL?.replace("https://","")?.split(".")[0] ?? "";
       let jwt = anonKey;
       try { const r = localStorage.getItem(`sb-${projectRef}-auth-token`); if (r) { const p = JSON.parse(r); if (p?.access_token) jwt = p.access_token; } } catch {}
       const payload: Record<string,any> = {
@@ -463,7 +464,7 @@ function CreatePartyDialog({
         website_url: form.website_url.trim() || null,
         is_active: true,
       };
-      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/rest/v1/election_parties`, {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/election_parties`, {
         method: "POST",
         headers: { "Content-Type":"application/json","apikey":anonKey,"Authorization":`Bearer ${jwt}`,"Prefer":"return=minimal" },
         body: JSON.stringify(payload),
@@ -678,8 +679,8 @@ export default function AdminPartiesPage() {
   const fetchParties = React.useCallback(async () => {
     setLoading(true);
     try {
-      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+      const anonKey = SUPABASE_ANON_KEY;
+      const supabaseUrl = SUPABASE_URL;
       const projectRef = supabaseUrl.replace("https://", "").split(".")[0];
       let jwt = anonKey;
       try { const r = localStorage.getItem(`sb-${projectRef}-auth-token`); if (r) { const p = JSON.parse(r); if (p?.access_token) jwt = p.access_token; } } catch {}

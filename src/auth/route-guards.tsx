@@ -26,6 +26,7 @@ import * as React from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { getSupabase } from "../lib/supabaseClient";
 import { ROUTES } from "@/routes/paths";
+import { SUPABASE_AUTH_STORAGE_KEY } from "@/lib/env";
 
 /** Tiny loading UI to avoid layout jumpiness while auth resolves. */
 const Spinner = () => (
@@ -38,8 +39,7 @@ const Spinner = () => (
 // getSession() acquires an async lock during background token refresh.
 // Reading directly from localStorage is synchronous and lock-free.
 // Established pattern: see supabaseClient.ts sessionRef seed.
-const PROJECT_REF = "yzxzpnomcarnxixhjlba";
-const AUTH_STORAGE_KEY = `sb-${PROJECT_REF}-auth-token`;
+const AUTH_STORAGE_KEY = SUPABASE_AUTH_STORAGE_KEY; // derived from env.ts
 
 function readSessionFromStorage(): boolean {
   try {

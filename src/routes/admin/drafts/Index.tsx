@@ -47,8 +47,9 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { ExternalLink, Edit2, RefreshCw, Loader2, Cpu } from "lucide-react";
+import { ExternalLink, Edit2, RefreshCw, Loader2, Cpu, Info } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
+import { SUPABASE_URL, SUPABASE_ANON_KEY, getJwt } from "@/lib/env";
 
 type DraftStatus = "draft" | "approved" | "rejected";
 
@@ -123,6 +124,7 @@ export default function TopicDraftsPage() {
   const [clusterProgress, setClusterProgress] = React.useState("");
   const [clusterEligible, setClusterEligible] = React.useState<number | null>(null);
   const [clusterClustered, setClusterClustered] = React.useState<number | null>(null);
+  const [clusterResult, setClusterResult] = React.useState<string | null>(null);
 
   const [createDraftsLoading, setCreateDraftsLoading] = React.useState(false);
   const [createDraftsElapsed, setCreateDraftsElapsed] = React.useState(0);
@@ -290,7 +292,8 @@ export default function TopicDraftsPage() {
         const { data: qds, error: qErr } = await supabase
           .from("question_drafts")
           .select("topic_draft_id")
-          .in("topic_draft_id", ids);
+          .in("topic_draft_id", ids)
+	  .neq("status", "rejected");   // rejected drafts no longer block re-creation;
 
         if (qErr) {
           console.warn("Failed to load question_drafts mapping:", qErr);
@@ -567,22 +570,24 @@ export default function TopicDraftsPage() {
     }
   }, [embedLoading, supabase, toast, pollEmbedProgress, clearEmbedInterval]);
 
-  // Cluster progress polling — mirrors embed pattern:
-  //   eligible  = items with embeddings not yet assigned to a cluster (finished_at IS NULL)
-  //   clustered = items already processed this run (finished_at IS NOT NULL, delta from baseline)
-  //   clusters  = total topic_clusters rows (delta from baseline)
+  // Cluster progress polling — uses topic_cluster_items as source of truth.
+  //   eligible  = ingestion_queue items with embeddings (total candidates)
+  //   clustered = topic_cluster_items rows (actual items assigned to a cluster)
+  //   clusters  = total topic_clusters rows
+  //
+  // NOTE: ingestion_queue.finished_at is NOT set by the cluster function,
+  // so it cannot be used to track clustering progress. topic_cluster_items
+  // is the correct source of truth — one row per article assigned to a cluster.
   const pollClusterProgress = React.useCallback(async () => {
     const [eligibleRes, clusteredRes, clusterCountRes] = await Promise.all([
       supabase
         .from("ingestion_queue")
         .select("*", { count: "exact", head: true })
         .not("embedding", "is", null)
-        .eq("embed_status", "done")
-        .is("finished_at", null),
+        .eq("embed_status", "done"),
       supabase
-        .from("ingestion_queue")
-        .select("*", { count: "exact", head: true })
-        .not("finished_at", "is", null),
+        .from("topic_cluster_items")
+        .select("*", { count: "exact", head: true }),
       supabase
         .from("topic_clusters")
         .select("*", { count: "exact", head: true }),
@@ -612,6 +617,7 @@ export default function TopicDraftsPage() {
     setClusterProgress("Counting...");
     setClusterEligible(null);
     setClusterClustered(null);
+    setClusterResult(null);
 
     toast({
       title: "Clustering started",
@@ -624,7 +630,7 @@ export default function TopicDraftsPage() {
     let totalEligible: number | null = null;
     // Plateau detection state
     let lastClusteredCount = 0;
-    let plateauTicks = 0;
+    let settleTicks = 0;
 
     // Start polling IMMEDIATELY — same pattern as embed
     clusterIntervalRef.current = window.setInterval(async () => {
@@ -634,6 +640,7 @@ export default function TopicDraftsPage() {
       if (elapsed > 120) {
         clearClusterInterval();
         setClusterLoading(false);
+        setClusterResult("Last run: polling timed out after 120s — check Edge Function logs; the job may still have finished.");
         toast({
           title: "Clustering timeout",
           description: "Stopped polling after 120s. Check Edge Function logs — the job may still be running.",
@@ -652,37 +659,57 @@ export default function TopicDraftsPage() {
           totalEligible     = current.eligible;
           setClusterEligible(totalEligible);
           setClusterClustered(0);
+          const alreadyClustered = current.clustered;
+          const unclustered = Math.max(0, (totalEligible ?? 0) - alreadyClustered);
           setClusterProgress(
             totalEligible === 0
               ? "Nothing eligible"
-              : `0 / ${totalEligible} clustered`
+              : unclustered === 0
+              ? `All ${alreadyClustered} articles already clustered`
+              : `0 / ${unclustered} unclustered articles to process`
           );
 
           if (totalEligible === 0) {
             clearClusterInterval();
             setClusterLoading(false);
+            setClusterResult("Last run: nothing eligible to cluster.");
             toast({
               title: "Nothing to cluster",
-              description: "No embedded articles waiting to be clustered.",
+              description: "No embedded articles found.",
+            });
+          } else if (unclustered === 0) {
+            clearClusterInterval();
+            setClusterLoading(false);
+            setClusterResult(`Last run: all ${alreadyClustered} articles already clustered.`);
+            toast({
+              title: "Already clustered ✅",
+              description: `All ${alreadyClustered} articles are already assigned to clusters. Proceed to step 4.`,
             });
           }
           return; // wait for next tick before tracking progress
         }
 
         // Subsequent polls: delta from baseline
+        // current.clustered = total topic_cluster_items (absolute, not delta)
+        // newlyClustered    = items added to clusters THIS run
         const newlyClustered = current.clustered - baselineClustered;
         const newClusters    = current.clusters  - (baselineClusters ?? 0);
-        const remaining      = Math.max(0, (totalEligible ?? 0) - newlyClustered);
+        // remaining = items that have embeddings but are not yet in any cluster
+        const totalClustered = current.clustered;
+        const remaining      = Math.max(0, (totalEligible ?? 0) - totalClustered);
 
         setClusterClustered(newlyClustered);
         setClusterProgress(
-          `${newlyClustered} / ${totalEligible ?? "?"} clustered — ${remaining} remaining, ${newClusters} clusters`
+          remaining === 0
+            ? `All ${totalClustered} articles clustered — ${newClusters} new clusters`
+            : `${newlyClustered} newly clustered — ${remaining} remaining, ${newClusters} clusters`
         );
 
         // Fast-path: all eligible items clustered in one run
-        if (newlyClustered > 0 && remaining === 0) {
+        if (remaining === 0) {
           clearClusterInterval();
           setClusterLoading(false);
+          setClusterResult(`Last run: ${newClusters} clusters from ${newlyClustered} articles — all eligible articles clustered.`);
           toast({
             title: "Clustering complete! ✅",
             description: `${newClusters} clusters from ${newlyClustered} articles in ${elapsed}s`,
@@ -690,22 +717,42 @@ export default function TopicDraftsPage() {
           return;
         }
 
-        // Plateau detection: RPC finished and no progress for 3 consecutive polls (~6s)
-        // Handles the case where batch limit < total eligible (e.g. 200 cap with 454 items)
-        if (newlyClustered === lastClusteredCount && newlyClustered > 0) {
-          plateauTicks++;
+        // Settle detection: the cluster job runs once (1–4s) and commits its results
+        // in a single step, so once the clustered count stops changing the run is done.
+        // We track stability REGARDLESS of whether new clusters formed — a run that
+        // produces 0 new clusters (all remaining articles are singletons with no
+        // same-event match) is a valid completion, not a hang. The `elapsed >= 8` gate
+        // ensures the async pg_net trigger has actually run before we conclude 0.
+        if (newlyClustered === lastClusteredCount) {
+          settleTicks++;
         } else {
-          plateauTicks = 0;
+          settleTicks = 0;
           lastClusteredCount = newlyClustered;
         }
 
-        if (plateauTicks >= 3) {
+        if (settleTicks >= 3 && elapsed >= 8) {
           clearClusterInterval();
           setClusterLoading(false);
-          toast({
-            title: "Clustering complete! ✅",
-            description: `${newClusters} clusters from ${newlyClustered} articles in ${elapsed}s`,
-          });
+          if (newClusters > 0) {
+            setClusterResult(
+              `Last run: ${newClusters} new clusters from ${newlyClustered} articles — ${remaining} articles remain (no same-event match yet).`
+            );
+            toast({
+              title: "Clustering complete! ✅",
+              description: `${newClusters} new clusters from ${newlyClustered} articles in ${elapsed}s. ${remaining} articles remain unclustered.`,
+            });
+          } else {
+            // Run finished but produced 0 new clusters: the remaining articles are
+            // singletons with no same-event match in the current window.
+            setClusterProgress(`No new clusters — ${remaining} singletons remain`);
+            setClusterResult(
+              `Last run: no new clusters. The ${remaining} remaining articles have no same-event match, so no more clusters can be formed from them right now. They stay eligible for 72h in case another outlet covers the same story.`
+            );
+            toast({
+              title: "Run complete — no new clusters",
+              description: `No more clusters can be formed with the ${remaining} remaining articles: they have no same-event match in the current window. They stay eligible for 72h in case matching coverage arrives.`,
+            });
+          }
         }
       } catch (err) {
         console.warn("pollClusterProgress failed:", err);
@@ -714,10 +761,32 @@ export default function TopicDraftsPage() {
     }, 2000);
 
     try {
-      // Trigger the RPC, but NEVER block the UI timer.
-      // Timeout raised to 120s to match polling window and fix prior 60s timeout error.
-      const rpcPromise = supabase.rpc("run_cluster_http");
-      await withTimeout(rpcPromise as any, 120_000, "run_cluster_http");
+      // Try RPC first. Falls back to direct edge call if pg_net is not enabled.
+      let rpcFailed = false;
+      try {
+        const rpcPromise = supabase.rpc("run_cluster_http");
+        await withTimeout(rpcPromise as any, 30_000, "run_cluster_http");
+      } catch (rpcErr: any) {
+        console.warn("run_cluster_http RPC failed, trying direct edge call:", rpcErr?.message);
+        rpcFailed = true;
+      }
+
+      if (rpcFailed) {
+        const jwt = getJwt();
+        const edgeResp = await fetch(`${SUPABASE_URL}/functions/v1/cluster`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${jwt}`,
+            "apikey": SUPABASE_ANON_KEY,
+          },
+          body: JSON.stringify({}),
+        });
+        if (!edgeResp.ok) {
+          const errText = await edgeResp.text().catch(() => edgeResp.status.toString());
+          throw new Error(`Cluster edge function failed: ${errText}`);
+        }
+      }
     } catch (e: any) {
       console.error("run_cluster_http error/timeout:", e);
 
@@ -1200,6 +1269,13 @@ export default function TopicDraftsPage() {
               : "5. Classify Parents"}
           </Button>
         </div>
+
+        {clusterResult && (
+          <div className="mt-2 flex items-start gap-2 rounded border bg-slate-50 px-3 py-2 text-xs text-muted-foreground">
+            <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+            <span>{clusterResult}</span>
+          </div>
+        )}
 
       </CardHeader>
 

@@ -21,6 +21,7 @@ import * as React from "react";
 import { useNavigate } from "react-router-dom";
 import { getSupabase } from "@/lib/supabaseClient";
 import { Loader2 } from "lucide-react";
+import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_PROJECT_REF, getJwt } from "@/lib/env";
 
 function extractAuthParams(): URLSearchParams | null {
   const href = window.location.href;
@@ -55,7 +56,7 @@ function extractAuthParams(): URLSearchParams | null {
 // Manually seed localStorage with the session so Supabase picks it up via getSession()
 function seedSessionToStorage(accessToken: string, refreshToken: string, expiresAt: string) {
   try {
-    const url = import.meta.env.VITE_SUPABASE_URL as string;
+    const url = SUPABASE_URL;
     // Supabase stores session under: sb-<project-ref>-auth-token
     const ref = url.replace("https://", "").split(".")[0];
     const storageKey = `sb-${ref}-auth-token`;

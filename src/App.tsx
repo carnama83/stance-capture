@@ -1,5 +1,5 @@
 import * as React from "react";
-import { HashRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import { HashRouter as Router, Routes, Route, Navigate, useLocation } from "react-router-dom";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -30,6 +30,12 @@ import SettingsSecurity from "./pages/SettingsSecurity";
 import SettingsSessions from "./pages/SettingsSessions";
 import AdminIdentifiers from "./pages/AdminIdentifiers";
 import NotFound from "./pages/NotFound";
+import { recordWebStance } from "@/lib/webStance";
+
+// Public legal/about pages + site footer
+import About from "./pages/About";
+import PrivacyPolicy from "./pages/PrivacyPolicy";
+import Footer from "./components/Footer";
 
 // Question detail page (user-facing)
 import QuestionDetailPage from "./pages/QuestionDetailPage";
@@ -43,6 +49,7 @@ import AdminSourcesPage from "@/routes/admin/sources/Index";
 import AdminIngestionPage from "@/routes/admin/ingestion/Index";
 import AdminDraftsPage from "@/routes/admin/drafts/Index";
 import AdminQuestionsPage from "@/routes/admin/questions/Index";
+import AdminUGQQueuePage from "@/routes/admin/ugq-queue/Index";
 import ShareAnalyticsPage from "@/routes/admin/share-analytics/Index";
 import AdminIngestionReviewPage from "@/routes/admin/ingestion-review/Index";
 import AdminPipelineRunsPage from "@/routes/admin/pipeline-runs/Index";
@@ -61,6 +68,8 @@ import AdminCuratedFeedPage from "@/routes/admin/curated-feed/Index";
 
 // FIX 3: Publisher approval queue
 import AdminPublishersPage from "@/routes/admin/publishers/Index";
+import AdminAdAccountsPage from "@/routes/admin/ad-accounts/Index"; // Epic Y — Ad Accounts
+import AdminCampaignsPage from "@/routes/admin/campaigns/Index"; // Epic Y — Campaigns
 
 // Cognitive State Pages
 import AdminCognitiveStatesPage from '@/routes/admin/cognitive-states';
@@ -69,6 +78,7 @@ import AdminElectionsPage from '@/routes/admin/elections/Index';
 import AdminElectionNewPage from '@/routes/admin/elections/New';
 import AdminPartiesPage from '@/routes/admin/parties/Index';
 import AdminCandidatesPage from '@/routes/admin/candidates/Index';
+import AdminManifestoPromisesPage from '@/routes/admin/manifesto-promises/Index';
 import AdminElectionReviewPage from '@/routes/admin/election-review/Index';
 import ConstituencySetupPage from '@/pages/settings/ConstituencySetup';
 import AdminModerationPage from '@/routes/admin/moderation/index';
@@ -83,6 +93,7 @@ import InsightsPage from '@/pages/InsightsPage';
 
 // My stances
 import MyStancesPage from "./pages/MyStancesPage";
+import MyProposalsPage from "./pages/MyProposalsPage";
 
 import SettingsLayout from "./pages/SettingsLayout";
 import SettingsLocation from "./pages/SettingsLocation";
@@ -124,6 +135,14 @@ const queryClient = new QueryClient();
 function ShareClickTrackerMount() {
   useShareClickTracker();
   return null;
+}
+
+// Renders the global footer on every page EXCEPT the chrome-free embed and
+// publisher pages, where a footer would break the embedded layout.
+function SiteFooter() {
+  const { pathname } = useLocation();
+  if (pathname.startsWith("/embed") || pathname === "/publisher") return null;
+  return <Footer />;
 }
 
 const App: React.FC = () => {
@@ -175,6 +194,8 @@ const App: React.FC = () => {
               <Route path="/for-you" element={<Protected><ForYouFeedPage /></Protected>} />
               <Route path="/pulse" element={<UserKeyedPulsePage />} />
               <Route path="/insights" element={<InsightsPage />} />
+              <Route path="/about" element={<About />} />
+              <Route path="/privacy" element={<PrivacyPolicy />} />
               
               <Route
                 path={ROUTES.SIGNUP}
@@ -269,6 +290,16 @@ const App: React.FC = () => {
                 }
               />
 
+              {/* Epic UGQ: my proposals (protected) */}
+              <Route
+                path="/profile/proposals"
+                element={
+                  <Protected>
+                    <MyProposalsPage />
+                  </Protected>
+                }
+              />
+
               {/* Profile route redirects to Settings Profile */}
               <Route
                 path={ROUTES.PROFILE}
@@ -302,6 +333,7 @@ const App: React.FC = () => {
                 <Route path="share-analytics" element={<ShareAnalyticsPage />} />
                 <Route path="embed-analytics" element={<EmbedAnalyticsPage />} />
                 <Route path="live-questions" element={<AdminLiveQuestionsPage />} />
+                <Route path="ugq-queue" element={<AdminUGQQueuePage />} />
                 <Route
                   path="live-questions/:id"
                   element={<AdminLiveQuestionShowPage />}
@@ -322,11 +354,15 @@ const App: React.FC = () => {
                 <Route path="parties" element={<AdminPartiesPage />} />
                 <Route path="candidates" element={<AdminCandidatesPage />} />
                 <Route path="election-review" element={<AdminElectionReviewPage />} />
+                <Route path="manifesto-promises" element={<AdminManifestoPromisesPage />} />
                 {/* Epic AA — WhatsApp */}
                 <Route path="whatsapp" element={<AdminWhatsAppSettingsPage />} />
                 <Route path="whatsapp/broadcasts" element={<AdminWhatsAppBroadcastsPage />} />
                 <Route path="whatsapp/broadcasts/:id" element={<AdminWhatsAppBroadcastDetailPage />} />
                 <Route path="whatsapp/contacts" element={<AdminWhatsAppContactsPage />} />
+                {/* Epic Y — Ad Campaigns */}
+                <Route path="ad-accounts" element={<AdminAdAccountsPage />} />
+                <Route path="campaigns" element={<AdminCampaignsPage />} />
               </Route>
 
               {/* Moderation — accessible to admins AND moderators */}
@@ -358,6 +394,7 @@ const App: React.FC = () => {
               {/* 404 */}
               <Route path="*" element={<NotFound />} />
             </Routes>
+            <SiteFooter />
           </AuthReadyGate>
         </Router>
       </TooltipProvider>

@@ -10,7 +10,9 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test:a11y": "playwright test tests/a11y/",
-    "test:a11y:headed": "playwright test tests/a11y/ --headed"
+    "test:a11y:headed": "playwright test tests/a11y/ --headed",
+    "build:uat": "vite build --mode uat",
+    "preview:uat": "vite preview --mode uat"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

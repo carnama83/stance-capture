@@ -20,6 +20,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useToast } from "@/components/ui/use-toast";
 import { getSentimentColorHex } from "@/lib/stanceColors";
 import { ThumbsUp, ThumbsDown, Flag, AlertTriangle, Pencil, Trash2, Loader2 } from "lucide-react";
+import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_PROJECT_REF, getJwt } from "@/lib/env";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -434,8 +435,8 @@ function ReportModal({
       const { data: { session } } = await sb.auth.getSession();
       const jwt = session?.access_token;
       if (!jwt) throw new Error("Not authenticated");
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
-      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+      const supabaseUrl = SUPABASE_URL;
+      const anonKey = SUPABASE_ANON_KEY;
       const res = await fetch(`${supabaseUrl}/rest/v1/rpc/report_comment`, {
         method: "POST",
         headers: {
@@ -914,7 +915,7 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
     // Supabase stores the session under 'sb-<project-ref>-auth-token'.
     // This avoids the async mutex that blocks getSession() after window focus.
     try {
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string ?? "";
+      const supabaseUrl = SUPABASE_URL ?? "";
       const projectRef = supabaseUrl.split(".")[0].replace("https://", "");
       const raw = localStorage.getItem(`sb-${projectRef}-auth-token`);
       if (raw) {
@@ -1031,8 +1032,8 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
   // bypassing sb.auth.getSession() mutex entirely. Works even during background
   // token refresh because the stored token is still valid until the new one lands.
   const rpcFetch = React.useCallback(async (fnName: string, params: Record<string, unknown>) => {
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
-    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+    const supabaseUrl = SUPABASE_URL;
+    const anonKey = SUPABASE_ANON_KEY;
     // Read JWT fresh from localStorage on every call - no mutex, no async
     let jwt: string | null = sessionRef.current?.access_token ?? null;
     if (!jwt) {
@@ -1300,7 +1301,7 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
   // Read JWT from localStorage synchronously - same bypass as rpcFetch
   const getJwt = React.useCallback((): string | null => {
     try {
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+      const supabaseUrl = SUPABASE_URL;
       const projectRef = supabaseUrl.split(".")[0].replace("https://", "");
       const raw = localStorage.getItem(`sb-${projectRef}-auth-token`);
       return raw ? JSON.parse(raw)?.access_token ?? null : null;
@@ -1319,8 +1320,8 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
     if (!civilityWarning) {
       setCheckingCivility(true);
       const flagged = await checkCivility(
-        import.meta.env.VITE_SUPABASE_URL as string,
-        import.meta.env.VITE_SUPABASE_ANON_KEY as string,
+        SUPABASE_URL,
+        SUPABASE_ANON_KEY,
         getJwt(),
         body
       );
@@ -1342,8 +1343,8 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
         runSentimentWorkers(saved.id, body);
         // H2: fire background toxicity score write with the real comment_id
         void checkCivility(
-          import.meta.env.VITE_SUPABASE_URL as string,
-          import.meta.env.VITE_SUPABASE_ANON_KEY as string,
+          SUPABASE_URL,
+          SUPABASE_ANON_KEY,
           getJwt(),
           body,
           saved.id,

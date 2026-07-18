@@ -6,6 +6,7 @@
 // Also injects twitter:card meta for X/Twitter large image cards.
 
 import { useEffect } from "react";
+import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_PROJECT_REF, getJwt } from "@/lib/env";
 
 interface OgMetaOptions {
   title: string;
@@ -35,7 +36,7 @@ function removeMeta(property: string, isName = false) {
 export function useOgMeta({ title, description, questionId, imageUrl }: OgMetaOptions) {
   useEffect(() => {
     const originalTitle = document.title;
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+    const supabaseUrl = SUPABASE_URL;
 
     // Dynamic OG image via Edge Function
     const ogImageUrl = imageUrl

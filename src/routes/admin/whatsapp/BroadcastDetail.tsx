@@ -17,16 +17,9 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell,
 } from "recharts";
+import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_PROJECT_REF, getJwt } from "@/lib/env";
 
-const PROJECT_REF = "yzxzpnomcarnxixhjlba";
-const SUPABASE_URL = `https://${PROJECT_REF}.supabase.co`;
 
-function getJwt(): string {
-  try {
-    const raw = localStorage.getItem(`sb-${PROJECT_REF}-auth-token`);
-    return raw ? JSON.parse(raw)?.access_token ?? "" : "";
-  } catch { return ""; }
-}
 
 function pct(n: number, d: number): string {
   if (!d) return "—";
@@ -78,7 +71,7 @@ export default function AdminWhatsAppBroadcastDetailPage() {
     setLoading(true);
     const jwt = getJwt();
     const headers = {
-      "apikey": import.meta.env.VITE_SUPABASE_ANON_KEY ?? "",
+      "apikey": SUPABASE_ANON_KEY ?? "",
       "Authorization": `Bearer ${jwt}`,
     };
 
