@@ -1,4 +1,4 @@
-x# Normalize line endings across platforms (Windows/Mac/Linux)
+# Normalize line endings across platforms (Windows/Mac/Linux)
 * text=auto eol=lf
 
 # config.toml diverges intentionally per branch (project_id differs
