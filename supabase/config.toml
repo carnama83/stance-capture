@@ -1,0 +1,103 @@
+project_id = "kodyqyqcuzmygtbzpebt"
+[functions.ingest]
+enabled = true
+verify_jwt = true
+import_map = "./functions/ingest/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/ingest/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/ingest/*.html" ]
+
+[functions.cluster]
+enabled = true
+verify_jwt = true
+import_map = "./functions/cluster/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/cluster/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/cluster/*.html" ]
+
+[functions.generate]
+enabled = true
+verify_jwt = true
+import_map = "./functions/generate/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/generate/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/generate/*.html" ]
+
+[functions.detect-and-translate]
+enabled = true
+verify_jwt = false
+import_map = "./functions/detect-and-translate/deno.json"
+entrypoint = "./functions/detect-and-translate/index.ts"
+
+[functions.generate-party-policy-questions]
+enabled = true
+verify_jwt = false
+import_map = "./functions/generate-party-policy-questions/deno.json"
+entrypoint = "./functions/generate-party-policy-questions/index.ts"
+
+[functions.generate-candidate-statement-questions]
+enabled = true
+verify_jwt = false
+import_map = "./functions/generate-candidate-statement-questions/deno.json"
+entrypoint = "./functions/generate-candidate-statement-questions/index.ts"
+
+[functions.publish-election-questions]
+enabled = true
+verify_jwt = true
+import_map = "./functions/publish-election-questions/deno.json"
+entrypoint = "./functions/publish-election-questions/index.ts"
+
+[functions.record-stance-reveal-switch]
+enabled = true
+verify_jwt = true
+import_map = "./functions/record-stance-reveal-switch/deno.json"
+entrypoint = "./functions/record-stance-reveal-switch/index.ts"
+
+
+[functions.aggregate-election-stances]
+enabled = true
+verify_jwt = false
+import_map = "./functions/aggregate-election-stances/deno.json"
+entrypoint = "./functions/aggregate-election-stances/index.ts"
+
+[functions.detect-election-anomalies]
+enabled = true
+verify_jwt = false
+import_map = "./functions/detect-election-anomalies/deno.json"
+entrypoint = "./functions/detect-election-anomalies/index.ts"
+
+[functions.notify-election-updates]
+enabled = true
+verify_jwt = false
+import_map = "./functions/notify-election-updates/deno.json"
+entrypoint = "./functions/notify-election-updates/index.ts"
+
+[functions.ugq-screen]
+verify_jwt = false
+
+[functions.ugq-publish]
+verify_jwt = false
+
+[functions.whatsapp-flow-webhook]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/whatsapp-flow-webhook/index.ts"
+
+[functions.whatsapp-send-flow]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/whatsapp-send-flow/index.ts"
+
+[functions.whatsapp-broadcast-dispatch]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/whatsapp-broadcast-dispatch/index.ts"
