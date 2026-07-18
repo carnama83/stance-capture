@@ -1,9 +1,12 @@
 // src/routes/admin/ugq-queue/Index.tsx
-// Epic UGQ — Build Step 4: Admin UGQ Queue (Gate 2 review surface, spec §8.1).
+// Epic UGQ — Admin UGQ Queue (Gate 2 review surface, spec §8.1).
 //
-// Read surface only: lists community proposals with proposer identity, reputation
-// tier, AI-screen results and quality score. Moderation actions (approve / reject /
-// edit) are wired in step 5 once ugq-moderate is deployed.
+// v2 (2026-07-06): TWO-PHASE APPROVE. "Generate question" (action: approve) now
+// researches + reframes and PARKS the result at status='reframed'; the new
+// Reframed tab renders ReframedReviewPanel where the admin reviews/edits the
+// exact text, then Publish (action: publish_reframed) or Regenerate
+// (action: discard_reframe). reframe_result is loaded on expand via the narrow
+// admin_ugq_reframe_result RPC (admin_ugq_queue's RETURNS TABLE predates it).
 //
 // Data via the admin_ugq_queue RPC, called with the raw-fetch + getJwt pattern
 // (mutex-safe) used by the other admin pages.
@@ -20,6 +23,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/use-toast";
 import { cn } from "@/lib/utils";
 import { SUPABASE_URL, getJwt, supabaseHeaders } from "@/lib/env";
+import ReframedReviewPanel, { type ReframeResult } from "@/components/admin/ReframedReviewPanel";
 
 type QueueRow = {
   id: string;
@@ -50,9 +54,11 @@ type QueueRow = {
 };
 
 const STATUS_TABS: { value: string; label: string }[] = [
+  { value: "proposed", label: "New" },
   { value: "in_review", label: "In review" },
   { value: "approved", label: "Approved" },
   { value: "reframing", label: "Reframing" },
+  { value: "reframed", label: "Reframed" },
   { value: "published", label: "Published" },
   { value: "rejected", label: "Rejected" },
   { value: "all", label: "All" },
@@ -86,6 +92,18 @@ async function fetchTopics(): Promise<Topic[]> {
 }
 
 const REJECT_REASONS = ["duplicate", "low_quality", "safety", "not_a_question", "guidelines"];
+
+// reframe_result is not in admin_ugq_queue's RETURNS TABLE; loaded on demand
+// for expanded 'reframed' rows via the narrow admin-gated companion RPC.
+async function fetchReframeResult(proposalId: string): Promise<ReframeResult | null> {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/admin_ugq_reframe_result`, {
+    method: "POST",
+    headers: supabaseHeaders(getJwt()),
+    body: JSON.stringify({ p_proposal_id: proposalId }),
+  });
+  if (!res.ok) throw new Error(`Failed to load reframe (${res.status})`);
+  return (await res.json()) as ReframeResult | null;
+}
 
 async function moderate(payload: Record<string, unknown>): Promise<{ ok: boolean; message?: string; error?: string }> {
   const res = await fetch(`${SUPABASE_URL}/functions/v1/ugq-moderate`, {
@@ -132,20 +150,43 @@ function ModerationPanel({ row, topics, onDone }: { row: QueueRow; topics: Topic
   const [note, setNote] = React.useState("");
   const [busy, setBusy] = React.useState<string | null>(null);
 
-  // Only actionable while awaiting a decision.
-  if (!["in_review", "approved"].includes(row.status)) return null;
-
   async function run(payload: Record<string, unknown>, label: string) {
     setBusy(label);
     const { ok, message, error } = await moderate(payload);
     setBusy(null);
     if (ok) {
-      toast({ title: label === "reject" ? "Proposal rejected" : label === "flag" ? "Proposer flagged" : "Question published" });
+      toast({
+        title:
+          label === "reject" ? "Proposal rejected"
+          : label === "flag" ? "Proposer flagged"
+          : label === "rescreen" ? "Re-screen complete"
+          : "Question generated",
+        description: label === "approve" ? "Review it in the Reframed tab before publishing." : undefined,
+      });
       onDone();
     } else {
       toast({ title: error ?? "Action failed", description: message, variant: "destructive" });
     }
   }
+
+  // New (proposed): the only action is to (re-)run Gate 1 screening, which
+  // resolves the proposal to In review, Approved, or Rejected.
+  if (row.status === "proposed") {
+    return (
+      <div className="rounded-md border border-slate-200 p-3">
+        <Button size="sm" disabled={!!busy}
+          onClick={() => run({ proposal_id: row.id, action: "rescreen" }, "rescreen")}>
+          {busy === "rescreen" ? "Screening…" : "Re-screen (Gate 1)"}
+        </Button>
+        <p className="mt-2 text-xs text-slate-500">
+          Runs the AI pre-screen. On success this proposal moves to In review (or Approved / Rejected).
+        </p>
+      </div>
+    );
+  }
+
+  // Only actionable while awaiting a decision.
+  if (!["in_review", "approved"].includes(row.status)) return null;
 
   return (
     <div className="rounded-md border border-slate-200 p-3 space-y-3">
@@ -186,16 +227,16 @@ function ModerationPanel({ row, topics, onDone }: { row: QueueRow; topics: Topic
           {!editing ? (
             <Button size="sm" disabled={!!busy || !topicId}
               onClick={() => run({ proposal_id: row.id, action: "approve", topic_id: topicId }, "approve")}>
-              {busy === "approve" ? "Publishing…" : "Approve"}
+              {busy === "approve" ? "Generating…" : "Generate question"}
             </Button>
           ) : (
             <Button size="sm" disabled={!!busy || !topicId || editText.trim().length < 20}
               onClick={() => run({ proposal_id: row.id, action: "edit_and_approve", edited_question: editText.trim(), topic_id: topicId }, "approve")}>
-              {busy === "approve" ? "Publishing…" : "Save & approve"}
+              {busy === "approve" ? "Generating…" : "Save & generate"}
             </Button>
           )}
           <Button size="sm" variant="outline" disabled={!!busy} onClick={() => setEditing((v) => !v)}>
-            {editing ? "Cancel edit" : "Edit & approve"}
+            {editing ? "Cancel edit" : "Edit & generate"}
           </Button>
           <Button size="sm" variant="outline" disabled={!!busy} onClick={() => setRejecting(true)}>Reject</Button>
           <Button size="sm" variant="ghost" className="text-red-600" disabled={!!busy}
@@ -205,7 +246,93 @@ function ModerationPanel({ row, topics, onDone }: { row: QueueRow; topics: Topic
         </div>
       )}
       {busy === "approve" && (
-        <p className="text-xs text-slate-500">Reframing &amp; publishing — this can take a few seconds.</p>
+        <p className="text-xs text-slate-500">
+          Researching &amp; reframing — with web grounding this can take up to a minute. Nothing publishes until you review it.
+        </p>
+      )}
+    </div>
+  );
+}
+
+// Phase 2 review: loads reframe_result on expand, renders the review panel.
+// Also handles Reject here since ModerationPanel only renders for in_review/approved.
+function ReframedSection({ row, onDone }: { row: QueueRow; onDone: () => void }) {
+  const { toast } = useToast();
+  const [rejecting, setRejecting] = React.useState(false);
+  const [reason, setReason] = React.useState(REJECT_REASONS[0]);
+  const [note, setNote] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+
+  const { data: rr, isLoading, isError } = useQuery<ReframeResult | null>({
+    queryKey: ["ugq-reframe-result", row.id],
+    queryFn: () => fetchReframeResult(row.id),
+    staleTime: 0,
+  });
+
+  async function handleModerate(body: Record<string, unknown>) {
+    const res = await moderate(body);
+    if (res.ok && body.action === "publish_reframed") {
+      toast({ title: "Question published", description: "It is now live." });
+    }
+    if (res.ok && body.action === "discard_reframe") {
+      toast({ title: "Reframe discarded", description: "Back in In review — adjust and generate again." });
+    }
+    return res;
+  }
+
+  async function reject() {
+    setBusy(true);
+    const { ok, message, error } = await moderate({
+      proposal_id: row.id, action: "reject", reason_code: reason, note: note || null,
+    });
+    setBusy(false);
+    if (ok) { toast({ title: "Proposal rejected" }); onDone(); }
+    else { toast({ title: error ?? "Action failed", description: message, variant: "destructive" }); }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-2 text-xs text-slate-500 py-2">
+        <Loader2 className="h-4 w-4 animate-spin" /> Loading reframe…
+      </div>
+    );
+  }
+  if (isError || !rr) {
+    return (
+      <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+        Could not load the reframe result. If this persists, verify the admin_ugq_reframe_result RPC is deployed.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <ReframedReviewPanel
+        proposal={{
+          id: row.id,
+          raw_question: row.raw_question,
+          admin_edited_question: row.admin_edited_question,
+          status: row.status,
+          reframe_result: rr,
+        }}
+        onModerate={handleModerate}
+        onChanged={onDone}
+      />
+      {rejecting ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <select value={reason} onChange={(e) => setReason(e.target.value)}
+            className="h-8 rounded-md border border-slate-300 bg-white px-2 text-sm">
+            {REJECT_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
+          </select>
+          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (optional)"
+            className="h-8 flex-1 min-w-[160px] rounded-md border border-slate-300 px-2 text-sm" />
+          <Button size="sm" variant="destructive" disabled={busy} onClick={reject}>Confirm reject</Button>
+          <Button size="sm" variant="ghost" onClick={() => setRejecting(false)}>Cancel</Button>
+        </div>
+      ) : (
+        <Button size="sm" variant="ghost" className="text-red-600" onClick={() => setRejecting(true)}>
+          Reject proposal
+        </Button>
       )}
     </div>
   );
@@ -367,7 +494,11 @@ export default function AdminUGQQueuePage() {
                   </div>
 
                   {/* Gate 2 moderation actions */}
-                  <ModerationPanel row={r} topics={topics} onDone={() => refetch()} />
+                  {r.status === "reframed" ? (
+                    <ReframedSection row={r} onDone={() => refetch()} />
+                  ) : (
+                    <ModerationPanel row={r} topics={topics} onDone={() => refetch()} />
+                  )}
                 </div>
               )}
             </div>

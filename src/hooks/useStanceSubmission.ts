@@ -4,6 +4,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { getSupabase } from '@/lib/supabaseClient';
 import { useToast } from '@/hooks/use-toast';
+import { getCampaignAttribution } from '@/lib/campaignAttribution';
 
 interface UseStanceSubmissionOptions {
   questionId: string;
@@ -86,19 +87,24 @@ export function useStanceSubmission({
       }
 
       // 1. Submit the stance via the canonical RPC (matches set_question_stance in DB)
+      // Epic Y: if this user arrived via a paid campaign within the 7-day window,
+      // tag the stance with source='campaign' and its originating campaign_id.
+      const attributedCampaignId = getCampaignAttribution(questionId);
+      const stanceRow: Record<string, unknown> = {
+        user_id: userId,
+        question_id: questionId,
+        score: stanceValue,          // ← DB column is 'score', not 'stance_value'
+        updated_at: new Date().toISOString(),
+      };
+      if (attributedCampaignId) {
+        stanceRow.campaign_id = attributedCampaignId;
+        stanceRow.source = 'campaign';
+      }
       const { error: stanceError } = await supabase
         .from('question_stances')
-        .upsert(
-          {
-            user_id: userId,
-            question_id: questionId,
-            score: stanceValue,          // ← DB column is 'score', not 'stance_value'
-            updated_at: new Date().toISOString(),
-          },
-          {
-            onConflict: 'user_id,question_id',
-          }
-        );
+        .upsert(stanceRow, {
+          onConflict: 'user_id,question_id',
+        });
 
       if (stanceError) {
         throw stanceError;
