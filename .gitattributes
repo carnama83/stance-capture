@@ -1,0 +1,9 @@
+x# Normalize line endings across platforms (Windows/Mac/Linux)
+* text=auto eol=lf
+
+# config.toml diverges intentionally per branch (project_id differs
+# between Dev/UAT/Prod). Never let merges touch this file - each
+# branch keeps its own version no matter what changed upstream.
+# Requires a one-time local git config on every machine that merges:
+#   git config merge.ours.driver true
+supabase/config.toml merge=ours
