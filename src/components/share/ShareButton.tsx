@@ -107,15 +107,19 @@ function useXPostStatus(): XTokenStatus {
 
 function buildShareUrl(questionId: string, platform: string, shareId: string): string {
   const base = window.location.origin;
+  // Always route through /s/<id> — this is the endpoint (api/s/[slug].js) that
+  // server-renders per-question OG tags for link crawlers (WhatsApp, FB, X,
+  // iMessage). The old hash-route fallback (/#/q/<id>) was invisible to crawlers
+  // since HashRouter content never reaches the server, so every share that
+  // wasn't part of a forward chain showed the generic site-default card.
+  //
   // Web-forward chain: if THIS visitor has their own minted ref (they answered
-  // anonymously via a forwarded link), point at the /s/ share endpoint and carry
-  // their ref so the next hop is parented to them. `via` keeps platform analytics.
+  // anonymously via a forwarded link), carry their ref so the next hop is
+  // parented to them. `via` keeps platform analytics in that case.
   const fwd = getMyForwardRef(questionId);
-  if (fwd) {
-    return `${base}/s/${questionId}?ref=${fwd}&via=${platform}&sid=${shareId}`;
-  }
-  // Default (logged-in / no chain): existing behaviour.
-  return `${base}/#/q/${questionId}?ref=${platform}&sid=${shareId}`;
+  const ref = fwd ?? platform;
+  const via = fwd ? `&via=${platform}` : "";
+  return `${base}/s/${questionId}?ref=${ref}${via}&sid=${shareId}`;
 }
 
 function buildShareText(questionText: string, questionSummary?: string | null): string {
@@ -124,6 +128,21 @@ function buildShareText(questionText: string, questionSummary?: string | null): 
   return questionSummary
     ? `${truncated}\n\n${questionSummary.slice(0, 80)}`
     : truncated;
+}
+
+// Mirrors the whatsapp-send-link edge function's message body: full question
+// (never truncated), an optional context/summary line, then the same CTA
+// copy. Used for WhatsApp (quick-share button + native share, since that's
+// the actual path to WhatsApp on desktop) — NOT for platforms with hard
+// length limits like X, which keep the truncated buildShareText() above.
+function buildWhatsAppText(questionText: string, questionSummary?: string | null): string {
+  const question = (questionText || "").trim();
+  const context = (questionSummary || "").trim();
+  return (
+    `${question}\n` +
+    (context ? `\n${context}\n` : "") +
+    `\nSee where people stand & add yours 👇`
+  );
 }
 
 // ─── Direct X post via Supabase RPC ───────────────────────────────────────────
@@ -307,6 +326,7 @@ export function ShareButton({
       const sid = shareId ?? "unknown";
       const shareUrl = buildShareUrl(questionId, platform, sid);
       const shareText = buildShareText(questionText, questionSummary);
+      const whatsAppText = buildWhatsAppText(questionText, questionSummary);
 
       // ── Copy link ──────────────────────────────────────────────────────
       if (platform === "copy") {
@@ -320,7 +340,7 @@ export function ShareButton({
 
       // ── Native share ───────────────────────────────────────────────────
       if (platform === "native" && navigator.share) {
-        await navigator.share({ title: questionText, text: shareText, url: shareUrl });
+        await navigator.share({ title: questionText, text: whatsAppText, url: shareUrl });
         setOpen(false);
         return;
       }
@@ -364,7 +384,8 @@ export function ShareButton({
       // ── Standard platform share ────────────────────────────────────────
       const cfg = PLATFORMS[platform];
       if (cfg?.buildUrl) {
-        const targetUrl = cfg.buildUrl(shareText, shareUrl);
+        const textForPlatform = platform === "whatsapp" ? whatsAppText : shareText;
+        const targetUrl = cfg.buildUrl(textForPlatform, shareUrl);
         if (targetUrl) {
           window.open(targetUrl, "_blank", "noopener,noreferrer,width=600,height=500");
           setOpen(false);
