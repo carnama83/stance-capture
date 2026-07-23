@@ -107,15 +107,19 @@ function useXPostStatus(): XTokenStatus {
 
 function buildShareUrl(questionId: string, platform: string, shareId: string): string {
   const base = window.location.origin;
+  // Always route through /s/<id> — this is the endpoint (api/s/[slug].js) that
+  // server-renders per-question OG tags for link crawlers (WhatsApp, FB, X,
+  // iMessage). The old hash-route fallback (/#/q/<id>) was invisible to crawlers
+  // since HashRouter content never reaches the server, so every share that
+  // wasn't part of a forward chain showed the generic site-default card.
+  //
   // Web-forward chain: if THIS visitor has their own minted ref (they answered
-  // anonymously via a forwarded link), point at the /s/ share endpoint and carry
-  // their ref so the next hop is parented to them. `via` keeps platform analytics.
+  // anonymously via a forwarded link), carry their ref so the next hop is
+  // parented to them. `via` keeps platform analytics in that case.
   const fwd = getMyForwardRef(questionId);
-  if (fwd) {
-    return `${base}/s/${questionId}?ref=${fwd}&via=${platform}&sid=${shareId}`;
-  }
-  // Default (logged-in / no chain): existing behaviour.
-  return `${base}/#/q/${questionId}?ref=${platform}&sid=${shareId}`;
+  const ref = fwd ?? platform;
+  const via = fwd ? `&via=${platform}` : "";
+  return `${base}/s/${questionId}?ref=${ref}${via}&sid=${shareId}`;
 }
 
 function buildShareText(questionText: string, questionSummary?: string | null): string {
