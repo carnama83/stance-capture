@@ -130,6 +130,21 @@ function buildShareText(questionText: string, questionSummary?: string | null): 
     : truncated;
 }
 
+// Mirrors the whatsapp-send-link edge function's message body: full question
+// (never truncated), an optional context/summary line, then the same CTA
+// copy. Used for WhatsApp (quick-share button + native share, since that's
+// the actual path to WhatsApp on desktop) — NOT for platforms with hard
+// length limits like X, which keep the truncated buildShareText() above.
+function buildWhatsAppText(questionText: string, questionSummary?: string | null): string {
+  const question = (questionText || "").trim();
+  const context = (questionSummary || "").trim();
+  return (
+    `${question}\n` +
+    (context ? `\n${context}\n` : "") +
+    `\nSee where people stand & add yours 👇`
+  );
+}
+
 // ─── Direct X post via Supabase RPC ───────────────────────────────────────────
 //
 // Calls the post-to-x Edge Function which uses the stored OAuth token to
@@ -311,6 +326,7 @@ export function ShareButton({
       const sid = shareId ?? "unknown";
       const shareUrl = buildShareUrl(questionId, platform, sid);
       const shareText = buildShareText(questionText, questionSummary);
+      const whatsAppText = buildWhatsAppText(questionText, questionSummary);
 
       // ── Copy link ──────────────────────────────────────────────────────
       if (platform === "copy") {
@@ -324,7 +340,7 @@ export function ShareButton({
 
       // ── Native share ───────────────────────────────────────────────────
       if (platform === "native" && navigator.share) {
-        await navigator.share({ title: questionText, text: shareText, url: shareUrl });
+        await navigator.share({ title: questionText, text: whatsAppText, url: shareUrl });
         setOpen(false);
         return;
       }
@@ -368,7 +384,8 @@ export function ShareButton({
       // ── Standard platform share ────────────────────────────────────────
       const cfg = PLATFORMS[platform];
       if (cfg?.buildUrl) {
-        const targetUrl = cfg.buildUrl(shareText, shareUrl);
+        const textForPlatform = platform === "whatsapp" ? whatsAppText : shareText;
+        const targetUrl = cfg.buildUrl(textForPlatform, shareUrl);
         if (targetUrl) {
           window.open(targetUrl, "_blank", "noopener,noreferrer,width=600,height=500");
           setOpen(false);
