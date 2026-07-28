@@ -141,7 +141,7 @@ function buildWhatsAppText(questionText: string, questionSummary?: string | null
   return (
     `${question}\n` +
     (context ? `\n${context}\n` : "") +
-    `\nSee where people stand & add yours 👇`
+    `\nSee where people stand & add yours ⬇️`
   );
 }
 
