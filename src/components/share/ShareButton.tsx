@@ -294,6 +294,17 @@ export function ShareButton({
   const { toast } = useToast();
   const panelRef = React.useRef<HTMLDivElement>(null);
 
+  // Positioning fix: the panel used to always open upward (bottom-full), which
+  // clips off-screen when the trigger sits near the top of the viewport (e.g.
+  // the topic-level Share button under the nav bar). When clipped, only the
+  // bottom-most items (Copy link / More options) stay reachable — the
+  // dedicated WhatsApp/Facebook/X/LinkedIn buttons above them become
+  // unclickable, silently forcing people into the OS share sheet instead
+  // (which drops rich text for WhatsApp). Measure available space on open and
+  // flip to open downward when there isn't enough room above.
+  const [openUpward, setOpenUpward] = React.useState(true);
+  const ESTIMATED_PANEL_HEIGHT = 420; // header + optional X-nudge + up to 6 platform rows
+
   const PLATFORMS = React.useMemo(
     () => buildPlatformConfigs(hasToken),
     [hasToken],
@@ -424,6 +435,14 @@ export function ShareButton({
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
+          if (!open && panelRef.current) {
+            const rect = panelRef.current.getBoundingClientRect();
+            const spaceAbove = rect.top;
+            const spaceBelow = window.innerHeight - rect.bottom;
+            setOpenUpward(
+              spaceAbove >= ESTIMATED_PANEL_HEIGHT || spaceAbove >= spaceBelow,
+            );
+          }
           setOpen((v) => !v);
         }}
         className={[
@@ -441,7 +460,12 @@ export function ShareButton({
 
       {/* Share panel */}
       {open && (
-        <div className="absolute right-0 bottom-full mb-2 z-50 w-64 rounded-xl border border-slate-200 bg-white shadow-lg overflow-hidden">
+        <div
+          className={[
+            "absolute right-0 z-50 w-64 rounded-xl border border-slate-200 bg-white shadow-lg overflow-hidden",
+            openUpward ? "bottom-full mb-2" : "top-full mt-2",
+          ].join(" ")}
+        >
           {/* Header */}
           <div className="px-3 py-2.5 border-b border-slate-100">
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
