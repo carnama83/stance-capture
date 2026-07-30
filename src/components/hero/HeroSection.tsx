@@ -1194,17 +1194,9 @@ function SectionAQuestion({
         <div className="relative z-10 p-5 pb-4" style={{ maxWidth: "68%" }}>
 
           {/* Eyebrow */}
-          <div className="flex items-center justify-between gap-1.5 mb-0.5">
-            <div className="flex items-center gap-1.5">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-sm font-semibold" style={{ color: "#5E3D9E" }}>One big shifting question</span>
-            </div>
-            <ShareButton
-              questionId={question.question_id}
-              questionText={question.question_text}
-              questionSummary={question.summary}
-              compact
-            />
+          <div className="flex items-center gap-1.5 mb-0.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-sm font-semibold" style={{ color: "#5E3D9E" }}>One big shifting question</span>
           </div>
           <p className="text-xs text-slate-500 mb-4">
             Answer in seconds — see where society stands.
@@ -1295,6 +1287,14 @@ function SectionAQuestion({
               onSubmit={onSubmit}
               sliderLowLabel={question.slider_low_label ?? null}
               sliderHighLabel={question.slider_high_label ?? null}
+              headerAction={
+                <ShareButton
+                  questionId={question.question_id}
+                  questionText={question.question_text}
+                  questionSummary={question.summary}
+                  compact
+                />
+              }
             />
           </>
         ) : (
