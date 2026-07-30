@@ -24,10 +24,24 @@ async function fetchQuestion(base, anon, filter) {
   return Array.isArray(rows) && rows.length ? rows[0] : null;
 }
 
+// This endpoint always runs on the same domain it needs to redirect back into
+// (dev/uat/prod each serve their own /s/:slug via vercel.json), so derive SITE
+// from the request itself rather than trusting a per-project env var. That env
+// var (PUBLIC_SITE_URL) has to be set separately per Vercel project and is easy
+// to leave unset or stale — when it is, this used to silently fall back to the
+// hardcoded prod default and redirect dev/uat clicks into prod, where the
+// question doesn't exist ("Question not found"). PUBLIC_SITE_URL is kept as an
+// explicit override for anyone who genuinely needs to force a different host.
+function siteFromRequest(req) {
+  const proto = req.headers["x-forwarded-proto"] || "https";
+  const host = req.headers["x-forwarded-host"] || req.headers.host;
+  return host ? `${proto}://${host}` : null;
+}
+
 export default async function handler(req, res) {
   const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
   const ANON = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-  const SITE = process.env.PUBLIC_SITE_URL || "https://www.stancecapture.com";
+  const SITE = siteFromRequest(req) || process.env.PUBLIC_SITE_URL || "https://www.stancecapture.com";
 
   const slug = String(req.query.slug || "");
   const ref = req.query.ref ? String(req.query.ref) : "";
