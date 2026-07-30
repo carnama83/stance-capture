@@ -33,6 +33,7 @@ import * as React from "react";
 import { Link } from "react-router-dom";
 import { QuestionStanceSlider } from "@/components/question/QuestionStanceSlider";
 import { CommunityStanceBar } from "@/components/question/CommunityStanceBar";
+import { ShareButton } from "@/components/share/ShareButton";
 import { clampPole } from "@/lib/poleLabels";
 import {
   useHeroController,
@@ -1193,9 +1194,17 @@ function SectionAQuestion({
         <div className="relative z-10 p-5 pb-4" style={{ maxWidth: "68%" }}>
 
           {/* Eyebrow */}
-          <div className="flex items-center gap-1.5 mb-0.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-sm font-semibold" style={{ color: "#5E3D9E" }}>One big shifting question</span>
+          <div className="flex items-center justify-between gap-1.5 mb-0.5">
+            <div className="flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-sm font-semibold" style={{ color: "#5E3D9E" }}>One big shifting question</span>
+            </div>
+            <ShareButton
+              questionId={question.question_id}
+              questionText={question.question_text}
+              questionSummary={question.summary}
+              compact
+            />
           </div>
           <p className="text-xs text-slate-500 mb-4">
             Answer in seconds — see where society stands.
