@@ -68,6 +68,10 @@ export type QuestionStanceSliderProps = {
   // specific question. Falls back to generic labels when null.
   sliderLowLabel?: string | null;
   sliderHighLabel?: string | null;
+  // Optional element rendered inline with the pre-commit heading (e.g. a
+  // compact ShareButton). Opt-in only — omitted everywhere except where a
+  // caller explicitly passes it, so existing usages are unaffected.
+  headerAction?: React.ReactNode;
 };
 
 // Oppose/support framing matches the pre-commit prompt ("Do you support or oppose this?")
@@ -203,6 +207,7 @@ export function QuestionStanceSlider({
   onInteractionStart,
   sliderLowLabel,
   sliderHighLabel,
+  headerAction,
 }: QuestionStanceSliderProps) {
   const [value, setValue] = React.useState<number>(clampStance(initialValue));
   const [committed, setCommitted] = React.useState(
@@ -336,13 +341,16 @@ export function QuestionStanceSlider({
       {/* Pre-commit prompt — decision-first framing for hero/featured */}
       {!committed && (
         isProminent ? (
-          <div>
-            <p className="text-sm font-semibold text-slate-800">
-              Do you support or oppose this?
-            </p>
-            <p className="text-[11px] text-slate-400 mt-0.5">
-              Choose a position in seconds.
-            </p>
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <p className="text-sm font-semibold text-slate-800">
+                Do you support or oppose this?
+              </p>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Choose a position in seconds.
+              </p>
+            </div>
+            {headerAction}
           </div>
         ) : (
           <p className="text-[11px] text-slate-500">
