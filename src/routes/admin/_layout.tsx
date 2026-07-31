@@ -71,7 +71,7 @@ export default function AdminLayout() {
     <div className="min-h-screen grid grid-cols-12 gap-6 px-6 py-6">
       {/* Sidebar */}
       <aside className="col-span-12 md:col-span-3 lg:col-span-2">
-        <Card className="p-4 space-y-2 sticky top-6">
+        <Card className="p-4 space-y-2 sticky top-6 max-h-[calc(100vh-3rem)] overflow-y-auto">
           <div className="flex items-center justify-between px-2 mb-2">
             <div className="text-sm font-semibold">Admin</div>
             <Link
