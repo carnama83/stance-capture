@@ -14,7 +14,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, getJwt } from "@/lib/env";
 import {
   Rocket, Loader2, Plus, X, CheckCircle2, XCircle, Clock, Pause,
   Ban, FileEdit, Facebook, Linkedin, DollarSign, MousePointerClick, Eye, Users2,
-  RefreshCw,
+  RefreshCw, Trash2,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -258,6 +258,7 @@ function CampaignCard({ c }: { c: Campaign }) {
   const { toast } = useToast();
   const [showLaunch, setShowLaunch] = React.useState(false);
   const [confirmCancel, setConfirmCancel] = React.useState(false);
+  const [confirmDelete, setConfirmDelete] = React.useState(false);
   const usd = (n: number) => `$${Number(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 
   const refresh = () => qc.invalidateQueries({ queryKey: ["admin-campaigns"] });
@@ -277,9 +278,23 @@ function CampaignCard({ c }: { c: Campaign }) {
     onSuccess: () => { refresh(); toast({ title: "Results synced" }); },
     onError: (e: any) => toast({ title: "Sync failed", description: e?.message, variant: "destructive" }),
   });
+  // Cancel/Discard only ever set status='cancelled' — they never remove the row
+  // (cancel-campaign pauses the Meta object first, then keeps the row for audit).
+  // Delete is a real row removal, so it's only offered once a campaign is
+  // terminal (cancelled/rejected/completed) — there's no live Meta object left
+  // to orphan by removing our local record of it.
+  const deleteMut = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.from("campaigns").delete().eq("id", c.id);
+      if (error) throw error;
+    },
+    onSuccess: () => { refresh(); setConfirmDelete(false); toast({ title: "Campaign deleted" }); },
+    onError: (e: any) => toast({ title: "Delete failed", description: e?.message, variant: "destructive" }),
+  });
 
-  const busy = pauseMut.isPending || cancelMut.isPending || syncMut.isPending;
+  const busy = pauseMut.isPending || cancelMut.isPending || syncMut.isPending || deleteMut.isPending;
   const isTerminal = c.status === "cancelled" || c.status === "rejected";
+  const canDelete = c.status === "cancelled" || c.status === "rejected" || c.status === "completed";
   const hasStats = c.status === "active" || c.status === "completed" || c.status === "paused";
 
   return (
@@ -365,6 +380,25 @@ function CampaignCard({ c }: { c: Campaign }) {
             </span>
           ) : (
             <ActionBtn onClick={() => setConfirmCancel(true)} disabled={busy} icon={<Ban className="h-3 w-3" />} label="Discard" danger />
+          )}
+        </div>
+      )}
+
+      {/* Delete — terminal campaigns only. No live Meta object left to orphan;
+          Cancel/Discard never remove the row (they only set status), so this
+          is the only way to actually clear one out of the list. */}
+      {canDelete && (
+        <div className="flex items-center gap-2 pt-1">
+          {confirmDelete ? (
+            <span className="inline-flex items-center gap-2">
+              <button type="button" onClick={() => deleteMut.mutate()} disabled={busy}
+                className="flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50">
+                {deleteMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />} Confirm delete
+              </button>
+              <button type="button" onClick={() => setConfirmDelete(false)} className="text-xs text-slate-500 hover:text-slate-700">Keep</button>
+            </span>
+          ) : (
+            <ActionBtn onClick={() => setConfirmDelete(true)} disabled={busy} icon={<Trash2 className="h-3 w-3" />} label="Delete" danger />
           )}
         </div>
       )}
