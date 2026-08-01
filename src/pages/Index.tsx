@@ -2,8 +2,9 @@
 // HOMEPAGE V5 — Restructured (design pass only; all data logic preserved)
 //
 // What changed vs V4 (design review fixes):
-//   1. Sections gate on DATA, not auth — nothing renders as an empty placeholder.
-//      New users see: hero → feed. Cards appear as data exists.
+//   1. Every section keeps its slot. Where data is missing, the card states what
+//      will land there instead of showing zeros — a new visitor still learns
+//      what the product tracks for them ("sample view" ribbon on the profile card).
 //   2. The same question set was presented 4× (hero, featured, grid, continuing).
 //      Now: hero (HeroSection) + ONE feed ("Add your voice") + a compact
 //      "Worth revisiting" list. No parallel presentations of the same rows.
@@ -738,53 +739,152 @@ function PersonalAnalyticsSparkline({
   );
 }
 
-// ─────────────────────────── You vs. society (merged card) ───────────────────
+// ─────────────────────────── Since you last visited (always visible) ────────
 //
-// Replaces four separate cards that all read the same dataset:
-//   WhereYouStandCard · SocietyRightNow · MediaSurgeCard ·
-//   ParticipationStrip · PersonalAnalyticsCard
-//
-// Tabs, not stacked sections — and the whole card is gated on data existing.
-// A brand-new account never sees it.
+// Design note: this strip ALWAYS renders. When there is nothing to report yet
+// it states what it will report instead of showing zeros or an empty card —
+// a new visitor should still learn that the product tracks this for them.
 
-function YouVsSociety({
-  snap,
-  analytics,
+function SinceLastVisitStrip({
+  data,
+  loading,
+  isAuthed,
+}: {
+  data: SinceLastVisitData | null;
+  loading: boolean;
+  isAuthed: boolean;
+}) {
+  const changes = data?.changes ?? [];
+  const newResponses = changes.reduce((n, c) => n + (c.new_responses ?? 0), 0);
+  const shifted = changes.filter(
+    (c) => c.change_type === "shifted_positive" || c.change_type === "shifted_negative"
+  ).length;
+  const gaining = changes.filter((c) => c.change_type === "gaining_attention").length;
+  const hasData = !!data && changes.length > 0;
+
+  const away =
+    data?.days_away == null || data.days_away < 1
+      ? "Today"
+      : data.days_away === 1
+      ? "1 day ago"
+      : data.days_away + " days ago";
+
+  return (
+    <section className={card + " mb-6 px-5 py-4"}>
+      <div className="flex flex-wrap items-center gap-x-7 gap-y-4">
+        <div className="min-w-[168px]">
+          <p
+            className="text-xs font-bold uppercase"
+            style={{ color: C.meta, letterSpacing: "0.14em" }}
+          >
+            Since you last visited
+          </p>
+          <p className="mt-0.5 text-xs" style={{ color: C.meta }}>
+            {loading ? "Checking…" : isAuthed ? away : "Tracked once you sign in"}
+          </p>
+        </div>
+
+        {hasData ? (
+          <div className="grid flex-1 grid-cols-1 gap-5 sm:grid-cols-3">
+            <SinceStat value={gaining} label="topics gaining attention" />
+            <SinceStat value={shifted} label="of your stances moved" />
+            <SinceStat value={newResponses} label="new responses where you answered" />
+          </div>
+        ) : (
+          <div className="grid flex-1 grid-cols-1 gap-x-5 gap-y-2 sm:grid-cols-3">
+            {[
+              "Topics gaining attention",
+              "Stances that moved into the minority",
+              "New responses on questions you answered",
+            ].map((t) => (
+              <div key={t} className="flex items-start gap-2">
+                <span
+                  className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full"
+                  style={{ background: C.line }}
+                />
+                <span className="text-sm leading-snug" style={{ color: C.body }}>
+                  {t}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <Link
+          to={isAuthed ? "/topics" : "/signup"}
+          className="whitespace-nowrap text-sm font-semibold"
+          style={{ color: C.brand }}
+        >
+          {hasData ? "Catch me up →" : isAuthed ? "Explore topics →" : "Start tracking →"}
+        </Link>
+      </div>
+    </section>
+  );
+}
+
+function SinceStat({ value, label }: { value: number; label: string }) {
+  return (
+    <div className="flex items-baseline gap-2.5">
+      <span
+        className="text-2xl font-semibold leading-none tracking-tight tabular-nums"
+        style={{ color: C.ink }}
+      >
+        {formatNum(value)}
+      </span>
+      <span className="text-sm leading-snug" style={{ color: C.body }}>
+        {label}
+      </span>
+    </div>
+  );
+}
+
+// ─────────────────────────── The room right now (always visible) ─────────────
+//
+// Society right now · Media surge · Live participation — three signals that
+// belong together, on one row. Each card keeps its slot even before its data
+// exists, and says what will land there.
+
+function RoomCard({
+  title,
+  blurb,
+  children,
+}: {
+  title: string;
+  blurb: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={card + " flex flex-col p-5"}>
+      <p className="text-sm font-semibold" style={{ color: C.ink }}>
+        {title}
+      </p>
+      <p className="mt-1 text-xs leading-snug" style={{ color: C.meta }}>
+        {blurb}
+      </p>
+      <div className="mt-4 flex flex-1 flex-col">{children}</div>
+    </div>
+  );
+}
+
+function Promise_({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="text-sm leading-relaxed" style={{ color: C.body }}>
+      {children}
+    </p>
+  );
+}
+
+function TheRoomRightNow({
   pulse,
-  participation,
   media,
+  participation,
   regionLabel,
 }: {
-  snap: AlignmentSnapshotRow | null;
-  analytics: PersonalAnalyticsResponse | null;
   pulse: SocietalPulseOutput | null;
-  participation: ParticipationStatsRow | null;
   media: MediaSurgeRow | null;
+  participation: ParticipationStatsRow | null;
   regionLabel: string;
 }) {
-  const analyticsTier = getPersonalAnalyticsTier(analytics?.totalAnswered ?? 0);
-  const hasYou = !!snap || (!!analytics && analyticsTier !== "empty");
-  const hasSociety = !!pulse || !!participation || !!media;
-
-  const [tab, setTab] = React.useState<"you" | "society">(hasYou ? "you" : "society");
-
-  React.useEffect(() => {
-    if (!hasYou && tab === "you") setTab("society");
-    if (!hasSociety && tab === "society") setTab("you");
-  }, [hasYou, hasSociety, tab]);
-
-  // Gate: nothing to say → render nothing at all (no empty state).
-  if (!hasYou && !hasSociety) return null;
-
-  const tabs: Array<{ id: "you" | "society"; label: string; on: boolean }> = [
-    { id: "you", label: "Where you stand", on: hasYou },
-    { id: "society", label: `Society in ${regionLabel}`, on: hasSociety },
-  ];
-
-  const fingerprint = analytics?.opinionFingerprint;
-  const trend = analytics?.alignmentTrend;
-  const divergent = analytics?.mostDivergentTopic ?? null;
-
   const iconGlyph = (icon: SocietalPulseOutput["chips"][number]["icon"]) => {
     switch (icon) {
       case "reawakening": return "↺";
@@ -794,300 +894,556 @@ function YouVsSociety({
     }
   };
 
+  const surge = media?.surge_ratio == null ? null : Math.round(media.surge_ratio * 10) / 10;
+
   return (
-    <section className={`${card} overflow-hidden`}>
-      {/* Tab bar */}
-      <div
-        className="flex items-center gap-1 px-5 pt-4 pb-3"
-        style={{ borderBottom: `1px solid ${C.hairline}` }}
-      >
-        {tabs.filter((t) => t.on).map((t) => {
-          const active = tab === t.id;
-          return (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setTab(t.id)}
-              className="rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors"
-              style={{
-                color: active ? C.ink : C.body,
-                background: active ? C.wash : "transparent",
-              }}
-            >
-              {t.label}
-            </button>
-          );
-        })}
+    <section>
+      <div className="mb-3 flex items-baseline justify-between gap-4">
+        <p
+          className="text-xs font-bold uppercase"
+          style={{ color: C.meta, letterSpacing: "0.14em" }}
+        >
+          The room right now
+        </p>
+        <span className="inline-flex items-center gap-1.5 text-xs" style={{ color: C.meta }}>
+          <span className="h-1.5 w-1.5 rounded-full" style={{ background: C.rising }} />
+          Updating live
+        </span>
       </div>
 
-      {/* ── You ── */}
-      {tab === "you" && hasYou && (
-        <div className="grid gap-0 md:grid-cols-[300px_1fr]">
-          <div className="p-5" style={{ borderRight: `1px solid ${C.hairline}` }}>
-            {snap ? (
-              <>
-                <Eyebrow>Alignment</Eyebrow>
-                <div className="flex items-end gap-2">
-                  <span
-                    className="text-5xl font-semibold tracking-tight leading-none"
-                    style={{ color: C.ink }}
-                  >
-                    {formatPct(snap.alignment_pct)}
-                  </span>
-                  <span className="pb-1.5 text-sm" style={{ color: C.body }}>
-                    aligned with {regionLabel}
-                  </span>
-                </div>
-                <p className="mt-3 text-sm leading-relaxed" style={{ color: C.body }}>
-                  You hold the minority view on{" "}
-                  <strong style={{ color: C.ink }}>{snap.minority_count}</strong>{" "}
-                  of {snap.comparable_count} comparable question
-                  {snap.comparable_count === 1 ? "" : "s"}.
-                </p>
-              </>
-            ) : (
-              <>
-                <Eyebrow>Your profile</Eyebrow>
-                <p className="text-sm leading-relaxed" style={{ color: C.body }}>
-                  {analytics?.totalAnswered} question
-                  {analytics?.totalAnswered === 1 ? "" : "s"} answered across{" "}
-                  {analytics?.topicsAnswered} topic
-                  {analytics?.topicsAnswered === 1 ? "" : "s"}.
-                </p>
-              </>
-            )}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
 
-            {fingerprint && fingerprint.summaryTags.length > 0 && (
-              <div className="mt-4 flex flex-wrap gap-1.5">
-                {fingerprint.summaryTags.map((t) => (
-                  <Pill key={t}>{t}</Pill>
+        <RoomCard
+          title="Society right now"
+          blurb={"Aggregate sentiment across today's questions in " + regionLabel + "."}
+        >
+          {pulse?.narrative || (pulse?.chips?.length ?? 0) > 0 ? (
+            <>
+              {pulse?.narrative && (
+                <p className="text-sm leading-relaxed" style={{ color: C.ink }}>
+                  {pulse.narrative.sentence_1}
+                  {pulse.narrative.sentence_2 && (
+                    <span style={{ color: C.body }}> {pulse.narrative.sentence_2}</span>
+                  )}
+                </p>
+              )}
+              {(pulse?.chips?.length ?? 0) > 0 && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {pulse!.chips.slice(0, 3).map((c) => (
+                    <Link
+                      key={c.topic_id}
+                      to={c.href || "/topics/" + c.topic_id}
+                      className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold"
+                      style={{ color: C.brand, background: C.brandWash }}
+                      title={c.title}
+                    >
+                      <span style={{ color: C.meta }}>{iconGlyph(c.icon)}</span>
+                      <span className="line-clamp-1 max-w-[170px]">{c.title}</span>
+                    </Link>
+                  ))}
+                </div>
+              )}
+              {(pulse?.micro_metrics?.length ?? 0) > 0 && (
+                <div className="mt-auto flex flex-wrap gap-2 pt-3">
+                  {pulse!.micro_metrics.slice(0, 3).map((m) => (
+                    <Pill key={m.label}>
+                      {m.value == null ? m.label : formatNum(m.value) + " " + m.label}
+                    </Pill>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+            <Promise_>
+              Once the day's questions have responses, this reads the balance back to
+              you in a sentence — which way {regionLabel} is leaning, and how thin the
+              middle is.
+            </Promise_>
+          )}
+        </RoomCard>
+
+        <RoomCard title="Media surge" blurb="Coverage volume against the 7-day average.">
+          {media ? (
+            <>
+              <p className="line-clamp-2 text-sm font-semibold" style={{ color: C.ink }}>
+                {media.cluster_title}
+              </p>
+              <div className="mt-2.5 flex flex-wrap gap-2">
+                {surge != null && <Pill>{surge}× surge</Pill>}
+                <Pill>{media.outlets_24h} outlets · 24h</Pill>
+                <Pill>{media.articles_24h} articles · 24h</Pill>
+              </div>
+              {media.sample_title && (
+                <p className="mt-2.5 line-clamp-2 text-sm" style={{ color: C.body }}>
+                  {media.sample_title}
+                </p>
+              )}
+              {media.sample_url && (
+                <a
+                  href={media.sample_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-auto pt-3 text-sm font-semibold"
+                  style={{ color: C.brand }}
+                >
+                  Read the coverage →
+                </a>
+              )}
+            </>
+          ) : (
+            <Promise_>
+              When a story starts running well above its usual volume, it shows up here
+              first — so you can take a position before the coverage peaks.
+            </Promise_>
+          )}
+        </RoomCard>
+
+        <RoomCard title="Live participation" blurb="Positions taken across the platform.">
+          {participation ? (
+            <>
+              <div className="flex items-end gap-2">
+                <span
+                  className="text-4xl font-semibold leading-none tracking-tight tabular-nums"
+                  style={{ color: C.ink }}
+                >
+                  {formatNum(participation.stances_window)}
+                </span>
+                <span className="pb-1 text-xs" style={{ color: C.meta }}>
+                  in the last 24h
+                </span>
+              </div>
+              <div className="mt-4 space-y-2.5">
+                {[
+                  { label: "signals · 7d", value: participation.stances_7d },
+                  { label: "people · 24h", value: participation.unique_users_window },
+                ].map((row) => (
+                  <div key={row.label} className="flex items-baseline justify-between gap-3">
+                    <span className="text-sm" style={{ color: C.body }}>{row.label}</span>
+                    <span
+                      className="text-base font-semibold tabular-nums"
+                      style={{ color: C.ink }}
+                    >
+                      {formatNum(row.value)}
+                    </span>
+                  </div>
                 ))}
               </div>
-            )}
-
-            {snap?.most_divergent_question_id && (
               <Link
-                to={`/q/${snap.most_divergent_question_id}`}
-                className="mt-4 inline-flex text-sm font-semibold"
+                to="/topics"
+                className="mt-auto pt-3 text-sm font-semibold"
                 style={{ color: C.brand }}
               >
-                Revisit your most divergent view →
+                Explore all topics →
+              </Link>
+            </>
+          ) : (
+            <Promise_>
+              Every position taken feeds the counts here. It is the fastest way to see
+              whether a question is actually live or already settled.
+            </Promise_>
+          )}
+        </RoomCard>
+
+      </div>
+    </section>
+  );
+}
+
+// ─────────────────────────── You vs. society (always visible) ────────────────
+//
+// Merges WhereYouStandCard · PersonalAnalyticsCard into one card with a
+// four-tile band: Your stance profile · Alignment trend · Most divergent topic ·
+// Opinion fingerprint. The card is NOT gated — a new account sees the same
+// structure behind a "sample view" ribbon so the payoff for answering is legible.
+
+function TileHead({ children }: { children: React.ReactNode }) {
+  return (
+    <p
+      className="text-xs font-bold uppercase"
+      style={{ color: C.meta, letterSpacing: "0.1em" }}
+    >
+      {children}
+    </p>
+  );
+}
+
+function YouVsSociety({
+  snap,
+  analytics,
+  snapshot,
+  regionLabel,
+}: {
+  snap: AlignmentSnapshotRow | null;
+  analytics: PersonalAnalyticsResponse | null;
+  snapshot: MyStanceSnapshot | null;
+  regionLabel: string;
+}) {
+  const analyticsTier = getPersonalAnalyticsTier(analytics?.totalAnswered ?? 0);
+  const hasYou = !!snap || (!!analytics && analyticsTier !== "empty");
+
+  const fingerprint = analytics?.opinionFingerprint ?? null;
+  const trend = analytics?.alignmentTrend ?? null;
+  const divergent = analytics?.mostDivergentTopic ?? null;
+  const topics = snapshot?.topics ?? [];
+  const answered = analytics?.totalAnswered ?? snapshot?.totalAnswered ?? 0;
+  const topicsAnswered = analytics?.topicsAnswered ?? topics.length;
+
+  // Fingerprint tiles: one square per answered topic, coloured on the stance scale.
+  const fpTiles = topics.slice(0, 18).map((t) => {
+    const v = t.avgScore ?? 0;
+    return v <= -1 ? C.stanceLow
+      : v < -0.3 ? "#6FB6AC"
+      : v <= 0.3 ? C.stanceMid
+      : v < 1 ? "#E0A578"
+      : C.stanceHigh;
+  });
+
+  return (
+    <section className={card + " overflow-hidden"}>
+      {!hasYou && (
+        <div
+          className="flex flex-wrap items-center gap-x-2 gap-y-1 px-5 py-2.5 text-xs"
+          style={{ background: C.brandWash }}
+        >
+          <span className="font-semibold" style={{ color: C.brand }}>Sample view</span>
+          <span style={{ color: C.body }}>
+            These become your own numbers after five answers — nothing here is guessed for you.
+          </span>
+        </div>
+      )}
+
+      <div className="grid gap-0 md:grid-cols-[300px_1fr]">
+        <div className="p-5" style={{ borderRight: "1px solid " + C.hairline }}>
+          <Eyebrow>You and society</Eyebrow>
+          {snap ? (
+            <>
+              <div className="flex items-end gap-2">
+                <span
+                  className="text-5xl font-semibold leading-none tracking-tight"
+                  style={{ color: C.ink }}
+                >
+                  {formatPct(snap.alignment_pct)}
+                </span>
+                <span className="pb-1.5 text-sm" style={{ color: C.body }}>
+                  aligned with {regionLabel}
+                </span>
+              </div>
+              <p className="mt-3 text-sm leading-relaxed" style={{ color: C.body }}>
+                You hold the minority view on{" "}
+                <strong style={{ color: C.ink }}>{snap.minority_count}</strong> of{" "}
+                {snap.comparable_count} comparable question
+                {snap.comparable_count === 1 ? "" : "s"}.
+              </p>
+            </>
+          ) : (
+            <>
+              <div className="flex items-end gap-2">
+                <span
+                  className="text-5xl font-semibold leading-none tracking-tight"
+                  style={{ color: C.line }}
+                >
+                  --%
+                </span>
+                <span className="pb-1.5 text-sm" style={{ color: C.body }}>
+                  aligned with {regionLabel}
+                </span>
+              </div>
+              <p className="mt-3 text-sm leading-relaxed" style={{ color: C.body }}>
+                One number for how often you land with your region — and the list of
+                questions where you do not. It needs five answers to mean anything, so
+                it waits until then.
+              </p>
+            </>
+          )}
+
+          {fingerprint && fingerprint.summaryTags.length > 0 && (
+            <div className="mt-4 flex flex-wrap gap-1.5">
+              {fingerprint.summaryTags.map((t) => (
+                <Pill key={t}>{t}</Pill>
+              ))}
+            </div>
+          )}
+
+          {snap?.most_divergent_question_id && (
+            <Link
+              to={"/q/" + snap.most_divergent_question_id}
+              className="mt-4 inline-flex text-sm font-semibold"
+              style={{ color: C.brand }}
+            >
+              Revisit your most divergent view →
+            </Link>
+          )}
+        </div>
+
+        <div className="p-5">
+          <div className="mb-4 flex items-baseline justify-between gap-4">
+            <p className="text-sm font-semibold" style={{ color: C.ink }}>
+              Where you sit against {regionLabel}
+            </p>
+            {topics.length > 0 && (
+              <Link to="/topics" className="text-xs font-semibold" style={{ color: C.brand }}>
+                All {topics.length} topics →
               </Link>
             )}
           </div>
 
-          <div className="p-5 space-y-4">
-            {analytics && analyticsTier !== "empty" && trend && (
-              <div>
-                <p className="text-sm font-semibold" style={{ color: C.ink }}>
-                  Alignment trend
-                </p>
-                <div className="mt-1.5 flex items-center justify-between gap-4">
-                  <p className="flex-1 text-sm leading-snug" style={{ color: C.body }}>
-                    {analyticsTier === "sparse"
-                      ? "You've started building a stance history. Answer a few more and the trend line fills in."
-                      : getAlignmentTrendCopy(trend.direction)}
-                  </p>
-                  <PersonalAnalyticsSparkline points={trend.points} />
-                </div>
-                {trend.currentAlignmentScore !== null && (
-                  <div className="mt-2 flex items-center gap-2">
+          {topics.length > 0 ? (
+            <div className="space-y-4">
+              {topics.slice(0, 3).map((t) => {
+                const you = Math.max(2, Math.min(98, ((t.avgScore ?? 0) + 2) / 4 * 100));
+                const dot = (t.avgScore ?? 0) < -0.3 ? C.stanceLow
+                  : (t.avgScore ?? 0) > 0.3 ? C.stanceHigh
+                  : C.stanceMid;
+                return (
+                  <div
+                    key={t.topicTitle}
+                    className="grid grid-cols-[130px_1fr] items-center gap-4 sm:grid-cols-[190px_1fr_88px]"
+                  >
+                    <span className="truncate text-sm" style={{ color: C.ink }}>
+                      {t.topicTitle}
+                    </span>
                     <div
-                      className="h-1.5 flex-1 overflow-hidden rounded-full"
-                      style={{ background: C.line, maxWidth: 120 }}
+                      className="relative h-2 rounded-full"
+                      style={{
+                        background:
+                          "linear-gradient(90deg,#DCEEEB,#F0F1F3 50%,#F6E7DA)",
+                      }}
                     >
-                      <div
-                        className="h-full rounded-full transition-all"
+                      <span
+                        className="absolute top-[-4px] h-4 w-px"
+                        style={{ left: "50%", background: "#D4D8DE" }}
+                      />
+                      <span
+                        className="absolute top-[-3px] h-3.5 w-3.5 rounded-full border-2 border-white"
                         style={{
-                          width: `${Math.round(clamp01(trend.currentAlignmentScore) * 100)}%`,
-                          background: C.stanceLow,
+                          left: "calc(" + you + "% - 7px)",
+                          background: dot,
+                          boxShadow: "0 1px 3px rgba(16,24,40,.3)",
                         }}
                       />
                     </div>
-                    <span className="text-xs tabular-nums" style={{ color: C.meta }}>
-                      {Math.round(clamp01(trend.currentAlignmentScore) * 100)}% aligned
+                    <span
+                      className="hidden text-right text-xs sm:block"
+                      style={{ color: C.meta }}
+                    >
+                      {Math.abs(t.scorePct ?? 0) < 8
+                        ? "In step"
+                        : Math.round(Math.abs(t.scorePct ?? 0)) + " pts apart"}
                     </span>
                   </div>
-                )}
-              </div>
-            )}
+                );
+              })}
+            </div>
+          ) : (
+            <Promise_>
+              Every topic you answer in gets a line here: your position, the regional
+              average, and the distance between them. Three answers is enough for the
+              first line to appear.
+            </Promise_>
+          )}
 
-            {divergent && analyticsTier !== "sparse" && (
-              <div style={{ borderTop: `1px solid ${C.hairline}`, paddingTop: 16 }}>
-                <p className="text-sm font-semibold" style={{ color: C.ink }}>
-                  Most divergent topic
-                </p>
-                <div className="mt-1">
-                  {divergent.topicId ? (
-                    <Link
-                      to={`/topics/${divergent.topicId}`}
-                      className="text-sm font-semibold"
-                      style={{ color: C.brand }}
-                    >
-                      {divergent.topicTitle}
-                    </Link>
-                  ) : (
-                    <span className="text-sm font-semibold" style={{ color: C.ink }}>
-                      {divergent.topicTitle}
-                    </span>
-                  )}
-                </div>
-                <p className="mt-1 text-sm leading-snug" style={{ color: C.body }}>
-                  {getDivergenceCopy(divergent.direction)}
-                </p>
-              </div>
-            )}
+          <div
+            className="mt-5 flex items-center gap-4 pt-4 text-xs"
+            style={{ borderTop: "1px solid " + C.hairline, color: C.meta }}
+          >
+            <span className="inline-flex items-center gap-1.5">
+              <span
+                className="h-2.5 w-2.5 rounded-full"
+                style={{ background: C.stanceLow }}
+              />
+              You
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full" style={{ background: C.meta }} />
+              Regional average
+            </span>
+          </div>
+        </div>
+      </div>
 
-            {snap?.most_divergent_question_text && (
-              <div style={{ borderTop: `1px solid ${C.hairline}`, paddingTop: 16 }}>
-                <p className="text-xs font-bold uppercase" style={{ color: C.meta, letterSpacing: "0.14em" }}>
-                  Furthest from your region
-                </p>
-                <p className="mt-1.5 text-sm leading-snug" style={{ color: C.body }}>
-                  {snap.most_divergent_question_text}
-                </p>
-              </div>
-            )}
+      {/* ── Four-tile band: profile · trend · divergence · fingerprint ── */}
+      <div
+        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4"
+        style={{ borderTop: "1px solid " + C.hairline }}
+      >
+        <div
+          className="flex flex-col p-5"
+          style={{ borderRight: "1px solid " + C.hairline }}
+        >
+          <TileHead>Your stance profile</TileHead>
+          {fingerprint?.summaryTags.length ? (
+            <>
+              <p
+                className="mt-2.5 text-lg font-semibold leading-snug tracking-tight"
+                style={{ color: C.ink }}
+              >
+                {fingerprint.summaryTags.slice(0, 2).join(", ").toLowerCase()}
+              </p>
+              <p className="mt-1.5 text-sm leading-relaxed" style={{ color: C.body }}>
+                Drawn from {answered} answer{answered === 1 ? "" : "s"} across{" "}
+                {topicsAnswered} topic{topicsAnswered === 1 ? "" : "s"}.
+              </p>
+            </>
+          ) : (
+            <p className="mt-2.5 text-sm leading-relaxed" style={{ color: C.body }}>
+              A plain-language read of how you answer — how strongly you commit, and
+              how widely you range across topics.
+            </p>
+          )}
+          <div className="mt-auto flex items-center gap-3 pt-4">
+            <div
+              className="h-1.5 flex-1 overflow-hidden rounded-full"
+              style={{ background: C.line }}
+            >
+              <div
+                className="h-full rounded-full"
+                style={{
+                  width: Math.min(100, Math.round((answered / 50) * 100)) + "%",
+                  background: C.brand,
+                }}
+              />
+            </div>
+            <span className="text-xs tabular-nums" style={{ color: C.meta }}>
+              {answered} answered
+            </span>
+          </div>
+        </div>
 
-            {fingerprint?.strongestTopicTitle && (
-              <p className="text-sm" style={{ color: C.body }}>
-                Strongest lean:{" "}
-                {fingerprint.strongestTopicId ? (
-                  <Link
-                    to={`/topics/${fingerprint.strongestTopicId}`}
-                    className="font-semibold"
-                    style={{ color: C.brand }}
-                  >
-                    {fingerprint.strongestTopicTitle}
+        <div
+          className="flex flex-col p-5"
+          style={{ borderRight: "1px solid " + C.hairline }}
+        >
+          <TileHead>Alignment trend</TileHead>
+          {trend && trend.points.length > 1 ? (
+            <>
+              <div className="mt-2.5 flex items-baseline gap-2">
+                <span
+                  className="text-2xl font-semibold leading-none tracking-tight"
+                  style={{ color: C.ink }}
+                >
+                  {trend.delta == null
+                    ? "—"
+                    : (trend.delta > 0 ? "+" : "") +
+                      Math.round(trend.delta * 100) +
+                      " pts"}
+                </span>
+                <span className="text-xs" style={{ color: C.body }}>
+                  last {trend.windowDays} days
+                </span>
+              </div>
+              <p className="mt-1.5 text-sm leading-relaxed" style={{ color: C.body }}>
+                {analyticsTier === "sparse"
+                  ? "You've started building a stance history. Answer a few more and the line fills in."
+                  : getAlignmentTrendCopy(trend.direction)}
+              </p>
+              <div className="mt-auto pt-4">
+                <PersonalAnalyticsSparkline points={trend.points} />
+              </div>
+            </>
+          ) : (
+            <p className="mt-2.5 text-sm leading-relaxed" style={{ color: C.body }}>
+              Alignment is not fixed. This tracks whether you are drifting toward the
+              regional centre or away from it, month over month.
+            </p>
+          )}
+        </div>
+
+        <div
+          className="flex flex-col p-5"
+          style={{ borderRight: "1px solid " + C.hairline }}
+        >
+          <TileHead>Most divergent topic</TileHead>
+          {divergent?.topicTitle ? (
+            <>
+              <p
+                className="mt-2.5 text-lg font-semibold leading-snug tracking-tight"
+                style={{ color: C.ink }}
+              >
+                {divergent.topicId ? (
+                  <Link to={"/topics/" + divergent.topicId} style={{ color: C.brand }}>
+                    {divergent.topicTitle}
                   </Link>
                 ) : (
-                  <span className="font-semibold" style={{ color: C.ink }}>
-                    {fingerprint.strongestTopicTitle}
-                  </span>
+                  divergent.topicTitle
                 )}
               </p>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ── Society ── */}
-      {tab === "society" && hasSociety && (
-        <div className="grid gap-0 md:grid-cols-[1fr_300px]">
-          <div className="p-5">
-            {pulse && (
-              <>
-                <Eyebrow>{pulse.narrative?.title ?? "Societal pulse"}</Eyebrow>
-                <p className="text-base leading-relaxed" style={{ color: C.ink }}>
-                  {pulse.narrative?.sentence_1}
-                  {pulse.narrative?.sentence_2 && (
-                    <span style={{ color: C.body }}> {pulse.narrative.sentence_2}</span>
+              <p className="mt-1.5 text-sm leading-relaxed" style={{ color: C.body }}>
+                {getDivergenceCopy(divergent.direction)}
+              </p>
+              <div className="mt-auto pt-4">
+                <div
+                  className="relative h-2 rounded-full"
+                  style={{
+                    background: "linear-gradient(90deg,#DCEEEB,#F0F1F3 50%,#F6E7DA)",
+                  }}
+                >
+                  {divergent.communityAvgScore != null && (
+                    <span
+                      className="absolute top-[1px] h-1.5 w-1.5 rounded-full"
+                      style={{
+                        left:
+                          "calc(" +
+                          ((divergent.communityAvgScore + 2) / 4) * 100 +
+                          "% - 3px)",
+                        background: C.meta,
+                      }}
+                    />
                   )}
-                </p>
-
-                {pulse.chips?.length > 0 && (
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {pulse.chips.slice(0, 3).map((c) => (
-                      <Link
-                        key={c.topic_id}
-                        to={c.href || `/topics/${c.topic_id}`}
-                        className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold transition-colors"
-                        style={{ color: C.brand, background: C.brandWash }}
-                        title={c.title}
-                      >
-                        <span style={{ color: C.meta }}>{iconGlyph(c.icon)}</span>
-                        <span className="line-clamp-1 max-w-[200px]">{c.title}</span>
-                      </Link>
-                    ))}
-                  </div>
-                )}
-
-                {pulse.micro_metrics?.length > 0 && (
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {pulse.micro_metrics.slice(0, 3).map((m) => (
-                      <Pill key={m.label}>
-                        {m.value == null ? m.label : `${formatNum(m.value)} ${m.label}`}
-                      </Pill>
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
-
-            {media && (
-              <div
-                className="mt-5"
-                style={{ borderTop: `1px solid ${C.hairline}`, paddingTop: 16 }}
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <p className="text-xs font-bold uppercase" style={{ color: C.meta, letterSpacing: "0.14em" }}>
-                      Media surge
-                    </p>
-                    <p className="mt-1.5 text-sm font-semibold line-clamp-1" style={{ color: C.ink }}>
-                      {media.cluster_title}
-                    </p>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <Pill>{media.outlets_24h} outlets · 24h</Pill>
-                      <Pill>{media.articles_24h} articles · 24h</Pill>
-                      {media.surge_ratio != null && (
-                        <Pill>{Math.round(media.surge_ratio * 10) / 10}× surge</Pill>
-                      )}
-                    </div>
-                    {media.sample_title && (
-                      <p className="mt-2 text-sm line-clamp-2" style={{ color: C.body }}>
-                        {media.sample_title}
-                      </p>
-                    )}
-                  </div>
-                  {media.sample_url && (
-                    <a
-                      href={media.sample_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="shrink-0 text-sm font-semibold"
-                      style={{ color: C.brand }}
-                    >
-                      Read →
-                    </a>
+                  {divergent.userAvgScore != null && (
+                    <span
+                      className="absolute top-[-3px] h-3.5 w-3.5 rounded-full border-2 border-white"
+                      style={{
+                        left:
+                          "calc(" + ((divergent.userAvgScore + 2) / 4) * 100 + "% - 7px)",
+                        background:
+                          divergent.userAvgScore < 0 ? C.stanceLow : C.stanceHigh,
+                        boxShadow: "0 1px 3px rgba(16,24,40,.3)",
+                      }}
+                    />
                   )}
                 </div>
+                <p className="mt-2 text-xs" style={{ color: C.meta }}>
+                  {divergent.answeredCount} answer
+                  {divergent.answeredCount === 1 ? "" : "s"} in this topic
+                </p>
               </div>
-            )}
-          </div>
+            </>
+          ) : (
+            <p className="mt-2.5 text-sm leading-relaxed" style={{ color: C.body }}>
+              The topic where you sit furthest from everyone else — usually the most
+              interesting thing the platform can tell you about yourself.
+            </p>
+          )}
+        </div>
 
-          <div className="p-5" style={{ background: C.wash }}>
-            {participation && (
-              <>
-                <p className="text-xs font-bold uppercase" style={{ color: C.meta, letterSpacing: "0.14em" }}>
-                  Live participation
-                </p>
-                <div className="mt-3 space-y-3">
-                  {[
-                    { label: "signals · 24h", value: participation.stances_window },
-                    { label: "signals · 7d", value: participation.stances_7d },
-                    { label: "people · 24h", value: participation.unique_users_window },
-                  ].map((row) => (
-                    <div key={row.label} className="flex items-baseline justify-between gap-3">
-                      <span className="text-sm" style={{ color: C.body }}>{row.label}</span>
-                      <span className="text-lg font-semibold tabular-nums" style={{ color: C.ink }}>
-                        {formatNum(row.value)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-            <Link
-              to="/topics"
-              className="mt-5 inline-flex text-sm font-semibold"
-              style={{ color: C.brand }}
-            >
-              Explore all topics →
-            </Link>
+        <div className="flex flex-col p-5">
+          <TileHead>Opinion fingerprint</TileHead>
+          <p className="mt-2.5 text-sm leading-relaxed" style={{ color: C.body }}>
+            {fpTiles.length > 0
+              ? "Your position on every topic you've answered, at a glance. No two profiles look alike."
+              : "One square per topic, coloured by where you stand. It becomes a shape only you have."}
+          </p>
+          <div className="mt-auto pt-4">
+            <div className="grid grid-cols-6 gap-1">
+              {Array.from({ length: 18 }).map((_, i) => (
+                <span
+                  key={i}
+                  className="rounded-[3px]"
+                  style={{
+                    aspectRatio: "1 / 1",
+                    background: fpTiles[i] ?? "#F0F1F3",
+                  }}
+                />
+              ))}
+            </div>
+            <p className="mt-2.5 text-xs" style={{ color: C.meta }}>
+              {fpTiles.length > 0
+                ? fpTiles.length + " of 18 tiles filled"
+                : "Fills in as you answer"}
+            </p>
           </div>
         </div>
-      )}
+      </div>
     </section>
   );
 }
@@ -2919,6 +3275,13 @@ export default function IndexPage() {
               </TabsList>
             </div>
 
+            {/* ── Since you last visited — always present ── */}
+            <SinceLastVisitStrip
+              data={sinceLastVisitQuery.data ?? null}
+              loading={sinceLastVisitQuery.isLoading}
+              isAuthed={isAuthed}
+            />
+
             {/* ── Hero — the single canonical "today's question" surface ── */}
             <HeroSection
               allQuestions={isAuthed ? finalHeroQuestions : anonQuestions.map((q) => ({
@@ -2982,6 +3345,14 @@ export default function IndexPage() {
             />
 
             <TabsContent value={regionTab} className="mt-8 space-y-10">
+
+              {/* ── The room right now — always present ── */}
+              <TheRoomRightNow
+                pulse={societyPulseQuery.data ?? null}
+                media={mediaSurgeQuery.data ?? null}
+                participation={participationQuery.data ?? null}
+                regionLabel={regionLabel}
+              />
 
               {/* ── Feed — the ONE place questions are listed ── */}
               <section>
@@ -3082,19 +3453,13 @@ export default function IndexPage() {
                   )}
               </section>
 
-              {/* ── You vs. society — merged, gated on data ── */}
-              {societyPulseQuery.isError && participationQuery.isError ? (
-                <ErrorFallback message="Failed to load societal signals. Please refresh the page." />
-              ) : (
-                <YouVsSociety
-                  snap={isAuthed ? (whereYouStandQuery.data ?? null) : null}
-                  analytics={isAuthed ? (personalAnalyticsQuery.data ?? null) : null}
-                  pulse={societyPulseQuery.data ?? null}
-                  participation={participationQuery.data ?? null}
-                  media={mediaSurgeQuery.data ?? null}
-                  regionLabel={regionLabel}
-                />
-              )}
+              {/* ── You vs. society — always present; sample view before data ── */}
+              <YouVsSociety
+                snap={isAuthed ? (whereYouStandQuery.data ?? null) : null}
+                analytics={isAuthed ? (personalAnalyticsQuery.data ?? null) : null}
+                snapshot={isAuthed ? (myStanceSnapshotQuery.data ?? null) : null}
+                regionLabel={regionLabel}
+              />
 
               {/* ── Worth revisiting — replaces 3 sections, renders only with rows ── */}
               <WorthRevisiting items={revisitItems} daysAway={daysAway} />
