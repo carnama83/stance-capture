@@ -2880,10 +2880,28 @@ export default function IndexPage() {
   });
 
   // ── Flatten pages ──
-  const trendingQuestions =
+  const rawFeedRows =
     regionTab === "country"
       ? (trendingQuestionsNationalQuery.data?.pages.flat() ?? [])
       : (trendingQuestionsGlobalQuery.data?.pages.flat() ?? []);
+
+  // Answered questions do not hold a slot in the feed — they live on My stances.
+  // The one exception is a question answered in THIS session: it stays mounted so
+  // its result reveals in place, then clears on the next load. A question that
+  // entered a new phase surfaces as a "Moved since you answered" row instead.
+  const answeredThisSession = React.useRef<Set<string>>(new Set());
+
+  const newPhaseAnswered = rawFeedRows.filter(
+    (q) =>
+      q.user_has_answered &&
+      q.is_new_phase &&
+      !answeredThisSession.current.has(q.question_id)
+  );
+  const newPhaseKey = newPhaseAnswered.map((q) => q.question_id).join(",");
+
+  const trendingQuestions = rawFeedRows.filter(
+    (q) => !q.user_has_answered || answeredThisSession.current.has(q.question_id)
+  );
   const anonQuestions = anonTrendingQuery.data?.pages.flat() ?? [];
 
   // ── Infinite scroll controls ──
@@ -3295,7 +3313,8 @@ export default function IndexPage() {
     });
 
     return out.slice(0, 4);
-  }, [isAuthed, reopenedQuery.data, continuingQuery.data, newPhaseAnswered]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthed, reopenedQuery.data, continuingQuery.data, newPhaseKey]);
 
   // Cards answered during this session stay mounted so the result reveals in
   // place; they clear on the next load rather than holding a permanent slot.
