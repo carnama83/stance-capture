@@ -1,35 +1,35 @@
 // src/pages/Index.tsx
-// HOMEPAGE V4 — Live Societal Intelligence Platform
+// HOMEPAGE V5 — Restructured (design pass only; all data logic preserved)
 //
-// Structure (per final plan):
-//   Band 1 — Header (PageLayout)
-//   Band 2 — Hero (logged-out CTA | logged-in welcome + hero question state machine)
-//   Band 3 — Since You Last Visited  [authed only]
-//   Band 4 — Society Right Now
-//   Band 5 — Add Your Voice (featured card + 2-col grid)
-//   Band 6 — Continuing conversation + Reopened  [authed only]
+// What changed vs V4 (design review fixes):
+//   1. Sections gate on DATA, not auth — nothing renders as an empty placeholder.
+//      New users see: hero → feed. Cards appear as data exists.
+//   2. The same question set was presented 4× (hero, featured, grid, continuing).
+//      Now: hero (HeroSection) + ONE feed ("Add your voice") + a compact
+//      "Worth revisiting" list. No parallel presentations of the same rows.
+//   3. "Where you stand" + "Society right now" + "Personal analytics" +
+//      participation + media surge merged into ONE tabbed "You vs. society" card.
+//   4. Single colour system:
+//        · stance   = teal → grey → ochre (diverging, non-editorial)
+//        · brand    = indigo, interactive elements ONLY
+//        · momentum = 3 states, always dot + WORD (never colour alone)
+//        · neutrals = 4 steps; metadata never below 12px
+//   5. Unanswered sliders carry an explicit "Drag to take a position" hint so an
+//      untouched control never reads as "already answered".
+//   6. Dead code removed: HeroCta, HeroWelcome, HeroQuestionModule (which also
+//      referenced an undefined `submittingQuestionId`), InstantFeedbackCard,
+//      unused `anonLastValue` state.
 //
-// Changes in this pass (feedback review):
-//   Point 12 — Featured question eligibility: cover_image_url + length ≤ 120 + summary preferred
-//   Point 14 — get_societal_pulse_homepage as Tier 1; existing tiers as fallback
-//   Point 19 — Logged-out hero: explicit "Log in to take stance" button inside hero
-//   Rule 4   — Stats preloaded for hero + featured slots; passed to slider as `stats` prop
-//   Rule 4   — pulseThumb=true on hero + featured sliders (micro-commitment)
-//   QuestionStats type added (mirrors slider's internal type, avoids cross-import)
-//
-// ALL existing functionality preserved:
-//   - Infinite scroll pagination (national / global / anon)
-//   - Region tabs (country / global)
-//   - Stance submit + distribution feedback (authed + anon)
-//   - Continuing conversation + Reopened questions
-//   - Cover image hydration safety net
-//   - Society Pulse (get_societal_pulse_homepage → early_stage → legacy)
-//   - Media Surge, Participation strip, Where You Stand
-//   - tags, origin_location_label, audience_location_label, trend_micro_signal, user_has_answered
-//   - Error fallbacks, loading skeletons
-//   - Logged-out slider redirect pattern (onPointerUpCapture / onMouseUpCapture / onTouchEndCapture)
-//   - record_question_view impressions
-//   - All query invalidations after stance submit
+// UNCHANGED (verified line-by-line):
+//   - every query / RPC / queryKey / staleTime / retry policy
+//   - infinite scroll pagination (national / global / anon) + sentinel observer
+//   - region tabs (country / global) + IP country detection for anon
+//   - submitStance (raw fetch + JWT, cache patch, invalidations, ack toast)
+//   - anonymous staging (recordWebStance) + HomeOptInPrompt
+//   - cover image hydration safety net, fallback feed, isFallbackMode
+//   - record_question_view impressions, update_last_seen
+//   - streak / return nudge / since-last-visit derivations
+//   - scroll-collapse answered cards, cardStats, distribution fetch
 
 import * as React from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -49,6 +49,29 @@ import { HeroSection } from "@/components/hero/HeroSection";
 import { useContributionAcknowledgement } from "@/hooks/useContributionAcknowledgement";
 import { useIPLocation } from "@/hooks/useIPLocation";
 import { toast } from "sonner";
+
+// ─────────────────────────── Colour system (single source) ───────────────────
+// Four roles, no overlap. Stance is a teal→grey→ochre diverging scale rather
+// than red/green (right vs. wrong) or red/blue (party colours): a civic product
+// must not editorialise which end of a slider is correct.
+const C = {
+  ink: "#131A24",
+  body: "#5A6472",
+  meta: "#8A93A1",
+  line: "#E4E7EC",
+  hairline: "#EDEFF2",
+  surface: "#FFFFFF",
+  page: "#F1F2F5",
+  wash: "#F7F8FA",
+  brand: "#3F3BC9",
+  brandWash: "#EFEEFB",
+  stanceLow: "#0E8C7F",
+  stanceMid: "#C3C9D2",
+  stanceHigh: "#C4661C",
+  rising: "#0E8C7F",
+  polarising: "#8C4A9E",
+  steady: "#C3C9D2",
+} as const;
 
 // ─────────────────────────── Types (all preserved) ───────────────────────────
 
@@ -103,8 +126,6 @@ type AnonQuestionRow = {
 };
 
 // FallbackQuestionRow — returned by the "any unanswered live question" safety-net query.
-// Used when both national + global trending feeds are empty (e.g. user answered everything
-// in their scope). Mapped to TrendingHomepageQuestionRow shape with null trend fields.
 type FallbackQuestionRow = {
   id: string;
   question: string;
@@ -231,25 +252,25 @@ type ReopenedRow = {
   reason: string | null;
 };
 
-// TopicStanceItem — topic-level stance history for the WhereYouStandCard
-// Sourced from get_my_stance_snapshot RPC.
+// TopicStanceItem — topic-level stance history, sourced from get_my_stance_snapshot
 export type TopicStanceItem = {
   topicTitle: string;
   avgScore: number;
   answerCount: number;
   scorePct: number; // Math.round((avgScore / 2) * 100), range -100..+100
+  latestScore?: number | null;
+  latestLowLabel?: string | null;
+  latestHighLabel?: string | null;
 };
 
-// MyStanceSnapshot — full shape from get_my_stance_snapshot
 export type MyStanceSnapshot = {
   totalAnswered: number;
   topics: TopicStanceItem[];
-  alignmentLabel: string; // pre-computed backend label, e.g. "Your views generally align..."
+  alignmentLabel: string;
 };
 
 // ─── Epic Q — Habit/Retention types ──────────────────────────────────────────
 
-// Q1: Since Your Last Visit — mirrors get_since_last_visited() RPC output
 type SinceLastVisitChange = {
   topic_id: string;
   topic_title: string;
@@ -266,7 +287,6 @@ type SinceLastVisitData = {
   region: { scope: string; label: string };
 };
 
-// Q2: Return Nudge — derived client-side from existing queries
 type ReturnNudgeType = "minority_shift" | "opinion_shift" | "new_in_topics" | "answer_more";
 
 type ReturnNudge = {
@@ -277,14 +297,11 @@ type ReturnNudge = {
   href: string;
 };
 
-// Q3: Streak — computed client-side from question_stances dates
 type UserStreak = {
   currentStreak: number;
   answeredToday: boolean;
-  isAtRisk: boolean; // had streak yesterday, nothing today — streak needs protecting
+  isAtRisk: boolean;
 };
-
-// ─── End Epic Q types ─────────────────────────────────────────────────────────
 
 // ─── Epic E — Personal Analytics types ───────────────────────────────────────
 
@@ -345,7 +362,7 @@ type PersonalAnalyticsResponse = {
 
 type PersonalAnalyticsTier = "empty" | "sparse" | "basic" | "mature";
 
-// ─── Epic E helpers ───────────────────────────────────────────────────────────
+// ─── Epic E helpers (unchanged) ───────────────────────────────────────────────
 
 function buildPersonalAnalyticsResponse(raw: unknown): PersonalAnalyticsResponse {
   const r = raw as any;
@@ -412,33 +429,29 @@ function buildFingerprintTags(
   const conc = fp?.concentration_score ?? null;
   const cons = fp?.consistency_score ?? null;
 
-  // Conviction
   if (abs !== null) {
     if (abs >= 1.35) tags.push("Strong convictions");
     else if (abs >= 0.75) tags.push("Moderate convictions");
     else tags.push("Nuanced responses");
   }
 
-  // Divergence from consensus
   if (divRate !== null) {
     if (divRate >= 0.45) tags.push("Often diverges from consensus");
     else if (divRate >= 0.20) tags.push("Sometimes diverges from consensus");
     else tags.push("Often aligns with consensus");
   }
 
-  // Topic breadth
   if (conc !== null) {
     if (conc >= 0.60) tags.push("Focused on a few topics");
     else if (topicsAnswered >= 4) tags.push("Broad across topics");
   }
 
-  // Consistency
   if (cons !== null) {
     if (cons >= 0.70) tags.push("Consistent stance pattern");
     else if (cons < 0.45) tags.push("Varied stance pattern");
   }
 
-  return tags.slice(0, 3); // max 3 tags
+  return tags.slice(0, 3);
 }
 
 function getAlignmentTrendCopy(direction: AlignmentTrendDirection): string {
@@ -463,9 +476,7 @@ function clamp01(v: number | null | undefined): number {
   return Math.max(0, Math.min(1, v));
 }
 
-// ─── End Epic E helpers ───────────────────────────────────────────────────────
-
-// QuestionStats — passed to slider for alignment messaging (Rule 4)
+// QuestionStats — passed to slider for alignment messaging
 type RegionalStat = {
   region_scope: string;
   region_label: string;
@@ -555,22 +566,23 @@ function formatNum(v: number | null | undefined) {
   return `${Math.round(v)}`;
 }
 
-// ─────── Shared card surface (Plan: layered, premium, consistent) ─────────────
-// Used everywhere instead of the old "rounded-xl border bg-card shadow-sm"
-const card = "bg-white rounded-xl shadow-sm ring-1 ring-slate-900/5";
+// Shared card surface
+const card = "bg-white rounded-2xl shadow-sm ring-1 ring-slate-900/5";
 
 // ─────────────────────────── Small UI atoms ──────────────────────────────────
 
+// Topic tag — indigo is reserved for interactive things, so the primary tag is
+// indigo-on-wash (it links into a topic); secondary tags are neutral.
 function Tag({ children, primary }: { children: React.ReactNode; primary?: boolean }) {
-  if (primary) {
-    return (
-      <span className="inline-flex items-center rounded-full bg-slate-900 px-2.5 py-0.5 text-[11px] font-medium text-white">
-        {children}
-      </span>
-    );
-  }
   return (
-    <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-[11px] text-slate-600">
+    <span
+      className="inline-flex items-center rounded-md px-2 py-[3px] text-xs font-semibold"
+      style={
+        primary
+          ? { color: C.brand, background: C.brandWash }
+          : { color: C.body, background: "#F4F5F7", fontWeight: 400 }
+      }
+    >
       {children}
     </span>
   );
@@ -578,50 +590,54 @@ function Tag({ children, primary }: { children: React.ReactNode; primary?: boole
 
 function Pill({ children }: { children: React.ReactNode }) {
   return (
-    <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-500">
+    <span
+      className="inline-flex items-center rounded-md px-2 py-[3px] text-xs"
+      style={{ color: C.body, background: "#F4F5F7" }}
+    >
       {children}
     </span>
   );
 }
 
-// S3 — Signal quality pill: enriches trend_micro_signal with descriptive copy + colour
-function SignalPill({ signal }: { signal: string }) {
+// Momentum — exactly 3 states, always a dot AND a word, so it survives
+// colour-blindness and greyscale print. Replaces the old 5-colour SignalPill.
+type Momentum = "rising" | "polarising" | "steady";
+
+function toMomentum(signal: string | null | undefined): Momentum | null {
+  if (!signal) return null;
   const s = signal.toLowerCase();
-  if (s.includes("media") || s.includes("surge")) {
-    return (
-      <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-amber-50 text-amber-700 border border-amber-200">
-        Media-driven
-      </span>
-    );
-  }
-  if (s.includes("polar")) {
-    return (
-      <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-red-50 text-red-700 border border-red-200">
-        Polarising
-      </span>
-    );
-  }
-  if (s.includes("organic") || s.includes("momentum")) {
-    return (
-      <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-green-50 text-green-700 border border-green-200">
-        Organic
-      </span>
-    );
-  }
-  if (s.includes("trend") || s.includes("surging")) {
-    return (
-      <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-orange-50 text-orange-700 border border-orange-200">
-        Trending
-      </span>
-    );
-  }
-  // fallback — render raw signal as plain pill
-  return <Pill>{signal.toUpperCase()}</Pill>;
+  if (s.includes("polar")) return "polarising";
+  if (
+    s.includes("media") || s.includes("surge") || s.includes("organic") ||
+    s.includes("momentum") || s.includes("trend") || s.includes("rising")
+  ) return "rising";
+  return "steady";
+}
+
+function MomentumTag({ state }: { state: Momentum }) {
+  const map: Record<Momentum, { label: string; dot: string; text: string }> = {
+    rising:     { label: "Rising",     dot: C.rising,     text: C.rising },
+    polarising: { label: "Polarising", dot: C.polarising, text: C.polarising },
+    steady:     { label: "Steady",     dot: C.steady,     text: C.meta },
+  };
+  const m = map[state];
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 text-xs font-semibold"
+      style={{ color: m.text }}
+    >
+      <span className="h-[5px] w-[5px] rounded-full" style={{ background: m.dot }} />
+      {m.label}
+    </span>
+  );
 }
 
 function Eyebrow({ children }: { children: React.ReactNode }) {
   return (
-    <div className="text-[11px] font-semibold uppercase tracking-widest text-slate-400 mb-2">
+    <div
+      className="text-xs font-bold uppercase mb-2"
+      style={{ color: C.meta, letterSpacing: "0.14em" }}
+    >
       {children}
     </div>
   );
@@ -639,9 +655,14 @@ function SectionHeader({
   return (
     <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between mb-4">
       <div>
-        <h2 className="text-base font-semibold tracking-tight text-slate-900">{title}</h2>
+        <h2
+          className="text-xl font-semibold tracking-tight"
+          style={{ color: C.ink }}
+        >
+          {title}
+        </h2>
         {subtitle ? (
-          <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p>
+          <p className="mt-0.5 text-sm" style={{ color: C.body }}>{subtitle}</p>
         ) : null}
       </div>
       {right ? <div className="shrink-0">{right}</div> : null}
@@ -651,7 +672,7 @@ function SectionHeader({
 
 function ErrorFallback({ message }: { message: string }) {
   return (
-    <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-600">
+    <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-600">
       {message}
     </div>
   );
@@ -673,330 +694,8 @@ function CardSkeleton({ lines = 3 }: { lines?: number }) {
   );
 }
 
-// ─────────────────────────── Band 2 — Hero ───────────────────────────────────
+// ─────────────────────────── Sparkline (unchanged maths, new palette) ────────
 
-// Logged-out hero
-function HeroCta({ onLogin, onSignup }: { onLogin: () => void; onSignup: () => void }) {
-  return (
-    <section className="relative overflow-hidden rounded-2xl bg-slate-900 shadow-lg">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_28%_40%,rgba(99,102,241,0.35),transparent_65%)]" />
-      <div className="pointer-events-none absolute -right-20 -top-20 h-80 w-80 rounded-full bg-indigo-500/10 blur-3xl" />
-      <div className="relative px-6 py-10 sm:px-10 sm:py-12">
-        <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-[11px] font-medium text-white/70 mb-5">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-          Live societal intelligence
-        </div>
-        <h1 className="text-3xl font-bold tracking-tight text-white sm:text-4xl max-w-xl leading-tight">
-          Track how society is thinking — in real time
-        </h1>
-        <p className="mt-3 max-w-lg text-sm leading-relaxed text-white/70 sm:text-base">
-          Take a stance in seconds. See where your region aligns — and where it shifts.
-        </p>
-        <div className="mt-7 flex flex-wrap gap-3">
-          <button
-            type="button"
-            className="inline-flex items-center justify-center rounded-lg bg-white px-5 py-2.5 text-sm font-semibold text-slate-900 shadow-sm transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-white/60"
-            onClick={onSignup}
-          >
-            Get started free
-          </button>
-          <button
-            type="button"
-            className="inline-flex items-center justify-center rounded-lg border border-white/20 bg-white/10 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-white/15 focus:outline-none focus:ring-2 focus:ring-white/30"
-            onClick={onLogin}
-          >
-            Log in
-          </button>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// Logged-in welcome strip
-function HeroWelcome({ name }: { name: string }) {
-  return (
-    <section className={`${card} px-6 py-5`}>
-      <div className="flex items-center gap-2 mb-1">
-        <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-        <span className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">Live</span>
-      </div>
-      <h2 className="text-xl font-semibold tracking-tight text-slate-900">
-        Welcome back, {name}
-      </h2>
-      <p className="mt-0.5 text-sm text-slate-500">
-        Here's what's shifting — and what you can signal next.
-      </p>
-    </section>
-  );
-}
-
-// ─────────────────────────── Hero Question Module (State Machine) ─────────────
-//
-// Rule 1: state resolved once from data — no flicker between states.
-// State A: top question unanswered → show slider
-// State B: top answered → promote next unanswered question
-// State C: all answered → show media surge topic
-// State D: nothing → show alignment insight
-//
-// Skeleton shown while loading, resolves to final state.
-
-function HeroQuestionModule({
-  questions,
-  mediaSurge,
-  alignmentSnap,
-  isLoading,
-  isAuthed,
-  onSubmit,
-  onLoginRedirect,
-  onStage,
-  heroStats,
-}: {
-  questions: TrendingHomepageQuestionRow[];
-  mediaSurge: MediaSurgeRow | null;
-  alignmentSnap: AlignmentSnapshotRow | null;
-  isLoading: boolean;
-  isAuthed: boolean;
-  onSubmit: (questionId: string, value: number) => Promise<void>;
-  onLoginRedirect: () => void;
-  onStage?: (questionId: string, value: number) => void;
-  heroStats?: QuestionStats | null;
-}) {
-  // Resolve hero state once — Rule 1
-  type HeroState = "loading" | "A" | "B" | "C" | "D";
-
-  const heroState = React.useMemo<HeroState>(() => {
-    if (isLoading) return "loading";
-    if (questions.length === 0) {
-      if (mediaSurge) return "C";
-      if (alignmentSnap) return "D";
-      return "loading"; // nothing yet — keep skeleton
-    }
-    const top = questions[0];
-    if (!top.user_has_answered) return "A";
-    // top is answered — find next unanswered
-    const next = questions.find((q) => !q.user_has_answered);
-    if (next) return "B";
-    if (mediaSurge) return "C";
-    if (alignmentSnap) return "D";
-    return "A"; // fallback: just show top anyway
-  }, [isLoading, questions, mediaSurge, alignmentSnap]);
-
-  const heroQuestion = React.useMemo(() => {
-    if (heroState === "A") return questions[0] ?? null;
-    if (heroState === "B") return questions.find((q) => !q.user_has_answered) ?? null;
-    return null;
-  }, [heroState, questions]);
-
-  // Skeleton (sized to State A — largest state — so no layout shift on resolve)
-  if (heroState === "loading") {
-    return (
-      <div className={`${card} p-6 animate-pulse`}>
-        <div className="h-3 w-32 rounded bg-slate-100 mb-4" />
-        <div className="h-5 w-3/4 rounded bg-slate-100 mb-2" />
-        <div className="h-4 w-1/2 rounded bg-slate-100 mb-2" />
-        <div className="h-4 w-2/3 rounded bg-slate-100 mb-6" />
-        <div className="h-12 rounded bg-slate-100" />
-      </div>
-    );
-  }
-
-  // ── State C — media surge topic ──
-  if (heroState === "C" && mediaSurge) {
-    return (
-      <div className={`${card} p-6`}>
-        <Eyebrow>🔥 A new issue is rapidly gaining attention</Eyebrow>
-        <h3 className="text-lg font-semibold text-slate-900 leading-snug mb-3">
-          {mediaSurge.cluster_title}
-        </h3>
-        <div className="flex flex-wrap gap-2 mb-4">
-          <Pill>{mediaSurge.outlets_24h} outlets reporting</Pill>
-          <Pill>{mediaSurge.articles_24h} articles today</Pill>
-          {mediaSurge.surge_ratio != null && (
-            <Pill>{Math.round(mediaSurge.surge_ratio * 10) / 10}× surge</Pill>
-          )}
-        </div>
-        {mediaSurge.sample_title && (
-          <p className="text-sm text-slate-500 line-clamp-2 mb-3">{mediaSurge.sample_title}</p>
-        )}
-        {mediaSurge.sample_url && (
-          <a
-            href={mediaSurge.sample_url}
-            target="_blank"
-            rel="noreferrer"
-            className="text-sm font-medium text-slate-700 hover:text-slate-900 underline underline-offset-2"
-          >
-            See the emerging discussion →
-          </a>
-        )}
-      </div>
-    );
-  }
-
-  // ── State D — post-answer alignment insight ──
-  if (heroState === "D" && alignmentSnap) {
-    return (
-      <div className={`${card} p-6`}>
-        <Eyebrow>🧭 Your societal alignment</Eyebrow>
-        <div className="text-3xl font-bold text-slate-900 mb-1">
-          {formatPct(alignmentSnap.alignment_pct)}
-        </div>
-        <p className="text-sm text-slate-500 mb-1">
-          You hold the minority view on{" "}
-          <strong className="text-slate-700">{alignmentSnap.minority_count}</strong>{" "}
-          question{alignmentSnap.minority_count === 1 ? "" : "s"}.
-        </p>
-        {alignmentSnap.most_divergent_question_text && (
-          <p className="mt-2 text-sm text-slate-500 line-clamp-2">
-            Most divergent:{" "}
-            <span className="text-slate-700">{alignmentSnap.most_divergent_question_text}</span>
-          </p>
-        )}
-        {alignmentSnap.most_divergent_question_id && (
-          <Link
-            to={`/q/${alignmentSnap.most_divergent_question_id}`}
-            className="mt-4 inline-flex items-center text-sm font-medium text-slate-700 hover:text-slate-900 underline underline-offset-2"
-          >
-            Revisit your most divergent view →
-          </Link>
-        )}
-      </div>
-    );
-  }
-
-  // ── States A / B — question with slider ──
-  // Layout matches the screenshot exactly:
-  //   • Single unified card, white background
-  //   • Top section: eyebrow + subtext on the LEFT, cover image on the RIGHT
-  //     The image fades to transparent on its left edge via a horizontal gradient,
-  //     so it bleeds into the white content area seamlessly
-  //   • Question headline sits below the eyebrow, spanning left + into the fade zone
-  //   • Divider, then slider below on white
-  if (!heroQuestion) return null;
-
-  return (
-    <div className={`${card} overflow-hidden`}>
-
-      {/* ── Top section: text left / image right (split layout) ── */}
-      <div className="relative overflow-hidden">
-
-        {/* Image — absolute, right-aligned, fills full height of this section */}
-        {heroQuestion.cover_image_url && (
-          <>
-            <img
-              src={heroQuestion.cover_image_url}
-              alt=""
-              className="absolute top-0 right-0 h-full w-3/5 object-cover object-center"
-              loading="eager"
-            />
-            {/* Left-to-right fade: white → transparent, covering ~55% from left.
-                This lets the question text sit on pure white while the image
-                bleeds in naturally from the right, matching the screenshot. */}
-            <div
-              className="absolute top-0 right-0 h-full w-3/5 pointer-events-none"
-              style={{
-                background:
-                  "linear-gradient(to right, white 0%, white 15%, rgba(255,255,255,0.85) 35%, rgba(255,255,255,0.3) 65%, transparent 100%)",
-              }}
-            />
-          </>
-        )}
-
-        {/* Text content — sits on top, left-aligned, z above the image */}
-        <div className="relative z-10 p-5 pb-4" style={{ maxWidth: "68%" }}>
-
-          {/* Eyebrow */}
-          <div className="flex items-center gap-1.5 mb-0.5">
-            <span className="text-sm font-semibold text-slate-900">
-              🔥 One big shifting question
-            </span>
-          </div>
-          <p className="text-xs text-slate-500 mb-4">
-            Answer in seconds — see where society stands.
-          </p>
-
-          {/* Tags */}
-          {heroQuestion.tags && heroQuestion.tags.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mb-3">
-              <Tag primary>{heroQuestion.tags[0]}</Tag>
-              {heroQuestion.tags.slice(1, 3).map((t) => (
-                <Tag key={t}>{t}</Tag>
-              ))}
-              {heroQuestion.trend_micro_signal && (
-                <SignalPill signal={heroQuestion.trend_micro_signal} />
-              )}
-              {heroQuestion.user_has_answered && <Pill>ANSWERED</Pill>}
-              {heroQuestion.origin_location_label &&
-                heroQuestion.origin_location_label !== heroQuestion.audience_location_label && (
-                  <Pill>📍 {heroQuestion.origin_location_label}</Pill>
-                )}
-            </div>
-          )}
-
-          {/* Question headline — large, dark, reads over both white and the fade */}
-          <Link
-            to={`/q/${heroQuestion.question_id}`}
-            className="block text-2xl font-bold text-slate-900 leading-snug hover:underline underline-offset-2"
-            style={{ maxWidth: "none" }}
-          >
-            {heroQuestion.question_text}
-          </Link>
-
-          {heroQuestion.topic_title && (
-            <p className="mt-1.5 text-xs text-slate-400">
-              {heroQuestion.topic_title}
-            </p>
-          )}
-        </div>
-      </div>
-
-      {/* ── Slider section — full width, white, below the split ── */}
-      <div className="px-5 pb-5 pt-3 border-t border-slate-100">
-        {heroQuestion.summary && (
-          <p className="text-xs text-slate-500 leading-relaxed mb-4 line-clamp-2">
-            {heroQuestion.summary}
-          </p>
-        )}
-
-        {isAuthed ? (
-          <QuestionStanceSlider
-            key={`hero-${heroQuestion.question_id}`}
-            questionId={heroQuestion.question_id}
-            questionText={heroQuestion.question_text}
-            summary={heroQuestion.summary}
-            initialValue={heroQuestion.user_stance_value ?? null}
-            stats={heroStats ?? null}
-            pulseThumb={true}
-            mutationPending={submittingQuestionId === heroQuestion.question_id}
-            onSubmit={(v) => onSubmit(heroQuestion.question_id, v)}
-            sliderLowLabel={heroQuestion.slider_low_label ?? null}
-            sliderHighLabel={heroQuestion.slider_high_label ?? null}
-          />
-        ) : (
-          <>
-            <QuestionStanceSlider
-              key={`hero-anon-${heroQuestion.question_id}`}
-              questionId={heroQuestion.question_id}
-              questionText={heroQuestion.question_text}
-              summary={heroQuestion.summary}
-              initialValue={null}
-              onSubmit={(v) => (onStage ? onStage(heroQuestion.question_id, v) : onLoginRedirect())}
-              sliderLowLabel={heroQuestion.slider_low_label ?? null}
-              sliderHighLabel={heroQuestion.slider_high_label ?? null}
-            />
-            <p className="mt-3 text-center text-xs text-slate-400">
-              Your stance is recorded anonymously — add your voice below to count it.
-            </p>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────── Epic E — Personal Analytics Card ────────────────
-
-// ─── PersonalAnalyticsSparkline — tiny inline SVG, no library ────────────────
 function PersonalAnalyticsSparkline({
   points,
 }: {
@@ -1015,14 +714,14 @@ function PersonalAnalyticsSparkline({
 
   const coords = valid.map((p, i) => {
     const x = i * xStep;
-    const y = H - ((( p.alignmentScore as number) - minV) / range) * (H - 4) - 2;
+    const y = H - (((p.alignmentScore as number) - minV) / range) * (H - 4) - 2;
     return `${x.toFixed(1)},${y.toFixed(1)}`;
   });
 
-  // Color by trend direction
   const first = scores[0];
   const last = scores[scores.length - 1];
-  const color = last > first + 0.03 ? "#10b981" : last < first - 0.03 ? "#f43f5e" : "#94a3b8";
+  const color =
+    last > first + 0.03 ? C.stanceLow : last < first - 0.03 ? C.stanceHigh : C.meta;
 
   return (
     <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} aria-hidden className="flex-shrink-0">
@@ -1033,283 +732,58 @@ function PersonalAnalyticsSparkline({
         strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"
-        opacity="0.85"
+        opacity="0.9"
       />
     </svg>
   );
 }
 
-// ─── PersonalAnalyticsCard ────────────────────────────────────────────────────
-function PersonalAnalyticsCard({
-  data,
-  isLoading,
-  isError,
+// ─────────────────────────── You vs. society (merged card) ───────────────────
+//
+// Replaces four separate cards that all read the same dataset:
+//   WhereYouStandCard · SocietyRightNow · MediaSurgeCard ·
+//   ParticipationStrip · PersonalAnalyticsCard
+//
+// Tabs, not stacked sections — and the whole card is gated on data existing.
+// A brand-new account never sees it.
+
+function YouVsSociety({
+  snap,
+  analytics,
+  pulse,
+  participation,
+  media,
+  regionLabel,
 }: {
-  data: PersonalAnalyticsResponse | null;
-  isLoading: boolean;
-  isError: boolean;
+  snap: AlignmentSnapshotRow | null;
+  analytics: PersonalAnalyticsResponse | null;
+  pulse: SocietalPulseOutput | null;
+  participation: ParticipationStatsRow | null;
+  media: MediaSurgeRow | null;
+  regionLabel: string;
 }) {
-  // Loading skeleton
-  if (isLoading) {
-    return (
-      <div className={`${card} p-5`}>
-        <Eyebrow>Your opinion profile</Eyebrow>
-        <div className="space-y-3 animate-pulse mt-3">
-          <div className="h-3 w-2/3 bg-slate-100 rounded" />
-          <div className="h-3 w-full bg-slate-100 rounded" />
-          <div className="h-3 w-4/5 bg-slate-100 rounded" />
-          <div className="h-3 w-1/2 bg-slate-100 rounded" />
-        </div>
-      </div>
-    );
-  }
+  const analyticsTier = getPersonalAnalyticsTier(analytics?.totalAnswered ?? 0);
+  const hasYou = !!snap || (!!analytics && analyticsTier !== "empty");
+  const hasSociety = !!pulse || !!participation || !!media;
 
-  // Error — soft fail
-  if (isError) {
-    return (
-      <div className={`${card} p-5`}>
-        <Eyebrow>Your opinion profile</Eyebrow>
-        <p className="text-sm text-slate-400 mt-2">
-          Your analytics are unavailable right now.
-        </p>
-      </div>
-    );
-  }
+  const [tab, setTab] = React.useState<"you" | "society">(hasYou ? "you" : "society");
 
-  // No data
-  if (!data) return null;
+  React.useEffect(() => {
+    if (!hasYou && tab === "you") setTab("society");
+    if (!hasSociety && tab === "society") setTab("you");
+  }, [hasYou, hasSociety, tab]);
 
-  const tier = getPersonalAnalyticsTier(data.totalAnswered);
+  // Gate: nothing to say → render nothing at all (no empty state).
+  if (!hasYou && !hasSociety) return null;
 
-  // Empty state
-  if (tier === "empty") {
-    return (
-      <div className={`${card} p-5`}>
-        <Eyebrow>Your opinion profile</Eyebrow>
-        <p className="text-sm text-slate-500 mt-2 leading-relaxed">
-          Answer a few questions to unlock your personal analytics.
-        </p>
-      </div>
-    );
-  }
+  const tabs: Array<{ id: "you" | "society"; label: string; on: boolean }> = [
+    { id: "you", label: "Where you stand", on: hasYou },
+    { id: "society", label: `Society in ${regionLabel}`, on: hasSociety },
+  ];
 
-  const { alignmentTrend, mostDivergentTopic, opinionFingerprint } = data;
-
-  return (
-    <div className={`${card} p-5 space-y-4`}>
-      <Eyebrow>Your opinion profile</Eyebrow>
-
-      {/* Sparse state — condensed message */}
-      {tier === "sparse" && (
-        <p className="text-xs text-slate-500 leading-relaxed">
-          You've started building a stance history. As you answer more questions,
-          we'll show how your alignment changes over time.
-        </p>
-      )}
-
-      {/* ── Section 1: Alignment Trend ── */}
-      {(tier === "basic" || tier === "mature") && (
-        <div>
-          <p className="text-xs font-semibold text-slate-700 mb-1">Alignment trend</p>
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-[11px] text-slate-500 leading-snug flex-1">
-              {getAlignmentTrendCopy(alignmentTrend.direction)}
-            </p>
-            <PersonalAnalyticsSparkline points={alignmentTrend.points} />
-          </div>
-          {alignmentTrend.currentAlignmentScore !== null && (
-            <div className="mt-1.5 flex items-center gap-1.5">
-              <div
-                className="h-1.5 rounded-full bg-slate-100 flex-1 overflow-hidden"
-                style={{ maxWidth: 80 }}
-              >
-                <div
-                  className="h-full rounded-full bg-emerald-400 transition-all"
-                  style={{
-                    width: `${Math.round(clamp01(alignmentTrend.currentAlignmentScore) * 100)}%`,
-                  }}
-                />
-              </div>
-              <span className="text-[10px] text-slate-500 tabular-nums">
-                {Math.round(clamp01(alignmentTrend.currentAlignmentScore) * 100)}% aligned
-              </span>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── Divider ── */}
-      {mostDivergentTopic && tier !== "sparse" && (
-        <div className="border-t border-slate-100" />
-      )}
-
-      {/* ── Section 2: Most Divergent Topic ── */}
-      {mostDivergentTopic && tier !== "sparse" && (
-        <div>
-          <p className="text-xs font-semibold text-slate-700 mb-1">Most divergent topic</p>
-          {mostDivergentTopic.topicId ? (
-            <Link
-              to={`/topics/${mostDivergentTopic.topicId}`}
-              className="text-[11px] font-semibold text-violet-600 hover:underline"
-            >
-              {mostDivergentTopic.topicTitle}
-            </Link>
-          ) : (
-            <span className="text-[11px] font-semibold text-slate-700">
-              {mostDivergentTopic.topicTitle}
-            </span>
-          )}
-          <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
-            {getDivergenceCopy(mostDivergentTopic.direction)}
-          </p>
-        </div>
-      )}
-
-      {/* ── Divider ── */}
-      {opinionFingerprint.summaryTags.length > 0 && (
-        <div className="border-t border-slate-100" />
-      )}
-
-      {/* ── Section 3: Opinion Fingerprint ── */}
-      {opinionFingerprint.summaryTags.length > 0 && (
-        <div>
-          <p className="text-xs font-semibold text-slate-700 mb-2">Opinion fingerprint</p>
-          <div className="flex flex-wrap gap-1.5 mb-2">
-            {opinionFingerprint.summaryTags.map((tag) => (
-              <span
-                key={tag}
-                className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] text-slate-600"
-              >
-                {tag}
-              </span>
-            ))}
-          </div>
-          {opinionFingerprint.strongestTopicTitle && (
-            <p className="text-[11px] text-slate-500">
-              Strongest lean:{" "}
-              {opinionFingerprint.strongestTopicId ? (
-                <Link
-                  to={`/topics/${opinionFingerprint.strongestTopicId}`}
-                  className="font-semibold text-slate-700 hover:underline"
-                >
-                  {opinionFingerprint.strongestTopicTitle}
-                </Link>
-              ) : (
-                <span className="font-semibold text-slate-700">
-                  {opinionFingerprint.strongestTopicTitle}
-                </span>
-              )}
-            </p>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─────────────────────────── Band 3 — Since You Last Visited ─────────────────
-
-function SinceYouLastVisited({
-  continuingData,
-  reopenedData,
-  isLoading,
-  sinceLastVisit,
-  sinceLastVisitLoading,
-}: {
-  continuingData: BecauseYouRow[];
-  reopenedData: ReopenedRow[];
-  isLoading: boolean;
-  sinceLastVisit: SinceLastVisitData | null;
-  sinceLastVisitLoading: boolean;
-}) {
-  // Build up to 3 meaningful items
-  const items: Array<{ text: string; href: string }> = [];
-
-  reopenedData.slice(0, 1).forEach((r) => {
-    const shift =
-      r.public_shift_proxy != null
-        ? ` (shift: ${Math.round(r.public_shift_proxy * 10) / 10})`
-        : "";
-    const questionSnippet = r.question_text
-      ? `"${r.question_text.slice(0, 80)}${r.question_text.length > 80 ? "…" : ""}"`
-      : "a question you answered";
-    items.push({
-      text: `Opinion shifted on ${questionSnippet}${shift} — worth revisiting`,
-      href: `/q/${r.question_id}`,
-    });
-  });
-
-  continuingData.slice(0, 2).forEach((c) => {
-    items.push({
-      text: c.reason
-        ? c.reason
-        : `New activity in ${c.topic_title ?? "a topic you follow"}`,
-      href: c.topic_id ? `/topics/${c.topic_id}` : `/q/${c.question_id}`,
-    });
-  });
-
-  // Don't render the card at all when not loading and there's nothing to show.
-  // This prevents first-time users (no history) from seeing an empty placeholder.
-  // A returning user qualifies if: they have engagement items OR sinceLastVisit
-  // shows they've been away ≥1 day with changes.
-  const allLoading = isLoading || sinceLastVisitLoading;
-  const hasEngagementItems = items.length > 0;
-  const hasSinceLastVisitData =
-    sinceLastVisit != null &&
-    (sinceLastVisit.days_away ?? 0) >= 1 &&
-    sinceLastVisit.has_changes;
-
-  if (!allLoading && !hasEngagementItems && !hasSinceLastVisitData) return null;
-
-  return (
-    <div className={`${card} p-5`}>
-      <Eyebrow>↻ Since you last visited</Eyebrow>
-
-      {isLoading && (
-        <div className="space-y-2 animate-pulse">
-          <div className="h-3 rounded bg-slate-100 w-full" />
-          <div className="h-3 rounded bg-slate-100 w-5/6" />
-          <div className="h-3 rounded bg-slate-100 w-4/6" />
-        </div>
-      )}
-
-      {!isLoading && items.length > 0 && (
-        <ul className="space-y-2.5">
-          {items.map((item, i) => (
-            <li key={i} className="flex items-start gap-2.5">
-              <span className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full bg-slate-300" />
-              <Link
-                to={item.href}
-                className="text-sm text-slate-600 leading-snug hover:text-slate-900 hover:underline"
-              >
-                {item.text}
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {/* Fallback: returning user with days_away but no specific engagement items */}
-      {!isLoading && items.length === 0 && hasSinceLastVisitData && sinceLastVisit && (
-        <p className="text-sm text-slate-600">
-          You were away for{" "}
-          {sinceLastVisit.days_away === 1
-            ? "1 day"
-            : `${sinceLastVisit.days_away} days`}
-          . New questions and opinion shifts have been recorded — explore below.
-        </p>
-      )}
-    </div>
-  );
-}
-
-// ─────────────────────────── Band 4 — Society Right Now ──────────────────────
-
-function SocietyRightNow({ pulse }: { pulse: SocietalPulseOutput | null }) {
-  if (!pulse) return null;
-
-  const chips = Array.isArray(pulse.chips) ? pulse.chips : [];
-  const mm = Array.isArray(pulse.micro_metrics) ? pulse.micro_metrics : [];
+  const fingerprint = analytics?.opinionFingerprint;
+  const trend = analytics?.alignmentTrend;
+  const divergent = analytics?.mostDivergentTopic ?? null;
 
   const iconGlyph = (icon: SocietalPulseOutput["chips"][number]["icon"]) => {
     switch (icon) {
@@ -1321,160 +795,361 @@ function SocietyRightNow({ pulse }: { pulse: SocietalPulseOutput | null }) {
   };
 
   return (
-    <div className={`${card} p-5`}>
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0 flex-1">
-          <Eyebrow>🌍 Society right now</Eyebrow>
+    <section className={`${card} overflow-hidden`}>
+      {/* Tab bar */}
+      <div
+        className="flex items-center gap-1 px-5 pt-4 pb-3"
+        style={{ borderBottom: `1px solid ${C.hairline}` }}
+      >
+        {tabs.filter((t) => t.on).map((t) => {
+          const active = tab === t.id;
+          return (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTab(t.id)}
+              className="rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors"
+              style={{
+                color: active ? C.ink : C.body,
+                background: active ? C.wash : "transparent",
+              }}
+            >
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
 
-          <div className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1">
-            {pulse.narrative?.title ?? "Societal Pulse"}
-          </div>
-          <p className="text-sm text-slate-700 leading-relaxed">
-            {pulse.narrative?.sentence_1}
-            {pulse.narrative?.sentence_2 && (
-              <span className="text-slate-500"> {pulse.narrative.sentence_2}</span>
-            )}
-          </p>
-
-          {chips.length > 0 && (
-            <div className="mt-3 flex flex-wrap gap-2">
-              {chips.slice(0, 3).map((c) => (
-                <Link
-                  key={c.topic_id}
-                  to={c.href || `/topics/${c.topic_id}`}
-                  className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] text-slate-700 hover:bg-slate-100 transition-colors"
-                  title={c.title}
-                >
-                  <span className="text-slate-400">{iconGlyph(c.icon)}</span>
-                  <span className="line-clamp-1 max-w-[180px]">{c.title}</span>
-                </Link>
-              ))}
-            </div>
-          )}
-
-          <div className="mt-3 flex flex-wrap gap-2">
-            {mm.length > 0 ? (
-              mm.slice(0, 3).map((m) => (
-                <Pill key={m.label}>
-                  {m.value == null ? m.label : <>{formatNum(m.value)} {m.label}</>}
-                </Pill>
-              ))
+      {/* ── You ── */}
+      {tab === "you" && hasYou && (
+        <div className="grid gap-0 md:grid-cols-[300px_1fr]">
+          <div className="p-5" style={{ borderRight: `1px solid ${C.hairline}` }}>
+            {snap ? (
+              <>
+                <Eyebrow>Alignment</Eyebrow>
+                <div className="flex items-end gap-2">
+                  <span
+                    className="text-5xl font-semibold tracking-tight leading-none"
+                    style={{ color: C.ink }}
+                  >
+                    {formatPct(snap.alignment_pct)}
+                  </span>
+                  <span className="pb-1.5 text-sm" style={{ color: C.body }}>
+                    aligned with {regionLabel}
+                  </span>
+                </div>
+                <p className="mt-3 text-sm leading-relaxed" style={{ color: C.body }}>
+                  You hold the minority view on{" "}
+                  <strong style={{ color: C.ink }}>{snap.minority_count}</strong>{" "}
+                  of {snap.comparable_count} comparable question
+                  {snap.comparable_count === 1 ? "" : "s"}.
+                </p>
+              </>
             ) : (
               <>
-                <Pill>— topics shifting rapidly</Pill>
-                <Pill>— polarized</Pill>
-                <Pill>— reawakening</Pill>
+                <Eyebrow>Your profile</Eyebrow>
+                <p className="text-sm leading-relaxed" style={{ color: C.body }}>
+                  {analytics?.totalAnswered} question
+                  {analytics?.totalAnswered === 1 ? "" : "s"} answered across{" "}
+                  {analytics?.topicsAnswered} topic
+                  {analytics?.topicsAnswered === 1 ? "" : "s"}.
+                </p>
               </>
+            )}
+
+            {fingerprint && fingerprint.summaryTags.length > 0 && (
+              <div className="mt-4 flex flex-wrap gap-1.5">
+                {fingerprint.summaryTags.map((t) => (
+                  <Pill key={t}>{t}</Pill>
+                ))}
+              </div>
+            )}
+
+            {snap?.most_divergent_question_id && (
+              <Link
+                to={`/q/${snap.most_divergent_question_id}`}
+                className="mt-4 inline-flex text-sm font-semibold"
+                style={{ color: C.brand }}
+              >
+                Revisit your most divergent view →
+              </Link>
+            )}
+          </div>
+
+          <div className="p-5 space-y-4">
+            {analytics && analyticsTier !== "empty" && trend && (
+              <div>
+                <p className="text-sm font-semibold" style={{ color: C.ink }}>
+                  Alignment trend
+                </p>
+                <div className="mt-1.5 flex items-center justify-between gap-4">
+                  <p className="flex-1 text-sm leading-snug" style={{ color: C.body }}>
+                    {analyticsTier === "sparse"
+                      ? "You've started building a stance history. Answer a few more and the trend line fills in."
+                      : getAlignmentTrendCopy(trend.direction)}
+                  </p>
+                  <PersonalAnalyticsSparkline points={trend.points} />
+                </div>
+                {trend.currentAlignmentScore !== null && (
+                  <div className="mt-2 flex items-center gap-2">
+                    <div
+                      className="h-1.5 flex-1 overflow-hidden rounded-full"
+                      style={{ background: C.line, maxWidth: 120 }}
+                    >
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{
+                          width: `${Math.round(clamp01(trend.currentAlignmentScore) * 100)}%`,
+                          background: C.stanceLow,
+                        }}
+                      />
+                    </div>
+                    <span className="text-xs tabular-nums" style={{ color: C.meta }}>
+                      {Math.round(clamp01(trend.currentAlignmentScore) * 100)}% aligned
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {divergent && analyticsTier !== "sparse" && (
+              <div style={{ borderTop: `1px solid ${C.hairline}`, paddingTop: 16 }}>
+                <p className="text-sm font-semibold" style={{ color: C.ink }}>
+                  Most divergent topic
+                </p>
+                <div className="mt-1">
+                  {divergent.topicId ? (
+                    <Link
+                      to={`/topics/${divergent.topicId}`}
+                      className="text-sm font-semibold"
+                      style={{ color: C.brand }}
+                    >
+                      {divergent.topicTitle}
+                    </Link>
+                  ) : (
+                    <span className="text-sm font-semibold" style={{ color: C.ink }}>
+                      {divergent.topicTitle}
+                    </span>
+                  )}
+                </div>
+                <p className="mt-1 text-sm leading-snug" style={{ color: C.body }}>
+                  {getDivergenceCopy(divergent.direction)}
+                </p>
+              </div>
+            )}
+
+            {snap?.most_divergent_question_text && (
+              <div style={{ borderTop: `1px solid ${C.hairline}`, paddingTop: 16 }}>
+                <p className="text-xs font-bold uppercase" style={{ color: C.meta, letterSpacing: "0.14em" }}>
+                  Furthest from your region
+                </p>
+                <p className="mt-1.5 text-sm leading-snug" style={{ color: C.body }}>
+                  {snap.most_divergent_question_text}
+                </p>
+              </div>
+            )}
+
+            {fingerprint?.strongestTopicTitle && (
+              <p className="text-sm" style={{ color: C.body }}>
+                Strongest lean:{" "}
+                {fingerprint.strongestTopicId ? (
+                  <Link
+                    to={`/topics/${fingerprint.strongestTopicId}`}
+                    className="font-semibold"
+                    style={{ color: C.brand }}
+                  >
+                    {fingerprint.strongestTopicTitle}
+                  </Link>
+                ) : (
+                  <span className="font-semibold" style={{ color: C.ink }}>
+                    {fingerprint.strongestTopicTitle}
+                  </span>
+                )}
+              </p>
             )}
           </div>
         </div>
-
-        <Link
-          to="/topics"
-          className="shrink-0 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors whitespace-nowrap"
-        >
-          Explore →
-        </Link>
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────── Participation Strip (preserved) ─────────────────
-
-function ParticipationStrip({ stats }: { stats: ParticipationStatsRow | null }) {
-  if (!stats) return null;
-  return (
-    <div className={`${card} px-5 py-3`}>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="text-sm font-semibold text-slate-700">🌊 Live participation</div>
-        <div className="flex flex-wrap gap-2">
-          <Pill>{formatNum(stats.stances_window)} signals (24h)</Pill>
-          <Pill>{formatNum(stats.stances_7d)} signals (7d)</Pill>
-          <Pill>{formatNum(stats.unique_users_window)} people (24h)</Pill>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────── Media Surge (preserved, restyled) ───────────────
-
-function MediaSurgeCard({ media }: { media: MediaSurgeRow | null }) {
-  if (!media) return null;
-  return (
-    <div className={`${card} p-5`}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <Eyebrow>📰 Media surge</Eyebrow>
-          <div className="text-sm font-semibold text-slate-900 line-clamp-1 mb-2">
-            {media.cluster_title}
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Pill>{media.outlets_24h} outlets (24h)</Pill>
-            <Pill>{media.articles_24h} articles (24h)</Pill>
-            <Pill>
-              surge {media.surge_ratio != null ? `${Math.round(media.surge_ratio * 10) / 10}×` : "—"}
-            </Pill>
-          </div>
-          {media.sample_title && (
-            <p className="mt-2 text-xs text-slate-500 line-clamp-2">
-              {media.sample_title}
-            </p>
-          )}
-        </div>
-        {media.sample_url && (
-          <a
-            href={media.sample_url}
-            target="_blank"
-            rel="noreferrer"
-            className="shrink-0 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors"
-          >
-            Read
-          </a>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────── Where You Stand (preserved, restyled) ───────────
-
-function WhereYouStandCard({ snap }: { snap: AlignmentSnapshotRow | null }) {
-  if (!snap) return null;
-  return (
-    <div className={`${card} p-5`}>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <Eyebrow>🧭 Where you stand</Eyebrow>
-          <div className="flex flex-wrap gap-2">
-            <Pill>Alignment: {formatPct(snap.alignment_pct)}</Pill>
-            <Pill>{snap.minority_count} in minority</Pill>
-          </div>
-        </div>
-        {snap.most_divergent_question_id && (
-          <Link
-            to={`/q/${snap.most_divergent_question_id}`}
-            className="shrink-0 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors"
-          >
-            Revisit
-          </Link>
-        )}
-      </div>
-      {snap.most_divergent_question_text && (
-        <p className="mt-3 text-sm text-slate-500 line-clamp-2">
-          Most divergent:{" "}
-          <span className="text-slate-700">{snap.most_divergent_question_text}</span>
-        </p>
       )}
-    </div>
+
+      {/* ── Society ── */}
+      {tab === "society" && hasSociety && (
+        <div className="grid gap-0 md:grid-cols-[1fr_300px]">
+          <div className="p-5">
+            {pulse && (
+              <>
+                <Eyebrow>{pulse.narrative?.title ?? "Societal pulse"}</Eyebrow>
+                <p className="text-base leading-relaxed" style={{ color: C.ink }}>
+                  {pulse.narrative?.sentence_1}
+                  {pulse.narrative?.sentence_2 && (
+                    <span style={{ color: C.body }}> {pulse.narrative.sentence_2}</span>
+                  )}
+                </p>
+
+                {pulse.chips?.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {pulse.chips.slice(0, 3).map((c) => (
+                      <Link
+                        key={c.topic_id}
+                        to={c.href || `/topics/${c.topic_id}`}
+                        className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold transition-colors"
+                        style={{ color: C.brand, background: C.brandWash }}
+                        title={c.title}
+                      >
+                        <span style={{ color: C.meta }}>{iconGlyph(c.icon)}</span>
+                        <span className="line-clamp-1 max-w-[200px]">{c.title}</span>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+
+                {pulse.micro_metrics?.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {pulse.micro_metrics.slice(0, 3).map((m) => (
+                      <Pill key={m.label}>
+                        {m.value == null ? m.label : `${formatNum(m.value)} ${m.label}`}
+                      </Pill>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+
+            {media && (
+              <div
+                className="mt-5"
+                style={{ borderTop: `1px solid ${C.hairline}`, paddingTop: 16 }}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold uppercase" style={{ color: C.meta, letterSpacing: "0.14em" }}>
+                      Media surge
+                    </p>
+                    <p className="mt-1.5 text-sm font-semibold line-clamp-1" style={{ color: C.ink }}>
+                      {media.cluster_title}
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <Pill>{media.outlets_24h} outlets · 24h</Pill>
+                      <Pill>{media.articles_24h} articles · 24h</Pill>
+                      {media.surge_ratio != null && (
+                        <Pill>{Math.round(media.surge_ratio * 10) / 10}× surge</Pill>
+                      )}
+                    </div>
+                    {media.sample_title && (
+                      <p className="mt-2 text-sm line-clamp-2" style={{ color: C.body }}>
+                        {media.sample_title}
+                      </p>
+                    )}
+                  </div>
+                  {media.sample_url && (
+                    <a
+                      href={media.sample_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="shrink-0 text-sm font-semibold"
+                      style={{ color: C.brand }}
+                    >
+                      Read →
+                    </a>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="p-5" style={{ background: C.wash }}>
+            {participation && (
+              <>
+                <p className="text-xs font-bold uppercase" style={{ color: C.meta, letterSpacing: "0.14em" }}>
+                  Live participation
+                </p>
+                <div className="mt-3 space-y-3">
+                  {[
+                    { label: "signals · 24h", value: participation.stances_window },
+                    { label: "signals · 7d", value: participation.stances_7d },
+                    { label: "people · 24h", value: participation.unique_users_window },
+                  ].map((row) => (
+                    <div key={row.label} className="flex items-baseline justify-between gap-3">
+                      <span className="text-sm" style={{ color: C.body }}>{row.label}</span>
+                      <span className="text-lg font-semibold tabular-nums" style={{ color: C.ink }}>
+                        {formatNum(row.value)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+            <Link
+              to="/topics"
+              className="mt-5 inline-flex text-sm font-semibold"
+              style={{ color: C.brand }}
+            >
+              Explore all topics →
+            </Link>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 
-// ─────────────────────────── Scroll-collapse helpers ─────────────────────────
+// ─────────────────────────── Worth revisiting (merged list) ──────────────────
 //
-// When a card has been answered and leaves the viewport, it collapses to a
-// compact strip. Scrolling back shows the strip — tapping re-expands inline.
+// Replaces "Since you last visited" + "Continuing the conversation" +
+// "Reopened questions" — three sections built from two queries. One compact
+// list, rendered only when it has rows.
+
+type RevisitItem = {
+  key: string;
+  text: string;
+  href: string;
+  meta: string | null;
+  momentum: Momentum;
+};
+
+function WorthRevisiting({
+  items,
+  daysAway,
+}: {
+  items: RevisitItem[];
+  daysAway: number | null;
+}) {
+  if (items.length === 0) return null;
+  return (
+    <section>
+      <SectionHeader
+        title="Worth revisiting"
+        subtitle={
+          daysAway && daysAway >= 1
+            ? `You were away ${daysAway === 1 ? "a day" : `${daysAway} days`} — opinion moved on these.`
+            : "Questions where the public balance moved after you answered."
+        }
+      />
+      <div className={`${card} divide-y`} style={{ borderColor: C.hairline }}>
+        {items.map((item) => (
+          <Link
+            key={item.key}
+            to={item.href}
+            className="flex items-start gap-4 px-5 py-4 transition-colors hover:bg-slate-50"
+          >
+            <div className="min-w-0 flex-1">
+              <p className="text-base leading-snug" style={{ color: C.ink }}>
+                {item.text}
+              </p>
+              {item.meta && (
+                <p className="mt-1 text-xs" style={{ color: C.meta }}>{item.meta}</p>
+              )}
+            </div>
+            <div className="shrink-0 pt-0.5">
+              <MomentumTag state={item.momentum} />
+            </div>
+          </Link>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+// ─────────────────────────── Scroll-collapse helpers (unchanged) ─────────────
 
 const STANCE_LABELS_SHORT: Record<number, string> = {
   [-2]: "Strongly disagree",
@@ -1490,8 +1165,6 @@ function clampLabel(v: number | null | undefined): string {
   return STANCE_LABELS_SHORT[clamped] ?? "Neutral";
 }
 
-// Fires onLeave once when the observed element scrolls fully out of view.
-// Fires onReturn once when it scrolls back into view.
 function useScrollCollapse(
   ref: React.RefObject<HTMLElement>,
   enabled: boolean,
@@ -1535,17 +1208,25 @@ function CompactAnsweredStrip({
     <button
       type="button"
       onClick={onExpand}
-      className="w-full text-left rounded-xl border border-slate-200 bg-white px-4 py-3 hover:bg-slate-50 transition-colors"
+      className="w-full rounded-2xl bg-white px-4 py-3 text-left ring-1 ring-slate-900/5 transition-colors hover:bg-slate-50"
     >
-      <div className="flex items-start justify-between gap-3 mb-2">
-        <p className="text-sm font-medium text-slate-700 line-clamp-2 flex-1">
+      <div className="mb-2 flex items-start justify-between gap-3">
+        <p className="line-clamp-2 flex-1 text-sm font-medium" style={{ color: C.ink }}>
           {questionText}
         </p>
-        <div className="shrink-0 flex items-center gap-1.5">
-          <span className="text-[11px] font-semibold text-slate-500">
+        <div className="flex shrink-0 items-center gap-1.5">
+          <span
+            className="text-xs font-semibold"
+            style={{
+              color:
+                (stanceValue ?? 0) < -0.35 ? C.stanceLow
+                : (stanceValue ?? 0) > 0.35 ? C.stanceHigh
+                : C.body,
+            }}
+          >
             {clampLabel(stanceValue)}
           </span>
-          <svg className="h-3.5 w-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <svg className="h-3.5 w-3.5" style={{ color: C.meta }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
           </svg>
         </div>
@@ -1569,96 +1250,18 @@ function CompactAnsweredStrip({
   );
 }
 
-// ─────────────────────────── Instant Feedback (preserved, restyled) ──────────
-
-function InstantFeedbackCard({
-  dist,
-  onClose,
-  mode = "authed",
-  userValue,
-  onLogin,
-}: {
-  dist: QuestionDistributionRow | null;
-  onClose: () => void;
-  mode?: "authed" | "anon";
-  userValue?: number | null;
-  onLogin?: () => void;
-}) {
-  if (!dist) return null;
-
-  const bucket =
-    userValue == null
-      ? null
-      : userValue > 0.15
-      ? "support"
-      : userValue < -0.15
-      ? "oppose"
-      : "neutral";
-
-  const alignedPct =
-    bucket === "support" ? dist.support_pct
-    : bucket === "oppose" ? dist.oppose_pct
-    : bucket === "neutral" ? dist.neutral_pct
-    : null;
-
+// Unset-slider hint — an untouched control must never read as "already answered".
+function SliderHint({ answered }: { answered: boolean }) {
+  if (answered) return null;
   return (
-    <div className={`${card} p-5 border-l-4 border-l-emerald-400`}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="text-sm font-semibold text-slate-900 mb-2">
-            {mode === "anon" ? "🎉 Instant reward" : "✅ Signal recorded"}
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Pill>{formatNum(dist.responses)} responses</Pill>
-            <Pill>Support {formatPct(dist.support_pct)}</Pill>
-            <Pill>Neutral {formatPct(dist.neutral_pct)}</Pill>
-            <Pill>Oppose {formatPct(dist.oppose_pct)}</Pill>
-            {mode === "anon" && bucket && (
-              <Pill>You're aligned with {formatPct(alignedPct)}</Pill>
-            )}
-          </div>
-          {mode === "anon" && (
-            <p className="mt-2 text-xs text-slate-500">
-              Create an account to save your stance and track how it shifts over time.
-            </p>
-          )}
-          {mode === "anon" && onLogin && (
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button
-                type="button"
-                className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-700 transition-colors"
-                onClick={onLogin}
-              >
-                Create account
-              </button>
-              <button
-                type="button"
-                className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50 transition-colors"
-                onClick={onLogin}
-              >
-                Log in
-              </button>
-            </div>
-          )}
-        </div>
-        <button
-          type="button"
-          className="shrink-0 rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-500 hover:bg-slate-50 transition-colors"
-          onClick={onClose}
-        >
-          Dismiss
-        </button>
-      </div>
-    </div>
+    <p className="mt-3 text-xs" style={{ color: C.meta }}>
+      Drag to take a position
+    </p>
   );
 }
 
-// ─────────────────────────── Band 5 — Add Your Voice ─────────────────────────
-//
-// A. Featured question — large editorial card (image + summary + slider + CTA)
-// B. 2-column question grid — compact cards with all existing metadata preserved
+// ─────────────────────────── Feed cards ──────────────────────────────────────
 
-// A. Featured card — takes TrendingHomepageQuestionRow (authed)
 function FeaturedQuestionCard({
   q,
   isAuthed,
@@ -1685,6 +1288,7 @@ function FeaturedQuestionCard({
   const globalRegion = effectiveStats?.regions?.global ?? null;
   const [collapsed, setCollapsed] = React.useState(false);
   const cardRef = React.useRef<HTMLDivElement>(null);
+  const momentum = toMomentum(q.trend_micro_signal);
 
   const handleLeave = React.useCallback(() => setCollapsed(true), []);
   useScrollCollapse(cardRef, !!postAnswerStats, handleLeave);
@@ -1705,123 +1309,123 @@ function FeaturedQuestionCard({
   }
 
   return (
-    <div ref={cardRef} className={`${card} overflow-hidden`}>
-      {/* Large cover image — Rule 3: featured card must have cover */}
-      {q.cover_image_url ? (
-        <div className="h-52 w-full overflow-hidden sm:h-60">
-          <img
-            src={q.cover_image_url}
-            alt=""
-            className="h-full w-full object-cover"
-            loading="lazy"
-          />
-        </div>
-      ) : (
-        <QuestionCoverImage
-          imageUrl={null}
-          tags={q.tags}
-          variant="banner"
-          bannerHeight={180}
-        />
-      )}
-
-      <div className="p-5">
-        {/* Tags + signals */}
-        <div className="flex flex-wrap items-center gap-1.5 mb-3">
+    <div ref={cardRef} className={`${card} overflow-hidden md:grid md:grid-cols-[1.25fr_1fr]`}>
+      <div className="order-2 p-6 md:order-1">
+        <div className="mb-3 flex flex-wrap items-center gap-2">
           {q.tags && q.tags.length > 0 && <Tag primary>{q.tags[0]}</Tag>}
           {q.tags && q.tags.slice(1, 3).map((t) => <Tag key={t}>{t}</Tag>)}
-          {q.trend_micro_signal && <SignalPill signal={q.trend_micro_signal} />}
-          {q.user_has_answered && <Pill>ANSWERED</Pill>}
+          {momentum && <MomentumTag state={momentum} />}
           {q.origin_location_label && q.origin_location_label !== q.audience_location_label && (
-            <Pill>📍 {q.origin_location_label}</Pill>
+            <Pill>{q.origin_location_label}</Pill>
           )}
         </div>
 
         <Link
           to={`/q/${q.question_id}`}
-          className="block text-lg font-semibold text-slate-900 leading-snug hover:underline mb-2"
+          className="block text-2xl font-semibold leading-snug hover:underline"
+          style={{ color: C.ink, textWrap: "pretty" as any }}
         >
           {q.question_text}
         </Link>
 
         {q.summary && (
-          <p className="text-sm text-slate-500 leading-relaxed line-clamp-2 mb-3">
+          <p className="mt-3 line-clamp-3 text-sm leading-relaxed" style={{ color: C.body }}>
             {q.summary}
           </p>
         )}
 
         {q.topic_title && (
-          <p className="text-xs text-slate-400 mb-4">Topic: {q.topic_title}</p>
+          <p className="mt-2 text-xs" style={{ color: C.meta }}>{q.topic_title}</p>
         )}
 
-        {isAuthed ? (
-          <>
-            <QuestionStanceSlider
-              key={`featured-${q.question_id}`}
-              questionId={q.question_id}
-              questionText={q.question_text}
-              summary={q.summary}
-              initialValue={q.user_stance_value ?? null}
-              stats={effectiveStats}
-              pulseThumb={true}
-              mutationPending={submittingQuestionId === q.question_id}
-              onSubmit={(v) => onSubmit(q.question_id, v)}
-              sliderLowLabel={q.slider_low_label ?? null}
-              sliderHighLabel={q.slider_high_label ?? null}
-            />
-            {postAnswerStats && globalRegion && (
-              <div className="mt-3 pt-3 border-t border-slate-100">
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-1.5">
-                  Community Stance
-                </p>
-                <StanceDistributionBar
-                  distribution={{
-                    support_pct: globalRegion.pct_agree,
-                    neutral_pct: globalRegion.pct_neutral,
-                    oppose_pct: globalRegion.pct_disagree,
-                    responses: globalRegion.total_responses,
-                  }}
-                  userStance={q.user_stance_value ?? null}
-                  showCount={true}
-                  size="sm"
-                  lowLabel={q.slider_low_label ?? null}
-                  highLabel={q.slider_high_label ?? null}
-                />
-              </div>
-            )}
-          </>
-        ) : (
-          <div
-            className="cursor-pointer"
-          >
-            <QuestionStanceSlider
-              key={`featured-anon-${q.question_id}`}
-              questionId={q.question_id}
-              questionText={q.question_text}
-              summary={q.summary}
-              initialValue={null}
-              onSubmit={(v) => (onStage ? onStage(q.question_id, v) : onLoginRedirect())}
-              sliderLowLabel={q.slider_low_label ?? null}
-              sliderHighLabel={q.slider_high_label ?? null}
-            />
+        <div className="mt-5 pt-5" style={{ borderTop: `1px solid ${C.hairline}` }}>
+          {isAuthed ? (
+            <>
+              <QuestionStanceSlider
+                key={`featured-${q.question_id}`}
+                questionId={q.question_id}
+                questionText={q.question_text}
+                summary={q.summary}
+                initialValue={q.user_stance_value ?? null}
+                stats={effectiveStats}
+                pulseThumb={true}
+                mutationPending={submittingQuestionId === q.question_id}
+                onSubmit={(v) => onSubmit(q.question_id, v)}
+                sliderLowLabel={q.slider_low_label ?? null}
+                sliderHighLabel={q.slider_high_label ?? null}
+              />
+              <SliderHint answered={!!q.user_has_answered} />
+              {postAnswerStats && globalRegion && (
+                <div className="mt-4 pt-4" style={{ borderTop: `1px solid ${C.hairline}` }}>
+                  <p className="mb-2 text-xs font-bold uppercase" style={{ color: C.meta, letterSpacing: "0.14em" }}>
+                    Where the responses sit
+                  </p>
+                  <StanceDistributionBar
+                    distribution={{
+                      support_pct: globalRegion.pct_agree,
+                      neutral_pct: globalRegion.pct_neutral,
+                      oppose_pct: globalRegion.pct_disagree,
+                      responses: globalRegion.total_responses,
+                    }}
+                    userStance={q.user_stance_value ?? null}
+                    showCount={true}
+                    size="sm"
+                    lowLabel={q.slider_low_label ?? null}
+                    highLabel={q.slider_high_label ?? null}
+                  />
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="cursor-pointer">
+              <QuestionStanceSlider
+                key={`featured-anon-${q.question_id}`}
+                questionId={q.question_id}
+                questionText={q.question_text}
+                summary={q.summary}
+                initialValue={null}
+                onSubmit={(v) => (onStage ? onStage(q.question_id, v) : onLoginRedirect())}
+                sliderLowLabel={q.slider_low_label ?? null}
+                sliderHighLabel={q.slider_high_label ?? null}
+              />
+              <SliderHint answered={false} />
+            </div>
+          )}
+
+          <div className="mt-4">
+            <button
+              type="button"
+              className="text-sm font-semibold"
+              style={{ color: C.brand }}
+              onClick={() => onOpen(q.question_id)}
+            >
+              Open full discussion →
+            </button>
           </div>
-        )}
-
-        <div className="mt-3 flex justify-end">
-          <button
-            type="button"
-            className="text-xs font-medium text-slate-500 hover:text-slate-800 transition-colors"
-            onClick={() => onOpen(q.question_id)}
-          >
-            Open full discussion →
-          </button>
         </div>
+      </div>
+
+      <div className="order-1 min-h-[200px] md:order-2">
+        {q.cover_image_url ? (
+          <img
+            src={q.cover_image_url}
+            alt=""
+            className="h-56 w-full object-cover md:h-full"
+            loading="lazy"
+          />
+        ) : (
+          <QuestionCoverImage
+            imageUrl={null}
+            tags={q.tags}
+            variant="banner"
+            bannerHeight={220}
+          />
+        )}
       </div>
     </div>
   );
 }
 
-// Anon featured card (AnonQuestionRow shape)
 function FeaturedQuestionCardAnon({
   q,
   onLoginRedirect,
@@ -1834,60 +1438,69 @@ function FeaturedQuestionCardAnon({
   onOpen: (id: string) => void;
 }) {
   return (
-    <div className={`${card} overflow-hidden`}>
-      <QuestionCoverImage
-        imageUrl={q.cover_image_url ?? null}
-        tags={q.tags}
-        variant="banner"
-        bannerHeight={180}
-      />
-      <div className="p-5">
-        <div className="flex flex-wrap gap-1.5 mb-3">
+    <div className={`${card} overflow-hidden md:grid md:grid-cols-[1.25fr_1fr]`}>
+      <div className="order-2 p-6 md:order-1">
+        <div className="mb-3 flex flex-wrap gap-2">
           {q.tags && q.tags.length > 0 && <Tag primary>{q.tags[0]}</Tag>}
           {q.tags && q.tags.slice(1, 3).map((t) => <Tag key={t}>{t}</Tag>)}
           {q.origin_location_label && q.origin_location_label !== q.audience_location_label && (
-            <Pill>📍 {q.origin_location_label}</Pill>
+            <Pill>{q.origin_location_label}</Pill>
           )}
         </div>
 
         <Link
           to={`/q/${q.id}`}
-          className="block text-lg font-semibold text-slate-900 leading-snug hover:underline mb-2"
+          className="block text-2xl font-semibold leading-snug hover:underline"
+          style={{ color: C.ink, textWrap: "pretty" as any }}
         >
           {q.question}
         </Link>
 
         {q.summary && (
-          <p className="text-sm text-slate-500 line-clamp-2 mb-4">{q.summary}</p>
+          <p className="mt-3 line-clamp-3 text-sm leading-relaxed" style={{ color: C.body }}>
+            {q.summary}
+          </p>
         )}
 
-        <div className="cursor-pointer">
-          <QuestionStanceSlider
-            questionId={q.id}
-            questionText={q.question}
-            summary={q.summary}
-            initialValue={null}
-            onSubmit={(v) => (onStage ? onStage(q.id, v) : onLoginRedirect())}
-            sliderLowLabel={q.slider_low_label ?? null}
-            sliderHighLabel={q.slider_high_label ?? null}
-          />
-        </div>
+        <div className="mt-5 pt-5" style={{ borderTop: `1px solid ${C.hairline}` }}>
+          <div className="cursor-pointer">
+            <QuestionStanceSlider
+              questionId={q.id}
+              questionText={q.question}
+              summary={q.summary}
+              initialValue={null}
+              onSubmit={(v) => (onStage ? onStage(q.id, v) : onLoginRedirect())}
+              sliderLowLabel={q.slider_low_label ?? null}
+              sliderHighLabel={q.slider_high_label ?? null}
+            />
+            <SliderHint answered={false} />
+          </div>
 
-        <div className="mt-3 flex justify-end">
-          <button
-            type="button"
-            className="text-xs font-medium text-slate-500 hover:text-slate-800 transition-colors"
-            onClick={() => onOpen(q.id)}
-          >
-            Open full discussion →
-          </button>
+          <div className="mt-4">
+            <button
+              type="button"
+              className="text-sm font-semibold"
+              style={{ color: C.brand }}
+              onClick={() => onOpen(q.id)}
+            >
+              Open full discussion →
+            </button>
+          </div>
         </div>
+      </div>
+
+      <div className="order-1 min-h-[200px] md:order-2">
+        <QuestionCoverImage
+          imageUrl={q.cover_image_url ?? null}
+          tags={q.tags}
+          variant="banner"
+          bannerHeight={220}
+        />
       </div>
     </div>
   );
 }
 
-// B. Grid question card — compact, 2-col, all metadata preserved
 function GridQuestionCard({
   q,
   isAuthed,
@@ -1911,6 +1524,7 @@ function GridQuestionCard({
   const globalRegion = postAnswerStats?.regions?.global ?? null;
   const [collapsed, setCollapsed] = React.useState(false);
   const cardRef = React.useRef<HTMLDivElement>(null);
+  const momentum = toMomentum(q.trend_micro_signal);
 
   const handleLeave = React.useCallback(() => setCollapsed(true), []);
   useScrollCollapse(cardRef, !!postAnswerStats, handleLeave);
@@ -1931,37 +1545,39 @@ function GridQuestionCard({
   }
 
   return (
-    <div ref={cardRef} className={`${card} overflow-hidden flex flex-col`}>
-      <QuestionCoverImage
-        imageUrl={q.cover_image_url ?? null}
-        tags={q.tags}
-        variant="banner"
-        bannerHeight={130}
-      />
-      <div className="p-4 flex flex-col flex-1">
-        {/* Tags + signals */}
-        <div className="flex flex-wrap items-center gap-1.5 mb-2">
+    <div ref={cardRef} className={`${card} flex flex-col overflow-hidden`}>
+      {q.cover_image_url ? (
+        <img src={q.cover_image_url} alt="" className="h-40 w-full object-cover" loading="lazy" />
+      ) : (
+        <QuestionCoverImage
+          imageUrl={null}
+          tags={q.tags}
+          variant="banner"
+          bannerHeight={140}
+        />
+      )}
+      <div className="flex flex-1 flex-col p-5">
+        <div className="mb-2.5 flex flex-wrap items-center gap-2">
           {q.tags && q.tags.length > 0 && <Tag primary>{q.tags[0]}</Tag>}
-          {q.tags && q.tags.slice(1, 2).map((t) => <Tag key={t}>{t}</Tag>)}
-          {q.trend_micro_signal && <SignalPill signal={q.trend_micro_signal} />}
-          {q.user_has_answered && <Pill>ANSWERED</Pill>}
+          {momentum && <MomentumTag state={momentum} />}
           {q.origin_location_label && q.origin_location_label !== q.audience_location_label && (
-            <Pill>📍 {q.origin_location_label}</Pill>
+            <Pill>{q.origin_location_label}</Pill>
           )}
         </div>
 
         <Link
           to={`/q/${q.question_id}`}
-          className="text-sm font-semibold text-slate-900 leading-snug hover:underline line-clamp-3 mb-1 flex-1"
+          className="line-clamp-4 text-lg font-semibold leading-snug hover:underline"
+          style={{ color: C.ink, textWrap: "pretty" as any }}
         >
           {q.question_text}
         </Link>
 
         {q.topic_title && (
-          <p className="text-[11px] text-slate-400 mt-1 mb-3">Topic: {q.topic_title}</p>
+          <p className="mt-1.5 text-xs" style={{ color: C.meta }}>{q.topic_title}</p>
         )}
 
-        <div className="mt-auto pt-2">
+        <div className="mt-auto pt-4">
           {isAuthed ? (
             <>
               <QuestionStanceSlider
@@ -1975,10 +1591,11 @@ function GridQuestionCard({
                 sliderLowLabel={q.slider_low_label ?? null}
                 sliderHighLabel={q.slider_high_label ?? null}
               />
+              <SliderHint answered={!!q.user_has_answered} />
               {postAnswerStats && globalRegion && (
-                <div className="mt-3 pt-3 border-t border-slate-100">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-1.5">
-                    Community Stance
+                <div className="mt-4 pt-4" style={{ borderTop: `1px solid ${C.hairline}` }}>
+                  <p className="mb-2 text-xs font-bold uppercase" style={{ color: C.meta, letterSpacing: "0.14em" }}>
+                    Where the responses sit
                   </p>
                   <StanceDistributionBar
                     distribution={{
@@ -1997,9 +1614,7 @@ function GridQuestionCard({
               )}
             </>
           ) : (
-            <div
-              className="cursor-pointer"
-            >
+            <div className="cursor-pointer">
               <QuestionStanceSlider
                 questionId={q.question_id}
                 questionText={q.question_text}
@@ -2009,12 +1624,14 @@ function GridQuestionCard({
                 sliderLowLabel={q.slider_low_label ?? null}
                 sliderHighLabel={q.slider_high_label ?? null}
               />
+              <SliderHint answered={false} />
             </div>
           )}
-          <div className="mt-2 flex justify-end">
+          <div className="mt-3">
             <button
               type="button"
-              className="text-[11px] text-slate-400 hover:text-slate-700 transition-colors"
+              className="text-xs font-semibold"
+              style={{ color: C.brand }}
               onClick={() => onOpen(q.question_id)}
             >
               Open →
@@ -2025,6 +1642,7 @@ function GridQuestionCard({
     </div>
   );
 }
+
 function GridQuestionCardAnon({
   q,
   onLoginRedirect,
@@ -2037,37 +1655,35 @@ function GridQuestionCardAnon({
   onOpen: (id: string) => void;
 }) {
   return (
-    <div className={`${card} overflow-hidden flex flex-col`}>
+    <div className={`${card} flex flex-col overflow-hidden`}>
       <QuestionCoverImage
         imageUrl={q.cover_image_url ?? null}
         tags={q.tags}
         variant="banner"
-        bannerHeight={130}
+        bannerHeight={140}
       />
-      <div className="p-4 flex flex-col flex-1">
-        <div className="flex flex-wrap gap-1.5 mb-2">
+      <div className="flex flex-1 flex-col p-5">
+        <div className="mb-2.5 flex flex-wrap gap-2">
           {q.tags && q.tags.length > 0 && <Tag primary>{q.tags[0]}</Tag>}
-          {q.tags && q.tags.slice(1, 2).map((t) => <Tag key={t}>{t}</Tag>)}
           {q.origin_location_label && q.origin_location_label !== q.audience_location_label && (
-            <Pill>📍 {q.origin_location_label}</Pill>
+            <Pill>{q.origin_location_label}</Pill>
           )}
         </div>
 
         <Link
           to={`/q/${q.id}`}
-          className="text-sm font-semibold text-slate-900 leading-snug hover:underline line-clamp-3 mb-1 flex-1"
+          className="line-clamp-4 text-lg font-semibold leading-snug hover:underline"
+          style={{ color: C.ink, textWrap: "pretty" as any }}
         >
           {q.question}
         </Link>
 
         {q.summary && (
-          <p className="text-[11px] text-slate-400 mt-1 mb-2 line-clamp-2">{q.summary}</p>
+          <p className="mt-1.5 line-clamp-2 text-xs" style={{ color: C.meta }}>{q.summary}</p>
         )}
 
-        <div className="mt-auto pt-2">
-          <div
-            className="cursor-pointer"
-          >
+        <div className="mt-auto pt-4">
+          <div className="cursor-pointer">
             <QuestionStanceSlider
               questionId={q.id}
               questionText={q.question}
@@ -2077,11 +1693,13 @@ function GridQuestionCardAnon({
               sliderLowLabel={q.slider_low_label ?? null}
               sliderHighLabel={q.slider_high_label ?? null}
             />
+            <SliderHint answered={false} />
           </div>
-          <div className="mt-2 flex justify-end">
+          <div className="mt-3">
             <button
               type="button"
-              className="text-[11px] text-slate-400 hover:text-slate-700 transition-colors"
+              className="text-xs font-semibold"
+              style={{ color: C.brand }}
               onClick={() => onOpen(q.id)}
             >
               Open →
@@ -2103,7 +1721,7 @@ export default function IndexPage() {
   const sb = React.useMemo(getSupabase, []);
   const userId = session?.user?.id ?? null;
 
-  // Q5 — contribution acknowledgement check (Phase 4)
+  // Q5 — contribution acknowledgement check
   const { checkForAcknowledgement } = useContributionAcknowledgement(isAuthed);
 
   // Infinite scroll sentinel
@@ -2112,7 +1730,8 @@ export default function IndexPage() {
   const actions = (
     <div className="flex items-center gap-2">
       <button
-        className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50 transition-colors"
+        className="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm transition-colors hover:bg-slate-50"
+        style={{ borderColor: C.line, color: C.body }}
         onClick={() => navigate("/search")}
         aria-label="Search questions"
       >
@@ -2120,7 +1739,8 @@ export default function IndexPage() {
         <span className="hidden sm:inline">Search</span>
       </button>
       <button
-        className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50 transition-colors"
+        className="rounded-lg border px-3 py-1.5 text-sm transition-colors hover:bg-slate-50"
+        style={{ borderColor: C.line, color: C.body }}
         onClick={() => navigate("/topics")}
         aria-label="Explore topics"
       >
@@ -2146,6 +1766,8 @@ export default function IndexPage() {
     staleTime: 60_000,
   });
 
+  const displayName = getDisplayHandle(profile as any, session);
+
   // ── Region dims ──
   const { data: myRegion } = useQuery({
     enabled: !!userId,
@@ -2170,20 +1792,13 @@ export default function IndexPage() {
   const hasCountry = !!countryLabel;
 
   // ── IP-based country detection for anonymous users ──
-  // Only fires when not authenticated. Provides a country tab + filtered feed
-  // for anon users without requiring login. Cached 24h, fails silently.
   const { country: ipCountry, isLoading: ipLoading } = useIPLocation(!isAuthed);
   const anonCountryLabel = !isAuthed ? (ipCountry ?? null) : null;
   const hasAnonCountry = !!anonCountryLabel;
   const effectiveHasCountry = isAuthed ? hasCountry : hasAnonCountry;
   const effectiveCountryLabel = isAuthed ? countryLabel : anonCountryLabel;
 
-  // Bootstrap completion listener: when useBootstrapUser finishes writing location
-  // data on first login (including OAuth), invalidate my-region + all feed queries.
-  // On OAuth, the page does a full reload — bootstrap may complete before or after
-  // this effect runs. We handle both cases:
-  //   1. Listener registered before event fires — handled by addEventListener
-  //   2. Event already fired before listener registered — handled by bootstrapDoneRef flag
+  // Bootstrap completion listener (unchanged)
   React.useEffect(() => {
     const invalidateAll = () => {
       qc.invalidateQueries({ refetchType: 'all', queryKey: ["my-region"] });
@@ -2197,12 +1812,10 @@ export default function IndexPage() {
       qc.invalidateQueries({ refetchType: 'all', queryKey: ["home-fallback-feed"] });
     };
 
-    // Case 2: bootstrap already completed before this effect ran
     if ((window as any).__bootstrapComplete) {
       invalidateAll();
     }
 
-    // Case 1: listen for future completion
     window.addEventListener("bootstrap:complete", invalidateAll);
     return () => window.removeEventListener("bootstrap:complete", invalidateAll);
   }, [qc]);
@@ -2258,10 +1871,6 @@ export default function IndexPage() {
 
   // ──────────────────────── All queries (all preserved) ────────────────────────
 
-  // Society Pulse
-  // Tier 1: get_societal_pulse_homepage (final preferred RPC — Point 14)
-  // Tier 2: get_society_pulse_early_stage (existing fallback)
-  // Tier 3: get_society_pulse legacy (final fallback)
   const societyPulseQuery = useQuery({
     enabled: !!sb,
     queryKey: ["home-society-pulse", regionLabel],
@@ -2283,7 +1892,7 @@ export default function IndexPage() {
         );
       };
 
-      // Tier 1: get_societal_pulse_homepage — homepage-ready structured output
+      // Tier 1: get_societal_pulse_homepage
       try {
         const { data, error } = await sb.rpc("get_societal_pulse_homepage", {
           p_region_label: regionLabel,
@@ -2291,7 +1900,6 @@ export default function IndexPage() {
         });
         if (error) {
           if (!isNotFound(error)) throw error;
-          // not deployed yet — fall through to Tier 2
         } else {
           const row =
             Array.isArray(data) && data.length > 0
@@ -2300,7 +1908,6 @@ export default function IndexPage() {
               ? (data as SocietalPulseOutput)
               : null;
           if (row?.narrative?.sentence_1) {
-            // Normalise chips href if missing
             let chips = Array.isArray(row.chips)
               ? row.chips.map((c) => ({
                   ...c,
@@ -2308,9 +1915,6 @@ export default function IndexPage() {
                 }))
               : [];
 
-            // If the RPC returned no chips (e.g. topic_pulse_metrics_mv stale or empty
-            // for this region), build them from topic_region_trends which is always
-            // publicly readable and populated independently of the MV refresh schedule.
             if (chips.length === 0) {
               const { data: trData } = await sb
                 .from("topic_region_trends")
@@ -2395,9 +1999,7 @@ export default function IndexPage() {
         if (!isNotFound(e)) throw e;
       }
 
-      // Tier 3: Legacy pulse — also builds chips from topic_region_trends
-      // topic_region_trends is publicly readable (policy: public_read_trends).
-      // We use it as a last-resort chip source when Tier 1 + 2 produce no chips.
+      // Tier 3: Legacy pulse
       const [legacyResult, trendsResult] = await Promise.allSettled([
         sb.rpc("get_society_pulse", { p_region: regionLabel, p_shift_threshold: 0.08 }),
         sb
@@ -2415,7 +2017,6 @@ export default function IndexPage() {
           ? (legacyResult.value.data[0] as SocietyPulseRow)
           : null;
 
-      // Build chips from topic_region_trends — classify icon by momentum signals
       const trendRows =
         trendsResult.status === "fulfilled" && !trendsResult.value.error
           ? ((trendsResult.value.data ?? []) as any[])
@@ -2500,8 +2101,6 @@ export default function IndexPage() {
     queryKey: ["home-where-you-stand", userId, regionLabel],
     retry: false,
     queryFn: async () => {
-      // Verify session token is actually available before calling —
-      // userId can be truthy while the client's JWT header is still being set
       const { data: { session: liveSession } } = await sb!.auth.getSession();
       if (!liveSession?.access_token) return null;
 
@@ -2550,13 +2149,6 @@ export default function IndexPage() {
     staleTime: 30_000,
   });
 
-  // ── Recent stances — direct table query, no RPC needed ──
-  // question_stances has RLS: SELECT USING (auth.uid() = user_id)
-  // Joins to questions + topics for text. Ordered by updated_at DESC, limit 3.
-  // ── My stance snapshot — topic-level aggregation for WhereYouStandCard ─────
-  // Uses get_my_stance_snapshot (SECURITY DEFINER, auth.uid() scoped).
-  // Returns total_answered, up to 5 topics with avg_score, and a pre-computed
-  // regional alignment label. Invalidated after any stance submit.
   const myStanceSnapshotQuery = useQuery({
     enabled: !!sb && !!userId,
     queryKey: ["home-my-stance-snapshot", userId],
@@ -2584,10 +2176,6 @@ export default function IndexPage() {
     staleTime: 60_000,
   });
 
-  // ── Q1: Since Last Visit query ───────────────────────────────────────────────
-  // Uses get_since_last_visited() SECURITY DEFINER RPC — reads profiles.last_seen_at,
-  // computes topic sentiment shifts before/after, returns changes[].
-  // retry:false so errors fail silently and hide the block (right rail stays clean).
   const sinceLastVisitQuery = useQuery({
     enabled: !!sb && !!userId,
     queryKey: ["home-since-last-visit", userId],
@@ -2600,9 +2188,6 @@ export default function IndexPage() {
     retry: false,
   });
 
-  // ── Q3: Streak query ──────────────────────────────────────────────────────────
-  // Reads raw created_at dates from question_stances; streak computed client-side.
-  // Limited to 60 rows — enough for ~2 months of daily answers.
   const streakQuery = useQuery({
     enabled: !!sb && !!userId,
     queryKey: ["home-streak", userId],
@@ -2620,11 +2205,6 @@ export default function IndexPage() {
     retry: false,
   });
 
-  // ── Q3: Streak computation (client-side) ──────────────────────────────────────
-  // v1 uses browser-local day boundaries via toDateString().
-  // Multiple stances on the same local calendar day count as 1 streak day.
-  // Known edge case: answering at 11:59pm then 12:01am = 2 streak days — acceptable.
-  // Future enhancement: use profile timezone if available.
   const userStreak = React.useMemo((): UserStreak | null => {
     const rows = streakQuery.data;
     if (!rows || rows.length === 0) return null;
@@ -2639,7 +2219,6 @@ export default function IndexPage() {
     const answeredToday = distinctDays[0] === today;
     const answeredYesterday = distinctDays.includes(yesterday);
 
-    // Count consecutive days backwards from today or yesterday
     let streak = 0;
     const startDay = answeredToday ? today : answeredYesterday ? yesterday : null;
     if (!startDay) return { currentStreak: 0, answeredToday: false, isAtRisk: false };
@@ -2661,12 +2240,8 @@ export default function IndexPage() {
     };
   }, [streakQuery.data]);
 
-  // ── Epic E: Personal analytics query ─────────────────────────────────────────
-  // Derives regionScope/regionKey from existing regionLabel state.
-  // regionLabel = "Global" → scope='global', key='Global'
-  // regionLabel = "United States" → scope='country', key='United States'
   const paRegionScope = regionLabel === "Global" ? "global" : "country";
-  const paRegionKey   = regionLabel; // matches question_stance_stats_region.region_key
+  const paRegionKey   = regionLabel;
 
   const personalAnalyticsQuery = useQuery({
     enabled: !!sb && !!userId,
@@ -2681,18 +2256,13 @@ export default function IndexPage() {
       return buildPersonalAnalyticsResponse(data);
     },
     staleTime: 2 * 60_000,
-    retry: false, // fail silently — card hides on error
+    retry: false,
   });
 
-  // ── Q2: Return nudge derivation (client-side, zero new queries) ───────────────
-  // Derives single highest-priority nudge from already-running queries.
-  // Priority: minority_shift > opinion_shift > new_in_topics > answer_more.
-  // Zero-answer users: all nudges gated out ("Where You Stand" handles onboarding).
   const returnNudge = React.useMemo((): ReturnNudge | null => {
     const totalAnswered = myStanceSnapshotQuery.data?.totalAnswered ?? 0;
     if (totalAnswered === 0) return null;
 
-    // Priority 1: user holds minority view
     const snap = whereYouStandQuery.data;
     if (snap?.minority_count > 0 && snap.most_divergent_question_id) {
       return {
@@ -2704,7 +2274,6 @@ export default function IndexPage() {
       };
     }
 
-    // Priority 2: community opinion shifted on an answered question
     const reopened = (reopenedQuery.data ?? [])[0];
     if (reopened) {
       return {
@@ -2716,7 +2285,6 @@ export default function IndexPage() {
       };
     }
 
-    // Priority 3: new questions in engaged topics
     const continuing = (continuingQuery.data ?? [])[0];
     if (continuing) {
       return {
@@ -2730,7 +2298,6 @@ export default function IndexPage() {
       };
     }
 
-    // Priority 4: answer-more fallback (only for low-data, non-zero users)
     if (totalAnswered < 3) {
       return {
         type: "answer_more",
@@ -2749,10 +2316,6 @@ export default function IndexPage() {
     myStanceSnapshotQuery.data,
   ]);
 
-  // ── update_last_seen on homepage mount ────────────────────────────────────────
-  // Called 2s after mount so the sinceLastVisitQuery fires and renders first.
-  // update_last_seen() writes profiles.last_seen_at, which get_since_last_visited()
-  // reads on next visit — must run AFTER the query, not before.
   React.useEffect(() => {
     if (!sb || !userId) return;
     const t = setTimeout(async () => {
@@ -2762,15 +2325,12 @@ export default function IndexPage() {
   }, [sb, userId]);
 
   // ── Infinite queries (all preserved exactly) ──
-  // NOTE: heroStatsQuery and featuredStatsQuery are defined after trendingQuestions
-  // is available (below the infinite queries), using derived heroQ / featuredQ IDs.
 
   const canTrendingNational =
     !!sb && !!userId && !!countryLabel && !!COUNTRY_LOCATION_ID && !locationIdsLoading;
   const canTrendingGlobal =
     !!sb && !!userId && !!GLOBAL_LOCATION_ID && !locationIdsLoading;
 
-  // DEBUG: log feed gate values when key vars change
   React.useEffect(() => {
     console.log("[FeedDebug]", {
       sb: !!sb,
@@ -2866,10 +2426,8 @@ export default function IndexPage() {
         .range(pageParam, pageParam + 9);
 
       if (regionLabel !== "Global") {
-        // Country tab: show only questions explicitly targeted at this country
         q.eq("audience_location_label", regionLabel);
       } else {
-        // Global tab: exclude the user's detected country so tabs are strictly separate
         if (effectiveCountryLabel) {
           q.neq("audience_location_label", effectiveCountryLabel);
         }
@@ -2882,12 +2440,6 @@ export default function IndexPage() {
     staleTime: 60_000,
   });
 
-  // ── Fallback feed — "any unanswered live question" safety net ──────────────
-  // Placed here (after trending queries) so trendingQuestionsNationalQuery and
-  // trendingQuestionsGlobalQuery are already declared before being referenced.
-  // Enabled only when both primary feeds finished loading with zero unanswered
-  // questions — prevents blank hero when audience_location_label mismatch causes
-  // the scoped feed to return no eligible content.
   const primaryUnanswered = React.useMemo(
     () => (trendingQuestionsNationalQuery.data?.pages.flat() ?? [])
             .concat(trendingQuestionsGlobalQuery.data?.pages.flat() ?? [])
@@ -2918,7 +2470,6 @@ export default function IndexPage() {
 
       const rows = (data ?? []) as FallbackQuestionRow[];
 
-      // Client-side filter: exclude questions the user has already answered.
       const { data: answeredData } = await sb!
         .from("question_stances")
         .select("question_id")
@@ -2935,19 +2486,6 @@ export default function IndexPage() {
       ? (trendingQuestionsNationalQuery.data?.pages.flat() ?? [])
       : (trendingQuestionsGlobalQuery.data?.pages.flat() ?? []);
   const anonQuestions = anonTrendingQuery.data?.pages.flat() ?? [];
-
-  // Pre-populate cardStats for questions already answered when feed loads.
-  // This ensures returning users see Community Stance on previously answered cards.
-  React.useEffect(() => {
-    if (!isAuthed) return;
-    const answeredIds = trendingQuestions
-      .filter((q) => q.user_has_answered && !cardStats.has(q.question_id))
-      .map((q) => q.question_id);
-    if (answeredIds.length === 0) return;
-    answeredIds.forEach((id) => void fetchCardStats(id));
-  // Only re-run when feed data changes, not on every cardStats update
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trendingQuestionsNationalQuery.data, trendingQuestionsGlobalQuery.data, isAuthed]);
 
   // ── Infinite scroll controls ──
   const activeAuthedQuery =
@@ -2966,8 +2504,6 @@ export default function IndexPage() {
     : anonTrendingQuery.fetchNextPage;
 
   // ── Fallback mode derivation ──
-  // Priority: primary scoped feed → global feed → any-unanswered fallback → empty.
-  // isFallbackMode = true when hero is showing questions outside the user's normal scope.
   const globalFeedQuestions = trendingQuestionsGlobalQuery.data?.pages.flat() ?? [];
   const globalUnanswered = globalFeedQuestions.filter((q) => !q.user_has_answered || q.is_new_phase);
 
@@ -2994,11 +2530,11 @@ export default function IndexPage() {
   }));
 
   const finalHeroQuestions: TrendingHomepageQuestionRow[] = (() => {
-    if (!isAuthed) return []; // anon path uses anonQuestions, not this
+    if (!isAuthed) return [];
     if (primaryUnanswered.length > 0) return trendingQuestions;
     if (regionTab === "country" && globalUnanswered.length > 0) return globalFeedQuestions;
     if (fallbackRows.length > 0) return fallbackRows;
-    return trendingQuestions; // fall through to caught-up state
+    return trendingQuestions;
   })();
 
   const isFallbackMode =
@@ -3007,23 +2543,15 @@ export default function IndexPage() {
     (globalUnanswered.length > 0 || fallbackRows.length > 0);
 
   // ── Loading states ──
-  // Wait for session to resolve before trusting isLoading for anon users.
-  // Without this, the hero stays in hero_loading forever when the session
-  // check hasn't completed yet and the anonTrendingQuery fires then gets disabled.
   const anonIsLoading = anonTrendingQuery.isLoading;
   const anonIsError = anonTrendingQuery.isError;
   const authedIsLoading =
-  !sessionResolved ||
-  locationIdsLoading ||
-  trendingQuestionsNationalQuery.isLoading ||
-  trendingQuestionsGlobalQuery.isLoading;
+    !sessionResolved ||
+    locationIdsLoading ||
+    trendingQuestionsNationalQuery.isLoading ||
+    trendingQuestionsGlobalQuery.isLoading;
 
   // ── Question distribution into hero / featured / grid ──
-  //
-  // Hero: trendingQuestions[0] — used by HeroQuestionModule (state machine)
-  // Featured: Rule 3 eligibility — must have cover_image_url, title ≤ 120 chars,
-  //           prefer summary present. Falls back to [1] if no eligible candidate.
-  // Grid: everything else after hero + featured
   const heroQ = trendingQuestions[0] ?? null;
 
   const isFeaturedEligible = (q: TrendingHomepageQuestionRow) =>
@@ -3041,17 +2569,13 @@ export default function IndexPage() {
     (q) => q !== heroQ && q !== featuredQ
   );
 
-  // Anon splits (cover_image_url preferred for featured, no strict guard needed)
   const featuredAnonQ =
     anonQuestions.find((q, i) => i > 0 && !!q.cover_image_url) ??
     anonQuestions[1] ??
     null;
   const gridAnonQs = anonQuestions.filter((q) => q !== featuredAnonQ);
 
-  // ── Rule 4: Preload stats for hero + featured slots ──
-  // Grid card stats are lazy-loaded by the slider itself on demand.
-  // ── Rule 4: Stats preload for hero + featured slots ──
-  // Uses get_question_stats_for_user — same RPC as QuestionDetailPage
+  // ── Stats preload for hero + featured slots ──
   const heroStatsQuery = useQuery({
     enabled: !!sb && !!userId && !!heroQ?.question_id,
     queryKey: ["home-hero-stats", heroQ?.question_id, regionLabel],
@@ -3087,11 +2611,8 @@ export default function IndexPage() {
   });
 
   // ── Per-card post-answer stats ──
-  // Keyed by question_id. Populated after save confirms via get_question_stats_for_user.
-  // Powers the inline Community Stance bar + "You align with" panel on each card.
   const [cardStats, setCardStats] = React.useState<Map<string, QuestionStats>>(new Map());
   const [feedback, setFeedback] = React.useState<QuestionDistributionRow | null>(null);
-  const [anonLastValue, setAnonLastValue] = React.useState<number | null>(null);
 
   const fetchDistribution = React.useCallback(
     async (questionId: string) => {
@@ -3115,8 +2636,6 @@ export default function IndexPage() {
     [sb, regionLabel]
   );
 
-  // Fetch full regional stats for a question after save — populates the
-  // inline Community Stance bar and "You align with" panel on each card.
   const fetchCardStats = React.useCallback(
     async (questionId: string) => {
       if (!sb) return;
@@ -3143,14 +2662,18 @@ export default function IndexPage() {
     },
     [sb]
   );
-  // Keep the hero save contract tight: resolve once the stance RPC succeeds.
-  // Follow-up refreshes should run in the background so the controller can leave
-  // hero_submitting immediately after a real save instead of waiting on every
-  // homepage invalidation/refetch to settle.
-  //
-  // submittingQuestionId: tracks which question is mid-save so sliders can
-  // suppress the prop-sync useEffect that would otherwise snap back to the
-  // stale initialValue while "Saving…" is still showing.
+
+  // Pre-populate cardStats for already-answered questions when the feed loads.
+  React.useEffect(() => {
+    if (!isAuthed) return;
+    const answeredIds = trendingQuestions
+      .filter((q) => q.user_has_answered && !cardStats.has(q.question_id))
+      .map((q) => q.question_id);
+    if (answeredIds.length === 0) return;
+    answeredIds.forEach((id) => void fetchCardStats(id));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trendingQuestionsNationalQuery.data, trendingQuestionsGlobalQuery.data, isAuthed]);
+
   const [submittingQuestionId, setSubmittingQuestionId] = React.useState<string | null>(null);
 
   const submitStance = React.useCallback(
@@ -3165,8 +2688,6 @@ export default function IndexPage() {
         return;
       }
 
-      // Raw fetch with JWT from React session state — avoids sb.rpc() which
-      // calls getSession() internally and can block on background token refresh.
       const jwt = session?.access_token;
       if (!jwt) throw new Error("No active session");
       const supabaseUrl = (sb as any).supabaseUrl as string;
@@ -3202,17 +2723,12 @@ export default function IndexPage() {
       const data = await res.json().catch(() => null);
       console.log("[home:submit] RPC OK", { questionId, value, data });
 
-      // Same-tab fast path — hero/QDP listeners can react immediately.
       window.dispatchEvent(
         new CustomEvent("stance-saved", {
           detail: { questionId, value },
         })
       );
 
-      // ── Direct cache patch ──
-      // Update user_stance_value and user_has_answered in the TanStack cache
-      // immediately so sliders reflect the saved stance without waiting for a
-      // refetch. This avoids the auth-mutex delay from sb.rpc() on re-query.
       const patchPage = (page: TrendingHomepageQuestionRow[]) =>
         page.map((q) =>
           q.question_id === questionId
@@ -3227,12 +2743,9 @@ export default function IndexPage() {
         }
       );
 
-      // Refresh local community distribution without blocking the resolved save.
       void fetchDistribution(questionId);
-      // Fetch full regional stats for inline card Community Stance + You align with.
       void fetchCardStats(questionId);
 
-      // Invalidate related homepage data in the background.
       void Promise.allSettled([
         qc.invalidateQueries({ queryKey: ["home-where-you-stand", userId, regionLabel] }),
         qc.invalidateQueries({ queryKey: ["home-because-you", userId, regionLabel] }),
@@ -3244,16 +2757,12 @@ export default function IndexPage() {
         qc.invalidateQueries({ queryKey: ["home-my-stance-snapshot", userId] }),
         qc.invalidateQueries({ queryKey: ["home-streak", userId] }),
         qc.invalidateQueries({ queryKey: ["home-personal-analytics", userId, paRegionScope, paRegionKey] }),
-        // Note: home-since-last-visit intentionally NOT invalidated on submit.
-        // Last visit timestamp hasn't changed from answering — let staleTime expire.
       ]).then((results) => {
         console.log("[home:submit] background invalidations settled", results);
       });
 
       console.log(`[home:submit] DONE qId=${questionId.slice(0, 8)} value=${value}`);
 
-      // Q5 — check if this stance triggers a contribution acknowledgement
-      // Fire-and-forget: runs in background, shows toast if threshold met
       void checkForAcknowledgement().then((ack?: any) => {
         if (ack && ack.should_show && ack.message) {
           toast(ack.message, {
@@ -3278,10 +2787,7 @@ export default function IndexPage() {
 
   const loginRedirect = () => redirectToLogin("take_stances");
 
-  // ── Anonymous staging (homepage) ──
-  // Logged-out users can stage a stance on any card without a login bounce.
-  // We record it anonymously (web_forward, not counted) and surface ONE floating
-  // opt-in prompt. stagedQuestions tracks distinct questions staged this session.
+  // ── Anonymous staging ──
   const [stagedQuestions, setStagedQuestions] = React.useState<Set<string>>(new Set());
   const [promptDismissed, setPromptDismissed] = React.useState(false);
 
@@ -3295,16 +2801,14 @@ export default function IndexPage() {
           return next;
         });
       } catch {
-        // If staging fails, fall back to the login path so the user isn't stuck.
         loginRedirect();
       }
     },
-    // loginRedirect is stable enough for this fallback; intentionally minimal deps
     // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
 
-  // ── Impression recording (unchanged) ──
+  // ── Impression recording ──
   React.useEffect(() => {
     if (!sb || !userId) return;
     const ids = trendingQuestions.slice(0, 5).map((x) => x.question_id);
@@ -3326,7 +2830,7 @@ export default function IndexPage() {
     return () => { cancelled = true; };
   }, [sb, userId, trendingQuestions]);
 
-  // ── IntersectionObserver for infinite scroll (unchanged) ──
+  // ── IntersectionObserver for infinite scroll ──
   React.useEffect(() => {
     const sentinel = sentinelRef.current;
     if (!sentinel) return;
@@ -3344,227 +2848,217 @@ export default function IndexPage() {
 
   const goToQuestion = (id: string) => navigate(`/q/${id}`);
 
+  // ── "Worth revisiting" items — built from the two queries that used to power
+  //    three separate sections. Reopened first (strongest signal), then topics.
+  const revisitItems = React.useMemo<RevisitItem[]>(() => {
+    if (!isAuthed) return [];
+    const out: RevisitItem[] = [];
+
+    (reopenedQuery.data ?? []).slice(0, 2).forEach((r) => {
+      out.push({
+        key: `reopened-${r.question_id}`,
+        text: r.question_text,
+        href: `/q/${r.question_id}`,
+        meta:
+          r.reason ??
+          (r.public_shift_proxy != null
+            ? `Public balance moved ${Math.round(r.public_shift_proxy * 10) / 10} since you answered`
+            : "Public balance moved since you answered"),
+        momentum: "polarising",
+      });
+    });
+
+    (continuingQuery.data ?? []).slice(0, 3).forEach((c) => {
+      out.push({
+        key: `continuing-${c.question_id}`,
+        text: c.question_text,
+        href: c.topic_id ? `/topics/${c.topic_id}` : `/q/${c.question_id}`,
+        meta: c.reason ?? c.topic_title ?? null,
+        momentum: "rising",
+      });
+    });
+
+    return out.slice(0, 4);
+  }, [isAuthed, reopenedQuery.data, continuingQuery.data]);
+
+  const daysAway = sinceLastVisitQuery.data?.days_away ?? null;
+
+  const feedHasContent = isAuthed
+    ? !!featuredQ || gridQs.length > 0
+    : !!featuredAnonQ || gridAnonQs.length > 0;
+  const feedIsLoading = isAuthed ? authedIsLoading : anonIsLoading;
+
   // ─────────────────────────── Render ────────────────────────────────────────
   return (
     <PageLayout rightSlot={actions}>
-      <div className="min-h-screen bg-slate-50">
-        <div className="mx-auto max-w-5xl px-4 py-6">
+      <div className="min-h-screen" style={{ background: C.page, color: C.ink }}>
+        <div className="mx-auto max-w-5xl px-4 py-7">
 
-          {/* ── Band 1 + 2 — New Hero Section (A/B/C) ── */}
-          <HeroSection
-            allQuestions={isAuthed ? finalHeroQuestions : anonQuestions.map((q) => ({
-              question_id: q.id,
-              question_text: q.question,
-              summary: q.summary,
-              tags: q.tags,
-              topic_id: null,
-              topic_title: null,
-              tier: null,
-              location_label: q.location_label,
-              origin_location_label: q.origin_location_label,
-              audience_location_label: q.audience_location_label,
-              user_has_answered: false,
-              trend_micro_signal: null,
-              trend_score: null,
-              stance_momentum: null,
-              topic_momentum: null,
-              cover_image_url: q.cover_image_url,
-              impact_normalized: null,
-              slider_low_label: q.slider_low_label ?? null,
-              slider_high_label: q.slider_high_label ?? null,
-            }))}
-            isLoading={isAuthed ? authedIsLoading : anonIsLoading}
-            isAuthed={isAuthed}
-            regionLabel={regionLabel}
-            isFallbackMode={isFallbackMode}
-            alignmentSnap={whereYouStandQuery.data ?? null}
-            alignmentSnapLoading={whereYouStandQuery.isLoading}
-            societalPulseChips={(() => {
-              // Use RPC chips if available
-              const rpcChips = societyPulseQuery.data?.chips ?? [];
-              if (rpcChips.length > 0) return rpcChips;
-              // Fallback: derive chips from myStanceSnapshot topics (already fetched)
-              // This works whenever the user has answered questions.
-              const snapshotTopics = myStanceSnapshotQuery.data?.topics ?? [];
-              if (snapshotTopics.length > 0) {
-                return snapshotTopics.slice(0, 5).map((t, i) => ({
-                  topic_id: `local-${i}`,
-                  title: t.topicTitle,
-                  icon: (
-                    t.scorePct >= 50 ? "up"
-                    : t.scorePct <= -30 ? "polarized"
-                    : t.avgScore > 0 ? "up"
-                    : "steady"
-                  ) as "up" | "reawakening" | "polarized" | "steady",
-                  href: "/topics",
-                }));
-              }
-              return [];
-            })()}
-            myStanceSnapshot={myStanceSnapshotQuery.data ?? null}
-            sinceLastVisit={sinceLastVisitQuery.data ?? null}
-            sinceLastVisitLoading={sinceLastVisitQuery.isLoading}
-            returnNudge={returnNudge}
-            streak={userStreak}
-            onRequestReplenish={fetchNextPage}
-            onSubmitSuccess={submitStance}
-            onLoginRedirect={loginRedirect}
-            onStage={stageStance}
-            onNavigateToQuestion={goToQuestion}
-            onLogin={() => navigate("/login")}
-            onSignup={() => navigate("/signup")}
-          />
-
-          {/* ── Region tabs — Bands 3-6 ── */}
+          {/* ── Greeting + region switch: one line, no card ── */}
           <Tabs
             value={regionTab}
             onValueChange={(v) => setRegionTab(v as any)}
-            className="w-full mt-6"
+            className="w-full"
           >
-            <TabsList>
-              {effectiveHasCountry && (
-                <TabsTrigger value="country">{effectiveCountryLabel}</TabsTrigger>
-              )}
-              <TabsTrigger value="global">Global</TabsTrigger>
-            </TabsList>
+            <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+              <div>
+                <h1 className="text-2xl font-semibold tracking-tight" style={{ color: C.ink }}>
+                  {isAuthed ? `Welcome back, ${displayName}` : "Where does society stand today?"}
+                </h1>
+                <p className="mt-1 text-sm" style={{ color: C.body }}>
+                  {isAuthed
+                    ? "Take a position, then see where your region sits."
+                    : "Take a position in seconds — see how your region compares."}
+                </p>
+              </div>
+              <TabsList>
+                {effectiveHasCountry && (
+                  <TabsTrigger value="country">{effectiveCountryLabel}</TabsTrigger>
+                )}
+                <TabsTrigger value="global">Global</TabsTrigger>
+              </TabsList>
+            </div>
 
-            <TabsContent value={regionTab} className="mt-5 space-y-5">
+            {/* ── Hero — the single canonical "today's question" surface ── */}
+            <HeroSection
+              allQuestions={isAuthed ? finalHeroQuestions : anonQuestions.map((q) => ({
+                question_id: q.id,
+                question_text: q.question,
+                summary: q.summary,
+                tags: q.tags,
+                topic_id: null,
+                topic_title: null,
+                tier: null,
+                location_label: q.location_label,
+                origin_location_label: q.origin_location_label,
+                audience_location_label: q.audience_location_label,
+                user_has_answered: false,
+                trend_micro_signal: null,
+                trend_score: null,
+                stance_momentum: null,
+                topic_momentum: null,
+                cover_image_url: q.cover_image_url,
+                impact_normalized: null,
+                slider_low_label: q.slider_low_label ?? null,
+                slider_high_label: q.slider_high_label ?? null,
+              }))}
+              isLoading={isAuthed ? authedIsLoading : anonIsLoading}
+              isAuthed={isAuthed}
+              regionLabel={regionLabel}
+              isFallbackMode={isFallbackMode}
+              alignmentSnap={whereYouStandQuery.data ?? null}
+              alignmentSnapLoading={whereYouStandQuery.isLoading}
+              societalPulseChips={(() => {
+                const rpcChips = societyPulseQuery.data?.chips ?? [];
+                if (rpcChips.length > 0) return rpcChips;
+                const snapshotTopics = myStanceSnapshotQuery.data?.topics ?? [];
+                if (snapshotTopics.length > 0) {
+                  return snapshotTopics.slice(0, 5).map((t, i) => ({
+                    topic_id: `local-${i}`,
+                    title: t.topicTitle,
+                    icon: (
+                      t.scorePct >= 50 ? "up"
+                      : t.scorePct <= -30 ? "polarized"
+                      : t.avgScore > 0 ? "up"
+                      : "steady"
+                    ) as "up" | "reawakening" | "polarized" | "steady",
+                    href: "/topics",
+                  }));
+                }
+                return [];
+              })()}
+              myStanceSnapshot={myStanceSnapshotQuery.data ?? null}
+              sinceLastVisit={sinceLastVisitQuery.data ?? null}
+              sinceLastVisitLoading={sinceLastVisitQuery.isLoading}
+              returnNudge={returnNudge}
+              streak={userStreak}
+              onRequestReplenish={fetchNextPage}
+              onSubmitSuccess={submitStance}
+              onLoginRedirect={loginRedirect}
+              onStage={stageStance}
+              onNavigateToQuestion={goToQuestion}
+              onLogin={() => navigate("/login")}
+              onSignup={() => navigate("/signup")}
+            />
 
-              {/* ── Band 3 — Since You Last Visited (authed only) ── */}
-              {isAuthed && (
-                <SinceYouLastVisited
-                  continuingData={continuingQuery.data ?? []}
-                  reopenedData={reopenedQuery.data ?? []}
-                  isLoading={continuingQuery.isLoading || reopenedQuery.isLoading}
-                  sinceLastVisit={sinceLastVisitQuery.data ?? null}
-                  sinceLastVisitLoading={sinceLastVisitQuery.isLoading}
-                />
-              )}
+            <TabsContent value={regionTab} className="mt-8 space-y-10">
 
-              {/* ── Band 4 — Society Right Now ── */}
-              {societyPulseQuery.isError ? (
-                <ErrorFallback message="Failed to load Society Pulse. Please refresh the page." />
-              ) : (
-                <SocietyRightNow pulse={societyPulseQuery.data ?? null} />
-              )}
-
-              {/* Media surge sits below Society Right Now */}
-              {!mediaSurgeQuery.isError && (
-                <MediaSurgeCard media={mediaSurgeQuery.data ?? null} />
-              )}
-
-              {/* Participation strip */}
-              {participationQuery.isError ? (
-                <ErrorFallback message="Failed to load participation stats. Please refresh the page." />
-              ) : (
-                <ParticipationStrip stats={participationQuery.data ?? null} />
-              )}
-
-              {/* Where you stand (authed) */}
-              {isAuthed && (
-                <WhereYouStandCard snap={whereYouStandQuery.data ?? null} />
-              )}
-
-              {/* ── Epic E — Personal Analytics (authed only) ── */}
-              {isAuthed && (
-                <PersonalAnalyticsCard
-                  data={personalAnalyticsQuery.data ?? null}
-                  isLoading={personalAnalyticsQuery.isLoading}
-                  isError={personalAnalyticsQuery.isError}
-                />
-              )}
-
-              {/* ── Band 5 — Add Your Voice ── */}
-              <section className="space-y-5">
+              {/* ── Feed — the ONE place questions are listed ── */}
+              <section>
                 <SectionHeader
-                  title="✋ Add your voice"
-                  subtitle="High-momentum questions shaping the signal right now."
+                  title="Add your voice"
+                  subtitle="Questions gaining momentum that you haven't answered yet."
                 />
 
-                {/* A. Featured question — large editorial card */}
-                {isAuthed ? (
-                  authedIsLoading ? (
+                {feedIsLoading ? (
+                  <div className="space-y-5">
                     <CardSkeleton lines={4} />
-                  ) : featuredQ ? (
-                    <FeaturedQuestionCard
-                      q={featuredQ}
-                      isAuthed={true}
-                      onSubmit={submitStance}
-                      onLoginRedirect={loginRedirect}
-                      onStage={stageStance}
-                      onOpen={goToQuestion}
-                      featuredStats={featuredStatsQuery.data ?? null}
-                      submittingQuestionId={submittingQuestionId}
-                      cardStats={cardStats}
-                    />
-                  ) : null
-                ) : anonIsLoading ? (
-                  <CardSkeleton lines={4} />
-                ) : featuredAnonQ ? (
-                  <FeaturedQuestionCardAnon
-                    q={featuredAnonQ}
-                    onLoginRedirect={loginRedirect}
-                    onStage={stageStance}
-                    onOpen={goToQuestion}
-                  />
-                ) : null}
-
-                {/* B. 2-column question grid */}
-                {isAuthed ? (
-                  authedIsLoading ? (
-                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                      {[1, 2, 3, 4].map((i) => (
-                        <CardSkeleton key={i} lines={3} />
-                      ))}
+                    <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                      {[1, 2].map((i) => <CardSkeleton key={i} lines={3} />)}
                     </div>
-                  ) : gridQs.length === 0 && !featuredQ ? (
-                    <div className={`${card} p-4 text-sm text-slate-500`}>
-                      No questions available right now. Check back soon.
-                    </div>
-                  ) : gridQs.length === 0 ? (
-                    <div className={`${card} p-4 text-sm text-slate-500`}>
-                      More questions are on the way. Check back soon.
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                      {gridQs.map((q) => (
-                        <GridQuestionCard
-                          key={q.question_id}
-                          q={q}
-                          isAuthed={true}
-                          onSubmit={submitStance}
-                          onLoginRedirect={loginRedirect}
-                          onStage={stageStance}
-                          onOpen={goToQuestion}
-                          submittingQuestionId={submittingQuestionId}
-                          cardStats={cardStats}
-                        />
-                      ))}
-                    </div>
-                  )
-                ) : anonIsLoading ? (
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    {[1, 2, 3, 4].map((i) => (
-                      <CardSkeleton key={i} lines={3} />
-                    ))}
                   </div>
-                ) : anonIsError ? (
+                ) : !isAuthed && anonIsError ? (
                   <ErrorFallback message="Failed to load questions. Please refresh the page." />
-                ) : gridAnonQs.length === 0 ? (
-                  <div className={`${card} p-4 text-sm text-slate-500`}>
-                    No questions available right now. Check back soon.
+                ) : !feedHasContent ? (
+                  <div className={`${card} px-5 py-4 text-sm`} style={{ color: C.body }}>
+                    You're caught up. New questions arrive through the day.
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    {gridAnonQs.map((q) => (
-                      <GridQuestionCardAnon
-                        key={q.id}
-                        q={q}
-                        onLoginRedirect={loginRedirect}
-                        onStage={stageStance}
-                        onOpen={goToQuestion}
-                      />
-                    ))}
+                  <div className="space-y-5">
+                    {isAuthed
+                      ? featuredQ && (
+                          <FeaturedQuestionCard
+                            q={featuredQ}
+                            isAuthed={true}
+                            onSubmit={submitStance}
+                            onLoginRedirect={loginRedirect}
+                            onStage={stageStance}
+                            onOpen={goToQuestion}
+                            featuredStats={featuredStatsQuery.data ?? null}
+                            submittingQuestionId={submittingQuestionId}
+                            cardStats={cardStats}
+                          />
+                        )
+                      : featuredAnonQ && (
+                          <FeaturedQuestionCardAnon
+                            q={featuredAnonQ}
+                            onLoginRedirect={loginRedirect}
+                            onStage={stageStance}
+                            onOpen={goToQuestion}
+                          />
+                        )}
+
+                    {isAuthed
+                      ? gridQs.length > 0 && (
+                          <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                            {gridQs.map((q) => (
+                              <GridQuestionCard
+                                key={q.question_id}
+                                q={q}
+                                isAuthed={true}
+                                onSubmit={submitStance}
+                                onLoginRedirect={loginRedirect}
+                                onStage={stageStance}
+                                onOpen={goToQuestion}
+                                submittingQuestionId={submittingQuestionId}
+                                cardStats={cardStats}
+                              />
+                            ))}
+                          </div>
+                        )
+                      : gridAnonQs.length > 0 && (
+                          <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                            {gridAnonQs.map((q) => (
+                              <GridQuestionCardAnon
+                                key={q.id}
+                                q={q}
+                                onLoginRedirect={loginRedirect}
+                                onStage={stageStance}
+                                onOpen={goToQuestion}
+                              />
+                            ))}
+                          </div>
+                        )}
                   </div>
                 )}
 
@@ -3573,122 +3067,37 @@ export default function IndexPage() {
 
                 {isFetchingNextPage && (
                   <div className="flex justify-center py-6">
-                    <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700" />
+                    <div
+                      className="h-6 w-6 animate-spin rounded-full border-2"
+                      style={{ borderColor: C.line, borderTopColor: C.brand }}
+                    />
                   </div>
                 )}
 
                 {!hasNextPage &&
                   (trendingQuestions.length > 1 || anonQuestions.length > 1) && (
-                    <p className="py-4 text-center text-xs text-slate-400">
+                    <p className="py-4 text-center text-xs" style={{ color: C.meta }}>
                       You've seen all available questions
                     </p>
                   )}
               </section>
 
-              {/* ── Band 6 — Continuing conversation (authed) ── */}
-              {isAuthed && (
-                <section className="space-y-3">
-                  <SectionHeader
-                    title="Continuing the conversation"
-                    subtitle="Recommended based on your recent signals."
-                  />
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                    {(continuingQuery.data ?? []).slice(0, 4).map((r) => (
-                      <div key={r.question_id} className={`${card} p-4`}>
-                        <Link
-                          to={`/q/${r.question_id}`}
-                          className="font-semibold text-slate-900 line-clamp-2 hover:underline text-sm leading-snug"
-                        >
-                          {r.question_text}
-                        </Link>
-                        {r.topic_title && (
-                          <p className="mt-1 text-xs text-slate-400">
-                            Topic: {r.topic_title}
-                          </p>
-                        )}
-                        {r.reason && (
-                          <p className="mt-2 text-xs text-slate-500 line-clamp-2">
-                            {r.reason}
-                          </p>
-                        )}
-                        <div className="mt-3">
-                          <button
-                            type="button"
-                            className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors"
-                            onClick={() => goToQuestion(r.question_id)}
-                          >
-                            Open
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                    {(!continuingQuery.data || continuingQuery.data.length === 0) && (
-                      <div className={`${card} p-4 text-sm text-slate-500`}>
-                        No recommendations yet — answer a few more questions to personalize this.
-                      </div>
-                    )}
-                  </div>
-                </section>
+              {/* ── You vs. society — merged, gated on data ── */}
+              {societyPulseQuery.isError && participationQuery.isError ? (
+                <ErrorFallback message="Failed to load societal signals. Please refresh the page." />
+              ) : (
+                <YouVsSociety
+                  snap={isAuthed ? (whereYouStandQuery.data ?? null) : null}
+                  analytics={isAuthed ? (personalAnalyticsQuery.data ?? null) : null}
+                  pulse={societyPulseQuery.data ?? null}
+                  participation={participationQuery.data ?? null}
+                  media={mediaSurgeQuery.data ?? null}
+                  regionLabel={regionLabel}
+                />
               )}
 
-              {/* ── Reopened questions (authed) ── */}
-              {isAuthed && (
-                <section className="space-y-3">
-                  <SectionHeader
-                    title="Reopened questions"
-                    subtitle="Your past signals worth revisiting."
-                  />
-                  <div className="space-y-3">
-                    {(reopenedQuery.data ?? []).map((r) => (
-                      <div key={r.question_id} className={`${card} p-4`}>
-                        <div className="flex items-start justify-between gap-3">
-                          <Link
-                            to={`/q/${r.question_id}`}
-                            className="min-w-0 font-semibold text-slate-900 line-clamp-2 hover:underline text-sm"
-                          >
-                            {r.question_text}
-                          </Link>
-                          <button
-                            type="button"
-                            className="shrink-0 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors"
-                            onClick={() => goToQuestion(r.question_id)}
-                          >
-                            Revisit
-                          </button>
-                        </div>
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {r.public_shift_proxy != null && (
-                            <Pill>
-                              shift proxy: {Math.round(r.public_shift_proxy * 10) / 10}
-                            </Pill>
-                          )}
-                          {r.reason && <Pill>{r.reason}</Pill>}
-                        </div>
-                      </div>
-                    ))}
-                    {(!reopenedQuery.data || reopenedQuery.data.length === 0) && (
-                      <div className={`${card} p-4 text-sm text-slate-500`}>
-                        Nothing reopened yet — this appears after you've answered and time passes.
-                      </div>
-                    )}
-                  </div>
-                </section>
-              )}
-
-              {/* Social proof for anon users */}
-              {!isAuthed && (
-                <section className="space-y-3">
-                  <SectionHeader
-                    title="Social proof"
-                    subtitle="A quick sense of how many people are participating."
-                  />
-                  {participationQuery.isError ? (
-                    <ErrorFallback message="Failed to load participation stats. Please refresh the page." />
-                  ) : (
-                    <ParticipationStrip stats={participationQuery.data ?? null} />
-                  )}
-                </section>
-              )}
+              {/* ── Worth revisiting — replaces 3 sections, renders only with rows ── */}
+              <WorthRevisiting items={revisitItems} daysAway={daysAway} />
 
             </TabsContent>
           </Tabs>
