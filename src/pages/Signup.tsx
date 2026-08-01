@@ -1108,10 +1108,14 @@ export default function Signup() {
         email,
         password, // NEVER log password
         options: {
-          // EMAIL CONFIRMATION FIX: route the confirmation link to /auth/callback
+          // EMAIL CONFIRMATION FIX: route the confirmation link to /#/auth/callback
           // so oauthHashHandler -> OAuthCallbackPage (verifyOtp) consumes it.
           // window.location.origin is environment-safe (Dev / UAT / Prod).
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
+          // Must include the literal '#' — this app uses HashRouter, so a link
+          // without it loads the app shell fine but never mounts
+          // OAuthCallbackPage (HashRouter sees an empty hash and falls back to
+          // '/'), leaving the account silently unconfirmed with no visible error.
+          emailRedirectTo: `${window.location.origin}/#/auth/callback`,
         },
       });
       if (signErr) {
