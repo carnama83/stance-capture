@@ -749,10 +749,14 @@ function SinceLastVisitStrip({
   data,
   loading,
   isAuthed,
+  moved,
+  totalAnswered,
 }: {
   data: SinceLastVisitData | null;
   loading: boolean;
   isAuthed: boolean;
+  moved: RevisitItem[];
+  totalAnswered: number;
 }) {
   const changes = data?.changes ?? [];
   const newResponses = changes.reduce((n, c) => n + (c.new_responses ?? 0), 0);
@@ -818,6 +822,43 @@ function SinceLastVisitStrip({
           {hasData ? "Catch me up →" : isAuthed ? "Explore topics →" : "Start tracking →"}
         </Link>
       </div>
+
+      {/* Answered questions earn homepage space only when something changed.
+          One line each, capped at three — the rest lives in My stances. */}
+      {moved.length > 0 && (
+        <div className="mt-4 pt-3.5" style={{ borderTop: `1px solid ${C.hairline}` }}>
+          <div className="mb-1.5 flex items-baseline justify-between gap-4">
+            <p className="text-sm font-semibold" style={{ color: C.ink }}>
+              Moved since you answered
+            </p>
+            <Link to="/my-stances" className="text-xs font-semibold" style={{ color: C.brand }}>
+              {totalAnswered > 0 ? `All ${totalAnswered} in My stances →` : "My stances →"}
+            </Link>
+          </div>
+          <div>
+            {moved.slice(0, 3).map((item, i) => (
+              <Link
+                key={item.key}
+                to={item.href}
+                className="flex items-center gap-4 py-2"
+                style={i === 0 ? undefined : { borderTop: `1px solid #F2F4F6` }}
+              >
+                <span className="min-w-0 flex-1 truncate text-sm" style={{ color: C.ink }}>
+                  {item.text}
+                </span>
+                {item.meta && (
+                  <span className="hidden shrink-0 text-xs sm:block" style={{ color: C.meta }}>
+                    {item.meta}
+                  </span>
+                )}
+                <span className="shrink-0">
+                  <MomentumTag state={item.momentum} />
+                </span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
     </section>
   );
 }
@@ -897,21 +938,7 @@ function TheRoomRightNow({
   const surge = media?.surge_ratio == null ? null : Math.round(media.surge_ratio * 10) / 10;
 
   return (
-    <section>
-      <div className="mb-3 flex items-baseline justify-between gap-4">
-        <p
-          className="text-xs font-bold uppercase"
-          style={{ color: C.meta, letterSpacing: "0.14em" }}
-        >
-          The room right now
-        </p>
-        <span className="inline-flex items-center gap-1.5 text-xs" style={{ color: C.meta }}>
-          <span className="h-1.5 w-1.5 rounded-full" style={{ background: C.rising }} />
-          Updating live
-        </span>
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
 
         <RoomCard
           title="Society right now"
@@ -1044,7 +1071,63 @@ function TheRoomRightNow({
           )}
         </RoomCard>
 
+    </div>
+  );
+}
+
+// ─────────────────────────── Today's picture (one band, above the feed) ──────
+//
+// The feed below is unbounded, so anything after it is unreachable in practice.
+// The two "state of play" surfaces therefore sit ABOVE it, under one header:
+// today's live signals, then where the reader sits inside them.
+
+function TodaysPicture({
+  pulse,
+  media,
+  participation,
+  snap,
+  analytics,
+  snapshot,
+  regionLabel,
+}: {
+  pulse: SocietalPulseOutput | null;
+  media: MediaSurgeRow | null;
+  participation: ParticipationStatsRow | null;
+  snap: AlignmentSnapshotRow | null;
+  analytics: PersonalAnalyticsResponse | null;
+  snapshot: MyStanceSnapshot | null;
+  regionLabel: string;
+}) {
+  return (
+    <section className="flex flex-col gap-3.5">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-semibold tracking-tight" style={{ color: C.ink }}>
+            Today's picture
+          </h2>
+          <p className="mt-0.5 text-sm" style={{ color: C.body }}>
+            Where {regionLabel} sits right now, and where you sit inside it.
+          </p>
+        </div>
+        <span className="inline-flex items-center gap-1.5 text-xs" style={{ color: C.meta }}>
+          <span className="h-1.5 w-1.5 rounded-full" style={{ background: C.rising }} />
+          Updating live
+        </span>
       </div>
+
+      <TheRoomRightNow
+        pulse={pulse}
+        media={media}
+        participation={participation}
+        regionLabel={regionLabel}
+      />
+
+      <YouVsSociety
+        snap={snap}
+        analytics={analytics}
+        snapshot={snapshot}
+        regionLabel={regionLabel}
+      />
     </section>
   );
 }
@@ -1448,11 +1531,11 @@ function YouVsSociety({
   );
 }
 
-// ─────────────────────────── Worth revisiting (merged list) ──────────────────
+// ─────────────────────────── Moved since you answered (row type) ─────────────
 //
-// Replaces "Since you last visited" + "Continuing the conversation" +
-// "Reopened questions" — three sections built from two queries. One compact
-// list, rendered only when it has rows.
+// Rows for "Moved since you answered", rendered inside the SinceLastVisitStrip
+// card. Answered questions only earn homepage space when something changed;
+// the full history lives on My stances.
 
 type RevisitItem = {
   key: string;
@@ -1461,49 +1544,6 @@ type RevisitItem = {
   meta: string | null;
   momentum: Momentum;
 };
-
-function WorthRevisiting({
-  items,
-  daysAway,
-}: {
-  items: RevisitItem[];
-  daysAway: number | null;
-}) {
-  if (items.length === 0) return null;
-  return (
-    <section>
-      <SectionHeader
-        title="Worth revisiting"
-        subtitle={
-          daysAway && daysAway >= 1
-            ? `You were away ${daysAway === 1 ? "a day" : `${daysAway} days`} — opinion moved on these.`
-            : "Questions where the public balance moved after you answered."
-        }
-      />
-      <div className={`${card} divide-y`} style={{ borderColor: C.hairline }}>
-        {items.map((item) => (
-          <Link
-            key={item.key}
-            to={item.href}
-            className="flex items-start gap-4 px-5 py-4 transition-colors hover:bg-slate-50"
-          >
-            <div className="min-w-0 flex-1">
-              <p className="text-base leading-snug" style={{ color: C.ink }}>
-                {item.text}
-              </p>
-              {item.meta && (
-                <p className="mt-1 text-xs" style={{ color: C.meta }}>{item.meta}</p>
-              )}
-            </div>
-            <div className="shrink-0 pt-0.5">
-              <MomentumTag state={item.momentum} />
-            </div>
-          </Link>
-        ))}
-      </div>
-    </section>
-  );
-}
 
 // ─────────────────────────── Scroll-collapse helpers (unchanged) ─────────────
 
@@ -3237,7 +3277,12 @@ export default function IndexPage() {
     return out.slice(0, 4);
   }, [isAuthed, reopenedQuery.data, continuingQuery.data]);
 
-  const daysAway = sinceLastVisitQuery.data?.days_away ?? null;
+  // Cards answered during this session stay mounted so the result reveals in
+  // place; they clear on the next load rather than holding a permanent slot.
+  const answeredHereToday = React.useMemo(
+    () => trendingQuestions.filter((q) => q.user_has_answered).length,
+    [trendingQuestions]
+  );
 
   const feedHasContent = isAuthed
     ? !!featuredQ || gridQs.length > 0
@@ -3280,6 +3325,8 @@ export default function IndexPage() {
               data={sinceLastVisitQuery.data ?? null}
               loading={sinceLastVisitQuery.isLoading}
               isAuthed={isAuthed}
+              moved={revisitItems}
+              totalAnswered={myStanceSnapshotQuery.data?.totalAnswered ?? 0}
             />
 
             {/* ── Hero — the single canonical "today's question" surface ── */}
@@ -3346,11 +3393,14 @@ export default function IndexPage() {
 
             <TabsContent value={regionTab} className="mt-8 space-y-10">
 
-              {/* ── The room right now — always present ── */}
-              <TheRoomRightNow
+              {/* ── Today's picture — above the unbounded feed ── */}
+              <TodaysPicture
                 pulse={societyPulseQuery.data ?? null}
                 media={mediaSurgeQuery.data ?? null}
                 participation={participationQuery.data ?? null}
+                snap={isAuthed ? (whereYouStandQuery.data ?? null) : null}
+                analytics={isAuthed ? (personalAnalyticsQuery.data ?? null) : null}
+                snapshot={isAuthed ? (myStanceSnapshotQuery.data ?? null) : null}
                 regionLabel={regionLabel}
               />
 
@@ -3358,7 +3408,7 @@ export default function IndexPage() {
               <section>
                 <SectionHeader
                   title="Add your voice"
-                  subtitle="Questions gaining momentum that you haven't answered yet."
+                  subtitle="Only questions you haven't answered. Answered ones clear out once you've seen the result."
                 />
 
                 {feedIsLoading ? (
@@ -3451,18 +3501,28 @@ export default function IndexPage() {
                       You've seen all available questions
                     </p>
                   )}
+
+                {/* Answered questions live in My stances, not in the feed. */}
+                {isAuthed && (myStanceSnapshotQuery.data?.totalAnswered ?? 0) > 0 && (
+                  <div
+                    className="mt-5 flex flex-wrap items-center justify-center gap-2 text-xs"
+                    style={{ color: C.meta }}
+                  >
+                    {answeredHereToday > 0 && (
+                      <>
+                        <span>
+                          You answered {answeredHereToday} question
+                          {answeredHereToday === 1 ? "" : "s"} today
+                        </span>
+                        <span className="h-3 w-px" style={{ background: C.line }} />
+                      </>
+                    )}
+                    <Link to="/my-stances" className="font-semibold" style={{ color: C.brand }}>
+                      See all {myStanceSnapshotQuery.data?.totalAnswered} in My stances →
+                    </Link>
+                  </div>
+                )}
               </section>
-
-              {/* ── You vs. society — always present; sample view before data ── */}
-              <YouVsSociety
-                snap={isAuthed ? (whereYouStandQuery.data ?? null) : null}
-                analytics={isAuthed ? (personalAnalyticsQuery.data ?? null) : null}
-                snapshot={isAuthed ? (myStanceSnapshotQuery.data ?? null) : null}
-                regionLabel={regionLabel}
-              />
-
-              {/* ── Worth revisiting — replaces 3 sections, renders only with rows ── */}
-              <WorthRevisiting items={revisitItems} daysAway={daysAway} />
 
             </TabsContent>
           </Tabs>
