@@ -352,6 +352,15 @@ function useGeoData() {
 // instance) instead of calling useGeoData() internally. This ensures the
 // country <select> options and the `country` state value are always driven by
 // the same fetch, eliminating the race that caused the dropdown to appear blank.
+
+// The 3rd administrative tier is called something different depending on the
+// country — India uses "District", not "County". This is display-only: the
+// underlying field/column/type stays `county` everywhere (state, RPC params,
+// locations.type enum) to avoid a much larger rename across the stack.
+function adminTier3Label(countryCode: string): string {
+  return countryCode === "IN" ? "District" : "County";
+}
+
 function LocationSelect(props: {
   country: string;
   setCountry: (v: string) => void;
@@ -544,10 +553,10 @@ function LocationSelect(props: {
           )}
         </div>
 
-        {/* County (optional) */}
+        {/* County / District (optional) — label varies by country */}
         <div>
           <label htmlFor="county" className="block text-xs font-medium">
-            County (optional)
+            {adminTier3Label(props.country)} (optional)
           </label>
           <select
             id="county"
@@ -563,7 +572,9 @@ function LocationSelect(props: {
           >
             {!props.stateCode && <option value="">Select state first</option>}
             {props.stateCode && loadingCounties && (
-              <option value="">Loading counties…</option>
+              <option value="">
+                Loading {adminTier3Label(props.country).toLowerCase()}s…
+              </option>
             )}
             {props.stateCode && !loadingCounties && (
               <option value="">(None)</option>
