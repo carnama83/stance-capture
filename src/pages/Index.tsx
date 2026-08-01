@@ -1162,7 +1162,10 @@ function YouVsSociety({
   regionLabel: string;
 }) {
   const analyticsTier = getPersonalAnalyticsTier(analytics?.totalAnswered ?? 0);
-  const hasYou = !!snap || (!!analytics && analyticsTier !== "empty");
+  // A snapshot row can exist and still say nothing (0 comparable questions) —
+  // in that case this is still a sample view, not the reader's own numbers.
+  const hasAlignment = !!snap && (snap.comparable_count ?? 0) > 0;
+  const hasYou = hasAlignment || (!!analytics && analyticsTier !== "empty");
 
   const fingerprint = analytics?.opinionFingerprint ?? null;
   const trend = analytics?.alignmentTrend ?? null;
@@ -1198,7 +1201,7 @@ function YouVsSociety({
       <div className="grid gap-0 md:grid-cols-[300px_1fr]">
         <div className="p-5" style={{ borderRight: "1px solid " + C.hairline }}>
           <Eyebrow>You and society</Eyebrow>
-          {snap ? (
+          {hasAlignment ? (
             <>
               <div className="flex items-end gap-2">
                 <span
@@ -1247,7 +1250,7 @@ function YouVsSociety({
             </div>
           )}
 
-          {snap?.most_divergent_question_id && (
+          {hasAlignment && snap?.most_divergent_question_id && (
             <Link
               to={"/q/" + snap.most_divergent_question_id}
               className="mt-4 inline-flex text-sm font-semibold"
@@ -2901,7 +2904,9 @@ export default function IndexPage() {
 
   // ── Fallback mode derivation ──
   const globalFeedQuestions = trendingQuestionsGlobalQuery.data?.pages.flat() ?? [];
-  const globalUnanswered = globalFeedQuestions.filter((q) => !q.user_has_answered || q.is_new_phase);
+  const globalUnanswered = globalFeedQuestions.filter(
+    (q) => !q.user_has_answered || answeredThisSession.current.has(q.question_id)
+  );
 
   const fallbackRows: TrendingHomepageQuestionRow[] = (fallbackFeedQuery.data ?? []).map((r) => ({
     question_id: r.id,
@@ -3093,6 +3098,9 @@ export default function IndexPage() {
         `[home:submit] START qId=${questionId.slice(0, 8)} userId=${userId.slice(0, 8)} value=${value}`
       );
 
+      // Keep this card mounted for its in-place result reveal.
+      answeredThisSession.current.add(questionId);
+
       setSubmittingQuestionId(questionId);
 
       let res: Response;
@@ -3250,6 +3258,18 @@ export default function IndexPage() {
     if (!isAuthed) return [];
     const out: RevisitItem[] = [];
 
+    // Questions you answered that have since entered a new phase — a one-line
+    // row here rather than a full card back in the feed.
+    newPhaseAnswered.slice(0, 2).forEach((q) => {
+      out.push({
+        key: `newphase-${q.question_id}`,
+        text: q.question_text,
+        href: `/q/${q.question_id}`,
+        meta: "New phase since you answered",
+        momentum: toMomentum(q.trend_micro_signal) ?? "rising",
+      });
+    });
+
     (reopenedQuery.data ?? []).slice(0, 2).forEach((r) => {
       out.push({
         key: `reopened-${r.question_id}`,
@@ -3275,7 +3295,7 @@ export default function IndexPage() {
     });
 
     return out.slice(0, 4);
-  }, [isAuthed, reopenedQuery.data, continuingQuery.data]);
+  }, [isAuthed, reopenedQuery.data, continuingQuery.data, newPhaseAnswered]);
 
   // Cards answered during this session stay mounted so the result reveals in
   // place; they clear on the next load rather than holding a permanent slot.
