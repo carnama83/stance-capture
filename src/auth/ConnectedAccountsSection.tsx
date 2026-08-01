@@ -163,7 +163,9 @@ function ConnectButton({ provider }: { provider: Provider }) {
     const { error } = await sb.auth.linkIdentity({
       provider,
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        // Same HashRouter fix as the Twitter branch above and Signup.tsx —
+        // must include the literal '#' or OAuthCallbackPage never mounts.
+        redirectTo: `${window.location.origin}/#/auth/callback`,
       },
     });
     if (error) {
