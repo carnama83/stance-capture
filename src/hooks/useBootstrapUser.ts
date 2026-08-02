@@ -5,34 +5,41 @@
 // methods that hang under the Supabase JS auth-mutex bug (see
 // src/lib/supabaseClient.ts and src/lib/env.ts). Worse, it was doing this
 // *inside* the onAuthStateChange callback, which Supabase's own docs warn
-// can deadlock the client. That's why location (and username/dob/gender)
-// intermittently never got written after signup — confirmed via
-// location_audits: affected users have zero rows, meaning the RPC never
-// completed.
+// can deadlock the client. Fixed by moving every mutation to raw fetch() +
+// an explicit jwt parameter (see FIX 2 below) instead of the SDK.
 //
-// FIX 2 (JWT-read race — found after the fix above): raw fetch() calls in
-// this file used to call getJwt() independently at call time, which reads
-// the session straight out of localStorage. That's fine once a session has
-// had time to settle, but this hook's onAuthStateChange callback fires
-// runBootstrap() immediately/synchronously the instant the auth event
-// lands. There's no guarantee the SDK has finished persisting the fresh
-// session to localStorage at that exact instant — and supabaseHeaders()
-// silently falls back to the ANON KEY if getJwt() comes back empty, with
-// no error. That anon-authenticated request then hits
-// bootstrap_user_after_login()'s `if auth.uid() is null then raise
+// FIX 2 (JWT-read race): raw fetch() calls used to call getJwt()
+// independently at call time, reading straight out of localStorage. There's
+// no guarantee the SDK has finished persisting a *just-arrived* session to
+// localStorage at the exact synchronous instant onAuthStateChange fires —
+// and supabaseHeaders() silently falls back to the ANON KEY if the token
+// comes back empty, with no error. That anon-authenticated request then
+// hits bootstrap_user_after_login()'s `if auth.uid() is null then raise
 // exception 'Not authenticated'` check server-side — surfaced client-side
-// as a bare 400 with no useful message. Everything downstream (touch_session
-// 409s, missing public.users rows, location never resolving) is wreckage
-// from that one failure, not separate bugs.
+// as a bare 400. Fixed by threading session.access_token through the whole
+// call chain explicitly instead of re-reading localStorage per call, plus a
+// one-shot retry (see runBootstrap) if the token genuinely wasn't ready.
 //
-// Fix: stop re-reading localStorage for this call chain. onAuthStateChange
-// already hands us session.access_token directly, in memory, guaranteed
-// correct at that exact moment — no race possible. Every helper below now
-// takes an explicit jwt parameter that's threaded through from wherever the
-// bootstrap run started, instead of each call guessing independently.
-// getJwt() is still the fallback for the on-mount check (page refresh with
-// an already-established, already-settled session), where there is no
-// in-memory session object to read from and localStorage is safe to trust.
+// FIX 3 (cross-device stash): this hook used to read a "signup_stash_v1"
+// blob from localStorage (written by Signup.tsx's stashForFirstLogin()) to
+// apply username/DOB/gender/location on first login. That silently broke
+// whenever the email-confirmation link was opened in a different browser
+// context than the one used to sign up (different device, different
+// browser, even just a separate InPrivate window) — no shared localStorage,
+// so the stash was empty and nothing applied, with no error anywhere.
+// That data now travels via signUp()'s options.data
+// (auth.users.raw_user_meta_data), applied server-side inside
+// bootstrap_user_after_login() itself, on whichever device completes the
+// bootstrap. This hook no longer needs resolveLocationFromStash(),
+// applySignupStashIfPresent(), or any of the stash-reading logic that used
+// to live here — bootstrap_user_after_login() (called below, first thing in
+// runBootstrap) now does that job atomically, server-side, exactly once per
+// user (gated on the users row being newly inserted, not just updated).
+//
+// What's left here is genuinely client-only concerns: touching
+// session/device rows, merging anonymous embedded stances, and clearing
+// leftover OAuth-suggestion localStorage keys once onboarding is confirmed
+// complete.
 //
 // Also fixes a race in the "run once per user" guard: it used to check
 // lastBootstrappedUserId *after* an await, so two auth events firing back
@@ -44,22 +51,6 @@
 import { useEffect } from "react";
 import { getSupabase } from "../lib/supabaseClient";
 import { SUPABASE_URL, getJwt, supabaseHeaders } from "../lib/env";
-
-type SignupStashV1 = {
-  username?: string;
-  dob?: string; // YYYY-MM-DD
-  gender?: string;
-  genderSelf?: string;
-  country?: string;
-  stateCode?: string;
-  countyCode?: string;
-  cityId?: string;
-  // Epic AG: audience intelligence signals
-  campaignAudience?: string | null;  // from ?s= or ?audience= URL param at signup
-  entryPath?: string | null;         // hash path at time of signup e.g. '/students'
-};
-
-type Precision = "city" | "county" | "state" | "country" | "none";
 
 type CurrentUser = { id: string; email: string | null };
 
@@ -143,204 +134,6 @@ function getDeviceFingerprint(): string {
     `fp_${Math.random().toString(36).slice(2)}_${Date.now()}`;
   window.localStorage.setItem(key, fp);
   return fp;
-}
-
-async function resolveLocationFromStash(stash: SignupStashV1, jwt: string) {
-  // City: stash.cityId is already a locations.id (UUID) in your current Signup flow
-  if (stash.cityId) {
-    return { locationId: stash.cityId, precision: "city" as Precision };
-  }
-
-  // County: stash.countyCode is iso_code; resolve to locations.id
-  if (stash.countyCode) {
-    const r = await restGet<{ id: string }[]>(
-      `locations?select=id&type=eq.county&iso_code=eq.${encodeURIComponent(
-        stash.countyCode
-      )}&limit=1`,
-      jwt
-    );
-    if (!r.error && r.data?.[0]?.id) {
-      return { locationId: r.data[0].id, precision: "county" as Precision };
-    }
-  }
-
-  // State: stateCode might be "NJ" or "US-NJ" depending on your dataset
-  if (stash.stateCode) {
-    const guesses = stash.country
-      ? [stash.stateCode, `${stash.country}-${stash.stateCode}`]
-      : [stash.stateCode];
-
-    const inList = guesses.map((g) => encodeURIComponent(g)).join(",");
-    const r = await restGet<{ id: string; iso_code: string }[]>(
-      `locations?select=id,iso_code&type=eq.state&iso_code=in.(${inList})&limit=1`,
-      jwt
-    );
-    const row = r.data?.[0];
-    if (!r.error && row?.id) {
-      return { locationId: row.id, precision: "state" as Precision };
-    }
-  }
-
-  // Country: stash.country is iso_code; resolve to locations.id
-  if (stash.country) {
-    const r = await restGet<{ id: string }[]>(
-      `locations?select=id&type=eq.country&iso_code=eq.${encodeURIComponent(
-        stash.country
-      )}&limit=1`,
-      jwt
-    );
-    if (!r.error && r.data?.[0]?.id) {
-      return { locationId: r.data[0].id, precision: "country" as Precision };
-    }
-  }
-
-  return null;
-}
-
-// ── Epic AG: compute age band from DOB string ─────────────────────────────
-// DOB is available in the stash as plaintext (YYYY-MM-DD) before encryption.
-// We compute age here so the SQL function never needs to decrypt dob_encrypted.
-function computeAgeBand(dob: string | undefined | null): number | null {
-  if (!dob) return null;
-  try {
-    const birth = new Date(dob.trim());
-    if (isNaN(birth.getTime())) return null;
-    const today = new Date();
-    let age = today.getFullYear() - birth.getFullYear();
-    const monthDiff = today.getMonth() - birth.getMonth();
-    if (
-      monthDiff < 0 ||
-      (monthDiff === 0 && today.getDate() < birth.getDate())
-    ) {
-      age--;
-    }
-    return age >= 0 && age < 150 ? age : null;
-  } catch {
-    return null;
-  }
-}
-
-// ── Epic AG: resolve audience segment from stash signals ──────────────────
-async function applyAudienceSegmentFromStash(
-  stash: SignupStashV1,
-  email: string | null,
-  jwt: string
-) {
-  try {
-    const dobAgeBand = computeAgeBand(stash.dob);
-
-    const { data: resolvedKey, error } = await rpcPost<string>(
-      "initialize_user_context_from_signup",
-      {
-        p_email: email ?? null,
-        p_dob_age_band: dobAgeBand,
-        p_entry_path: stash.entryPath ?? null,
-        p_campaign_audience: stash.campaignAudience ?? null,
-        p_share_ref: null, // reserved for future share-link inference
-      },
-      jwt
-    );
-
-    if (error) {
-      console.warn(
-        "[bootstrap] initialize_user_context_from_signup failed (non-fatal):",
-        error
-      );
-    } else {
-      console.info("[bootstrap] Audience segment resolved:", resolvedKey ?? "general");
-    }
-  } catch (e) {
-    console.warn("[bootstrap] Audience segment resolution exception (non-fatal):", e);
-  }
-}
-
-async function applySignupStashIfPresent(user: CurrentUser, jwt: string) {
-  const raw = window.localStorage.getItem("signup_stash_v1");
-  if (!raw) return;
-
-  let stash: SignupStashV1;
-  try {
-    stash = JSON.parse(raw);
-  } catch {
-    window.localStorage.removeItem("signup_stash_v1");
-    return;
-  }
-
-  const uid = user.id;
-  const email = user.email;
-
-  // Username (non-fatal)
-  if (stash.username && stash.username.trim()) {
-    const uname = stash.username.trim().toLowerCase();
-    const r = await rpcPost("set_username", { p_username: uname }, jwt);
-    if (r.error) console.warn("set_username failed (non-fatal):", r.error);
-  }
-
-  // DOB (non-fatal) — checks dob_encrypted is empty before setting
-  if (stash.dob && stash.dob.trim()) {
-    const prof = await restGet<{ dob_encrypted: string | null }[]>(
-      `profiles?select=dob_encrypted&user_id=eq.${uid}&limit=1`,
-      jwt
-    );
-
-    if (!prof.error && !prof.data?.[0]?.dob_encrypted) {
-      const dob = stash.dob.trim();
-      const r2 = await rpcPost("profile_set_dob_checked", { p_dob_text: dob }, jwt);
-      if (r2.error) {
-        console.warn("profile_set_dob_checked failed (non-fatal):", r2.error);
-      }
-    }
-  }
-
-  // Gender (non-fatal)
-  if (stash.gender && stash.gender.trim()) {
-    const r = await rpcPost(
-      "profile_set_gender",
-      {
-        p_gender: stash.gender,
-        p_gender_self:
-          stash.gender === "self_described" ? stash.genderSelf ?? null : null,
-      },
-      jwt
-    );
-    if (r.error) console.warn("profile_set_gender failed (non-fatal):", r.error);
-  }
-
-  // ✅ Location (non-fatal) — Option 1: ALWAYS CASCADE
-  // This ensures signup/confirm-email path creates 4 rows (city+county+state+country)
-  const resolved = await resolveLocationFromStash(stash, jwt);
-  if (resolved) {
-    const r = await rpcPost(
-      "set_user_location_cascade",
-      {
-        p_user_id: uid,
-        p_location_id: resolved.locationId,
-        p_precision: resolved.precision,
-        p_override: false,
-        p_source: "bootstrap",
-      },
-      jwt
-    );
-    if (r.error) {
-      console.warn("set_user_location_cascade failed (non-fatal):", r.error);
-    }
-  } else {
-    // Nothing resolved at any tier — log this now instead of failing silently,
-    // so a genuine seed-data gap (e.g. a country with no state/county/city
-    // rows) is visible instead of looking identical to "everything worked."
-    console.warn(
-      "[bootstrap] resolveLocationFromStash found no match at any tier for:",
-      stash
-    );
-  }
-
-  // ✅ Epic AG: Audience segment resolution (non-fatal)
-  // Runs after all other stash applications — order doesn't matter but
-  // keeping it last ensures DOB is already set if needed for future signals.
-  await applyAudienceSegmentFromStash(stash, email, jwt);
-
-  // Clear stash only after we attempted to apply it
-  window.localStorage.removeItem("signup_stash_v1");
 }
 
 async function touchSessionAndDevice(jwt: string) {
@@ -430,6 +223,10 @@ async function mergeEmbeddedStancesIfPending(jwt: string) {
 }
 
 async function runBootstrap(user: CurrentUser, jwt: string, attempt = 1) {
+  // Does everything now: creates public.users/profiles, and — on a
+  // genuinely new user only — applies username/DOB/gender/location/audience
+  // segment from auth.users.raw_user_meta_data. See the migration that
+  // shipped alongside this file for the SQL side of this.
   const r = await rpcPost("bootstrap_user_after_login", {}, jwt);
 
   if (r.error) {
@@ -456,11 +253,11 @@ async function runBootstrap(user: CurrentUser, jwt: string, attempt = 1) {
       console.error("bootstrap_user_after_login failed:", r.error);
     } else {
       console.error("bootstrap_user_after_login failed:", r.error);
-      // Still continue — stash application and session/device touches are safe and useful
+      // Still continue — session/device touches and cleanup below are safe and useful
+      // even if bootstrap itself hit a real error.
     }
   }
 
-  await applySignupStashIfPresent(user, jwt);
   await applyOAuthStashIfPresent(user, jwt);
   await mergeEmbeddedStancesIfPending(jwt);
   await touchSessionAndDevice(jwt);

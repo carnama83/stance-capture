@@ -1059,31 +1059,15 @@ export default function Signup() {
     }
   }
 
-  function stashForFirstLogin() {
-    try {
-      const { campaignAudience, entryPath } = getAudienceSignalsFromUrl();
-
-      const payload = {
-        username: username.trim(),
-        dob,
-        gender: gender.value,
-        genderSelf: gender.selfDescribe,
-        country,
-        stateCode,
-        countyCode,
-        cityId,
-        // Epic AG: audience intelligence signals — consumed by
-        // applySignupStashIfPresent() → initialize_user_context_from_signup()
-        campaignAudience,
-        entryPath,
-      };
-      window.localStorage.setItem("signup_stash_v1", JSON.stringify(payload));
-      addLog("stash.ok", { keys: Object.keys(payload), campaignAudience, entryPath });
-    } catch (e) {
-      addLog("stash.error", safeErr(e));
-      // ignore
-    }
-  }
+  // stashForFirstLogin() previously wrote username/DOB/gender/location to
+  // localStorage's "signup_stash_v1" for useBootstrapUser.ts to pick up on
+  // first login. Removed: that broke whenever email confirmation was
+  // completed on a different device/browser than signup (no shared
+  // localStorage). The same data now travels via signUp()'s options.data
+  // (auth.users.raw_user_meta_data), applied server-side in
+  // bootstrap_user_after_login() — see the migration that shipped with this
+  // change. getAudienceSignalsFromUrl() above is still used directly at the
+  // signUp() call site.
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -1115,6 +1099,7 @@ export default function Signup() {
       setBusy(true);
 
       addLog("auth.signUp.start", { email: maskEmail(email) });
+      const { campaignAudience, entryPath } = getAudienceSignalsFromUrl();
       const { error: signErr, data: signData } = await sb.auth.signUp({
         email,
         password, // NEVER log password
@@ -1127,6 +1112,24 @@ export default function Signup() {
           // OAuthCallbackPage (HashRouter sees an empty hash and falls back to
           // '/'), leaving the account silently unconfirmed with no visible error.
           emailRedirectTo: `${window.location.origin}/#/auth/callback`,
+          // Onboarding metadata travels here (raw_user_meta_data) instead of
+          // localStorage's old signup_stash_v1. Supabase persists this
+          // server-side from the moment signUp() is called, so
+          // bootstrap_user_after_login() can read it regardless of which
+          // device/browser completes email confirmation — localStorage
+          // never survives that handoff if it happens somewhere else.
+          data: {
+            username: username.trim(),
+            dob,
+            gender: gender.value,
+            gender_self: gender.selfDescribe,
+            country,
+            state_code: stateCode,
+            county_code: countyCode,
+            city_id: cityId || null,
+            campaign_audience: campaignAudience,
+            entry_path: entryPath,
+          },
         },
       });
       if (signErr) {
@@ -1166,8 +1169,10 @@ export default function Signup() {
         return;
       }
 
-      // No session yet -> stash and rely on first-login bootstrap
-      stashForFirstLogin();
+      // No session yet -> rely on first-login bootstrap. Onboarding metadata
+      // (username/DOB/gender/location) already traveled server-side via
+      // signUp()'s options.data above, so there's nothing left to stash
+      // client-side here.
       setRegistered(true);
       addLog("confirm_email.notice_shown");
     } catch (err: any) {
