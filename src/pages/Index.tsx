@@ -2157,7 +2157,7 @@ export default function IndexPage() {
       const { data, error } = await sb
         .from("profiles")
         .select("random_id, username, display_handle_mode")
-        .eq("id", userId)
+        .eq("user_id", userId)
         .maybeSingle();
       if (error) return null;
       return data;
