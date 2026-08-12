@@ -22,6 +22,7 @@ import { useNavigate } from "react-router-dom";
 import { getSupabase } from "@/lib/supabaseClient";
 import { Loader2 } from "lucide-react";
 import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_PROJECT_REF, getJwt } from "@/lib/env";
+import { runBootstrap, rpcPost } from "@/hooks/useBootstrapUser";
 
 function extractAuthParams(): URLSearchParams | null {
   const href = window.location.href;
@@ -226,6 +227,22 @@ export default function OAuthCallbackPage() {
 
 async function finalize(sb: any, session: any, navigate: any, setStatus: (s: string) => void) {
   setStatus("Setting up your profile…");
+  // FIX: previously this relied entirely on useBootstrapUser's
+  // onAuthStateChange listener to call bootstrap_user_after_login() (which
+  // creates public.users/public.profiles). That listener never fires for
+  // this OAuth flow, because the session here was seeded straight into
+  // localStorage rather than set via setSession()/signInWith*() — so the
+  // profile row was never created at all for Google/Facebook logins, not
+  // just delayed. Calling it directly here, with the session we already
+  // have in hand, makes bootstrap happen deterministically regardless of
+  // whether any auth event fires. Safe to run even if it also fires via
+  // useBootstrapUser later — bootstrap_user_after_login() is idempotent.
+  if (session?.user?.id && session?.access_token) {
+    await runBootstrap(
+      { id: session.user.id, email: session.user.email ?? null },
+      session.access_token
+    );
+  }
   await bootstrapSocialProfile(sb, session);
   setStatus("Saving account connection…");
   await persistProviderToken(sb, session);
@@ -255,6 +272,27 @@ async function bootstrapSocialProfile(sb: any, session: any) {
       if (name) {
         const suggestion = name.toLowerCase().replace(/[^a-z0-9_.]/g, "_").replace(/_+/g, "_").slice(0, 20);
         window.localStorage.setItem("oauth_username_suggestion", suggestion);
+
+        // FIX: previously this suggestion was only ever stashed for an
+        // onboarding step to prefill and confirm — but nothing in the app
+        // actually reads it back out, so OAuth users stayed on their
+        // random_id handle (e.g. "@x7k2p9mabc") forever unless they found
+        // Settings on their own. claim_oauth_username() re-sanitizes this
+        // server-side, handles collisions with a numeric-suffix retry, and
+        // no-ops if the profile already has a username — safe to call on
+        // every login. Uses the raw-fetch RPC pattern (not sb.rpc()) since
+        // this page is exactly the fragile-session-timing context that
+        // pattern exists to avoid.
+        if (session.access_token) {
+          const claim = await rpcPost<string | null>(
+            "claim_oauth_username",
+            { p_suggested: suggestion },
+            session.access_token
+          );
+          if (claim.error) {
+            console.warn("[OAuthCallback] claim_oauth_username failed (non-fatal):", claim.error);
+          }
+        }
       }
     }
     const displayName = meta.full_name || meta.name || null;

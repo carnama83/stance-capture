@@ -283,6 +283,7 @@ type SinceLastVisitChange = {
 type SinceLastVisitData = {
   last_seen_at: string;
   days_away: number;
+  is_first_visit?: boolean;
   has_changes: boolean;
   changes: SinceLastVisitChange[];
   region: { scope: string; label: string };
@@ -765,6 +766,11 @@ function SinceLastVisitStrip({
   ).length;
   const gaining = changes.filter((c) => c.change_type === "gaining_attention").length;
   const hasData = !!data && changes.length > 0;
+  // A genuinely first-ever login has nothing to compare "since last visited"
+  // against — showing that framing (even correctly, as "Today") implies a
+  // prior visit that never happened. Swap the whole label/sub-label for a
+  // real welcome instead of just relabeling the time text.
+  const isFirstVisit = isAuthed && !!data?.is_first_visit;
 
   const away =
     data?.days_away == null || data.days_away < 1
@@ -781,10 +787,16 @@ function SinceLastVisitStrip({
             className="text-xs font-bold uppercase"
             style={{ color: C.meta, letterSpacing: "0.14em" }}
           >
-            Since you last visited
+            {isFirstVisit ? "Welcome to Stance" : "Since you last visited"}
           </p>
           <p className="mt-0.5 text-xs" style={{ color: C.meta }}>
-            {loading ? "Checking…" : isAuthed ? away : "Tracked once you sign in"}
+            {loading
+              ? "Checking…"
+              : isFirstVisit
+              ? "Answer your first question to start building your stance profile."
+              : isAuthed
+              ? away
+              : "Tracked once you sign in"}
           </p>
         </div>
 
@@ -2209,6 +2221,13 @@ export default function IndexPage() {
       qc.invalidateQueries({ refetchType: 'all', queryKey: ["home-because-you"] });
       qc.invalidateQueries({ refetchType: 'all', queryKey: ["home-reopened"] });
       qc.invalidateQueries({ refetchType: 'all', queryKey: ["home-fallback-feed"] });
+      // FIX: this query reads public.profiles.last_seen_at, which
+      // bootstrap_user_after_login() is what actually creates on a brand-new
+      // user's first login. Without this, a first-time OAuth login could
+      // fire get_since_last_visited() before that row exists (profiles
+      // row missing => fabricated "days away" from the SQL fallback) and
+      // then sit on that wrong result for up to 5 minutes (staleTime).
+      qc.invalidateQueries({ refetchType: 'all', queryKey: ["home-since-last-visit"] });
     };
 
     if ((window as any).__bootstrapComplete) {
@@ -3343,7 +3362,11 @@ export default function IndexPage() {
             <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
               <div>
                 <h1 className="text-2xl font-semibold tracking-tight" style={{ color: C.ink }}>
-                  {isAuthed ? `Welcome back, ${displayName}` : "Where does society stand today?"}
+                  {!isAuthed
+                    ? "Where does society stand today?"
+                    : sinceLastVisitQuery.data?.is_first_visit
+                    ? `Welcome, ${displayName}`
+                    : `Welcome back, ${displayName}`}
                 </h1>
                 <p className="mt-1 text-sm" style={{ color: C.body }}>
                   {isAuthed
