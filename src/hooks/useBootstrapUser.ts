@@ -52,7 +52,7 @@ import { useEffect } from "react";
 import { getSupabase } from "../lib/supabaseClient";
 import { SUPABASE_URL, getJwt, supabaseHeaders } from "../lib/env";
 
-type CurrentUser = { id: string; email: string | null };
+export type CurrentUser = { id: string; email: string | null };
 
 // ── Raw-fetch helpers (replaces sb.rpc() / sb.from() for this file) ───────
 // Same { data, error } shape as the SDK, so the logic below barely changes.
@@ -60,7 +60,10 @@ type CurrentUser = { id: string; email: string | null };
 // passes it explicitly, so there's no path that silently falls back to
 // getJwt() without the caller deciding that's the right thing to do.
 
-async function rpcPost<T = any>(
+// Exported so other call sites that need the same raw-fetch-RPC pattern
+// (bypassing sb.rpc()'s mutex risk) don't have to duplicate it — see
+// OAuthCallbackPage.tsx's use for claim_oauth_username().
+export async function rpcPost<T = any>(
   fnName: string,
   body: Record<string, any>,
   jwt: string
@@ -222,7 +225,15 @@ async function mergeEmbeddedStancesIfPending(jwt: string) {
   }
 }
 
-async function runBootstrap(user: CurrentUser, jwt: string, attempt = 1) {
+// Exported so OAuthCallbackPage.tsx can call it directly and deterministically
+// at the moment a social login completes, instead of relying solely on
+// onAuthStateChange — which does NOT fire for the manually-seeded-session path
+// that OAuth login uses (see OAuthCallbackPage.tsx's seedSessionToStorage()
+// comment). bootstrap_user_after_login() is idempotent (ON CONFLICT DO
+// NOTHING / DO UPDATE), so it's safe if onAuthStateChange also ends up firing
+// later for the same user (e.g. on a future token refresh) — this just means
+// it may run twice, harmlessly, rather than not at all.
+export async function runBootstrap(user: CurrentUser, jwt: string, attempt = 1) {
   // Does everything now: creates public.users/profiles, and — on a
   // genuinely new user only — applies username/DOB/gender/location/audience
   // segment from auth.users.raw_user_meta_data. See the migration that
