@@ -23,6 +23,7 @@ import { getSupabase } from "@/lib/supabaseClient";
 import { Loader2 } from "lucide-react";
 import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_PROJECT_REF, getJwt } from "@/lib/env";
 import { runBootstrap, rpcPost } from "@/hooks/useBootstrapUser";
+import { fetchIPLocation } from "@/lib/ipLocation";
 
 function extractAuthParams(): URLSearchParams | null {
   const href = window.location.href;
@@ -297,6 +298,40 @@ async function bootstrapSocialProfile(sb: any, session: any) {
     }
     const displayName = meta.full_name || meta.name || null;
     if (displayName) window.localStorage.setItem("oauth_display_name", displayName);
+
+    // FIX: Google/Facebook OAuth metadata never has country/state/county
+    // codes (those only ever come from the app's own email/password
+    // Signup.tsx form), so bootstrap_user_after_login()'s location
+    // resolution always misses for OAuth users — leaving zero rows in
+    // user_location_settings and the user stuck seeing only "Global"
+    // instead of their own country tab. Fall back to the same client-side
+    // IP geolocation already used for anonymous users (ipapi.co, see
+    // src/lib/ipLocation.ts) and claim a country-level location from it.
+    // Gated on an existence check first so returning users — who already
+    // have a location, from onboarding, a prior login, or Settings —
+    // never trigger a needless IP lookup on every sign-in.
+    try {
+      const { data: existingLoc } = await sb
+        .from("user_location_settings")
+        .select("location_id")
+        .eq("user_id", user.id)
+        .limit(1);
+      if ((!existingLoc || existingLoc.length === 0) && session.access_token) {
+        const ipLoc = await fetchIPLocation();
+        if (ipLoc.country_code) {
+          const locClaim = await rpcPost<boolean>(
+            "claim_oauth_ip_location",
+            { p_country_code: ipLoc.country_code },
+            session.access_token
+          );
+          if (locClaim.error) {
+            console.warn("[OAuthCallback] claim_oauth_ip_location failed (non-fatal):", locClaim.error);
+          }
+        }
+      }
+    } catch (e: any) {
+      console.warn("[OAuthCallback] IP location claim skipped (non-fatal):", e?.message);
+    }
   } catch (e: any) { console.warn("[OAuthCallback] profile bootstrap (non-fatal):", e?.message); }
 }
 
