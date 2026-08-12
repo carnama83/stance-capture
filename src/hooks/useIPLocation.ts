@@ -5,15 +5,15 @@
 // - Only fires when the user is NOT authenticated
 // - Cached for 24 hours in TanStack Query (single request per day)
 // - Fails silently — returns null country on any error, falling back to Global
+//
+// The actual ipapi.co fetch now lives in src/lib/ipLocation.ts, shared with
+// OAuthCallbackPage.tsx's claim_oauth_ip_location() fallback — this hook's
+// own caching/enabled behavior is unchanged.
 
 import { useQuery } from "@tanstack/react-query";
+import { fetchIPLocation, type IPLocationData } from "@/lib/ipLocation";
 
-export type IPLocationData = {
-  country: string | null;       // e.g. "United States", "India"
-  country_code: string | null;  // e.g. "US", "IN"
-  city: string | null;
-  region: string | null;        // state/province
-};
+export type { IPLocationData };
 
 const STALE_TIME = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -28,29 +28,7 @@ export function useIPLocation(enabled = true): {
     staleTime: STALE_TIME,
     gcTime: STALE_TIME,
     retry: 1,
-    queryFn: async () => {
-      try {
-        const res = await fetch("https://ipapi.co/json/", {
-          signal: AbortSignal.timeout(4000), // 4s timeout — don't block feed
-        });
-        if (!res.ok) throw new Error("IP lookup failed");
-        const data = await res.json();
-        return {
-          country: data.country_name ?? null,
-          country_code: data.country_code ?? null,
-          city: data.city ?? null,
-          region: data.region ?? null,
-        };
-      } catch {
-        // Silent fallback — anon users see Global feed only
-        return {
-          country: null,
-          country_code: null,
-          city: null,
-          region: null,
-        };
-      }
-    },
+    queryFn: fetchIPLocation,
   });
 
   return {
