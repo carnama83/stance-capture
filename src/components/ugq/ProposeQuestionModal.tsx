@@ -23,7 +23,7 @@ import { Badge } from "@/components/ui/badge";
 import { SUPABASE_URL, getJwt, supabaseHeaders } from "@/lib/env";
 
 const MIN_LEN = 20;
-const MAX_LEN = 500;
+const MAX_LEN = 1000;
 
 type Props = {
   open: boolean;
