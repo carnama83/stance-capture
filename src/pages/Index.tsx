@@ -2990,7 +2990,13 @@ export default function IndexPage() {
     (globalUnanswered.length > 0 || fallbackRows.length > 0);
 
   // ── Loading states ──
-  const anonIsLoading = anonTrendingQuery.isLoading;
+  // isPending (not isLoading): isLoading is only true while ACTIVELY fetching,
+  // and reads false while the query is merely disabled/not-yet-started (e.g.
+  // sb hasn't initialized yet on a cold tab). useHeroController treats
+  // isLoading=false + allQuestions=[] as "definitively no questions" and
+  // locks into hero_error with no self-recovery — so this flag needs to stay
+  // true through that not-yet-started window, which is what isPending does.
+  const anonIsLoading = anonTrendingQuery.isPending;
   const anonIsError = anonTrendingQuery.isError;
   const authedIsLoading =
     !sessionResolved ||
