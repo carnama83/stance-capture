@@ -2978,7 +2978,13 @@ export default function IndexPage() {
 
   const finalHeroQuestions: TrendingHomepageQuestionRow[] = (() => {
     if (!isAuthed) return [];
-    if (primaryUnanswered.length > 0) return trendingQuestions;
+    // Check trendingQuestions itself, not primaryUnanswered (a different,
+    // region-independent union) — checking one array and returning another
+    // meant this branch could pass "something exists across both regions"
+    // while returning the single-region-scoped array that actually had
+    // nothing, skipping the fallback branch below that exists specifically
+    // to handle that case.
+    if (trendingQuestions.length > 0) return trendingQuestions;
     if (regionTab === "country" && globalUnanswered.length > 0) return globalFeedQuestions;
     if (fallbackRows.length > 0) return fallbackRows;
     return trendingQuestions;
