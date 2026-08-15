@@ -519,6 +519,32 @@ export function useHeroController({
   const statusRef = React.useRef(status);
   React.useEffect(() => { statusRef.current = status; }, [status]);
 
+  // ── Reset hero state on region change ──
+  // regionLabel identifies which feed context allQuestions currently
+  // represents (e.g. "United States" vs "Global"). Switching regions swaps
+  // allQuestions to an entirely different, disjoint dataset — unlike normal
+  // replenishment, which only ever APPENDS more of the same feed. Without
+  // this, currentHeroQuestion stays whatever was picked under the OLD region
+  // indefinitely: the init effect below only runs while
+  // status === "hero_loading" (or recovering from hero_error), and nothing
+  // else ever re-arms it on its own.
+  const prevRegionLabel = React.useRef(regionLabel);
+  React.useEffect(() => {
+    if (prevRegionLabel.current === regionLabel) return;
+    console.log(`[hero:region] region changed ${prevRegionLabel.current} → ${regionLabel} — resetting hero`);
+    prevRegionLabel.current = regionLabel;
+
+    clearAllTimers();
+    usedQuestionIds.current.clear();
+    setCurrentHeroQuestion(null);
+    setQueuedQuestions([]);
+    setSubmittedStance(null);
+    setDistribution(null);
+    setErrorMessage(null);
+    setStatus("hero_loading");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [regionLabel]);
+
   React.useEffect(() => {
     // hero_error is otherwise permanently sticky (see guard below) — only an
     // explicit retry() call could ever re-arm this effect. That's wrong when
