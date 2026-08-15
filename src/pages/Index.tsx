@@ -49,6 +49,7 @@ import { useGlobalAndCountryIds } from "@/hooks/useLocationIds";
 import { HeroSection } from "@/components/hero/HeroSection";
 import { useContributionAcknowledgement } from "@/hooks/useContributionAcknowledgement";
 import { useIPLocation } from "@/hooks/useIPLocation";
+import { SUPABASE_URL, getJwt, supabaseHeaders } from "@/lib/env";
 import { toast } from "sonner";
 
 // ─────────────────────────── Colour system (single source) ───────────────────
@@ -2835,24 +2836,32 @@ export default function IndexPage() {
       lastPageParam: number
     ) => (lastPage.length < 10 ? undefined : lastPageParam + 10),
     queryFn: async ({ pageParam = 0 }) => {
-      const q = sb!
-        .from("v_live_questions")
-        .select(
-          "id, question, summary, tags, location_label, origin_location_label, audience_location_label, published_at, status, cover_image_url, slider_low_label, slider_high_label"
-        )
-        .order("published_at", { ascending: false })
-        .range(pageParam, pageParam + 9);
-
+      // Raw fetch, not sb.from() — the SDK client's internal auth-mutex lock
+      // can stall this exact call on a cold navigation (fresh tab, no cached
+      // session yet), leaving the anon feed empty until a manual refresh.
+      // Matches the raw-fetch + getJwt()/supabaseHeaders() pattern used
+      // everywhere else in this app for exactly this reason.
+      const params = new URLSearchParams({
+        select:
+          "id,question,summary,tags,location_label,origin_location_label,audience_location_label,published_at,status,cover_image_url,slider_low_label,slider_high_label",
+        order: "published_at.desc",
+        limit: "10",
+        offset: String(pageParam),
+      });
       if (regionLabel !== "Global") {
-        q.eq("audience_location_label", regionLabel);
-      } else {
-        if (effectiveCountryLabel) {
-          q.neq("audience_location_label", effectiveCountryLabel);
-        }
+        params.set("audience_location_label", `eq.${regionLabel}`);
+      } else if (effectiveCountryLabel) {
+        params.set("audience_location_label", `neq.${effectiveCountryLabel}`);
       }
 
-      const { data, error } = await q;
-      if (error) throw error;
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/v_live_questions?${params.toString()}`, {
+        headers: supabaseHeaders(getJwt()),
+      });
+      if (!res.ok) {
+        const errBody = await res.text().catch(() => "");
+        throw new Error(`Failed to load questions (${res.status}): ${errBody.slice(0, 200)}`);
+      }
+      const data = await res.json();
       return (data ?? []) as AnonQuestionRow[];
     },
     staleTime: 60_000,
