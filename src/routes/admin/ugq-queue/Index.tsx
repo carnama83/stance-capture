@@ -38,6 +38,9 @@ type QueueRow = {
   location_label: string | null;
   constituency_id: string | null;
   suggested_topic_id: string | null;
+  auto_topic_id: string | null;
+  auto_topic_title: string | null;
+  auto_topic_status: string | null;
   ai_screen_result: Record<string, unknown> | null;
   duplicate_of_question_id: string | null;
   reframed_question_id: string | null;
@@ -169,7 +172,9 @@ function timeAgo(iso: string) {
 function ModerationPanel({ row, topics, onDone }: { row: QueueRow; topics: Topic[]; onDone: () => void }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [topicId, setTopicId] = React.useState<string>(row.suggested_topic_id ?? "");
+  // Prefer the AI-resolved topic (Gate 1) over the older suggested_topic_id
+  // field; admin can still change it via the dropdown either way.
+  const [topicId, setTopicId] = React.useState<string>(row.auto_topic_id ?? row.suggested_topic_id ?? "");
   const [editing, setEditing] = React.useState(false);
   const [editText, setEditText] = React.useState(row.admin_edited_question ?? row.raw_question);
   const [rejecting, setRejecting] = React.useState(false);
@@ -186,8 +191,8 @@ function ModerationPanel({ row, topics, onDone }: { row: QueueRow; topics: Topic
 
   async function handleCreateTopic() {
     const title = newTopicTitle.trim();
-    if (title.length < 3) {
-      toast({ title: "Topic title too short", description: "Use at least 3 characters.", variant: "destructive" });
+    if (title.length < 8) {
+      toast({ title: "Topic title too short", description: "Use at least 8 characters — the database requires it.", variant: "destructive" });
       return;
     }
     // No DB-level uniqueness check anymore (no RPC) — guard client-side against
@@ -257,8 +262,30 @@ function ModerationPanel({ row, topics, onDone }: { row: QueueRow; topics: Topic
   // Only actionable while awaiting a decision.
   if (!["in_review", "approved"].includes(row.status)) return null;
 
+  // A freshly-set auto_topic_id (especially a just-created pending topic) may
+  // not be in the 10-min-cached `topics` list yet. Inject it as a synthetic
+  // option so the <select> actually shows it as selected instead of blank.
+  const pickerTopics = React.useMemo(() => {
+    if (!row.auto_topic_id || !row.auto_topic_title || topics.some((t) => t.id === row.auto_topic_id)) {
+      return topics;
+    }
+    return [...topics, { id: row.auto_topic_id, title: row.auto_topic_title }].sort((a, b) => a.title.localeCompare(b.title));
+  }, [topics, row.auto_topic_id, row.auto_topic_title]);
+
   return (
     <div className="rounded-md border border-slate-200 p-3 space-y-3">
+      {row.auto_topic_id && row.auto_topic_id === topicId && (
+        row.auto_topic_status === "pending" ? (
+          <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5">
+            🤖 AI proposed a new topic — <b>{row.auto_topic_title}</b> — not yet approved in Admin → Topics.
+            You can still use it now; approve it there when convenient.
+          </div>
+        ) : (
+          <div className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md px-2 py-1.5">
+            🤖 AI-matched topic: <b>{row.auto_topic_title}</b>
+          </div>
+        )
+      )}
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs text-slate-500">Topic</span>
         <select
@@ -267,9 +294,9 @@ function ModerationPanel({ row, topics, onDone }: { row: QueueRow; topics: Topic
           className="h-8 min-w-[200px] rounded-md border border-slate-300 bg-white px-2 text-sm"
         >
           <option value="">
-            {topics.length === 0 ? "No topics yet — create one →" : "Select a topic…"}
+            {pickerTopics.length === 0 ? "No topics yet — create one →" : "Select a topic…"}
           </option>
-          {topics.map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}
+          {pickerTopics.map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}
         </select>
         {!creatingTopic && (
           <Button size="sm" variant="outline" onClick={() => setCreatingTopic(true)}>
@@ -296,7 +323,7 @@ function ModerationPanel({ row, topics, onDone }: { row: QueueRow; topics: Topic
             />
           </div>
           <div className="flex items-center gap-2">
-            <Button size="sm" disabled={creatingBusy || newTopicTitle.trim().length < 3} onClick={handleCreateTopic}>
+            <Button size="sm" disabled={creatingBusy || newTopicTitle.trim().length < 8} onClick={handleCreateTopic}>
               {creatingBusy ? "Creating…" : "Create & select"}
             </Button>
             <Button size="sm" variant="ghost" disabled={creatingBusy}
