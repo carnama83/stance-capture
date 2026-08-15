@@ -444,11 +444,11 @@ export function QuestionStanceSlider({
              ("Lean toward X") from the endpoint labels on wider viewports.
              aria-hidden since aria-valuetext on the Slider carries the meaning. */}
         <div
-          className="flex justify-between text-[11px] text-slate-500"
+          className="flex justify-between text-xs text-slate-500"
           aria-hidden
         >
           {/* -2 */}
-          <span className="max-w-[72px] leading-tight shrink-0 overflow-hidden line-clamp-3 break-words text-[10px]">
+          <span className="max-w-[92px] leading-tight shrink-0 overflow-hidden line-clamp-3 break-words text-xs">
             {stanceLabels[-2]}
           </span>
           {/* -1: hidden on mobile to avoid crowding */}
@@ -462,7 +462,7 @@ export function QuestionStanceSlider({
             {stanceLabels[1]}
           </span>
           {/* +2 */}
-          <span className="max-w-[72px] text-right leading-tight shrink-0 overflow-hidden line-clamp-3 break-words text-[10px]">
+          <span className="max-w-[92px] text-right leading-tight shrink-0 overflow-hidden line-clamp-3 break-words text-xs">
             {stanceLabels[2]}
           </span>
         </div>
