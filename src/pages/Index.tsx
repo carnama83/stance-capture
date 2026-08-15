@@ -2976,24 +2976,23 @@ export default function IndexPage() {
     slider_high_label: r.slider_high_label ?? null,
   }));
 
-  const finalHeroQuestions: TrendingHomepageQuestionRow[] = (() => {
-    if (!isAuthed) return [];
-    // Check trendingQuestions itself, not primaryUnanswered (a different,
-    // region-independent union) — checking one array and returning another
-    // meant this branch could pass "something exists across both regions"
-    // while returning the single-region-scoped array that actually had
-    // nothing, skipping the fallback branch below that exists specifically
-    // to handle that case.
-    if (trendingQuestions.length > 0) return trendingQuestions;
-    if (regionTab === "country" && globalUnanswered.length > 0) return globalFeedQuestions;
-    if (fallbackRows.length > 0) return fallbackRows;
-    return trendingQuestions;
+  // finalHeroQuestions and isFallbackMode used to be computed separately with
+  // different conditions (isFallbackMode checked primaryUnanswered — a
+  // region-independent union — while finalHeroQuestions had already moved to
+  // checking trendingQuestions directly). That let them disagree: content
+  // could come from the cross-region fallback branch while isFallbackMode
+  // stayed false, so the "🌐 Global conversation" badge never appeared even
+  // when global content was genuinely what was on screen. Deriving both from
+  // one branch decision makes that drift impossible going forward.
+  const { questions: finalHeroQuestions, isFallbackMode: isFallbackModeComputed } = (() => {
+    if (!isAuthed) return { questions: [] as TrendingHomepageQuestionRow[], isFallbackMode: false };
+    if (trendingQuestions.length > 0) return { questions: trendingQuestions, isFallbackMode: false };
+    if (regionTab === "country" && globalUnanswered.length > 0) return { questions: globalFeedQuestions, isFallbackMode: true };
+    if (fallbackRows.length > 0) return { questions: fallbackRows, isFallbackMode: true };
+    return { questions: trendingQuestions, isFallbackMode: false };
   })();
 
-  const isFallbackMode =
-    isAuthed &&
-    primaryUnanswered.length === 0 &&
-    (globalUnanswered.length > 0 || fallbackRows.length > 0);
+  const isFallbackMode = isAuthed && isFallbackModeComputed;
 
   // ── Loading states ──
   // isPending (not isLoading): isLoading is only true while ACTIVELY fetching,
