@@ -520,7 +520,15 @@ export function useHeroController({
   React.useEffect(() => { statusRef.current = status; }, [status]);
 
   React.useEffect(() => {
-    if (statusRef.current !== "hero_loading") {
+    // hero_error is otherwise permanently sticky (see guard below) — only an
+    // explicit retry() call could ever re-arm this effect. That's wrong when
+    // allQuestions has since genuinely become non-empty (e.g. a region-tab
+    // switch surfaced real data downstream): fall through to the normal init
+    // path below instead of requiring the user to manually retry.
+    const canRecoverFromError =
+      statusRef.current === "hero_error" && allQuestions.length > 0 && !isLoading;
+
+    if (statusRef.current !== "hero_loading" && !canRecoverFromError) {
       if (statusRef.current === "hero_waiting_next" && allQuestions.length > 0) {
         // First pass: unanswered questions not yet shown this session
         let eligible = allQuestions.filter(
@@ -543,6 +551,10 @@ export function useHeroController({
         // and let onRequestReplenish eventually bring new ones.
       }
       return;
+    }
+
+    if (canRecoverFromError) {
+      console.log("[hero:recover] allQuestions now non-empty — recovering from hero_error");
     }
 
     if (isLoading) return;
