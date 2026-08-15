@@ -12,7 +12,7 @@
 // (mutex-safe) used by the other admin pages.
 
 import * as React from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import {
   Inbox, Loader2, ExternalLink, ChevronDown, ChevronRight, ShieldAlert, AlertTriangle, MapPin,
@@ -91,6 +91,32 @@ async function fetchTopics(): Promise<Topic[]> {
   return (await res.json()) as Topic[];
 }
 
+async function createTopic(title: string, locationLabel: string): Promise<
+  { ok: true; topic: Topic } | { ok: false; error: string }
+> {
+  // Same insert shape as CreateParentTopicForm in AdminTopicsPage.tsx (already
+  // live and working) — reused directly rather than adding a new RPC.
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/topics?select=id,title`, {
+    method: "POST",
+    headers: { ...supabaseHeaders(getJwt()), Prefer: "return=representation" },
+    body: JSON.stringify({
+      title,
+      tier: "global",
+      location_label: locationLabel || null,
+      tags: [],
+      sources: [{ type: "manual", label: "Created from UGQ moderation panel" }],
+      parent_topic_id: null,
+    }),
+  });
+  const json = await res.json().catch(() => null);
+  if (!res.ok) {
+    return { ok: false, error: (json as { message?: string })?.message ?? `Failed to create topic (${res.status})` };
+  }
+  const row = Array.isArray(json) ? json[0] : json;
+  if (!row?.id) return { ok: false, error: "Unexpected response creating topic" };
+  return { ok: true, topic: { id: row.id, title: row.title } };
+}
+
 const REJECT_REASONS = ["duplicate", "low_quality", "safety", "not_a_question", "guidelines"];
 
 // reframe_result is not in admin_ugq_queue's RETURNS TABLE; loaded on demand
@@ -142,6 +168,7 @@ function timeAgo(iso: string) {
 
 function ModerationPanel({ row, topics, onDone }: { row: QueueRow; topics: Topic[]; onDone: () => void }) {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [topicId, setTopicId] = React.useState<string>(row.suggested_topic_id ?? "");
   const [editing, setEditing] = React.useState(false);
   const [editText, setEditText] = React.useState(row.admin_edited_question ?? row.raw_question);
@@ -149,6 +176,48 @@ function ModerationPanel({ row, topics, onDone }: { row: QueueRow; topics: Topic
   const [reason, setReason] = React.useState(REJECT_REASONS[0]);
   const [note, setNote] = React.useState("");
   const [busy, setBusy] = React.useState<string | null>(null);
+
+  // Inline "create new topic" — lets the admin unblock themselves without
+  // leaving the queue page when nothing suitable exists yet.
+  const [creatingTopic, setCreatingTopic] = React.useState(false);
+  const [newTopicTitle, setNewTopicTitle] = React.useState("");
+  const [newTopicLocation, setNewTopicLocation] = React.useState(row.location_label ?? "");
+  const [creatingBusy, setCreatingBusy] = React.useState(false);
+
+  async function handleCreateTopic() {
+    const title = newTopicTitle.trim();
+    if (title.length < 3) {
+      toast({ title: "Topic title too short", description: "Use at least 3 characters.", variant: "destructive" });
+      return;
+    }
+    // No DB-level uniqueness check anymore (no RPC) — guard client-side against
+    // the topics already loaded. Not race-proof, but matches what a plain
+    // insert form would give you anyway; good enough for an unblock-in-place tool.
+    const dupe = topics.find((t) => t.title.toLowerCase() === title.toLowerCase());
+    if (dupe) {
+      toast({ title: "Topic already exists", description: `"${dupe.title}" is already in the list above.`, variant: "destructive" });
+      return;
+    }
+    setCreatingBusy(true);
+    const result = await createTopic(title, newTopicLocation.trim());
+    setCreatingBusy(false);
+    if (!result.ok) {
+      toast({ title: "Could not create topic", description: result.error, variant: "destructive" });
+      return;
+    }
+    // Merge into the shared topics cache immediately so it shows up here and
+    // in any other expanded row, then reconcile with the server in the background.
+    queryClient.setQueryData<Topic[]>(["admin-ugq-topics"], (old) => {
+      const next = [...(old ?? []), result.topic];
+      next.sort((a, b) => a.title.localeCompare(b.title));
+      return next;
+    });
+    queryClient.invalidateQueries({ queryKey: ["admin-ugq-topics"] });
+    setTopicId(result.topic.id);
+    setCreatingTopic(false);
+    setNewTopicTitle("");
+    toast({ title: "Topic created", description: `"${result.topic.title}" is now selected.` });
+  }
 
   async function run(payload: Record<string, unknown>, label: string) {
     setBusy(label);
@@ -197,10 +266,47 @@ function ModerationPanel({ row, topics, onDone }: { row: QueueRow; topics: Topic
           onChange={(e) => setTopicId(e.target.value)}
           className="h-8 min-w-[200px] rounded-md border border-slate-300 bg-white px-2 text-sm"
         >
-          <option value="">Select a topic…</option>
+          <option value="">
+            {topics.length === 0 ? "No topics yet — create one →" : "Select a topic…"}
+          </option>
           {topics.map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}
         </select>
+        {!creatingTopic && (
+          <Button size="sm" variant="outline" onClick={() => setCreatingTopic(true)}>
+            + New topic
+          </Button>
+        )}
       </div>
+
+      {creatingTopic && (
+        <div className="rounded-md border border-blue-200 bg-blue-50/60 p-2.5 space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              autoFocus
+              value={newTopicTitle}
+              onChange={(e) => setNewTopicTitle(e.target.value)}
+              placeholder="New topic title"
+              className="h-8 flex-1 min-w-[180px] rounded-md border border-slate-300 px-2 text-sm"
+            />
+            <input
+              value={newTopicLocation}
+              onChange={(e) => setNewTopicLocation(e.target.value)}
+              placeholder="Location (optional)"
+              className="h-8 w-40 rounded-md border border-slate-300 px-2 text-sm"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <Button size="sm" disabled={creatingBusy || newTopicTitle.trim().length < 3} onClick={handleCreateTopic}>
+              {creatingBusy ? "Creating…" : "Create & select"}
+            </Button>
+            <Button size="sm" variant="ghost" disabled={creatingBusy}
+              onClick={() => { setCreatingTopic(false); setNewTopicTitle(""); }}>
+              Cancel
+            </Button>
+            <span className="text-xs text-slate-500">Created as a global-tier topic; refine tier/tags later in Admin → Topics.</span>
+          </div>
+        </div>
+      )}
 
       {editing && (
         <Textarea value={editText} onChange={(e) => setEditText(e.target.value)} rows={3} />
