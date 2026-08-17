@@ -39,6 +39,8 @@ import { Search } from "lucide-react";
 
 import PageLayout from "@/components/PageLayout";
 import { ProposeQuestionButton } from "@/components/ugq/ProposeQuestionButton";
+import { useOnboardingTips } from "@/hooks/useOnboardingTips";
+import { CoachMark } from "@/components/onboarding/CoachMark";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getSupabase } from "@/lib/supabaseClient";
 import { QuestionStanceSlider } from "@/components/question/QuestionStanceSlider";
@@ -1685,6 +1687,8 @@ function FeaturedQuestionCard({
   featuredStats,
   submittingQuestionId,
   cardStats,
+  showSliderTip,
+  onDismissSliderTip,
 }: {
   q: TrendingHomepageQuestionRow;
   isAuthed: boolean;
@@ -1695,6 +1699,8 @@ function FeaturedQuestionCard({
   featuredStats?: QuestionStats | null;
   submittingQuestionId?: string | null;
   cardStats?: Map<string, QuestionStats>;
+  showSliderTip?: boolean;
+  onDismissSliderTip?: () => void;
 }) {
   const postAnswerStats = cardStats?.get(q.question_id) ?? null;
   const effectiveStats = postAnswerStats ?? featuredStats ?? null;
@@ -1754,19 +1760,28 @@ function FeaturedQuestionCard({
         <div className="mt-5 pt-5" style={{ borderTop: `1px solid ${C.hairline}` }}>
           {isAuthed ? (
             <>
-              <QuestionStanceSlider
-                key={`featured-${q.question_id}`}
-                questionId={q.question_id}
-                questionText={q.question_text}
-                summary={q.summary}
-                initialValue={q.user_stance_value ?? null}
-                stats={effectiveStats}
-                pulseThumb={true}
-                mutationPending={submittingQuestionId === q.question_id}
-                onSubmit={(v) => onSubmit(q.question_id, v)}
-                sliderLowLabel={q.slider_low_label ?? null}
-                sliderHighLabel={q.slider_high_label ?? null}
-              />
+              <div className={`relative ${showSliderTip ? "z-20" : ""}`}>
+                <QuestionStanceSlider
+                  key={`featured-${q.question_id}`}
+                  questionId={q.question_id}
+                  questionText={q.question_text}
+                  summary={q.summary}
+                  initialValue={q.user_stance_value ?? null}
+                  stats={effectiveStats}
+                  pulseThumb={true}
+                  mutationPending={submittingQuestionId === q.question_id}
+                  onSubmit={(v) => onSubmit(q.question_id, v)}
+                  sliderLowLabel={q.slider_low_label ?? null}
+                  sliderHighLabel={q.slider_high_label ?? null}
+                />
+                {showSliderTip && onDismissSliderTip && (
+                  <CoachMark
+                    text="Drag the slider to share where you stand. You can change it anytime."
+                    placement="below"
+                    onDismiss={onDismissSliderTip}
+                  />
+                )}
+              </div>
               <SliderHint answered={!!q.user_has_answered} />
               {postAnswerStats && globalRegion && (
                 <div className="mt-4 pt-4" style={{ borderTop: `1px solid ${C.hairline}` }}>
@@ -2133,6 +2148,14 @@ export default function IndexPage() {
   const isAuthed = !!session;
   const sb = React.useMemo(getSupabase, []);
   const userId = session?.user?.id ?? null;
+
+  // Onboarding coach-marks: two of the app's four total tips live here,
+  // sequenced (home_propose only becomes eligible once home_slider is
+  // dismissed) — see useOnboardingTips.ts for the full mechanism.
+  const tips = useOnboardingTips([
+    { id: "home_slider" },
+    { id: "home_propose", dependsOn: "home_slider" },
+  ]);
 
   // Q5 — contribution acknowledgement check
   const { checkForAcknowledgement } = useContributionAcknowledgement(isAuthed);
@@ -3521,6 +3544,8 @@ export default function IndexPage() {
                             featuredStats={featuredStatsQuery.data ?? null}
                             submittingQuestionId={submittingQuestionId}
                             cardStats={cardStats}
+                            showSliderTip={tips.isVisible("home_slider")}
+                            onDismissSliderTip={() => tips.dismiss("home_slider")}
                           />
                         )
                       : featuredAnonQ && (
@@ -3626,6 +3651,20 @@ export default function IndexPage() {
           logged-out ones, so the two can never occupy screen space at the
           same time despite both being fixed bottom-right. */}
       <ProposeQuestionButton variant="fab" />
+
+      {/* Onboarding tip for the FAB above. Uses CoachMark's `fixed` mode,
+          not the normal relative/absolute flow mode used for the slider —
+          the FAB is fixed-positioned to the viewport, not in document
+          flow, so a wrapping `relative` container would collapse to zero
+          size and misplace an absolutely-positioned bubble inside it. */}
+      {isAuthed && tips.isVisible("home_propose") && (
+        <CoachMark
+          text="Got a question the world should answer? Propose it here."
+          fixed={{ bottom: "bottom-24", right: "right-6" }}
+          zIndexClassName="z-50"
+          onDismiss={() => tips.dismiss("home_propose")}
+        />
+      )}
     </PageLayout>
   );
 }
