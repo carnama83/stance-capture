@@ -10,6 +10,7 @@ import { useQuery } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import { Lightbulb, Loader2, MessageSquare } from "lucide-react";
 import PageLayout from "@/components/PageLayout";
+import { ProposeQuestionButton } from "@/components/ugq/ProposeQuestionButton";
 import { Badge } from "@/components/ui/badge";
 import { SUPABASE_URL, getJwt, supabaseHeaders } from "@/lib/env";
 
@@ -86,9 +87,15 @@ export default function MyProposalsPage() {
   return (
     <PageLayout>
       <div className="max-w-3xl mx-auto py-6 space-y-6">
-        <div className="flex items-center gap-2">
-          <Lightbulb className="h-6 w-6 text-amber-500" />
-          <h1 className="text-2xl font-bold text-slate-900">My Proposals</h1>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Lightbulb className="h-6 w-6 text-amber-500" />
+            <h1 className="text-2xl font-bold text-slate-900">My Proposals</h1>
+          </div>
+          {/* Epic UGQ — propose entry point. Inline variant, not fab: this
+              page already has a focused single-column layout, a floating
+              button would be redundant with the header action here. */}
+          <ProposeQuestionButton variant="inline" label="Propose a question" />
         </div>
 
         {/* Reputation summary */}
@@ -115,7 +122,7 @@ export default function MyProposalsPage() {
         )}
         {!isLoading && !isError && rows.length === 0 && (
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">
-            You haven&#x2019;t proposed any questions yet. Look for the “Propose” button on your feed.
+            You haven&#x2019;t proposed any questions yet. Use the “Propose a question” button above to submit your first one.
           </div>
         )}
 

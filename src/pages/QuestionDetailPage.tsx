@@ -27,6 +27,12 @@ import { useToast } from "@/components/ui/use-toast";
 import { FollowTopicButton } from "@/components/FollowTopicButton";
 import { ShareButton } from "@/components/share/ShareButton";
 import { PostStanceSharePrompt } from "@/components/share/PostStanceSharePrompt";
+import { ExpectationPrompt, type ExpectationType } from "@/components/question/ExpectationPrompt";
+import { AuthorityBlock } from "@/components/question/AuthorityBlock";
+import { IncidentSummaryCard } from "@/components/question/IncidentSummaryCard";
+import { ExpectationSignalBlock } from "@/components/question/ExpectationSignalBlock";
+import { AuthorityResponseStatusBlock } from "@/components/question/AuthorityResponseStatusBlock";
+import { fetchUserRegionId } from "@/lib/userRegion";
 import { useOgMeta } from "@/hooks/useOgMeta";
 import { fetchCommunityStats, communityStatsKey } from "@/lib/fetchCommunityStats";
 import { CommunityStanceBar } from "@/components/question/CommunityStanceBar";
@@ -48,6 +54,8 @@ type LiveQuestion = {
   topic_id?: string;
   question: string;
   summary?: string | null;
+  context_summary?: string | null;
+  content_type?: string | null;
   tags?: string[] | null;
   location_label?: string | null;
   published_at?: string | null;
@@ -157,7 +165,7 @@ async function fetchQuestionById(id: string): Promise<LiveQuestion | null> {
   const { data, error } = await sb
     .from("questions")
     .select(
-      "id, topic_id, question, summary, tags, location_label, published_at, status, phase, cover_image_url, state, archive_reason, archived_at, context_version, slider_low_label, slider_high_label, source, source_meta"
+      "id, topic_id, question, summary, context_summary, content_type, tags, location_label, published_at, status, phase, cover_image_url, state, archive_reason, archived_at, context_version, slider_low_label, slider_high_label, source, source_meta"
     )
     .eq("id", id)
     .limit(1);
@@ -299,6 +307,44 @@ async function upsertStanceConfidence(
     throw new Error(body?.message ?? `HTTP ${res.status}`);
   }
 }
+
+// Epic R — M-R01: bulk-insert selected expectation types for one question.
+// Uses the same direct-fetch pattern as setMyStance/upsertStanceConfidence
+// (avoids SDK .rpc()/.from() mutex). A single POST with an array body inserts
+// all selected rows in one round trip; Prefer: resolution=ignore-duplicates
+// relies on the (user_id, question_id, expectation_type) unique constraint
+// so a retry or double-submit is silently a no-op (QA-R03).
+async function submitQuestionExpectations(
+  questionId: string,
+  types: ExpectationType[],
+  regionId: string | null,
+  jwt: string,
+  supabaseUrl: string,
+  anonKey: string,
+): Promise<void> {
+  const rows = types.map((expectation_type) => ({
+    question_id: questionId,
+    expectation_type,
+    region_id: regionId,
+  }));
+
+  const res = await fetch(`${supabaseUrl}/rest/v1/question_expectations`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "apikey": anonKey,
+      "Authorization": `Bearer ${jwt}`,
+      "Prefer": "resolution=ignore-duplicates",
+    },
+    body: JSON.stringify(rows),
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.message ?? `HTTP ${res.status}`);
+  }
+}
+
 
 async function fetchQuestionStats(questionId: string): Promise<QuestionStats | null> {
   const sb = getSupabase();
@@ -659,6 +705,9 @@ function StanceCard({
   onConfidenceSubmit,
   showSharePrompt,
   onShareDismiss,
+  showExpectationPrompt,
+  onExpectationConfirm,
+  onExpectationSkip,
   isArchived,
 }: {
   isAuthed: boolean;
@@ -674,6 +723,9 @@ function StanceCard({
   onConfidenceSubmit?: (score: number) => void;
   showSharePrompt?: boolean;
   onShareDismiss?: () => void;
+  showExpectationPrompt?: boolean;
+  onExpectationConfirm?: (types: ExpectationType[]) => void;
+  onExpectationSkip?: () => void;
   isArchived?: boolean;
 }) {
   return (
@@ -681,6 +733,35 @@ function StanceCard({
       <h3 className="text-[11px] font-semibold tracking-wide uppercase text-slate-500 mb-1">
         Your stance
       </h3>
+
+      {/* Epic R — M-R07: incident summary card. US-R14: shown before the
+          user takes a stance, so context is clear. Rendered first — before
+          AuthorityBlock — as the natural reading order (what happened, then
+          who's responsible), though BR-R03/BR-R07 only require both of these
+          to precede the expectation prompt, not a specific order between
+          themselves. */}
+      {question.content_type === "incident" && (
+        <IncidentSummaryCard
+          questionId={questionId}
+          summary={question.summary}
+          contextSummary={question.context_summary}
+          publishedAt={question.published_at}
+        />
+      )}
+
+      {/* Epic R — M-R02: Authority display. BR-R03: must always precede any
+          expectation or action content — rendered first, above everything
+          else in this card, including the archived banner and slider. */}
+      <AuthorityBlock questionId={questionId} />
+
+      {/* Epic R — M-R03: expectation signal display. Renders nothing unless
+          signal_crossed=true for the viewer's region (BR-R02) — grouped
+          with AuthorityBlock per doc §6.2, not stance-gated. */}
+      <ExpectationSignalBlock questionId={questionId} />
+
+      {/* Epic R — M-R08: response status. US-R16: not gated on the viewer's
+          region — an objective institutional record, shown to anyone. */}
+      <AuthorityResponseStatusBlock questionId={questionId} />
 
       {/* M-C09: Archived banner — shown when question is archived/no longer active */}
       {isArchived && (
@@ -768,6 +849,19 @@ function StanceCard({
             <ConfidenceFeedback onSubmit={onConfidenceSubmit} />
           )}
 
+          {/* Epic R — M-R01/M-R07: expectation prompt — shown once after
+              first save. BR-R01: strictly post-stance, never before/during
+              submission. isIncident branches to the 7-option accountability
+              prompt (US-R13) instead of the generic 9-type list. */}
+          {showExpectationPrompt && onExpectationConfirm && onExpectationSkip && (
+            <ExpectationPrompt
+              questionId={questionId}
+              isIncident={question.content_type === "incident"}
+              onConfirm={onExpectationConfirm}
+              onSkip={onExpectationSkip}
+            />
+          )}
+
           <div className="text-[11px] text-slate-500 flex items-center gap-2 mt-1">
             {stanceLoading ? (
               <span>Loading your stance…</span>
@@ -807,6 +901,10 @@ export default function QuestionDetailPage() {
   // S4: confidence feedback — shown once after first stance save
   const [showConfidence, setShowConfidence] = React.useState(false);
   const [confidenceScore, setConfidenceScore] = React.useState<number | null>(null);
+  // Epic R — M-R01: expectation prompt — shown after stance save; the
+  // ExpectationPrompt component itself re-checks localStorage on mount and
+  // self-hides if this question was already handled in a prior visit.
+  const [showExpectationPrompt, setShowExpectationPrompt] = React.useState(false);
 
   const session = useSupabaseSession();
   const userId = session?.user?.id ?? null;
@@ -1117,6 +1215,11 @@ export default function QuestionDetailPage() {
         setShowSharePrompt(true);
         // S4: show confidence prompt once per question if not already answered
         if (!confidenceScore) setShowConfidence(true);
+        // Epic R — M-R01: BR-R01 requires this only ever appears post-stance,
+        // never before/during. Component-level localStorage check handles
+        // "already handled this question" — this flag only handles
+        // "a submit just happened."
+        setShowExpectationPrompt(true);
       }
     },
     onError: (err: any) => {
@@ -1253,6 +1356,28 @@ export default function QuestionDetailPage() {
     },
     showSharePrompt,
     onShareDismiss: () => setShowSharePrompt(false),
+    showExpectationPrompt,
+    onExpectationConfirm: (types: ExpectationType[]) => {
+      setShowExpectationPrompt(false);
+      // Fire-and-forget, same posture as confidence: secondary signal, must
+      // never block or disrupt the post-stance UX (BR-R01 independence).
+      const jwt = session?.access_token;
+      if (jwt && supabaseUrl && supabaseAnonKey && userId) {
+        fetchUserRegionId(userId)
+          .then((regionId) =>
+            submitQuestionExpectations(questionId, types, regionId, jwt, supabaseUrl, supabaseAnonKey)
+          )
+          .then(() => {
+            console.log("[qdp:expectations] saved", { questionId, types });
+          })
+          .catch((err) => {
+            console.error("[qdp:expectations] save failed (non-blocking)", err);
+          });
+      }
+    },
+    onExpectationSkip: () => {
+      setShowExpectationPrompt(false);
+    },
     isArchived: question?.status === "archived" || question?.state === "archived",
   };
 

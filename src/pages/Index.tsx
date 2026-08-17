@@ -38,6 +38,7 @@ import { useQuery, useInfiniteQuery, useQueryClient } from "@tanstack/react-quer
 import { Search } from "lucide-react";
 
 import PageLayout from "@/components/PageLayout";
+import { ProposeQuestionButton } from "@/components/ugq/ProposeQuestionButton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getSupabase } from "@/lib/supabaseClient";
 import { QuestionStanceSlider } from "@/components/question/QuestionStanceSlider";
@@ -3618,6 +3619,13 @@ export default function IndexPage() {
           onDismiss={() => setPromptDismissed(true)}
         />
       )}
+
+      {/* Epic UGQ — propose entry point on Home. Mutually exclusive with
+          HomeOptInPrompt above: this component's own internal auth check
+          only renders for signed-in users, HomeOptInPrompt only for
+          logged-out ones, so the two can never occupy screen space at the
+          same time despite both being fixed bottom-right. */}
+      <ProposeQuestionButton variant="fab" />
     </PageLayout>
   );
 }

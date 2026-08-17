@@ -39,6 +39,7 @@ import Footer from "./components/Footer";
 
 // Question detail page (user-facing)
 import QuestionDetailPage from "./pages/QuestionDetailPage";
+import PublicLedgerPage from "./pages/PublicLedgerPage";
 
 // Topics
 import TopicsIndex from "@/routes/topics/Index";
@@ -69,6 +70,8 @@ import AdminCuratedFeedPage from "@/routes/admin/curated-feed/Index";
 
 // FIX 3: Publisher approval queue
 import AdminPublishersPage from "@/routes/admin/publishers/Index";
+import AdminAuthoritiesPage from "@/routes/admin/authorities/Index";
+import AdminExpectationLedgersPage from "@/routes/admin/expectation-ledgers/Index";
 import AdminAdAccountsPage from "@/routes/admin/ad-accounts/Index"; // Epic Y — Ad Accounts
 import AdminCampaignsPage from "@/routes/admin/campaigns/Index"; // Epic Y — Campaigns
 
@@ -222,6 +225,10 @@ const App: React.FC = () => {
               {/* Question detail (user-facing) */}
               <Route path="/q/:id" element={<QuestionDetailPage />} />
 
+              {/* Epic R — M-R04: Public Expectation Ledger. Fully public,
+                  no login, no AppTopBar chrome — mirrors /embed's posture. */}
+              <Route path="/ledger/:questionId/:regionId" element={<PublicLedgerPage />} />
+
               {/* Topics */}
               <Route path={ROUTES.TOPICS} element={<TopicsIndex />} />
               <Route
@@ -350,6 +357,9 @@ const App: React.FC = () => {
                 <Route path="cognitive-states" element={<AdminCognitiveStatesPage />} />
                 {/* FIX 3: Publisher approval queue */}
                 <Route path="publishers" element={<AdminPublishersPage />} />
+                {/* Epic R — Civic Expectations & Action Signals */}
+                <Route path="authorities" element={<AdminAuthoritiesPage />} />
+                <Route path="expectation-ledgers" element={<AdminExpectationLedgersPage />} />
                 {/* Epic EL — Election Intelligence */}
                 <Route path="elections" element={<AdminElectionsPage />} />
                 <Route path="elections/new" element={<AdminElectionNewPage />} />
