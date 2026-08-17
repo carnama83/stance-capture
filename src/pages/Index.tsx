@@ -38,9 +38,6 @@ import { useQuery, useInfiniteQuery, useQueryClient } from "@tanstack/react-quer
 import { Search } from "lucide-react";
 
 import PageLayout from "@/components/PageLayout";
-import { ProposeQuestionButton } from "@/components/ugq/ProposeQuestionButton";
-import { useOnboardingTips } from "@/hooks/useOnboardingTips";
-import { CoachMark } from "@/components/onboarding/CoachMark";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getSupabase } from "@/lib/supabaseClient";
 import { QuestionStanceSlider } from "@/components/question/QuestionStanceSlider";
@@ -54,6 +51,9 @@ import { useContributionAcknowledgement } from "@/hooks/useContributionAcknowled
 import { useIPLocation } from "@/hooks/useIPLocation";
 import { SUPABASE_URL, getJwt, supabaseHeaders } from "@/lib/env";
 import { toast } from "sonner";
+import { ProposeQuestionButton } from "@/components/ugq/ProposeQuestionButton";
+import { useOnboardingTips } from "@/hooks/useOnboardingTips";
+import { CoachMark } from "@/components/onboarding/CoachMark";
 
 // ─────────────────────────── Colour system (single source) ───────────────────
 // Four roles, no overlap. Stance is a teal→grey→ochre diverging scale rather
@@ -1687,8 +1687,6 @@ function FeaturedQuestionCard({
   featuredStats,
   submittingQuestionId,
   cardStats,
-  showSliderTip,
-  onDismissSliderTip,
 }: {
   q: TrendingHomepageQuestionRow;
   isAuthed: boolean;
@@ -1699,8 +1697,6 @@ function FeaturedQuestionCard({
   featuredStats?: QuestionStats | null;
   submittingQuestionId?: string | null;
   cardStats?: Map<string, QuestionStats>;
-  showSliderTip?: boolean;
-  onDismissSliderTip?: () => void;
 }) {
   const postAnswerStats = cardStats?.get(q.question_id) ?? null;
   const effectiveStats = postAnswerStats ?? featuredStats ?? null;
@@ -1760,28 +1756,19 @@ function FeaturedQuestionCard({
         <div className="mt-5 pt-5" style={{ borderTop: `1px solid ${C.hairline}` }}>
           {isAuthed ? (
             <>
-              <div className={`relative ${showSliderTip ? "z-20" : ""}`}>
-                <QuestionStanceSlider
-                  key={`featured-${q.question_id}`}
-                  questionId={q.question_id}
-                  questionText={q.question_text}
-                  summary={q.summary}
-                  initialValue={q.user_stance_value ?? null}
-                  stats={effectiveStats}
-                  pulseThumb={true}
-                  mutationPending={submittingQuestionId === q.question_id}
-                  onSubmit={(v) => onSubmit(q.question_id, v)}
-                  sliderLowLabel={q.slider_low_label ?? null}
-                  sliderHighLabel={q.slider_high_label ?? null}
-                />
-                {showSliderTip && onDismissSliderTip && (
-                  <CoachMark
-                    text="Drag the slider to share where you stand. You can change it anytime."
-                    placement="below"
-                    onDismiss={onDismissSliderTip}
-                  />
-                )}
-              </div>
+              <QuestionStanceSlider
+                key={`featured-${q.question_id}`}
+                questionId={q.question_id}
+                questionText={q.question_text}
+                summary={q.summary}
+                initialValue={q.user_stance_value ?? null}
+                stats={effectiveStats}
+                pulseThumb={true}
+                mutationPending={submittingQuestionId === q.question_id}
+                onSubmit={(v) => onSubmit(q.question_id, v)}
+                sliderLowLabel={q.slider_low_label ?? null}
+                sliderHighLabel={q.slider_high_label ?? null}
+              />
               <SliderHint answered={!!q.user_has_answered} />
               {postAnswerStats && globalRegion && (
                 <div className="mt-4 pt-4" style={{ borderTop: `1px solid ${C.hairline}` }}>
@@ -3495,6 +3482,8 @@ export default function IndexPage() {
               onNavigateToQuestion={goToQuestion}
               onLogin={() => navigate("/login")}
               onSignup={() => navigate("/signup")}
+              showSliderTip={tips.isVisible("home_slider")}
+              onDismissSliderTip={() => tips.dismiss("home_slider")}
             />
 
             <TabsContent value={regionTab} className="mt-8 space-y-10">
@@ -3544,8 +3533,6 @@ export default function IndexPage() {
                             featuredStats={featuredStatsQuery.data ?? null}
                             submittingQuestionId={submittingQuestionId}
                             cardStats={cardStats}
-                            showSliderTip={tips.isVisible("home_slider")}
-                            onDismissSliderTip={() => tips.dismiss("home_slider")}
                           />
                         )
                       : featuredAnonQ && (
