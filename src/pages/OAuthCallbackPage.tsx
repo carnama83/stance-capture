@@ -24,6 +24,7 @@ import { Loader2 } from "lucide-react";
 import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_PROJECT_REF, getJwt } from "@/lib/env";
 import { runBootstrap, rpcPost } from "@/hooks/useBootstrapUser";
 import { fetchIPLocation } from "@/lib/ipLocation";
+import { getDeviceId } from "@/lib/webStance";
 
 function extractAuthParams(): URLSearchParams | null {
   const href = window.location.href;
@@ -247,7 +248,45 @@ async function finalize(sb: any, session: any, navigate: any, setStatus: (s: str
   await bootstrapSocialProfile(sb, session);
   setStatus("Saving account connection…");
   await persistProviderToken(sb, session);
-  const returnTo = sessionStorage.getItem("return_to");
+
+  // BUG FIX: commit any web stances staged before login (WebOptInCard's
+  // single-question flow, or HomeOptInPrompt's multi-question homepage
+  // staging) centrally, here, once — regardless of which page the user lands
+  // on next. Previously this only happened as a side effect of WebOptInCard
+  // mounting on the right question page, which silently never fired at all
+  // when the redirect landed elsewhere (see the return_to fix below) — and
+  // never existed for HomeOptInPrompt's multi-question case in the first
+  // place. commit_staged_stances_for_device_by_user() is the email-login
+  // sibling of the WhatsApp fix (commit_staged_stances_for_device); it's a
+  // safe no-op if there's nothing staged, or if WebOptInCard's own
+  // attach_user_to_node effect already committed it.
+  if (session?.user?.id && session?.access_token) {
+    const deviceId = getDeviceId();
+    if (deviceId) {
+      const commit = await rpcPost(
+        "commit_staged_stances_for_device_by_user",
+        { p_device_id: deviceId, p_user_id: session.user.id },
+        session.access_token
+      );
+      if (commit.error) {
+        console.warn("[OAuthCallback] commit_staged_stances_for_device_by_user failed (non-fatal):", commit.error);
+      }
+    }
+  }
+
+  // BUG FIX: WebOptInCard.tsx/HomeOptInPrompt.tsx deliberately write
+  // return_to to localStorage, not sessionStorage — the magic-link email
+  // opens in a NEW TAB, where sessionStorage is always empty (see their own
+  // comments on this). This previously checked sessionStorage only, so
+  // returnTo was always null for the email opt-in flow and every magic-link
+  // login landed on "/" instead of the question the person actually
+  // answered. sessionStorage is still checked as a fallback: a real Google/
+  // Facebook OAuth redirect stays in the SAME tab, where redirectToLogin()
+  // (Index.tsx) sets it via sessionStorage and it correctly survives — the
+  // two paths never fire in the same tab, so checking localStorage first is
+  // safe or noop for that OAuth-redirect case.
+  const returnTo = localStorage.getItem("return_to") || sessionStorage.getItem("return_to");
+  localStorage.removeItem("return_to");
   sessionStorage.removeItem("return_to");
   const dest = returnTo && (returnTo.startsWith("/") || returnTo.startsWith("#/")) ? returnTo : "/";
   navigate(dest, { replace: true });
