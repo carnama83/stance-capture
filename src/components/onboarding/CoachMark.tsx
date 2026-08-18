@@ -52,10 +52,10 @@ export function CoachMark({
         className={`fixed ${fixed.bottom} ${fixed.right} ${zIndexClassName} w-64`}
         role="tooltip"
       >
-        <div className="relative bg-slate-900 text-white rounded-xl shadow-xl px-4 py-3.5">
+        <div className="relative bg-[#3F3BC9] text-white rounded-xl shadow-xl px-4 py-3.5">
           <button
             onClick={onDismiss}
-            className="absolute top-2 right-2 text-slate-400 hover:text-white p-0.5"
+            className="absolute top-2 right-2 text-white/60 hover:text-white p-0.5"
             aria-label="Dismiss tip"
           >
             <X className="h-3.5 w-3.5" />
@@ -63,12 +63,12 @@ export function CoachMark({
           <p className="text-[13px] leading-snug pr-4">{text}</p>
           <button
             onClick={onDismiss}
-            className="mt-2.5 text-[12px] font-medium bg-white text-slate-900 rounded-lg px-2.5 py-1 hover:bg-slate-100 transition-colors"
+            className="mt-2.5 text-[12px] font-medium bg-white text-[#3F3BC9] rounded-lg px-2.5 py-1 hover:bg-[#EFEEFB] transition-colors"
           >
             Got it
           </button>
           {/* Arrow pointing down-right toward a bottom-right fixed FAB */}
-          <div className="absolute -bottom-1 right-6 w-2.5 h-2.5 bg-slate-900 rotate-45" />
+          <div className="absolute -bottom-1 right-6 w-2.5 h-2.5 bg-[#3F3BC9] rotate-45" />
         </div>
       </div>
     );
@@ -77,13 +77,13 @@ export function CoachMark({
   if (placement === "corner") {
     return (
       <div
-        className={`absolute ${zIndexClassName} top-0 right-14 w-64`}
+        className={`absolute ${zIndexClassName} -top-10 right-14 w-64`}
         role="tooltip"
       >
-        <div className="relative bg-slate-900 text-white rounded-xl shadow-xl px-4 py-3.5">
+        <div className="relative bg-[#3F3BC9] text-white rounded-xl shadow-xl px-4 py-3.5">
           <button
             onClick={onDismiss}
-            className="absolute top-2 right-2 text-slate-400 hover:text-white p-0.5"
+            className="absolute top-2 right-2 text-white/60 hover:text-white p-0.5"
             aria-label="Dismiss tip"
           >
             <X className="h-3.5 w-3.5" />
@@ -91,12 +91,12 @@ export function CoachMark({
           <p className="text-[13px] leading-snug pr-4">{text}</p>
           <button
             onClick={onDismiss}
-            className="mt-2.5 text-[12px] font-medium bg-white text-slate-900 rounded-lg px-2.5 py-1 hover:bg-slate-100 transition-colors"
+            className="mt-2.5 text-[12px] font-medium bg-white text-[#3F3BC9] rounded-lg px-2.5 py-1 hover:bg-[#EFEEFB] transition-colors"
           >
             Got it
           </button>
           {/* Arrow pointing down toward the slider the bubble is docked above */}
-          <div className="absolute -bottom-1 left-6 w-2.5 h-2.5 bg-slate-900 rotate-45" />
+          <div className="absolute -bottom-1 left-6 w-2.5 h-2.5 bg-[#3F3BC9] rotate-45" />
         </div>
       </div>
     );
@@ -109,10 +109,10 @@ export function CoachMark({
 
   return (
     <div className={`absolute ${zIndexClassName} ${posClasses} w-64`} role="tooltip">
-      <div className="relative bg-slate-900 text-white rounded-xl shadow-xl px-4 py-3.5">
+      <div className="relative bg-[#3F3BC9] text-white rounded-xl shadow-xl px-4 py-3.5">
         <button
           onClick={onDismiss}
-          className="absolute top-2 right-2 text-slate-400 hover:text-white p-0.5"
+          className="absolute top-2 right-2 text-white/60 hover:text-white p-0.5"
           aria-label="Dismiss tip"
         >
           <X className="h-3.5 w-3.5" />
@@ -120,13 +120,13 @@ export function CoachMark({
         <p className="text-[13px] leading-snug pr-4">{text}</p>
         <button
           onClick={onDismiss}
-          className="mt-2.5 text-[12px] font-medium bg-white text-slate-900 rounded-lg px-2.5 py-1 hover:bg-slate-100 transition-colors"
+          className="mt-2.5 text-[12px] font-medium bg-white text-[#3F3BC9] rounded-lg px-2.5 py-1 hover:bg-[#EFEEFB] transition-colors"
         >
           Got it
         </button>
         <div
           className={
-            "absolute left-1/2 -translate-x-1/2 w-2.5 h-2.5 bg-slate-900 rotate-45 " +
+            "absolute left-1/2 -translate-x-1/2 w-2.5 h-2.5 bg-[#3F3BC9] rotate-45 " +
             (placement === "below" ? "-top-1" : "-bottom-1")
           }
         />
