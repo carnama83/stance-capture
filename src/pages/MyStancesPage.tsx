@@ -28,6 +28,8 @@ import { Download, BookOpen, Loader2 } from "lucide-react";
 import { buildStanceLabels } from "@/lib/stanceColors";
 import { useToast } from "@/components/ui/use-toast";
 import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_PROJECT_REF, getJwt } from "@/lib/env";
+import { useOnboardingTips } from "@/hooks/useOnboardingTips";
+import { CoachMark } from "@/components/onboarding/CoachMark";
 
 type Session = import("@supabase/supabase-js").Session;
 
@@ -191,6 +193,10 @@ export default function MyStancesPage() {
   const userId = session?.user?.id ?? null;
   const { toast } = useToast();
 
+  // Onboarding coach-mark: standalone, no dependsOn — eligible the first
+  // time this page loads, independent of the two Home tips.
+  const tips = useOnboardingTips([{ id: "my_stances" }]);
+
   const [sortBy, setSortBy] = React.useState<SortBy>("recent");
   const [filterBy, setFilterBy] = React.useState<FilterBy>("all");
   const [topicFilter, setTopicFilter] = React.useState<string>("all");
@@ -315,11 +321,18 @@ export default function MyStancesPage() {
 
         {/* Header */}
         <div className="flex items-center justify-between gap-2">
-          <div>
+          <div className="relative">
             <h1 className="text-base font-semibold text-slate-900">My stances</h1>
             <p className="text-xs text-slate-600">
               See where {displayName} stands, and revisit questions you've already answered.
             </p>
+            {tips.isVisible("my_stances") && (
+              <CoachMark
+                text="This is your stance history — see how your thinking has shifted over time."
+                placement="below"
+                onDismiss={() => tips.dismiss("my_stances")}
+              />
+            )}
           </div>
           <div className="flex items-center gap-2">
             <div className="relative">

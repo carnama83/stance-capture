@@ -6,7 +6,7 @@
 // the commit step, framed around what they gain by joining.
 import * as React from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { getMyForwardRef } from "@/lib/webStance";
+import { getMyForwardRef, getDeviceId } from "@/lib/webStance";
 
 const WA_BUSINESS_NUMBER = "12014667244"; // +1 201-466-7244, digits only
 const PENDING_ATTACH_KEY = "sc_pending_attach_ref";
@@ -69,7 +69,13 @@ export function WebOptInCard({
     } finally { setBusy(false); }
   }
 
-  const waHref = `https://wa.me/${WA_BUSINESS_NUMBER}?text=${encodeURIComponent("SUBSCRIBE")}`;
+  // Carry the device_id through so whatsapp-flow-webhook can find and commit
+  // everything this browser staged, not just this one question — see
+  // commit_staged_stances_for_device(). Falls back to bare SUBSCRIBE if
+  // localStorage is blocked (getDeviceId() returns "").
+  const deviceId = getDeviceId();
+  const waText = deviceId ? `SUBSCRIBE ${deviceId}` : "SUBSCRIBE";
+  const waHref = `https://wa.me/${WA_BUSINESS_NUMBER}?text=${encodeURIComponent(waText)}`;
 
   return (
     <div className="rounded-xl border border-violet-200 bg-violet-50/40 p-4 space-y-4">

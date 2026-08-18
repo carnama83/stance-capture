@@ -51,6 +51,9 @@ import { useContributionAcknowledgement } from "@/hooks/useContributionAcknowled
 import { useIPLocation } from "@/hooks/useIPLocation";
 import { SUPABASE_URL, getJwt, supabaseHeaders } from "@/lib/env";
 import { toast } from "sonner";
+import { ProposeQuestionButton } from "@/components/ugq/ProposeQuestionButton";
+import { useOnboardingTips } from "@/hooks/useOnboardingTips";
+import { CoachMark } from "@/components/onboarding/CoachMark";
 
 // ─────────────────────────── Colour system (single source) ───────────────────
 // Four roles, no overlap. Stance is a teal→grey→ochre diverging scale rather
@@ -2133,6 +2136,14 @@ export default function IndexPage() {
   const sb = React.useMemo(getSupabase, []);
   const userId = session?.user?.id ?? null;
 
+  // Onboarding coach-marks: two of the app's four total tips live here,
+  // sequenced (home_propose only becomes eligible once home_slider is
+  // dismissed) — see useOnboardingTips.ts for the full mechanism.
+  const tips = useOnboardingTips([
+    { id: "home_slider" },
+    { id: "home_propose", dependsOn: "home_slider" },
+  ]);
+
   // Q5 — contribution acknowledgement check
   const { checkForAcknowledgement } = useContributionAcknowledgement(isAuthed);
 
@@ -3471,6 +3482,8 @@ export default function IndexPage() {
               onNavigateToQuestion={goToQuestion}
               onLogin={() => navigate("/login")}
               onSignup={() => navigate("/signup")}
+              showSliderTip={tips.isVisible("home_slider")}
+              onDismissSliderTip={() => tips.dismiss("home_slider")}
             />
 
             <TabsContent value={regionTab} className="mt-8 space-y-10">
@@ -3616,6 +3629,27 @@ export default function IndexPage() {
         <HomeOptInPrompt
           stagedCount={stagedQuestions.size}
           onDismiss={() => setPromptDismissed(true)}
+        />
+      )}
+
+      {/* Epic UGQ — propose entry point on Home. Mutually exclusive with
+          HomeOptInPrompt above: this component's own internal auth check
+          only renders for signed-in users, HomeOptInPrompt only for
+          logged-out ones, so the two can never occupy screen space at the
+          same time despite both being fixed bottom-right. */}
+      <ProposeQuestionButton variant="fab" />
+
+      {/* Onboarding tip for the FAB above. Uses CoachMark's `fixed` mode,
+          not the normal relative/absolute flow mode used for the slider —
+          the FAB is fixed-positioned to the viewport, not in document
+          flow, so a wrapping `relative` container would collapse to zero
+          size and misplace an absolutely-positioned bubble inside it. */}
+      {isAuthed && tips.isVisible("home_propose") && (
+        <CoachMark
+          text="Got a question the world should answer? Propose it here."
+          fixed={{ bottom: "bottom-24", right: "right-6" }}
+          zIndexClassName="z-50"
+          onDismiss={() => tips.dismiss("home_propose")}
         />
       )}
     </PageLayout>

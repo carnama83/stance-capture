@@ -29,6 +29,8 @@ import {
   MessageSquareDot, // Epic AA — WhatsApp nav
   Megaphone,     // Epic Y — Ad Accounts nav
   Rocket,        // Epic Y — Campaigns nav
+  Landmark,      // Epic R — Authorities nav
+  ScrollText,    // Epic R — Expectation Ledgers nav
 } from "lucide-react";
 
 import {
@@ -166,6 +168,17 @@ export default function AdminLayout() {
             to="/admin/publishers"
             icon={<Building2 className="h-4 w-4" />}
             label="Publishers"
+          />
+          {/* Epic R — Civic Expectations & Action Signals */}
+          <AdminLink
+            to="/admin/authorities"
+            icon={<Landmark className="h-4 w-4" />}
+            label="Authorities"
+          />
+          <AdminLink
+            to="/admin/expectation-ledgers"
+            icon={<ScrollText className="h-4 w-4" />}
+            label="Expectation Ledgers"
           />
 
           <Separator className="my-2" />
