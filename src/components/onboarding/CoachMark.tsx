@@ -13,8 +13,16 @@ import { X } from "lucide-react";
 
 export interface CoachMarkProps {
   text: string;
-  /** Which side of the target the bubble sits on. Ignored when `fixed` is set. */
-  placement?: "above" | "below";
+  /** Which side of the target the bubble sits on. Ignored when `fixed` is set.
+   *  "above"/"below" center the bubble against the target and extend past
+   *  it — fine for targets with clear space in that direction, but they'll
+   *  get clipped by an `overflow-hidden` ancestor if the target sits flush
+   *  against an edge (e.g. the bottom of a card). "corner" instead anchors
+   *  top-right *inside* the target's own box — use this when the target's
+   *  container clips overflow, or when there's a natural blank area (like
+   *  space beside a header icon) to dock into instead of extending past
+   *  the target's bounds. */
+  placement?: "above" | "below" | "corner";
   onDismiss: () => void;
   /** z-index for the bubble itself — bump this if the target's own
    *  elevated z-index (needed to rise above a spotlight backdrop) would
@@ -61,6 +69,34 @@ export function CoachMark({
           </button>
           {/* Arrow pointing down-right toward a bottom-right fixed FAB */}
           <div className="absolute -bottom-1 right-6 w-2.5 h-2.5 bg-slate-900 rotate-45" />
+        </div>
+      </div>
+    );
+  }
+
+  if (placement === "corner") {
+    return (
+      <div
+        className={`absolute ${zIndexClassName} top-0 right-14 w-64`}
+        role="tooltip"
+      >
+        <div className="relative bg-slate-900 text-white rounded-xl shadow-xl px-4 py-3.5">
+          <button
+            onClick={onDismiss}
+            className="absolute top-2 right-2 text-slate-400 hover:text-white p-0.5"
+            aria-label="Dismiss tip"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+          <p className="text-[13px] leading-snug pr-4">{text}</p>
+          <button
+            onClick={onDismiss}
+            className="mt-2.5 text-[12px] font-medium bg-white text-slate-900 rounded-lg px-2.5 py-1 hover:bg-slate-100 transition-colors"
+          >
+            Got it
+          </button>
+          {/* Arrow pointing down toward the slider the bubble is docked above */}
+          <div className="absolute -bottom-1 left-6 w-2.5 h-2.5 bg-slate-900 rotate-45" />
         </div>
       </div>
     );

@@ -1309,7 +1309,7 @@ function SectionAQuestion({
               {showSliderTip && onDismissSliderTip && (
                 <CoachMark
                   text="Drag the slider to share where you stand. You can change it anytime."
-                  placement="below"
+                  placement="corner"
                   onDismiss={onDismissSliderTip}
                 />
               )}
