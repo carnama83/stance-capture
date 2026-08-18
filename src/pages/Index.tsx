@@ -2215,11 +2215,20 @@ export default function IndexPage() {
   const hasCountry = !!countryLabel;
 
   // ── IP-based country detection for anonymous users ──
-  const { country: ipCountry, isLoading: ipLoading } = useIPLocation(!isAuthed);
+  const { country: ipCountry, countryCode: ipCountryCode, region: ipRegion, city: ipCity, isLoading: ipLoading } = useIPLocation(!isAuthed);
   const anonCountryLabel = !isAuthed ? (ipCountry ?? null) : null;
   const hasAnonCountry = !!anonCountryLabel;
   const effectiveHasCountry = isAuthed ? hasCountry : hasAnonCountry;
   const effectiveCountryLabel = isAuthed ? countryLabel : anonCountryLabel;
+
+  // stageStance (below) is a useCallback with an intentionally empty deps array, so it
+  // can't close over ipCountryCode/ipRegion/ipCity directly (they'd be frozen at whatever
+  // they were on first render — usually null, since the IP lookup resolves async). Keep a
+  // ref in sync instead so stageStance always reads the latest resolved value.
+  const ipGeoRef = React.useRef({ countryCode: ipCountryCode, region: ipRegion, city: ipCity });
+  React.useEffect(() => {
+    ipGeoRef.current = { countryCode: ipCountryCode, region: ipRegion, city: ipCity };
+  }, [ipCountryCode, ipRegion, ipCity]);
 
   // Bootstrap completion listener (unchanged)
   React.useEffect(() => {
@@ -3266,17 +3275,24 @@ export default function IndexPage() {
   const stageStance = React.useCallback(
     async (questionId: string, value: number) => {
       try {
-        await recordWebStance(questionId, value);
+        await recordWebStance(questionId, value, ipGeoRef.current);
         setStagedQuestions((prev) => {
           const next = new Set(prev);
           next.add(questionId);
           return next;
         });
-      } catch {
-        loginRedirect();
+      } catch (err) {
+        // BUG FIX: this used to be a bare `catch { loginRedirect(); }`.
+        // Anonymous staging is explicitly designed to NOT require login — that
+        // redirect was always a mismatched assumption, it just never fired in
+        // practice because recordWebStance() never used to throw. It also had
+        // zero logging, which is exactly why the console showed nothing at the
+        // point of failure while diagnosing this. Surface the real error and
+        // let the person retry instead of silently misdirecting them.
+        console.error("[stageStance] recordWebStance failed:", err);
+        toast.error("Couldn't save your answer — check your connection and try again.");
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
 
