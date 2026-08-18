@@ -42,6 +42,7 @@ import {
   type HeroStatus,
   type HeroDistribution,
 } from "@/hooks/useHeroController";
+import { CoachMark } from "@/components/onboarding/CoachMark";
 
 // ─── Types passed in from IndexPage ──────────────────────────────────────────
 
@@ -125,6 +126,10 @@ export interface HeroSectionProps {
   onNavigateToQuestion: (id: string) => void;
   onLogin: () => void;
   onSignup: () => void;
+  // Epic: onboarding coach-marks. Only relevant for the authed slider inside
+  // SectionAQuestion — undefined/false is a safe no-op for the guest branch.
+  showSliderTip?: boolean;
+  onDismissSliderTip?: () => void;
 }
 
 // Minimal alignment snapshot shape (matches AlignmentSnapshotRow in Index.tsx)
@@ -1144,6 +1149,8 @@ function SectionAQuestion({
   onGuestEngage,
   onStage,
   isFallbackMode = false,
+  showSliderTip,
+  onDismissSliderTip,
 }: {
   question: HeroQuestion;
   status: HeroStatus;
@@ -1162,6 +1169,8 @@ function SectionAQuestion({
   onStage?: (questionId: string, value: number) => void;
   // True when showing fallback-scope content — surfaces a subtle chip on the card
   isFallbackMode?: boolean;
+  showSliderTip?: boolean;
+  onDismissSliderTip?: () => void;
 }) {
   const isResultMode =
     status === "hero_answered_result" || status === "hero_transitioning";
@@ -1276,26 +1285,35 @@ function SectionAQuestion({
               )}
             </div>
             <div className="border-t border-slate-100 mb-4" />
-            <QuestionStanceSlider
-              key={`hero-${question.question_id}`}
-              questionId={question.question_id}
-              questionText={question.question_text}
-              summary={question.summary}
-              initialValue={isResultMode ? (submittedStance ?? null) : null}
-              disabled={isSubmitting}
-              pulseThumb={!isSubmitting && !isResultMode}
-              onSubmit={onSubmit}
-              sliderLowLabel={question.slider_low_label ?? null}
-              sliderHighLabel={question.slider_high_label ?? null}
-              headerAction={
-                <ShareButton
-                  questionId={question.question_id}
-                  questionText={question.question_text}
-                  questionSummary={question.summary}
-                  compact
+            <div className={`relative ${showSliderTip ? "z-20" : ""}`}>
+              <QuestionStanceSlider
+                key={`hero-${question.question_id}`}
+                questionId={question.question_id}
+                questionText={question.question_text}
+                summary={question.summary}
+                initialValue={isResultMode ? (submittedStance ?? null) : null}
+                disabled={isSubmitting}
+                pulseThumb={!isSubmitting && !isResultMode}
+                onSubmit={onSubmit}
+                sliderLowLabel={question.slider_low_label ?? null}
+                sliderHighLabel={question.slider_high_label ?? null}
+                headerAction={
+                  <ShareButton
+                    questionId={question.question_id}
+                    questionText={question.question_text}
+                    questionSummary={question.summary}
+                    compact
+                  />
+                }
+              />
+              {showSliderTip && onDismissSliderTip && (
+                <CoachMark
+                  text="Drag the slider to share where you stand. You can change it anytime."
+                  placement="corner"
+                  onDismiss={onDismissSliderTip}
                 />
-              }
-            />
+              )}
+            </div>
           </>
         ) : (
           <>
@@ -1514,6 +1532,8 @@ export function HeroSection({
   onNavigateToQuestion,
   onLogin,
   onSignup,
+  showSliderTip,
+  onDismissSliderTip,
 }: HeroSectionProps) {
   const {
     status,
@@ -1613,6 +1633,8 @@ export function HeroSection({
                   onGuestEngage={() => setGuestHasEngaged(true)}
                   onStage={onStage}
                   isFallbackMode={isFallbackMode}
+                  showSliderTip={showSliderTip}
+                  onDismissSliderTip={onDismissSliderTip}
                 />
               )}
           </div>

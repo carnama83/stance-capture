@@ -222,6 +222,36 @@ const SECTIONS: SectionDef[] = [
       },
     ],
   },
+  {
+    id: "expectation_signal",
+    title: "Epic R — Expectation Signal Thresholds",
+    subtitle: "Controls when a question's expectation distribution is shown to users as a signal",
+    icon: "📢",
+    accent: "#0ea5e9",
+    fields: [
+      {
+        key: "expectation_threshold_pct",
+        label: "Agreement Threshold (%)",
+        description: "Minimum % agreement on a single expectation type, within a region, for the signal to be shown (M-R03, BR-R02).",
+        min: 0, max: 100, step: 1,
+        format: "integer",
+      },
+      {
+        key: "expectation_min_respondents",
+        label: "Minimum Respondents",
+        description: "Minimum unique respondents in a region before a signal is eligible to display, regardless of agreement %.",
+        min: 1, max: 10000, step: 1,
+        format: "integer",
+      },
+      {
+        key: "expectation_persistence_hours",
+        label: "Persistence Window (hours)",
+        description: "Minimum time span between a question's first and last expectation response before the signal is eligible — filters out early, short-lived spikes.",
+        min: 1, max: 720, step: 1,
+        format: "integer",
+      },
+    ],
+  },
 ];
 
 // All keys that should exist — used to detect missing config rows
@@ -255,6 +285,12 @@ function getDefaultValue(key: string): number {
     new_days: 7,
     stale_days: 60,
     min_score_floor: 0.0,
+    // Epic R — M-R03. Matches the COALESCE fallbacks baked into the
+    // region_expectation_strength SQL view (§7.3 defaults: 65/100/72) —
+    // keep these two in sync if either changes.
+    expectation_threshold_pct: 65,
+    expectation_min_respondents: 100,
+    expectation_persistence_hours: 72,
   };
   return defaults[key] ?? 0;
 }

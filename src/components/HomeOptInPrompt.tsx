@@ -6,6 +6,7 @@
 // but only ONCE, so the feed stays uncluttered.
 import * as React from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { getDeviceId } from "@/lib/webStance";
 
 const WA_BUSINESS_NUMBER = "12014667244"; // +1 201-466-7244, digits only
 
@@ -43,7 +44,13 @@ export function HomeOptInPrompt({
     } finally { setBusy(false); }
   }
 
-  const waHref = `https://wa.me/${WA_BUSINESS_NUMBER}?text=${encodeURIComponent("SUBSCRIBE")}`;
+  // Same device_id embedding as WebOptInCard.tsx — here it matters even more,
+  // since a homepage visitor can have staged several questions (stagedCount)
+  // before subscribing. commit_staged_stances_for_device() commits all of
+  // them for this device in one shot, not just whichever prompted the click.
+  const deviceId = getDeviceId();
+  const waText = deviceId ? `SUBSCRIBE ${deviceId}` : "SUBSCRIBE";
+  const waHref = `https://wa.me/${WA_BUSINESS_NUMBER}?text=${encodeURIComponent(waText)}`;
 
   // Collapsed pill
   if (!open) {

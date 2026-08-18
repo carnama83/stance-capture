@@ -6,6 +6,8 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { getSupabase } from "../lib/supabaseClient";
+import { useOnboardingTips } from "@/hooks/useOnboardingTips";
+import { CoachMark } from "@/components/onboarding/CoachMark";
 
 type Session = import("@supabase/supabase-js").Session;
 
@@ -114,6 +116,9 @@ export default function SettingsLocation() {
   const session = useSupabaseSession();
   const queryClient = useQueryClient();
   const userId = session?.user?.id ?? null;
+
+  // Onboarding coach-mark: standalone, no dependsOn.
+  const tips = useOnboardingTips([{ id: "settings_location" }]);
 
   // selectedCountryCode: ISO code seeded from region (display/seed only)
   // selectedCountryId: DB id used to scope state searches via parent_id
@@ -260,12 +265,19 @@ export default function SettingsLocation() {
 
   return (
     <div className="space-y-4">
-      <header>
+      <header className="relative">
         <h2 className="text-base font-semibold text-slate-900">Location</h2>
         <p className="text-xs text-slate-600">
           Choose your country, state, county, or city to see how people in your
           region think about each question.
         </p>
+        {tips.isVisible("settings_location") && (
+          <CoachMark
+            text="Set your location to see questions and results near you."
+            placement="below"
+            onDismiss={() => tips.dismiss("settings_location")}
+          />
+        )}
       </header>
 
       {/* Current region */}
