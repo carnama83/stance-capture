@@ -17,7 +17,7 @@ function esc(s = "") {
 }
 
 async function fetchQuestion(base, anon, filter) {
-  const url = `${base}/rest/v1/questions?${filter}&select=id,slug,question,share_headline,context_summary,summary&limit=1`;
+  const url = `${base}/rest/v1/questions?${filter}&select=id,slug,question,share_headline,context_summary,summary,cover_image_url&limit=1`;
   const r = await fetch(url, { headers: { apikey: anon, Authorization: `Bearer ${anon}` } });
   if (!r.ok) return null;
   const rows = await r.json();
@@ -55,7 +55,20 @@ export default async function handler(req, res) {
   // Fallbacks keep the redirect working even if the lookup fails.
   const title = esc((q?.share_headline || q?.question || "Stance Capture — Where do you stand?").slice(0, 110));
   const desc = esc((q?.context_summary || q?.summary || "See where people stand and add your view.").slice(0, 180));
-  const image = `${SITE}/og-image.png`;
+  // BUG FIX: this always used a static generic image, ignoring
+  // questions.cover_image_url entirely — the same field the rest of the app
+  // (HeroSection, QuestionCard, QuestionDetailPage) reads directly for this
+  // exact purpose. Use it when present; static image is now purely the
+  // fallback for the rare question with none.
+  const image = q?.cover_image_url || `${SITE}/og-image.png`;
+  // Dimensions are only known for the static fallback (built at exactly
+  // 1200x630). A per-question cover_image_url is arbitrary editorial
+  // photography of unknown aspect ratio — asserting the wrong dimensions can
+  // make a crawler crop or distort it rather than just detecting the real
+  // size itself, which most (WhatsApp included) do fine when left unset.
+  const imageDims = q?.cover_image_url
+    ? ""
+    : `\n<meta property="og:image:width" content="1200">\n<meta property="og:image:height" content="630">`;
   const canonical = `${SITE}/s/${esc(slug)}`;
   const target = q?.id
     ? `${SITE}/#/q/${q.id}${ref ? `?ref=${encodeURIComponent(ref)}` : ""}`
@@ -74,9 +87,7 @@ export default async function handler(req, res) {
 <meta property="og:title" content="${title}">
 <meta property="og:description" content="${desc}">
 <meta property="og:url" content="${canonical}">
-<meta property="og:image" content="${image}">
-<meta property="og:image:width" content="1200">
-<meta property="og:image:height" content="630">
+<meta property="og:image" content="${image}">${imageDims}
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="${title}">
 <meta name="twitter:description" content="${desc}">
