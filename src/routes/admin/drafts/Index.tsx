@@ -823,6 +823,16 @@ export default function TopicDraftsPage() {
   // polling. MIRROR_BACKFILL_BATCH_SIZE server-side is 30 rows/invocation;
   // a round that comes back with fewer than 30 processed means the backlog
   // is drained, so the loop stops itself rather than needing a fixed count.
+  //
+  // Calls run_enrich_images_http() (an RPC), NOT enrich-images directly.
+  // enrich-images has zero CORS handling AND requires an x-cron-secret
+  // header matching a server-side-only secret — calling it straight from
+  // the browser fails on both counts, confirmed against the real deploy
+  // (CORS preflight blocked, and even past that it would 401). The RPC
+  // reads that secret from Vault server-side and makes the call from
+  // Postgres instead — same pattern run_cluster_http() already uses for
+  // the Cluster button, adapted to return the real response body
+  // synchronously since this loop needs the actual counts back each round.
   const MIRROR_BATCH_SIZE = 30;
   const MIRROR_MAX_ROUNDS = 25; // safety cap (~750 rows) so a stuck backlog can't loop forever
 
@@ -846,7 +856,7 @@ export default function TopicDraftsPage() {
         setMirrorElapsed(Math.floor((Date.now() - startTime) / 1000));
         setMirrorProgress(`Round ${rounds}... ${totalMirrored} mirrored so far`);
 
-        const { data, error } = await supabase.functions.invoke("enrich-images", { method: "POST" });
+        const { data, error } = await supabase.rpc("run_enrich_images_http");
         if (error) throw error;
 
         const roundMirrored = (data as any)?.backfill_mirrored ?? 0;
