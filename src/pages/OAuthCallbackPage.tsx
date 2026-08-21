@@ -288,7 +288,25 @@ async function finalize(sb: any, session: any, navigate: any, setStatus: (s: str
   const returnTo = localStorage.getItem("return_to") || sessionStorage.getItem("return_to");
   localStorage.removeItem("return_to");
   sessionStorage.removeItem("return_to");
-  const dest = returnTo && (returnTo.startsWith("/") || returnTo.startsWith("#/")) ? returnTo : "/";
+  // BUG FIX: react-router's navigate() (HashRouter) expects a plain path
+  // like "/q/xyz" — it manages the "#" itself. Both callers that set
+  // return_to (WebOptInCard.tsx's email flow, WhatsAppSigninPage.tsx) use
+  // "#/q/xyz" format, and passing that string WITH the literal "#"
+  // straight to navigate() doesn't get parsed as "the route /q/xyz" — it
+  // gets appended onto the CURRENT path instead of replacing it, producing
+  // a malformed nested URL like "/#/auth/callback#/q/xyz" that no route
+  // matches. Confirmed live via the WhatsApp sign-in flow (stuck on this
+  // page after a fully successful sign-in — everything up to this line
+  // completes correctly, only the final navigate() target was wrong).
+  // WebOptInCard.tsx's email flow sets the identical "#/q/..." format and
+  // most likely has this exact same latent bug — just never noticed,
+  // since a magic-link email always opens a genuinely fresh tab with no
+  // prior in-memory router history for the malformed target to append
+  // onto, so the practical symptom may differ even though the root cause
+  // is the same. Strip the leading "#" here, once, at the single shared
+  // consumption point, rather than editing both setters separately.
+  const normalizedReturnTo = returnTo?.replace(/^#/, "") ?? null;
+  const dest = normalizedReturnTo && normalizedReturnTo.startsWith("/") ? normalizedReturnTo : "/";
   navigate(dest, { replace: true });
 }
 
