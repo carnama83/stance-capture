@@ -22,7 +22,7 @@ import { useNavigate } from "react-router-dom";
 import { getSupabase } from "@/lib/supabaseClient";
 import { Loader2 } from "lucide-react";
 import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_PROJECT_REF, getJwt } from "@/lib/env";
-import { runBootstrap, rpcPost } from "@/hooks/useBootstrapUser";
+import { runBootstrap, rpcPost, restGet, restPatch } from "@/hooks/useBootstrapUser";
 import { fetchIPLocation } from "@/lib/ipLocation";
 import { getDeviceId } from "@/lib/webStance";
 
@@ -297,7 +297,22 @@ async function bootstrapSocialProfile(sb: any, session: any) {
     const user = session.user;
     if (!user) return;
     const meta = user.user_metadata ?? {};
-    const { data: profile } = await sb.from("profiles").select("username, avatar_url").eq("user_id", user.id).single();
+    // BUG FIX: this used to be sb.from("profiles").select(...).single() —
+    // the raw SDK client, which this whole file otherwise deliberately
+    // avoids (see rpcPost's usage a few lines down, and useBootstrapUser.ts's
+    // header comment on the exact auth-mutex hang this caused historically).
+    // .single() also throws on anything but exactly one row back, and the
+    // WHOLE function shares one try/catch — so either failure mode silently
+    // aborted everything after this line, including the location IP-claim
+    // fallback below, DESPITE that call already correctly using rpcPost.
+    // Confirmed live: a freshly-created account had zero rows in
+    // user_location_settings even though claim_oauth_ip_location's own
+    // logic and the ipapi.co fetch were both fine in isolation.
+    const { data: profileRows } = await restGet<{ username: string | null; avatar_url: string | null }[]>(
+      `profiles?select=username,avatar_url&user_id=eq.${user.id}&limit=1`,
+      session.access_token
+    );
+    const profile = profileRows?.[0] ?? null;
     const updates: Record<string, string> = {};
     if (!profile?.avatar_url) {
       const avatar = meta.avatar_url || meta.picture || null;
@@ -305,7 +320,7 @@ async function bootstrapSocialProfile(sb: any, session: any) {
     }
     if (Object.keys(updates).length > 0) {
       updates.updated_at = new Date().toISOString();
-      await sb.from("profiles").update(updates).eq("user_id", user.id);
+      await restPatch(`profiles?user_id=eq.${user.id}`, updates, session.access_token);
     }
     if (!profile?.username) {
       const name = meta.full_name || meta.name || meta.preferred_username || null;
@@ -350,11 +365,13 @@ async function bootstrapSocialProfile(sb: any, session: any) {
     // have a location, from onboarding, a prior login, or Settings —
     // never trigger a needless IP lookup on every sign-in.
     try {
-      const { data: existingLoc } = await sb
-        .from("user_location_settings")
-        .select("location_id")
-        .eq("user_id", user.id)
-        .limit(1);
+      // Same fix as the profile select above — this existence check gates
+      // whether the IP claim below runs at all, so it's the more
+      // consequential of the two sb.from(...) calls to have gotten wrong.
+      const { data: existingLoc } = await restGet<{ location_id: string }[]>(
+        `user_location_settings?select=location_id&user_id=eq.${user.id}&limit=1`,
+        session.access_token
+      );
       if ((!existingLoc || existingLoc.length === 0) && session.access_token) {
         const ipLoc = await fetchIPLocation();
         if (ipLoc.country_code) {
@@ -402,14 +419,25 @@ async function persistProviderToken(sb: any, session: any) {
       ? ["tweet.read", "tweet.write", "users.read", "offline.access"]
       : [];
 
-    await sb.rpc("upsert_social_auth_token", {
+    // Same fix as bootstrapSocialProfile's two calls above — sb.rpc() is
+    // the SDK client this file otherwise deliberately avoids. This
+    // specific call never actually affects WhatsApp-created accounts
+    // (session.provider_token is never set for them, so the early return
+    // above already skips it) — fixed anyway for consistency, and because
+    // an SDK-mutex hang here would delay finalize()'s final navigate()
+    // call for real OAuth logins even though it wouldn't be silent the
+    // way the location bug was.
+    const upsertResult = await rpcPost("upsert_social_auth_token", {
       p_provider: provider as SocialTokenProvider,
       p_provider_user_id: providerUserId,
       p_access_token: session.provider_token,
       p_refresh_token: session.provider_refresh_token ?? null,
       p_token_expires_at: expiresAt,
       p_scopes: scopes,
-    });
+    }, session.access_token);
+    if (upsertResult.error) {
+      console.warn("[OAuthCallback] upsert_social_auth_token failed (non-fatal):", upsertResult.error);
+    }
     console.log("[OAuthCallback] Provider token persisted for:", provider);
   } catch (e: any) { console.warn("[OAuthCallback] token persistence (non-fatal):", e?.message); }
 }

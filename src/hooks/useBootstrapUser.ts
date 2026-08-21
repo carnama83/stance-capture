@@ -85,7 +85,13 @@ export async function rpcPost<T = any>(
   }
 }
 
-async function restGet<T = any>(
+// Exported so OAuthCallbackPage.tsx's bootstrapSocialProfile() can use it
+// too, instead of sb.from(...) — see that function's fix comment for why:
+// it was hanging/erroring under the exact SDK auth-mutex issue this file's
+// own header comment already documents, silently aborting everything after
+// it in the same function (including the location IP-claim fallback,
+// despite THAT call correctly already using rpcPost).
+export async function restGet<T = any>(
   pathAndQuery: string,
   jwt: string
 ): Promise<{ data: T | null; error: any }> {
@@ -102,6 +108,31 @@ async function restGet<T = any>(
     return { data: parsed as T, error: null };
   } catch (e: any) {
     return { data: null, error: { message: e?.message ?? String(e) } };
+  }
+}
+
+// Same raw-fetch pattern as restGet, for the one PATCH bootstrapSocialProfile
+// needs (updating profiles.avatar_url) — Prefer: return=minimal since that
+// caller doesn't need the updated row back, just success/failure.
+export async function restPatch(
+  pathAndQuery: string,
+  body: Record<string, any>,
+  jwt: string
+): Promise<{ error: any }> {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${pathAndQuery}`, {
+      method: "PATCH",
+      headers: { ...supabaseHeaders(jwt), Prefer: "return=minimal" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      const parsed = text ? JSON.parse(text) : null;
+      return { error: { ...(parsed || {}), status: res.status } };
+    }
+    return { error: null };
+  } catch (e: any) {
+    return { error: { message: e?.message ?? String(e) } };
   }
 }
 
