@@ -90,3 +90,8 @@ entrypoint = "./functions/whatsapp-send-flow/index.ts"
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/whatsapp-broadcast-dispatch/index.ts"
+
+[functions.enrich-images]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/enrich-images/index.ts"
