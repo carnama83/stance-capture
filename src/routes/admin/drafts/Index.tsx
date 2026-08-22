@@ -47,7 +47,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { ExternalLink, Edit2, RefreshCw, Loader2, Cpu, Info } from "lucide-react";
+import { ExternalLink, Edit2, RefreshCw, Loader2, Cpu, Info, Image as ImageIcon } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { SUPABASE_URL, SUPABASE_ANON_KEY, getJwt } from "@/lib/env";
 
@@ -125,6 +125,17 @@ export default function TopicDraftsPage() {
   const [clusterEligible, setClusterEligible] = React.useState<number | null>(null);
   const [clusterClustered, setClusterClustered] = React.useState<number | null>(null);
   const [clusterResult, setClusterResult] = React.useState<string | null>(null);
+
+  // Mirror Images to Storage — copies each article's cover photo into our
+  // own Storage (via enrich-images) so cover_image_url stops depending on
+  // the live publisher URL. Must run after Cluster (news_items rows don't
+  // exist before that) and before Bulk Create Question Drafts (that's where
+  // cover_image_url gets frozen via COALESCE — a cover assigned before this
+  // runs stays on the live URL forever, no automatic re-sync later).
+  const [mirrorLoading, setMirrorLoading] = React.useState(false);
+  const [mirrorElapsed, setMirrorElapsed] = React.useState(0);
+  const [mirrorProgress, setMirrorProgress] = React.useState("");
+  const [mirrorResult, setMirrorResult] = React.useState<string | null>(null);
 
   const [createDraftsLoading, setCreateDraftsLoading] = React.useState(false);
   const [createDraftsElapsed, setCreateDraftsElapsed] = React.useState(0);
@@ -806,6 +817,85 @@ export default function TopicDraftsPage() {
     }
   }, [clusterLoading, supabase, toast, pollClusterProgress, clearClusterInterval]);
 
+  // enrich-images responds synchronously with real counts (unlike
+  // cluster/embed/extract-entities, which trigger async pg_net jobs and
+  // need DB polling) — so this loops direct awaited calls instead of
+  // polling. MIRROR_BACKFILL_BATCH_SIZE server-side is 30 rows/invocation;
+  // a round that comes back with fewer than 30 processed means the backlog
+  // is drained, so the loop stops itself rather than needing a fixed count.
+  //
+  // Calls run_enrich_images_http() (an RPC), NOT enrich-images directly.
+  // enrich-images has zero CORS handling AND requires an x-cron-secret
+  // header matching a server-side-only secret — calling it straight from
+  // the browser fails on both counts, confirmed against the real deploy
+  // (CORS preflight blocked, and even past that it would 401). The RPC
+  // reads that secret from Vault server-side and makes the call from
+  // Postgres instead — same pattern run_cluster_http() already uses for
+  // the Cluster button, adapted to return the real response body
+  // synchronously since this loop needs the actual counts back each round.
+  const MIRROR_BATCH_SIZE = 30;
+  const MIRROR_MAX_ROUNDS = 25; // safety cap (~750 rows) so a stuck backlog can't loop forever
+
+  const runMirrorImages = React.useCallback(async () => {
+    if (mirrorLoading) return;
+
+    setMirrorLoading(true);
+    setMirrorElapsed(0);
+    setMirrorProgress("Starting...");
+    setMirrorResult(null);
+
+    const startTime = Date.now();
+    let totalMirrored = 0;
+    let totalFailed = 0;
+    let rounds = 0;
+
+    try {
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        rounds++;
+        setMirrorElapsed(Math.floor((Date.now() - startTime) / 1000));
+        setMirrorProgress(`Round ${rounds}... ${totalMirrored} mirrored so far`);
+
+        const { data, error } = await supabase.rpc("run_enrich_images_http");
+        if (error) throw error;
+
+        const roundMirrored = (data as any)?.backfill_mirrored ?? 0;
+        const roundFailed = (data as any)?.backfill_failed ?? 0;
+        totalMirrored += roundMirrored;
+        totalFailed += roundFailed;
+
+        const processedThisRound = roundMirrored + roundFailed;
+        if (processedThisRound < MIRROR_BATCH_SIZE) break; // backlog drained
+        if (rounds >= MIRROR_MAX_ROUNDS) break; // safety cap hit
+      }
+
+      const elapsed = Math.floor((Date.now() - startTime) / 1000);
+      setMirrorElapsed(elapsed);
+      setMirrorProgress("");
+      setMirrorResult(
+        `Last run: ${totalMirrored} mirrored, ${totalFailed} failed/no-image, across ${rounds} round${rounds === 1 ? "" : "s"} (${elapsed}s).` +
+          (rounds >= MIRROR_MAX_ROUNDS
+            ? " Hit the safety cap — click again if a backlog still remains."
+            : "")
+      );
+      toast({
+        title: totalMirrored > 0 ? "Mirroring complete ✅" : "Nothing to mirror",
+        description: `${totalMirrored} images copied to Storage, ${totalFailed} failed or had no image, in ${rounds} round${rounds === 1 ? "" : "s"}.`,
+      });
+    } catch (e: any) {
+      console.error("enrich-images error:", e);
+      setMirrorProgress("");
+      setMirrorResult(`Last run: failed after ${rounds} round(s) — ${e?.message ?? "unknown error"}.`);
+      toast({
+        title: "Mirroring trigger issue",
+        description: e?.message ?? "Failed to invoke enrich-images function.",
+        variant: "destructive",
+      });
+    } finally {
+      setMirrorLoading(false);
+    }
+  }, [mirrorLoading, supabase, toast]);
+
   // Create drafts progress polling
   const pollCreateDraftsProgress = React.useCallback(async () => {
     const { count, error } = await supabase
@@ -1277,6 +1367,36 @@ export default function TopicDraftsPage() {
           </div>
         )}
 
+        {/* Mirror Images — separate from the numbered 1-5 pipeline above on
+            purpose: it's a maintenance step, not a content-generation step,
+            and inserting it into that numbering would mean renumbering two
+            parallel copies of those buttons for no real benefit. Must run
+            after Cluster (3) and before Bulk Create Question Drafts above —
+            see the comment on the mirrorLoading state for why. */}
+        <div className="mt-2 flex items-center gap-2 rounded border bg-amber-50 px-3 py-2">
+          <Button
+            variant="outline"
+            onClick={runMirrorImages}
+            disabled={mirrorLoading}
+            className="shrink-0 min-w-[220px]"
+            title="Run after Run Cluster, before Bulk Create Question Drafts — copies each article's cover photo into our own Storage so cover_image_url stops depending on the live publisher URL (fixes hotlink blocks like NDTV, and the CMYK-photo decode issue). Safe to run more than once."
+          >
+            {mirrorLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {!mirrorLoading && <ImageIcon className="mr-2 h-4 w-4" />}
+            {mirrorLoading ? `Mirroring... ${mirrorElapsed}s — ${mirrorProgress}` : "Mirror Images to Storage"}
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            Run after Run Cluster, before Bulk Create Question Drafts — covers freeze at that step.
+          </span>
+        </div>
+
+        {mirrorResult && (
+          <div className="mt-2 flex items-start gap-2 rounded border bg-slate-50 px-3 py-2 text-xs text-muted-foreground">
+            <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+            <span>{mirrorResult}</span>
+          </div>
+        )}
+
       </CardHeader>
 
       <CardContent className="space-y-3">
@@ -1303,6 +1423,9 @@ export default function TopicDraftsPage() {
                   <strong>Run Cluster</strong> — Groups embedded articles into topic clusters
                 </li>
                 <li>
+                  <strong>Mirror Images to Storage</strong> — Copies each article's cover photo into our own Storage before covers get assigned
+                </li>
+                <li>
                   <strong>Create Topic Drafts</strong> — Generates drafts from clusters for review
                 </li>
                 <li>
@@ -1313,6 +1436,8 @@ export default function TopicDraftsPage() {
                 <p className="font-semibold text-yellow-800">💡 Tip:</p>
                 <p className="text-yellow-700">
                   Always run Embedding before Clustering — Cluster requires embeddings to exist first.
+                  Run Mirror Images after Cluster, before Bulk Create Question Drafts — cover_image_url
+                  freezes at that step and never re-syncs to a mirror completed afterward.
                 </p>
               </div>
             </div>
@@ -1330,6 +1455,16 @@ export default function TopicDraftsPage() {
               <Button variant="outline" onClick={runCluster} disabled={clusterLoading}>
                 {clusterLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 {clusterLoading ? `Clustering... ${clusterElapsed}s (${clusterProgress})` : "3. Run Cluster"}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={runMirrorImages}
+                disabled={mirrorLoading}
+                title="Run before Bulk Create Question Drafts — mirrors cover photos to Storage"
+              >
+                {mirrorLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {!mirrorLoading && <ImageIcon className="mr-2 h-4 w-4" />}
+                {mirrorLoading ? `Mirroring... ${mirrorElapsed}s` : "Mirror Images"}
               </Button>
               <Button variant="outline" onClick={runCreateDrafts} disabled={createDraftsLoading}>
                 {createDraftsLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

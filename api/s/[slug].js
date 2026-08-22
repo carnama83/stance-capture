@@ -48,8 +48,25 @@ export default async function handler(req, res) {
 
   let q = null;
   if (SUPABASE_URL && ANON && slug) {
-    q = await fetchQuestion(SUPABASE_URL, ANON, `slug=eq.${encodeURIComponent(slug)}`);
-    if (!q) q = await fetchQuestion(SUPABASE_URL, ANON, `id=eq.${encodeURIComponent(slug)}`);
+    // BUG FIX: fetchQuestion already returns null gracefully for a non-2xx
+    // response (see `if (!r.ok) return null` inside it) — but nothing
+    // protected against it actually THROWING: a network failure reaching
+    // Supabase, a DNS hiccup, a timeout, or r.json() choking on a
+    // non-JSON body all propagated straight up out of this handler
+    // uncaught, crashing the whole function with a raw 500
+    // (FUNCTION_INVOCATION_FAILED) instead of reaching the fallback
+    // rendering below — which already exists and already handles "no
+    // question found" correctly. This wraps the same lookup so ANY
+    // failure mode, not just an HTTP error status, lands on that same
+    // existing fallback (generic OG card + redirect to SITE root) rather
+    // than a dead crash page a real visitor could click into off WhatsApp.
+    try {
+      q = await fetchQuestion(SUPABASE_URL, ANON, `slug=eq.${encodeURIComponent(slug)}`);
+      if (!q) q = await fetchQuestion(SUPABASE_URL, ANON, `id=eq.${encodeURIComponent(slug)}`);
+    } catch (err) {
+      console.error("[api/s/[slug]] question lookup failed, falling back:", err?.message ?? err);
+      q = null;
+    }
   }
 
   // Fallbacks keep the redirect working even if the lookup fails.

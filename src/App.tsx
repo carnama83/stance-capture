@@ -25,6 +25,7 @@ import Signup from "./pages/Signup";
 import Login from "./pages/Login";
 import ResetPassword from "./pages/ResetPassword";
 import OAuthCallbackPage from "./pages/OAuthCallbackPage";
+import WhatsAppSigninPage from "./pages/WhatsAppSigninPage";
 import SettingsProfile from "./pages/SettingsProfile";
 import SettingsSecurity from "./pages/SettingsSecurity";
 import SettingsSessions from "./pages/SettingsSessions";
@@ -221,6 +222,13 @@ const App: React.FC = () => {
 
               {/* Epic V: OAuth callback — no PublicOnly wrapper; handles both new and returning users */}
               <Route path="/auth/callback" element={<OAuthCallbackPage />} />
+
+              {/* WhatsApp phone-first sign-in: redeems a whatsapp_signin_tokens
+                  token and redirects into the callback flow above — see
+                  WhatsAppSigninPage.tsx and getOrCreateWhatsAppSigninLink in
+                  whatsapp-flow-webhook. No PublicOnly wrapper, same reasoning
+                  as auth/callback: someone landing here has no session yet. */}
+              <Route path="/auth/whatsapp-signin" element={<WhatsAppSigninPage />} />
 
               {/* Question detail (user-facing) */}
               <Route path="/q/:id" element={<QuestionDetailPage />} />
