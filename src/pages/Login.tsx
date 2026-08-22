@@ -19,6 +19,8 @@ import { Link, useNavigate } from "react-router-dom";
 import { getSupabase } from "../lib/supabaseClient";
 import PageLayout from "../components/PageLayout";
 import SocialAuthButtons from "../auth/SocialAuthButtons";
+import WhatsAppSignInButton from "../auth/WhatsAppSignInButton";
+import PhoneSignInFlow from "../auth/PhoneSignInFlow";
 
 export default function Login() {
   const sb = React.useMemo(getSupabase, []);
@@ -267,6 +269,21 @@ export default function Login() {
           mode="login"
           onError={(e) => setMsg(e)}
         />
+
+        {/* WhatsApp sign-in: the only way back into an account created via
+            the SUBSCRIBE flow, which has no password and no real email —
+            see WhatsAppSignInButton.tsx for the full explanation. Opens
+            WhatsApp with SUBSCRIBE pre-filled; the bot replies with a
+            fresh sign-in link on any number that already has an account,
+            same mechanism as the original signup confirmation. */}
+        <WhatsAppSignInButton />
+
+        {/* Phone-number recovery path: for someone who's NOT on a device
+            with WhatsApp open right now (the ordinary "forgot password,
+            sitting at some other computer" case) — see
+            PhoneSignInFlow.tsx. Collapsed by default so it doesn't
+            clutter the page for the common case. */}
+        <PhoneSignInFlow />
 
         <div className="text-sm text-center text-slate-600">
           Don't have an account?{" "}

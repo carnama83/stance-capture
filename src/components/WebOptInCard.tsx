@@ -7,8 +7,8 @@
 import * as React from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { getMyForwardRef, getDeviceId } from "@/lib/webStance";
+import { buildWaHref } from "@/lib/whatsapp";
 
-const WA_BUSINESS_NUMBER = "12014667244"; // +1 201-466-7244, digits only
 const PENDING_ATTACH_KEY = "sc_pending_attach_ref";
 
 export function WebOptInCard({
@@ -75,7 +75,7 @@ export function WebOptInCard({
   // localStorage is blocked (getDeviceId() returns "").
   const deviceId = getDeviceId();
   const waText = deviceId ? `SUBSCRIBE ${deviceId}` : "SUBSCRIBE";
-  const waHref = `https://wa.me/${WA_BUSINESS_NUMBER}?text=${encodeURIComponent(waText)}`;
+  const waHref = buildWaHref(waText);
 
   return (
     <div className="rounded-xl border border-violet-200 bg-violet-50/40 p-4 space-y-4">
