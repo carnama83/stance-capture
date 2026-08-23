@@ -7,8 +7,7 @@
 import * as React from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { getDeviceId } from "@/lib/webStance";
-
-const WA_BUSINESS_NUMBER = "12014667244"; // +1 201-466-7244, digits only
+import { buildWaHref } from "@/lib/whatsapp";
 
 export function HomeOptInPrompt({
   stagedCount,
@@ -50,7 +49,7 @@ export function HomeOptInPrompt({
   // them for this device in one shot, not just whichever prompted the click.
   const deviceId = getDeviceId();
   const waText = deviceId ? `SUBSCRIBE ${deviceId}` : "SUBSCRIBE";
-  const waHref = `https://wa.me/${WA_BUSINESS_NUMBER}?text=${encodeURIComponent(waText)}`;
+  const waHref = buildWaHref(waText);
 
   // Collapsed pill
   if (!open) {
