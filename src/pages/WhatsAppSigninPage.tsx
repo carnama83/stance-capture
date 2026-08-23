@@ -68,20 +68,24 @@ export default function WhatsAppSigninPage() {
         // homepage. Set BEFORE the redirect below, since action_link takes
         // the browser away from this page entirely.
         //
-        // Fallback to My Stances (not the homepage) when there's no
-        // specific question_id: getOrCreateWhatsAppSigninLink already
-        // checks both a web-staged commit AND whatsapp_active_sessions (a
-        // question answered directly via WhatsApp Flow) before giving up,
-        // so a null here means genuinely nothing to point at — but "here's
-        // everything on your new account" is still a better landing than
-        // an unrelated new trending question, even then.
+        // No question_id -> leave return_to unset entirely, letting
+        // OAuthCallbackPage.tsx's own default (the homepage) apply, exactly
+        // like every other sign-in method in this app already does (Login.tsx
+        // only overrides that default when return_to was explicitly set from
+        // being bounced off a protected page). Deliberately NOT special-cased
+        // by new-vs-existing account — the confirmation message text already
+        // carries that distinction (see whatsapp-flow-webhook), and the
+        // homepage is a perfectly good landing for anyone, new account or
+        // not; singling out new accounts for a different destination was
+        // unnecessary complexity that added nothing the message text wasn't
+        // already doing.
         try {
-          window.localStorage.setItem(
-            "return_to",
-            data.question_id ? `#/q/${data.question_id}` : "#/me/stances"
-          );
+          if (data.question_id) {
+            window.localStorage.setItem("return_to", `#/q/${data.question_id}`);
+          }
         } catch {
-          // Non-fatal — worst case this falls back to the homepage.
+          // Non-fatal — worst case this falls back to the homepage, which
+          // is the correct behavior here anyway, not just an acceptable one.
         }
         window.location.replace(data.action_link);
       } catch {
