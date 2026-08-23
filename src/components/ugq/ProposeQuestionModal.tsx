@@ -16,9 +16,14 @@
 // Shown on the success screen so proposers get immediate confidence-building
 // feedback instead of waiting for admin review. Explicitly labeled "not
 // final" since the fact-checked version (admin Gate 2) can differ.
+//
+// Aug 2026 (later same week): ugq-submit may now also return `published` +
+// `question_id` — the question went LIVE immediately using that same preview
+// text (admin reviews in parallel, not before). When published, the success
+// screen shows a "View it live" link instead of "under review" copy.
 
 import * as React from "react";
-import { Loader2, CheckCircle2, Lightbulb, Sparkles } from "lucide-react";
+import { Loader2, CheckCircle2, Lightbulb, Sparkles, ExternalLink } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
@@ -77,6 +82,8 @@ export function ProposeQuestionModal({
   const [phase, setPhase] = React.useState<"form" | "submitting" | "success">("form");
   const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
   const [previewReframe, setPreviewReframe] = React.useState<PreviewReframe | null>(null);
+  const [published, setPublished] = React.useState(false);
+  const [questionId, setQuestionId] = React.useState<string | null>(null);
 
   // Reset to a clean form each time the modal opens.
   React.useEffect(() => {
@@ -87,6 +94,8 @@ export function ProposeQuestionModal({
       setPhase("form");
       setErrorMsg(null);
       setPreviewReframe(null);
+      setPublished(false);
+      setQuestionId(null);
     }
   }, [open, defaultLocation]);
 
@@ -128,10 +137,12 @@ export function ProposeQuestionModal({
         return;
       }
 
-      // proposed / in_review / approved → accepted into the queue. Preview is
-      // best-effort (null if the parallel preview call failed or timed out) —
-      // the success screen still works fine without it.
+      // proposed / in_review / approved / published → accepted (or already
+      // live). Preview is best-effort (null if the parallel preview call
+      // failed/timed out) — the success screen still works fine without it.
       setPreviewReframe(parsePreviewReframe(json.preview_reframe));
+      setPublished(json.published === true);
+      setQuestionId(typeof json.question_id === "string" ? json.question_id : null);
       setPhase("success");
     } catch (_e) {
       setErrorMsg("Network error. Please check your connection and try again.");
@@ -149,16 +160,26 @@ export function ProposeQuestionModal({
         {phase === "success" ? (
           <div className="flex flex-col items-center text-center py-6 gap-3">
             <CheckCircle2 className="h-10 w-10 text-green-600" />
-            <DialogTitle className="text-lg">Submitted!</DialogTitle>
+            <DialogTitle className="text-lg">
+              {published ? "You\u2019re live!" : "Submitted!"}
+            </DialogTitle>
             <DialogDescription>
-              We&#x2019;ll review your question and notify you when it&#x2019;s live.
+              {published
+                ? "Your question is live right now. Our team will also give it a quick review shortly."
+                : "We\u2019ll review your question and notify you when it\u2019s live."}
             </DialogDescription>
 
             {previewReframe ? (
-              <div className="w-full mt-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-left space-y-2">
-                <div className="flex items-center gap-1.5 text-xs font-medium text-amber-700">
+              <div className={
+                "w-full mt-2 rounded-lg border px-4 py-3 text-left space-y-2 " +
+                (published ? "border-green-200 bg-green-50" : "border-amber-200 bg-amber-50")
+              }>
+                <div className={
+                  "flex items-center gap-1.5 text-xs font-medium " +
+                  (published ? "text-green-700" : "text-amber-700")
+                }>
                   <Sparkles className="h-3.5 w-3.5" />
-                  Here&#x2019;s roughly how this might look
+                  {published ? "Your question, live now" : "Here\u2019s roughly how this might look"}
                 </div>
                 <p className="text-sm text-slate-800 leading-snug">
                   {previewReframe.question}
@@ -170,13 +191,29 @@ export function ProposeQuestionModal({
                     <span className="truncate text-right">{previewReframe.slider_high_label ?? "Support"}</span>
                   </div>
                 ) : null}
-                <p className="text-[11px] text-amber-700/80 pt-1">
-                  Not final &#x2014; an editor fact-checks and refines this before it goes live.
+                <p className={
+                  "text-[11px] pt-1 " + (published ? "text-green-700/80" : "text-amber-700/80")
+                }>
+                  {published
+                    ? "Our team will give this a quick review shortly and may refine the wording."
+                    : "Not final \u2014 an editor fact-checks and refines this before it goes live."}
                 </p>
               </div>
             ) : null}
 
-            <Button className="mt-2" onClick={close}>Done</Button>
+            <div className="flex gap-2 mt-2">
+              {/* asChild assumes the standard shadcn/ui Button (Radix Slot) —
+                  if your Button doesn't support asChild, swap this for
+                  <a href={...} className={buttonVariants({variant:"outline"})}> instead. */}
+              {published && questionId ? (
+                <Button variant="outline" asChild>
+                  <a href={`#/q/${questionId}`} onClick={close}>
+                    View it live <ExternalLink className="h-3.5 w-3.5 ml-1.5" />
+                  </a>
+                </Button>
+              ) : null}
+              <Button onClick={close}>Done</Button>
+            </div>
           </div>
         ) : (
           <>
