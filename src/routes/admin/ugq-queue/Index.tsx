@@ -69,6 +69,11 @@ type QueueRow = {
   q_status: string | null;
   q_auto_published: boolean | null;
   q_admin_reviewed_at: string | null;
+  // Aug 2026 — proposer-tagged authority, pending admin confirm/reject (see
+  // user_authority_suggestions). Null when nothing's pending.
+  pending_authority_suggestion_id: string | null;
+  pending_authority_name: string | null;
+  pending_authority_domain: string | null;
 };
 
 const STATUS_TABS: { value: string; label: string }[] = [
@@ -594,6 +599,34 @@ function PublishedReviewSection({ row, onDone }: { row: QueueRow; onDone: () => 
         </div>
       )}
 
+      {row.pending_authority_suggestion_id && (
+        <div className="rounded-md bg-purple-50 border border-purple-200 p-2.5 space-y-2">
+          <div className="text-xs font-medium text-purple-700">
+            Proposer tagged: {row.pending_authority_name}
+            {row.pending_authority_domain ? ` (${row.pending_authority_domain})` : ""}
+          </div>
+          <p className="text-[11px] text-purple-600">
+            Confirming makes this the public "who's responsible" answer on the question page.
+          </p>
+          <div className="flex gap-2">
+            <Button size="sm" disabled={!!busy}
+              onClick={() => run({
+                proposal_id: row.id, action: "confirm_authority_tag",
+                suggestion_id: row.pending_authority_suggestion_id,
+              }, "confirm_tag", "Authority tag confirmed")}>
+              {busy === "confirm_tag" ? "Confirming…" : "Confirm tag"}
+            </Button>
+            <Button size="sm" variant="outline" disabled={!!busy}
+              onClick={() => run({
+                proposal_id: row.id, action: "reject_authority_tag",
+                suggestion_id: row.pending_authority_suggestion_id,
+              }, "reject_tag", "Authority tag rejected")}>
+              {busy === "reject_tag" ? "Rejecting…" : "Reject"}
+            </Button>
+          </div>
+        </div>
+      )}
+
       {row.q_admin_reviewed_at && (
         <p className="text-xs text-slate-500">
           Reviewed {timeAgo(row.q_admin_reviewed_at)}.
@@ -754,6 +787,9 @@ export default function AdminUGQQueuePage() {
                     {qualityBadge(r.quality_score)}
                     {safetyBadge((ai as Record<string, unknown>).safety_flag)}
                     {r.status === "published" && needsReviewBadge(r)}
+                    {r.pending_authority_suggestion_id && (
+                      <Badge className="bg-purple-500 hover:bg-purple-500">Authority tag pending</Badge>
+                    )}
                     {r.location_label && (
                       <span className="inline-flex items-center gap-0.5"><MapPin className="h-3 w-3" />{r.location_label}</span>
                     )}
