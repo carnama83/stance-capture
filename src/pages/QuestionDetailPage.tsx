@@ -30,6 +30,7 @@ import { PostStanceSharePrompt } from "@/components/share/PostStanceSharePrompt"
 import { ExpectationPrompt, type ExpectationType } from "@/components/question/ExpectationPrompt";
 import { AuthorityBlock } from "@/components/question/AuthorityBlock";
 import { IncidentSummaryCard } from "@/components/question/IncidentSummaryCard";
+import { QuestionContextCard } from "@/components/question/QuestionContextCard";
 import { ExpectationSignalBlock } from "@/components/question/ExpectationSignalBlock";
 import { AuthorityResponseStatusBlock } from "@/components/question/AuthorityResponseStatusBlock";
 import { fetchUserRegionId } from "@/lib/userRegion";
@@ -55,6 +56,7 @@ type LiveQuestion = {
   question: string;
   summary?: string | null;
   context_summary?: string | null;
+  supporting_links?: string[] | null;
   content_type?: string | null;
   tags?: string[] | null;
   location_label?: string | null;
@@ -165,7 +167,7 @@ async function fetchQuestionById(id: string): Promise<LiveQuestion | null> {
   const { data, error } = await sb
     .from("questions")
     .select(
-      "id, topic_id, question, summary, context_summary, content_type, tags, location_label, published_at, status, phase, cover_image_url, state, archive_reason, archived_at, context_version, slider_low_label, slider_high_label, source, source_meta"
+      "id, topic_id, question, summary, context_summary, supporting_links, content_type, tags, location_label, published_at, status, phase, cover_image_url, state, archive_reason, archived_at, context_version, slider_low_label, slider_high_label, source, source_meta"
     )
     .eq("id", id)
     .limit(1);
@@ -740,12 +742,22 @@ function StanceCard({
           who's responsible), though BR-R03/BR-R07 only require both of these
           to precede the expectation prompt, not a specific order between
           themselves. */}
-      {question.content_type === "incident" && (
+      {question.content_type === "incident" ? (
         <IncidentSummaryCard
           questionId={questionId}
           summary={question.summary}
           contextSummary={question.context_summary}
           publishedAt={question.published_at}
+        />
+      ) : (
+        // Generic, neutral counterpart for non-incident questions — mainly
+        // UGQ auto-published ones with a web-search-grounded context_summary
+        // (see ugq-screen). No-ops (renders null) when context_summary is
+        // absent, so this is a no-op for every question type that never had
+        // one — safe to leave unconditional.
+        <QuestionContextCard
+          contextSummary={question.context_summary}
+          supportingLinks={question.supporting_links}
         />
       )}
 

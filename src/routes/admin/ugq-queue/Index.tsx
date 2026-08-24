@@ -54,6 +54,21 @@ type QueueRow = {
   proposer_total_published: number;
   proposer_total_rejected: number;
   proposer_flagged: boolean;
+  // Aug 2026 — parallel review for auto-published questions (see
+  // ugq-screen's AUTO-PUBLISH section). preview_reframe is the unverified
+  // preview generated at submit time; the q_* fields describe the LIVE
+  // question as it stands right now (reframed_question_id join) — q_question
+  // etc. can differ from preview_reframe if an admin already used
+  // edit_published. All null/undefined for proposals that never published.
+  preview_reframe: Record<string, unknown> | null;
+  q_question: string | null;
+  q_slider_low_label: string | null;
+  q_slider_high_label: string | null;
+  q_context_summary: string | null;
+  q_supporting_links: string[] | null;
+  q_status: string | null;
+  q_auto_published: boolean | null;
+  q_admin_reviewed_at: string | null;
 };
 
 const STATUS_TABS: { value: string; label: string }[] = [
@@ -155,6 +170,21 @@ function safetyBadge(flag: unknown) {
   if (flag === "review") return <Badge className="bg-amber-500 hover:bg-amber-500 gap-1"><AlertTriangle className="h-3 w-3" />review</Badge>;
   if (flag === "clean") return <Badge variant="outline" className="text-emerald-700 border-emerald-300">clean</Badge>;
   return null;
+}
+
+// Aug 2026 — auto-publish parallel review: shows whether a live, UGQ-authored
+// question still needs an admin look. Absent entirely for questions that
+// went through the full fact-checked pipeline (q_auto_published=false) —
+// those never needed review to begin with.
+function needsReviewBadge(row: QueueRow) {
+  if (row.q_status === "archived") {
+    return <Badge className="bg-slate-500 hover:bg-slate-500">Unpublished</Badge>;
+  }
+  if (!row.q_auto_published) return null;
+  if (row.q_admin_reviewed_at) {
+    return <Badge variant="outline" className="text-emerald-700 border-emerald-300">Reviewed</Badge>;
+  }
+  return <Badge className="bg-amber-500 hover:bg-amber-500">Needs review</Badge>;
 }
 
 function qualityBadge(score: number | null) {
@@ -471,6 +501,162 @@ function ReframedSection({ row, onDone }: { row: QueueRow; onDone: () => void })
   );
 }
 
+// Aug 2026 — parallel review for status='published' rows. Two very
+// different populations land here:
+//   1. Admin fact-checked pipeline (q_auto_published=false) — already
+//      reviewed by definition (that's what Gate 2 approve/publish_reframed
+//      IS), nothing to do here beyond a "View live" link.
+//   2. Gate-1-only instant publish (q_auto_published=true) — went live off
+//      the unverified preview; THIS is what needsReviewBadge/this section's
+//      actions exist for. confirm_published / edit_published / unpublish all
+//      hit ugq-moderate the same way every other action here does.
+function PublishedReviewSection({ row, onDone }: { row: QueueRow; onDone: () => void }) {
+  const { toast } = useToast();
+  const [busy, setBusy] = React.useState<string | null>(null);
+  const [editing, setEditing] = React.useState(false);
+  const [editText, setEditText] = React.useState(row.q_question ?? row.raw_question);
+  const [editLow, setEditLow] = React.useState(row.q_slider_low_label ?? "");
+  const [editHigh, setEditHigh] = React.useState(row.q_slider_high_label ?? "");
+  const [unpublishing, setUnpublishing] = React.useState(false);
+  const [unpublishNote, setUnpublishNote] = React.useState("");
+
+  const isLive = row.q_status === "active";
+  const needsReview = row.q_auto_published === true && !row.q_admin_reviewed_at;
+
+  async function run(payload: Record<string, unknown>, label: string, successTitle: string) {
+    setBusy(label);
+    const { ok, message, error } = await moderate(payload);
+    setBusy(null);
+    if (ok) {
+      toast({ title: successTitle });
+      setEditing(false);
+      setUnpublishing(false);
+      onDone();
+    } else {
+      toast({ title: error ?? "Action failed", description: message, variant: "destructive" });
+    }
+  }
+
+  return (
+    <div className="rounded-md border border-slate-200 p-3 space-y-3">
+      <div className="flex items-center gap-2">
+        {needsReviewBadge(row)}
+        {row.reframed_question_id && (
+          <a
+            href={`#/q/${row.reframed_question_id}`}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline ml-auto"
+          >
+            <ExternalLink className="h-3.5 w-3.5" /> View live
+          </a>
+        )}
+      </div>
+
+      <div className="rounded-md bg-slate-50 border border-slate-200 p-2.5 space-y-1.5">
+        <div className="text-xs font-medium text-slate-500">Live question text</div>
+        {editing ? (
+          <div className="space-y-2">
+            <Textarea value={editText} onChange={(e) => setEditText(e.target.value)} rows={3} />
+            <div className="flex flex-wrap gap-2">
+              <input value={editLow} onChange={(e) => setEditLow(e.target.value)} placeholder="Oppose-end label"
+                className="h-8 flex-1 min-w-[160px] rounded-md border border-slate-300 px-2 text-sm" />
+              <input value={editHigh} onChange={(e) => setEditHigh(e.target.value)} placeholder="Support-end label"
+                className="h-8 flex-1 min-w-[160px] rounded-md border border-slate-300 px-2 text-sm" />
+            </div>
+          </div>
+        ) : (
+          <>
+            <p className="text-sm text-slate-800">{row.q_question ?? "—"}</p>
+            {(row.q_slider_low_label || row.q_slider_high_label) && (
+              <p className="text-xs text-slate-500">
+                {row.q_slider_low_label ?? "Oppose"} <span className="text-slate-300">↔</span> {row.q_slider_high_label ?? "Support"}
+              </p>
+            )}
+          </>
+        )}
+      </div>
+
+      {row.q_context_summary && (
+        <div className="rounded-md bg-blue-50 border border-blue-200 p-2.5 space-y-1">
+          <div className="text-xs font-medium text-blue-700">Background context (web-search grounded)</div>
+          <p className="text-xs text-blue-900">{row.q_context_summary}</p>
+          {row.q_supporting_links && row.q_supporting_links.length > 0 && (
+            <div className="flex flex-wrap gap-2 pt-1">
+              {row.q_supporting_links.map((url) => (
+                <a key={url} href={url} target="_blank" rel="noreferrer"
+                   className="text-[11px] text-blue-600 hover:underline">
+                  {(() => { try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; } })()}
+                </a>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {row.q_admin_reviewed_at && (
+        <p className="text-xs text-slate-500">
+          Reviewed {timeAgo(row.q_admin_reviewed_at)}.
+        </p>
+      )}
+
+      {!isLive ? (
+        <p className="text-xs text-slate-500">This question was unpublished — no further actions available here.</p>
+      ) : unpublishing ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <input value={unpublishNote} onChange={(e) => setUnpublishNote(e.target.value)}
+            placeholder="Reason (shown in audit log only)"
+            className="h-8 flex-1 min-w-[200px] rounded-md border border-slate-300 px-2 text-sm" />
+          <Button size="sm" variant="destructive" disabled={!!busy}
+            onClick={() => run({ proposal_id: row.id, action: "unpublish", note: unpublishNote || null }, "unpublish", "Question unpublished")}>
+            {busy === "unpublish" ? "Unpublishing…" : "Confirm unpublish"}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setUnpublishing(false)}>Cancel</Button>
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {needsReview && !editing && (
+            <Button size="sm" disabled={!!busy}
+              onClick={() => run({ proposal_id: row.id, action: "confirm_published" }, "confirm", "Marked as reviewed")}>
+              {busy === "confirm" ? "Confirming…" : "Confirm as-is"}
+            </Button>
+          )}
+          {!editing ? (
+            <Button size="sm" variant="outline" disabled={!!busy} onClick={() => setEditing(true)}>
+              Edit text
+            </Button>
+          ) : (
+            <>
+              <Button size="sm" disabled={!!busy || editText.trim().length < 20}
+                onClick={() => run({
+                  proposal_id: row.id, action: "edit_published",
+                  edited_question: editText.trim(),
+                  slider_low_label: editLow.trim() || null,
+                  slider_high_label: editHigh.trim() || null,
+                }, "edit", "Question updated & marked reviewed")}>
+                {busy === "edit" ? "Saving…" : "Save & mark reviewed"}
+              </Button>
+              <Button size="sm" variant="ghost" disabled={!!busy}
+                onClick={() => {
+                  setEditing(false);
+                  setEditText(row.q_question ?? row.raw_question);
+                  setEditLow(row.q_slider_low_label ?? "");
+                  setEditHigh(row.q_slider_high_label ?? "");
+                }}>
+                Cancel
+              </Button>
+            </>
+          )}
+          <Button size="sm" variant="ghost" className="text-red-600 ml-auto" disabled={!!busy}
+            onClick={() => setUnpublishing(true)}>
+            Unpublish
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AdminUGQQueuePage() {
   const [status, setStatus] = React.useState("in_review");
   const [sort, setSort] = React.useState("quality");
@@ -567,6 +753,7 @@ export default function AdminUGQQueuePage() {
                     {r.proposer_flagged && <Badge className="bg-red-600 hover:bg-red-600">flagged</Badge>}
                     {qualityBadge(r.quality_score)}
                     {safetyBadge((ai as Record<string, unknown>).safety_flag)}
+                    {r.status === "published" && needsReviewBadge(r)}
                     {r.location_label && (
                       <span className="inline-flex items-center gap-0.5"><MapPin className="h-3 w-3" />{r.location_label}</span>
                     )}
@@ -629,6 +816,8 @@ export default function AdminUGQQueuePage() {
                   {/* Gate 2 moderation actions */}
                   {r.status === "reframed" ? (
                     <ReframedSection row={r} onDone={() => refetch()} />
+                  ) : r.status === "published" ? (
+                    <PublishedReviewSection row={r} onDone={() => refetch()} />
                   ) : (
                     <ModerationPanel row={r} topics={topics} onDone={() => refetch()} />
                   )}
