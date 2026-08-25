@@ -33,7 +33,7 @@
 // (ugq-moderate) before it becomes the public "who's responsible" answer.
 
 import * as React from "react";
-import { Loader2, CheckCircle2, Lightbulb, Sparkles, ExternalLink, Landmark, ChevronDown } from "lucide-react";
+import { Loader2, CheckCircle2, Lightbulb, Sparkles, ExternalLink, Landmark, ChevronDown, Wand2 } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
@@ -46,6 +46,11 @@ import { SUPABASE_URL, getJwt, supabaseHeaders } from "@/lib/env";
 
 const MIN_LEN = 20;
 const MAX_LEN = 1000;
+// Aug 2026, NEW: bounds for the "add more context" refine textarea — kept
+// in sync with ugq-refine-preview's own REFINE_MIN_LEN/REFINE_MAX_LEN so
+// the button disables at the same point the backend would reject anyway.
+const REFINE_MIN_LEN = 5;
+const REFINE_MAX_LEN = 500;
 
 type Props = {
   open: boolean;
@@ -190,6 +195,15 @@ export function ProposeQuestionModal({
   const [pollAttempts, setPollAttempts] = React.useState(0);
   const [pollExhausted, setPollExhausted] = React.useState(false);
 
+  // Refine state (Aug 2026, NEW) — see handleRefine. Only relevant during
+  // phase==="review", independent of the poll state above (by the time
+  // refine is available, previewReframe is already populated, so the poll
+  // effect's own guard already keeps it from firing concurrently).
+  const [refineOpen, setRefineOpen] = React.useState(false);
+  const [refineText, setRefineText] = React.useState("");
+  const [refining, setRefining] = React.useState(false);
+  const [refineError, setRefineError] = React.useState<string | null>(null);
+
   // Authority tagging (post-publish) state.
   const [suggestedAuthorities, setSuggestedAuthorities] = React.useState<Authority[]>([]);
   const [tagStatus, setTagStatus] = React.useState<"idle" | "tagging" | "tagged" | "skipped">("idle");
@@ -214,6 +228,10 @@ export function ProposeQuestionModal({
       setAutoPublished(false);
       setPollAttempts(0);
       setPollExhausted(false);
+      setRefineOpen(false);
+      setRefineText("");
+      setRefining(false);
+      setRefineError(null);
       setSuggestedAuthorities([]);
       setTagStatus("idle");
       setTaggedName(null);
@@ -356,7 +374,7 @@ export function ProposeQuestionModal({
   }
 
   async function handlePublish() {
-    if (!proposalId || phase === "publishing") return;
+    if (!proposalId || phase === "publishing" || refining) return;
     setPhase("publishing");
     setErrorMsg(null);
     try {
@@ -380,6 +398,50 @@ export function ProposeQuestionModal({
     } catch (_e) {
       setErrorMsg("Network error. Please check your connection and try again.");
       setPhase("review");
+    }
+  }
+
+  // Aug 2026, NEW: lets the proposer add extra context and get ugq-screen to
+  // regenerate the preview before they commit to Publish — see
+  // ugq-refine-preview. Deliberately does NOT touch `phase` (stays
+  // "review" throughout) since this is still the same review step, just
+  // iterating on it; `refining` is a separate, local loading flag so the
+  // Publish/Not now buttons can be disabled during a regeneration without
+  // the phase machinery treating this like the publishing step itself.
+  async function handleRefine() {
+    const trimmedContext = refineText.trim();
+    if (trimmedContext.length < REFINE_MIN_LEN || trimmedContext.length > REFINE_MAX_LEN || refining || !proposalId) return;
+    setRefining(true);
+    setRefineError(null);
+    try {
+      const jwt = getJwt();
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/ugq-refine-preview`, {
+        method: "POST",
+        headers: supabaseHeaders(jwt),
+        body: JSON.stringify({ proposal_id: proposalId, additional_context: trimmedContext }),
+      });
+      const json = await res.json().catch(() => ({}));
+
+      if (!res.ok || !json?.ok) {
+        setRefineError(json?.message ?? "Couldn't regenerate just now. Please try again.");
+        return;
+      }
+
+      if (json.refined === false) {
+        // Backend tried and failed both attempts — it left the existing
+        // preview untouched, so just surface the message and keep going.
+        setRefineError(json.message ?? "Couldn't regenerate with that context — your original preview is still here.");
+        return;
+      }
+
+      setPreviewReframe(parsePreviewReframe(json.preview_reframe));
+      setRefineOpen(false);
+      setRefineText("");
+      setRefineError(null);
+    } catch (_e) {
+      setRefineError("Network error. Please check your connection and try again.");
+    } finally {
+      setRefining(false);
     }
   }
 
@@ -621,14 +683,74 @@ export function ProposeQuestionModal({
               </div>
             ) : null}
 
+            {/* Aug 2026, NEW: "add more context and regenerate" — lets the
+                proposer course-correct the preview before Publish instead of
+                either publishing something that missed the mark or
+                abandoning the proposal outright. */}
+            {preview ? (
+              <div className="pt-0.5">
+                {!refineOpen ? (
+                  <button
+                    type="button"
+                    onClick={() => setRefineOpen(true)}
+                    disabled={refining}
+                    className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline disabled:opacity-50"
+                  >
+                    <Wand2 className="h-3 w-3" /> Add more context and regenerate
+                  </button>
+                ) : (
+                  <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+                    <Label htmlFor="ugq-refine-context" className="text-xs text-slate-600">
+                      What should we add or fix?
+                    </Label>
+                    <Textarea
+                      id="ugq-refine-context"
+                      value={refineText}
+                      onChange={(e) => setRefineText(e.target.value.slice(0, REFINE_MAX_LEN))}
+                      placeholder="e.g. this happened in March, or it's specifically about UP"
+                      rows={2}
+                      disabled={refining}
+                    />
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] text-slate-400">
+                        {refineText.trim().length}/{REFINE_MAX_LEN}
+                      </span>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={refining}
+                          onClick={() => { setRefineOpen(false); setRefineText(""); setRefineError(null); }}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          size="sm"
+                          disabled={refining || refineText.trim().length < REFINE_MIN_LEN}
+                          onClick={handleRefine}
+                        >
+                          {refining ? (
+                            <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Regenerating&#x2026;</>
+                          ) : (
+                            "Regenerate preview"
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                    {refineError ? <p className="text-xs text-red-600">{refineError}</p> : null}
+                  </div>
+                )}
+              </div>
+            ) : null}
+
             {errorMsg ? <p className="text-sm text-red-600">{errorMsg}</p> : null}
 
             <DialogFooter>
-              <Button variant="ghost" onClick={close} disabled={phase === "publishing"}>
+              <Button variant="ghost" onClick={close} disabled={phase === "publishing" || refining}>
                 {preview ? "Not now" : "Done"}
               </Button>
               {preview ? (
-                <Button onClick={handlePublish} disabled={phase === "publishing"}>
+                <Button onClick={handlePublish} disabled={phase === "publishing" || refining}>
                   {phase === "publishing" ? (
                     <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Publishing&#x2026;</>
                   ) : (
