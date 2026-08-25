@@ -156,6 +156,14 @@ export function ProposeQuestionModal({
   const [questionId, setQuestionId] = React.useState<string | null>(null);
   const [autoPublished, setAutoPublished] = React.useState(false); // legacy path fallback, see header note
 
+  // Polling state — see the effect below. Only relevant while phase==="review"
+  // and previewReframe is still null (ugq-submit's ~20s internal wait gave up
+  // before ugq-screen finished — the screening itself keeps running
+  // server-side regardless, this just picks up the result once it lands
+  // instead of leaving the proposer at a dead end).
+  const [pollAttempts, setPollAttempts] = React.useState(0);
+  const [pollExhausted, setPollExhausted] = React.useState(false);
+
   // Authority tagging (post-publish) state.
   const [suggestedAuthorities, setSuggestedAuthorities] = React.useState<Authority[]>([]);
   const [tagStatus, setTagStatus] = React.useState<"idle" | "tagging" | "tagged" | "skipped">("idle");
@@ -178,6 +186,8 @@ export function ProposeQuestionModal({
       setPreviewReframe(null);
       setQuestionId(null);
       setAutoPublished(false);
+      setPollAttempts(0);
+      setPollExhausted(false);
       setSuggestedAuthorities([]);
       setTagStatus("idle");
       setTaggedName(null);
@@ -188,6 +198,79 @@ export function ProposeQuestionModal({
       setBrowseSelection("");
     }
   }, [open, defaultLocation]);
+
+  // Poll for a preview that wasn't ready in time. Only active while
+  // phase==="review" AND previewReframe is still null AND we haven't given
+  // up yet — naturally stops (via the cleanup below) the moment any of those
+  // flips: preview arrives, phase changes (published/closed/back to form),
+  // or the attempt cap is hit. Reads the proposal directly via REST — RLS
+  // (uqp_select_own_or_admin) already lets a proposer read their own row, so
+  // no new endpoint is needed for this.
+  const POLL_INTERVAL_MS = 3000;
+  const POLL_MAX_ATTEMPTS = 10; // 10 * 3s = 30s of polling on top of ugq-submit's own ~20s wait
+
+  React.useEffect(() => {
+    if (phase !== "review" || previewReframe || !proposalId || pollExhausted) return;
+
+    let cancelled = false;
+    const timer = setInterval(async () => {
+      if (cancelled) return;
+      try {
+        const jwt = getJwt();
+        const res = await fetch(
+          `${SUPABASE_URL}/rest/v1/user_question_proposals?id=eq.${proposalId}&select=status,preview_reframe,rejection_reason,rejection_note,reframed_question_id`,
+          { headers: supabaseHeaders(jwt) },
+        );
+        if (!res.ok || cancelled) return; // transient — try again next tick
+        const rows = await res.json().catch(() => []);
+        const row = Array.isArray(rows) && rows.length ? (rows[0] as Record<string, unknown>) : null;
+        if (!row || cancelled) return;
+
+        if (row.status === "rejected") {
+          clearInterval(timer);
+          setErrorMsg(typeof row.rejection_note === "string" && row.rejection_note
+            ? row.rejection_note
+            : "Your question wasn't accepted. Try rephrasing it.");
+          setPhase("form");
+          return;
+        }
+
+        if (row.status === "published" && typeof row.reframed_question_id === "string") {
+          // Backward-compat auto-publish path resolved while we were
+          // waiting — same handling as the direct response case in
+          // handleSubmit.
+          clearInterval(timer);
+          setQuestionId(row.reframed_question_id);
+          setAutoPublished(true);
+          setPhase("published");
+          return;
+        }
+
+        const parsed = parsePreviewReframe(row.preview_reframe);
+        if (parsed) {
+          clearInterval(timer);
+          setPreviewReframe(parsed); // stays in "review" — now renders the full preview + Publish button
+          return;
+        }
+
+        setPollAttempts((n) => {
+          const next = n + 1;
+          if (next >= POLL_MAX_ATTEMPTS) {
+            clearInterval(timer);
+            setPollExhausted(true);
+          }
+          return next;
+        });
+      } catch {
+        // Network hiccup — just try again next tick, don't give up on one blip.
+      }
+    }, POLL_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [phase, previewReframe, proposalId, pollExhausted]);
 
   const trimmed = question.trim();
   const tooShort = trimmed.length > 0 && trimmed.length < MIN_LEN;
@@ -466,12 +549,14 @@ export function ProposeQuestionModal({
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Sparkles className="h-5 w-5 text-amber-500" />
-                {preview ? "Here\u2019s how this looks" : "Under review"}
+                {preview ? "Here\u2019s how this looks" : pollExhausted ? "Still processing" : "Almost ready"}
               </DialogTitle>
               <DialogDescription>
                 {preview
                   ? "Review it, then publish when you're ready. Our team will also take a quick look shortly after."
-                  : "We're still processing your question \u2014 check My Proposals in a bit, or come back here later."}
+                  : pollExhausted
+                  ? "This is taking longer than usual \u2014 check My Proposals in a bit, or come back here later."
+                  : "We're finishing up your preview \u2014 this can take up to a minute with everything we check."}
               </DialogDescription>
             </DialogHeader>
 
@@ -500,6 +585,11 @@ export function ProposeQuestionModal({
                 <p className="text-[11px] text-amber-700/80 pt-1">
                   Not fact-checked yet &#x2014; our team reviews shortly after this goes live and may refine the wording.
                 </p>
+              </div>
+            ) : !pollExhausted ? (
+              <div className="flex flex-col items-center justify-center gap-2 py-8 text-slate-500">
+                <Loader2 className="h-5 w-5 animate-spin" />
+                <p className="text-xs">Checking for your preview&#x2026;</p>
               </div>
             ) : null}
 
