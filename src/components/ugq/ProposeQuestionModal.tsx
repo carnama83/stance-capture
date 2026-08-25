@@ -65,6 +65,12 @@ type PreviewReframe = {
   context_summary: string | null;
   supporting_links: string[];
   quality_notes?: string | null;
+  // Aug 2026, NEW: og:image/twitter:image scraped from supporting_links (or
+  // the proposer's source_url) by ugq-screen's attachCoverImage, at preview
+  // time — so this can be null either because scraping hasn't run yet on an
+  // old row, or because it genuinely found nothing. Either way, absent just
+  // means no image to show.
+  cover_image_url: string | null;
 };
 
 type Authority = { id: string; name: string; domain: string; jurisdiction_level: string };
@@ -83,6 +89,8 @@ function parsePreviewReframe(raw: unknown): PreviewReframe | null {
       ? r.supporting_links.filter((u): u is string => typeof u === "string")
       : [],
     quality_notes: typeof r.quality_notes === "string" ? r.quality_notes : null,
+    cover_image_url: typeof r.cover_image_url === "string" && r.cover_image_url.trim()
+      ? r.cover_image_url.trim() : null,
   };
 }
 
@@ -135,6 +143,24 @@ function StanceScalePreview({ low, high }: { low: string | null; high: string | 
         <span className="max-w-[42%] text-right leading-tight">{high ?? "Support"}</span>
       </div>
     </div>
+  );
+}
+
+// Cover image found via og:image/twitter:image scraping at preview time
+// (Aug 2026, NEW — see ugq-screen's attachCoverImage). Best-effort scrape
+// result, not guaranteed reachable, so this hides itself silently on load
+// failure rather than showing a broken-image icon.
+function CoverImagePreview({ src }: { src: string | null }) {
+  const [failed, setFailed] = React.useState(false);
+  React.useEffect(() => { setFailed(false); }, [src]); // reset if a new preview replaces this one
+  if (!src || failed) return null;
+  return (
+    <img
+      src={src}
+      alt=""
+      className="w-full h-36 object-cover rounded-md"
+      onError={() => setFailed(true)}
+    />
   );
 }
 
@@ -435,6 +461,7 @@ export function ProposeQuestionModal({
                   <Sparkles className="h-3.5 w-3.5" />
                   Your question, live now
                 </div>
+                <CoverImagePreview src={preview.cover_image_url} />
                 <p className="text-sm text-slate-800 leading-snug">{preview.question}</p>
                 <StanceScalePreview low={preview.slider_low_label} high={preview.slider_high_label} />
               </div>
@@ -562,6 +589,7 @@ export function ProposeQuestionModal({
 
             {preview ? (
               <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 space-y-2">
+                <CoverImagePreview src={preview.cover_image_url} />
                 <p className="text-sm text-slate-800 leading-snug">{preview.question}</p>
                 <StanceScalePreview low={preview.slider_low_label} high={preview.slider_high_label} />
 
