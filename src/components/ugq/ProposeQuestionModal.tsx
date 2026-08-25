@@ -291,7 +291,16 @@ export function ProposeQuestionModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent
+        className="sm:max-w-lg"
+        // Aug 2026: a click outside was silently discarding an already-saved
+        // preview mid-review (proposal + screening had already completed —
+        // only the browser's copy of the preview was lost). Only explicit
+        // actions (the X, Cancel, Not now, Done) should close this now.
+        onPointerDownOutside={(e) => e.preventDefault()}
+        onInteractOutside={(e) => e.preventDefault()}
+        onEscapeKeyDown={(e) => e.preventDefault()}
+      >
         {phase === "published" ? (
           <div className="flex flex-col items-center text-center py-6 gap-3">
             <CheckCircle2 className="h-10 w-10 text-green-600" />

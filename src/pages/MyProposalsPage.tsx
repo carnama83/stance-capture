@@ -3,16 +3,38 @@
 //
 // Shows the signed-in user's proposals (newest first) with status, date and
 // stance counts for published ones, plus their reputation score + tier.
+//
+// Aug 2026: publishing moved from automatic to user-confirmed (see
+// ugq-confirm-publish) — the proposer reviews the preview and clicks
+// Publish, normally right inside ProposeQuestionModal. But that modal is
+// ephemeral: if it's closed before publishing (outside click used to do
+// this silently — since fixed, see ProposeQuestionModal — or just navigating
+// away), the proposal + preview are still saved server-side with nothing in
+// the UI to get back to them. This page now shows an inline preview +
+// Publish button for any 'in_review' proposal that has one ready, so that
+// state is never a dead end.
 
 import * as React from "react";
 import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
-import { Lightbulb, Loader2, MessageSquare } from "lucide-react";
+import { Lightbulb, Loader2, MessageSquare, Sparkles, ExternalLink } from "lucide-react";
 import PageLayout from "@/components/PageLayout";
 import { ProposeQuestionButton } from "@/components/ugq/ProposeQuestionButton";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { SUPABASE_URL, getJwt, supabaseHeaders } from "@/lib/env";
+
+// Shape of user_question_proposals.preview_reframe — same as
+// ProposeQuestionModal's PreviewReframe, duplicated here rather than shared
+// since these live in different route trees in this codebase's conventions.
+type PreviewReframe = {
+  question: string;
+  slider_low_label: string | null;
+  slider_high_label: string | null;
+  context_summary: string | null;
+  supporting_links: string[];
+};
 
 type Proposal = {
   id: string;
@@ -22,6 +44,7 @@ type Proposal = {
   created_at: string;
   reframed_question_id: string | null;
   response_count: number;
+  preview_reframe: PreviewReframe | null;
 };
 
 type Reputation = {
@@ -32,6 +55,26 @@ type Reputation = {
   total_rejected: number;
 };
 
+function parsePreviewReframe(raw: unknown): PreviewReframe | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const question = typeof r.question === "string" ? r.question.trim() : "";
+  if (!question) return null;
+  return {
+    question,
+    slider_low_label: typeof r.slider_low_label === "string" ? r.slider_low_label : null,
+    slider_high_label: typeof r.slider_high_label === "string" ? r.slider_high_label : null,
+    context_summary: typeof r.context_summary === "string" && r.context_summary.trim() ? r.context_summary.trim() : null,
+    supporting_links: Array.isArray(r.supporting_links)
+      ? r.supporting_links.filter((u): u is string => typeof u === "string")
+      : [],
+  };
+}
+
+function hostnameOf(url: string): string {
+  try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; }
+}
+
 async function fetchMyProposals(): Promise<Proposal[]> {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/get_my_proposals`, {
     method: "POST",
@@ -39,7 +82,17 @@ async function fetchMyProposals(): Promise<Proposal[]> {
     body: JSON.stringify({}),
   });
   if (!res.ok) throw new Error(`Failed to load proposals (${res.status})`);
-  return (await res.json()) as Proposal[];
+  const rows = (await res.json()) as Array<Record<string, unknown>>;
+  return rows.map((r) => ({
+    id: String(r.id),
+    raw_question: String(r.raw_question ?? ""),
+    status: String(r.status ?? ""),
+    rejection_reason: typeof r.rejection_reason === "string" ? r.rejection_reason : null,
+    created_at: String(r.created_at ?? ""),
+    reframed_question_id: typeof r.reframed_question_id === "string" ? r.reframed_question_id : null,
+    response_count: Number(r.response_count ?? 0),
+    preview_reframe: parsePreviewReframe(r.preview_reframe),
+  }));
 }
 
 async function fetchMyReputation(): Promise<Reputation | null> {
@@ -70,7 +123,81 @@ function tierLabel(tier: string) {
   return "New proposer";
 }
 
+// Inline preview + Publish action for an 'in_review' proposal with a ready
+// preview. Mirrors ProposeQuestionModal's review card, just embedded rather
+// than in a dialog, and calls the same ugq-confirm-publish endpoint.
+function InlinePublishCard({ proposal, onPublished }: { proposal: Proposal; onPublished: () => void }) {
+  const [publishing, setPublishing] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const preview = proposal.preview_reframe;
+  if (!preview) return null;
+
+  async function handlePublish() {
+    setPublishing(true);
+    setError(null);
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/ugq-confirm-publish`, {
+        method: "POST",
+        headers: supabaseHeaders(getJwt()),
+        body: JSON.stringify({ proposal_id: proposal.id }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.ok) {
+        setError(json?.message ?? "Couldn't publish just now. Please try again.");
+        setPublishing(false);
+        return;
+      }
+      onPublished();
+      // Deliberately not resetting `publishing` — the row re-renders as
+      // 'published' once the list refetches, so this component unmounts.
+    } catch (_e) {
+      setError("Network error. Please try again.");
+      setPublishing(false);
+    }
+  }
+
+  return (
+    <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 space-y-2">
+      <div className="flex items-center gap-1.5 text-xs font-medium text-amber-700">
+        <Sparkles className="h-3.5 w-3.5" />
+        Ready to publish
+      </div>
+      <p className="text-sm text-slate-800 leading-snug">{preview.question}</p>
+      {(preview.slider_low_label || preview.slider_high_label) && (
+        <div className="flex items-center justify-between gap-2 text-[11px] text-slate-500">
+          <span className="truncate">{preview.slider_low_label ?? "Oppose"}</span>
+          <span className="text-slate-300 shrink-0">&#8596;</span>
+          <span className="truncate text-right">{preview.slider_high_label ?? "Support"}</span>
+        </div>
+      )}
+      {preview.context_summary && (
+        <div className="pt-1.5 mt-0.5 border-t border-amber-200/70 space-y-1">
+          <p className="text-[11px] font-medium text-amber-700">Background</p>
+          <p className="text-xs text-slate-700 leading-relaxed">{preview.context_summary}</p>
+          {preview.supporting_links.length > 0 && (
+            <div className="flex flex-wrap gap-x-3 gap-y-1">
+              {preview.supporting_links.slice(0, 3).map((url) => (
+                <a key={url} href={url} target="_blank" rel="noopener noreferrer"
+                   className="text-[11px] text-slate-500 hover:text-slate-800 hover:underline">
+                  {hostnameOf(url)}
+                </a>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      {error && <p className="text-xs text-red-600">{error}</p>}
+      <div className="flex justify-end pt-0.5">
+        <Button size="sm" disabled={publishing} onClick={handlePublish}>
+          {publishing ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Publishing&#x2026;</> : "Publish"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export default function MyProposalsPage() {
+  const queryClient = useQueryClient();
   const { data: proposals, isLoading, isError } = useQuery<Proposal[]>({
     queryKey: ["my-proposals"],
     queryFn: fetchMyProposals,
@@ -83,6 +210,11 @@ export default function MyProposalsPage() {
   });
 
   const rows = proposals ?? [];
+
+  function refetchAfterPublish() {
+    queryClient.invalidateQueries({ queryKey: ["my-proposals"] });
+    queryClient.invalidateQueries({ queryKey: ["my-proposal-reputation"] });
+  }
 
   return (
     <PageLayout>
@@ -129,11 +261,17 @@ export default function MyProposalsPage() {
         <div className="space-y-2">
           {rows.map((p) => {
             const style = STATUS_STYLE[p.status] ?? { label: p.status, cls: "bg-slate-400" };
+            const readyToPublish = p.status === "in_review" && !!p.preview_reframe;
             const inner = (
               <div className="rounded-lg border border-slate-200 bg-white p-3 hover:border-slate-300 transition-colors">
                 <p className="text-sm text-slate-900 line-clamp-2">{p.raw_question}</p>
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
                   <Badge className={style.cls}>{style.label}</Badge>
+                  {readyToPublish && (
+                    <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 border border-amber-300">
+                      Ready to publish
+                    </Badge>
+                  )}
                   {p.status === "rejected" && p.rejection_reason && (
                     <span className="text-slate-400">reason: {p.rejection_reason}</span>
                   )}
@@ -142,10 +280,23 @@ export default function MyProposalsPage() {
                       <MessageSquare className="h-3 w-3" /> {p.response_count} stances
                     </span>
                   )}
+                  {p.status === "published" && p.reframed_question_id && (
+                    <span className="inline-flex items-center gap-1 text-blue-600">
+                      <ExternalLink className="h-3 w-3" /> View live
+                    </span>
+                  )}
                   <span className="ml-auto">
                     {(() => { try { return formatDistanceToNow(new Date(p.created_at), { addSuffix: true }); } catch { return ""; } })()}
                   </span>
                 </div>
+
+                {/* readyToPublish only applies to 'in_review' rows, which are
+                    never wrapped in the <Link> below (only 'published' rows
+                    are) — so the Publish button here never ends up nested
+                    inside an ancestor <a>, no click-swallowing to worry about. */}
+                {readyToPublish && (
+                  <InlinePublishCard proposal={p} onPublished={refetchAfterPublish} />
+                )}
               </div>
             );
             return p.status === "published" && p.reframed_question_id ? (
