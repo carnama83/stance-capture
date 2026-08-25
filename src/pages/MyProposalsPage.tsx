@@ -75,6 +75,42 @@ function hostnameOf(url: string): string {
   try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; }
 }
 
+// Same static preview as ProposeQuestionModal's StanceScalePreview —
+// duplicated rather than shared, matching this codebase's existing
+// convention of not sharing small presentational pieces across route trees.
+// Matches QuestionStanceSlider's real visual language (gradient colors,
+// track height, thumb border/size) so this doesn't look like a different
+// component. Thumb centered at Neutral — no real position exists yet.
+function StanceScalePreview({ low, high }: { low: string | null; high: string | null }) {
+  if (!low && !high) return null;
+  return (
+    <div>
+      <p className="text-[10.5px] text-slate-500 mb-2">
+        Here&#x2019;s how the stance scale will appear to users:
+      </p>
+      <div className="relative py-1.5">
+        <div
+          className="absolute inset-x-0 top-1/2 -translate-y-1/2 rounded-full"
+          style={{
+            height: "8px",
+            background: "linear-gradient(to right, rgba(248,113,113,0.3), rgba(203,213,225,0.3), rgba(74,222,128,0.3))",
+          }}
+          aria-hidden
+        />
+        <div
+          className="absolute left-1/2 top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-slate-400 bg-white"
+          aria-hidden
+        />
+      </div>
+      <div className="flex items-start justify-between gap-2 text-[11px] text-slate-600">
+        <span className="max-w-[42%] leading-tight">{low ?? "Oppose"}</span>
+        <span className="text-slate-400 shrink-0">Neutral</span>
+        <span className="max-w-[42%] text-right leading-tight">{high ?? "Support"}</span>
+      </div>
+    </div>
+  );
+}
+
 async function fetchMyProposals(): Promise<Proposal[]> {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/get_my_proposals`, {
     method: "POST",
@@ -163,13 +199,7 @@ function InlinePublishCard({ proposal, onPublished }: { proposal: Proposal; onPu
         Ready to publish
       </div>
       <p className="text-sm text-slate-800 leading-snug">{preview.question}</p>
-      {(preview.slider_low_label || preview.slider_high_label) && (
-        <div className="flex items-center justify-between gap-2 text-[11px] text-slate-500">
-          <span className="truncate">{preview.slider_low_label ?? "Oppose"}</span>
-          <span className="text-slate-300 shrink-0">&#8596;</span>
-          <span className="truncate text-right">{preview.slider_high_label ?? "Support"}</span>
-        </div>
-      )}
+      <StanceScalePreview low={preview.slider_low_label} high={preview.slider_high_label} />
       {preview.context_summary && (
         <div className="pt-1.5 mt-0.5 border-t border-amber-200/70 space-y-1">
           <p className="text-[11px] font-medium text-amber-700">Background</p>
