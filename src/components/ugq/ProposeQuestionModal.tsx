@@ -33,7 +33,7 @@
 // (ugq-moderate) before it becomes the public "who's responsible" answer.
 
 import * as React from "react";
-import { Loader2, CheckCircle2, Lightbulb, Sparkles, ExternalLink, Landmark, ChevronDown, Wand2, Mic, Square, RotateCcw } from "lucide-react";
+import { Loader2, CheckCircle2, Lightbulb, Sparkles, ExternalLink, Landmark, ChevronDown, Wand2, Mic, Square, Trash2, Play, Pause, Check } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
@@ -230,11 +230,28 @@ export function ProposeQuestionModal({
   const [recordingSeconds, setRecordingSeconds] = React.useState(0);
   const [voiceRecordingPath, setVoiceRecordingPath] = React.useState<string | null>(null);
   const [voiceError, setVoiceError] = React.useState<string | null>(null);
+  // Live bar heights (px) driven by the mic via AnalyserNode while
+  // recordingState==="recording" — see startWaveformLoop. Falls back to a
+  // flat baseline if AudioContext isn't available; recording itself still
+  // works either way, this is purely decorative.
+  const [waveformLevels, setWaveformLevels] = React.useState<number[]>(Array(24).fill(4));
+  // Playback state for the custom "recorded" preview player.
+  const [isPlaying, setIsPlaying] = React.useState(false);
+  const [playbackPosition, setPlaybackPosition] = React.useState(0);
 
   const mediaRecorderRef = React.useRef<MediaRecorder | null>(null);
   const audioChunksRef = React.useRef<Blob[]>([]);
   const streamRef = React.useRef<MediaStream | null>(null);
   const recordingTimerRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const audioContextRef = React.useRef<AudioContext | null>(null);
+  const analyserRef = React.useRef<AnalyserNode | null>(null);
+  const waveformFrameRef = React.useRef<number | null>(null);
+  // Distinguishes the trash/cancel button (discard, back to idle) from the
+  // stop button (keep it, go to preview) — both call MediaRecorder.stop(),
+  // which only fires one onstop handler, so this flag tells it which
+  // outcome the user actually wanted.
+  const cancelledRef = React.useRef(false);
+  const audioPlayerRef = React.useRef<HTMLAudioElement | null>(null);
 
   // Authority tagging (post-publish) state.
   const [suggestedAuthorities, setSuggestedAuthorities] = React.useState<Authority[]>([]);
@@ -272,12 +289,22 @@ export function ProposeQuestionModal({
       setRecordingSeconds(0);
       setVoiceRecordingPath(null);
       setVoiceError(null);
+      setWaveformLevels(Array(24).fill(4));
+      setIsPlaying(false);
+      setPlaybackPosition(0);
       streamRef.current?.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
       if (recordingTimerRef.current) {
         clearInterval(recordingTimerRef.current);
         recordingTimerRef.current = null;
       }
+      if (waveformFrameRef.current) {
+        cancelAnimationFrame(waveformFrameRef.current);
+        waveformFrameRef.current = null;
+      }
+      audioContextRef.current?.close().catch(() => {});
+      audioContextRef.current = null;
+      analyserRef.current = null;
       setSuggestedAuthorities([]);
       setTagStatus("idle");
       setTaggedName(null);
@@ -524,6 +551,58 @@ export function ProposeQuestionModal({
     streamRef.current = null;
   }
 
+  // Stops the live waveform animation and releases the AudioContext. Safe
+  // to call multiple times / when nothing is active.
+  function cleanupWaveformAnalysis() {
+    if (waveformFrameRef.current) {
+      cancelAnimationFrame(waveformFrameRef.current);
+      waveformFrameRef.current = null;
+    }
+    audioContextRef.current?.close().catch(() => {});
+    audioContextRef.current = null;
+    analyserRef.current = null;
+    setWaveformLevels(Array(24).fill(4));
+  }
+
+  // Best-effort real-time waveform: samples the mic via an AnalyserNode and
+  // renders it as bars in the recording pill. Purely decorative — if
+  // AudioContext isn't available (older browser, odd permissions state),
+  // recording still works fine, the bars just stay flat.
+  function startWaveformLoop(stream: MediaStream) {
+    try {
+      const AudioContextClass = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AudioContextClass) return;
+      const audioCtx = new AudioContextClass();
+      const source = audioCtx.createMediaStreamSource(stream);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 64; // small on purpose — gives ~24 chunky bars, not a fine-grained spectrum
+      source.connect(analyser);
+      audioContextRef.current = audioCtx;
+      analyserRef.current = analyser;
+
+      const barsCount = 24;
+      const data = new Uint8Array(analyser.frequencyBinCount);
+      const chunk = Math.max(1, Math.floor(data.length / barsCount));
+
+      const tick = () => {
+        if (!analyserRef.current) return;
+        analyserRef.current.getByteFrequencyData(data);
+        const levels: number[] = [];
+        for (let i = 0; i < barsCount; i++) {
+          let sum = 0;
+          for (let j = 0; j < chunk; j++) sum += data[i * chunk + j] ?? 0;
+          const avg = sum / chunk;
+          levels.push(Math.max(4, Math.min(28, (avg / 255) * 28)));
+        }
+        setWaveformLevels(levels);
+        waveformFrameRef.current = requestAnimationFrame(tick);
+      };
+      tick();
+    } catch (_e) {
+      // No waveform this session — recording itself is unaffected.
+    }
+  }
+
   async function startRecording() {
     setVoiceError(null);
     if (typeof MediaRecorder === "undefined" || !navigator.mediaDevices?.getUserMedia) {
@@ -540,15 +619,26 @@ export function ProposeQuestionModal({
         if (e.data.size > 0) audioChunksRef.current.push(e.data);
       };
       recorder.onstop = () => {
+        cleanupWaveformAnalysis();
+        stopMediaStream();
+        // cancelRecording() sets this before calling stop() — discard
+        // entirely and go back to idle rather than the usual "recorded"
+        // preview state.
+        if (cancelledRef.current) {
+          cancelledRef.current = false;
+          setRecordingState("idle");
+          setRecordingSeconds(0);
+          return;
+        }
         const usedMimeType = recorder.mimeType || mimeType || "audio/webm";
         const blob = new Blob(audioChunksRef.current, { type: usedMimeType });
         setRecordedMimeType(usedMimeType);
         setRecordedBlobUrl(URL.createObjectURL(blob));
         setRecordingState("recorded");
-        stopMediaStream();
       };
       mediaRecorderRef.current = recorder;
       recorder.start();
+      startWaveformLoop(stream);
       setRecordingState("recording");
       setRecordingSeconds(0);
       recordingTimerRef.current = setInterval(() => {
@@ -565,12 +655,26 @@ export function ProposeQuestionModal({
     }
   }
 
+  // Stop + keep: transitions to the "recorded" preview/playback state.
   function stopRecording() {
     if (recordingTimerRef.current) {
       clearInterval(recordingTimerRef.current);
       recordingTimerRef.current = null;
     }
     mediaRecorderRef.current?.stop();
+  }
+
+  // Stop + discard (the trash icon shown WHILE recording, matching the
+  // WhatsApp-style pattern) — goes straight back to idle, skips the preview
+  // state entirely.
+  function cancelRecording() {
+    cancelledRef.current = true;
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+    mediaRecorderRef.current?.stop();
+    setVoiceError(null);
   }
 
   function discardAndReRecord() {
@@ -580,7 +684,19 @@ export function ProposeQuestionModal({
     setRecordingSeconds(0);
     setRecordingState("idle");
     setVoiceError(null);
+    setIsPlaying(false);
+    setPlaybackPosition(0);
     setVoiceRecordingPath(null); // explicit "start over" — this is the one action that clears voice origin
+  }
+
+  function togglePlayback() {
+    const audio = audioPlayerRef.current;
+    if (!audio) return;
+    if (isPlaying) {
+      audio.pause();
+    } else {
+      audio.play().catch(() => {});
+    }
   }
 
   async function handleUseRecording() {
@@ -670,17 +786,36 @@ export function ProposeQuestionModal({
 
   function close() {
     // Aug 2026, NEW: if the proposer closes the modal mid-recording, stop
-    // the mic stream and timer rather than leaving them running in the
-    // background — the reset effect handles this on the NEXT open, but
-    // there's no reason to keep the mic live in the meantime.
+    // the mic stream, timer, and waveform analysis rather than leaving them
+    // running in the background — the reset effect handles this on the NEXT
+    // open, but there's no reason to keep the mic live in the meantime.
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
     if (recordingTimerRef.current) {
       clearInterval(recordingTimerRef.current);
       recordingTimerRef.current = null;
     }
+    if (waveformFrameRef.current) {
+      cancelAnimationFrame(waveformFrameRef.current);
+      waveformFrameRef.current = null;
+    }
+    audioContextRef.current?.close().catch(() => {});
+    audioContextRef.current = null;
+    analyserRef.current = null;
     onOpenChange(false);
   }
+
+  // Decorative bar pattern for the "recorded" playback state — NOT a real
+  // waveform of the audio (that needs offline decoding, more complexity
+  // than this UI polish pass warrants); the LIVE recording bars above are
+  // real (driven by AnalyserNode), this static pattern just echoes that
+  // visual language while previewing. Regenerates per new recording via the
+  // recordedBlobUrl dependency so it isn't identical every time, but is
+  // stable within one preview (doesn't jitter on re-render).
+  const playbackBarHeights = React.useMemo(
+    () => Array.from({ length: 28 }, (_, i) => 6 + Math.round(10 * Math.abs(Math.sin(i * 0.9)))),
+    [recordedBlobUrl],
+  );
 
   const preview = previewReframe;
 
@@ -1031,7 +1166,7 @@ export function ProposeQuestionModal({
                     ) : null}
                   </>
                 ) : (
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-6 flex flex-col items-center justify-center gap-3 min-h-[148px]">
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-5 flex flex-col items-center justify-center gap-2.5 min-h-[148px]">
                     {recordingState === "idle" ? (
                       <>
                         <button
@@ -1046,31 +1181,86 @@ export function ProposeQuestionModal({
                       </>
                     ) : recordingState === "recording" ? (
                       <>
-                        <button
-                          type="button"
-                          onClick={stopRecording}
-                          aria-label="Stop recording"
-                          className="h-14 w-14 rounded-full bg-slate-900 hover:bg-slate-800 text-white flex items-center justify-center animate-pulse"
-                        >
-                          <Square className="h-5 w-5" />
-                        </button>
-                        <p className="text-xs text-slate-500 tabular-nums">
-                          {formatMMSS(recordingSeconds)} / {formatMMSS(MAX_RECORDING_SECONDS)}
-                        </p>
+                        <div className="w-full flex items-center gap-2.5 rounded-full border border-slate-200 bg-white pl-2 pr-2 py-2 shadow-sm">
+                          <button
+                            type="button"
+                            onClick={cancelRecording}
+                            aria-label="Cancel recording"
+                            className="h-8 w-8 shrink-0 rounded-full flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                          <span className="h-2 w-2 shrink-0 rounded-full bg-red-500 animate-pulse" />
+                          <span className="text-sm tabular-nums text-slate-700 shrink-0">{formatMMSS(recordingSeconds)}</span>
+                          <div className="flex-1 flex items-center justify-center gap-[3px] h-8 overflow-hidden">
+                            {waveformLevels.map((h, i) => (
+                              <span
+                                key={i}
+                                className="w-[3px] rounded-full bg-slate-400 transition-[height] duration-75"
+                                style={{ height: `${h}px` }}
+                              />
+                            ))}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={stopRecording}
+                            aria-label="Stop recording"
+                            className="h-9 w-9 shrink-0 rounded-full bg-slate-900 hover:bg-slate-800 text-white flex items-center justify-center"
+                          >
+                            <Square className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                        <p className="text-[11px] text-slate-400">up to {formatMMSS(MAX_RECORDING_SECONDS)}</p>
                       </>
                     ) : recordingState === "recorded" ? (
                       <>
-                        {recordedBlobUrl ? (
-                          <audio controls src={recordedBlobUrl} className="w-full max-w-xs" />
-                        ) : null}
-                        <div className="flex gap-2">
-                          <Button type="button" size="sm" variant="ghost" onClick={discardAndReRecord}>
-                            <RotateCcw className="h-3.5 w-3.5 mr-1.5" /> Re-record
-                          </Button>
-                          <Button type="button" size="sm" onClick={handleUseRecording}>
-                            Use this recording
-                          </Button>
+                        <div className="w-full flex items-center gap-2.5 rounded-full border border-slate-200 bg-white pl-2 pr-2 py-2 shadow-sm">
+                          <button
+                            type="button"
+                            onClick={discardAndReRecord}
+                            aria-label="Discard recording"
+                            className="h-8 w-8 shrink-0 rounded-full flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={togglePlayback}
+                            aria-label={isPlaying ? "Pause" : "Play"}
+                            className="h-8 w-8 shrink-0 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition-colors"
+                          >
+                            {isPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5 ml-0.5" />}
+                          </button>
+                          <div className="flex-1 flex items-center gap-[3px] h-8 overflow-hidden">
+                            {playbackBarHeights.map((h, i) => (
+                              <span
+                                key={i}
+                                className={`w-[3px] rounded-full bg-slate-300 ${isPlaying ? "animate-pulse" : ""}`}
+                                style={{ height: `${h}px`, animationDelay: `${i * 40}ms` }}
+                              />
+                            ))}
+                          </div>
+                          <span className="text-xs tabular-nums text-slate-500 shrink-0">
+                            {formatMMSS(isPlaying || playbackPosition > 0 ? Math.floor(playbackPosition) : recordingSeconds)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={handleUseRecording}
+                            aria-label="Use this recording"
+                            className="h-9 w-9 shrink-0 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white flex items-center justify-center"
+                          >
+                            <Check className="h-4 w-4" />
+                          </button>
                         </div>
+                        <audio
+                          ref={audioPlayerRef}
+                          src={recordedBlobUrl ?? undefined}
+                          className="hidden"
+                          onPlay={() => setIsPlaying(true)}
+                          onPause={() => setIsPlaying(false)}
+                          onEnded={() => { setIsPlaying(false); setPlaybackPosition(0); }}
+                          onTimeUpdate={(e) => setPlaybackPosition(e.currentTarget.currentTime)}
+                        />
                       </>
                     ) : (
                       <>
