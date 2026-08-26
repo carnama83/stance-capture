@@ -33,7 +33,7 @@
 // (ugq-moderate) before it becomes the public "who's responsible" answer.
 
 import * as React from "react";
-import { Loader2, CheckCircle2, Lightbulb, Sparkles, ExternalLink, Landmark, ChevronDown, Wand2 } from "lucide-react";
+import { Loader2, CheckCircle2, Lightbulb, Sparkles, ExternalLink, Landmark, ChevronDown, Wand2, Mic, Square, RotateCcw } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
@@ -51,6 +51,10 @@ const MAX_LEN = 1000;
 // the button disables at the same point the backend would reject anyway.
 const REFINE_MIN_LEN = 5;
 const REFINE_MAX_LEN = 500;
+// Aug 2026, NEW: voice recording input. Matches ugq-transcribe-voice's
+// MAX_AUDIO_BYTES budget — auto-stops the recording client-side rather than
+// relying solely on the server's byte-size defense-in-depth check.
+const MAX_RECORDING_SECONDS = 90;
 
 type Props = {
   open: boolean;
@@ -110,6 +114,13 @@ function parseAuthorities(raw: unknown): Authority[] {
       jurisdiction_level: String(a.jurisdiction_level ?? ""),
     }))
     .filter((a) => a.id && a.name);
+}
+
+// Aug 2026, NEW: formats seconds as m:ss for the recording timer.
+function formatMMSS(totalSeconds: number): string {
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
 }
 
 function hostnameOf(url: string): string {
@@ -204,6 +215,27 @@ export function ProposeQuestionModal({
   const [refining, setRefining] = React.useState(false);
   const [refineError, setRefineError] = React.useState<string | null>(null);
 
+  // Voice recording state (Aug 2026, NEW) — see startRecording/stopRecording/
+  // handleUseRecording. voiceRecordingPath does double duty: it's both the
+  // Storage path forwarded to ugq-submit AND the signal (non-null) that the
+  // current question text originated from a transcription, used to set
+  // input_mode at submit time. "Record again" is the one explicit action
+  // that clears it — short of that, further manual edits to the transcribed
+  // text still count as voice-origin, which is the right call for an
+  // admin-facing trust signal (imperfect edge cases here are harmless).
+  const [inputMode, setInputMode] = React.useState<"text" | "voice">("text");
+  const [recordingState, setRecordingState] = React.useState<"idle" | "recording" | "recorded" | "transcribing">("idle");
+  const [recordedBlobUrl, setRecordedBlobUrl] = React.useState<string | null>(null);
+  const [recordedMimeType, setRecordedMimeType] = React.useState<string | null>(null);
+  const [recordingSeconds, setRecordingSeconds] = React.useState(0);
+  const [voiceRecordingPath, setVoiceRecordingPath] = React.useState<string | null>(null);
+  const [voiceError, setVoiceError] = React.useState<string | null>(null);
+
+  const mediaRecorderRef = React.useRef<MediaRecorder | null>(null);
+  const audioChunksRef = React.useRef<Blob[]>([]);
+  const streamRef = React.useRef<MediaStream | null>(null);
+  const recordingTimerRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+
   // Authority tagging (post-publish) state.
   const [suggestedAuthorities, setSuggestedAuthorities] = React.useState<Authority[]>([]);
   const [tagStatus, setTagStatus] = React.useState<"idle" | "tagging" | "tagged" | "skipped">("idle");
@@ -232,6 +264,20 @@ export function ProposeQuestionModal({
       setRefineText("");
       setRefining(false);
       setRefineError(null);
+      setInputMode("text");
+      setRecordingState("idle");
+      if (recordedBlobUrl) URL.revokeObjectURL(recordedBlobUrl);
+      setRecordedBlobUrl(null);
+      setRecordedMimeType(null);
+      setRecordingSeconds(0);
+      setVoiceRecordingPath(null);
+      setVoiceError(null);
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+      }
       setSuggestedAuthorities([]);
       setTagStatus("idle");
       setTaggedName(null);
@@ -335,6 +381,13 @@ export function ProposeQuestionModal({
           location_label: location.trim() || null,
           suggested_topic_id: presetTopicId,
           constituency_id: presetConstituencyId,
+          // Aug 2026, NEW: non-null voiceRecordingPath means this question
+          // originated from a voice recording (even if edited afterward) —
+          // see the voice recording state block for exactly when this
+          // clears. ugq-submit needs a matching update to persist these two
+          // fields on the new proposal row; harmless extra JSON otherwise.
+          input_mode: voiceRecordingPath ? "voice" : "text",
+          voice_recording_path: voiceRecordingPath,
         }),
       });
       const json = await res.json().catch(() => ({}));
@@ -445,6 +498,132 @@ export function ProposeQuestionModal({
     }
   }
 
+  // ── Voice recording (Aug 2026, NEW) ──────────────────────────────────────
+  // Records via MediaRecorder, then hands the blob to ugq-transcribe-voice
+  // and drops the returned transcript straight into `question` — the SAME
+  // state the typed flow uses — before switching inputMode back to "text".
+  // This means the proposer reviews/edits their transcribed text in the
+  // exact same textarea, with the exact same MIN_LEN/MAX_LEN validation and
+  // Submit button, that typed proposals already use. No parallel submit
+  // path exists for voice; it only ever produces text that feeds the
+  // existing one.
+  function pickRecorderMimeType(): string | null {
+    if (typeof MediaRecorder === "undefined") return null;
+    // iOS Safari doesn't support webm/opus at all — only mp4/aac. Feature-
+    // detect rather than UA-sniff, since that's robust across browser
+    // version changes.
+    const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/mp4;codecs=aac"];
+    for (const type of candidates) {
+      if (MediaRecorder.isTypeSupported?.(type)) return type;
+    }
+    return ""; // MediaRecorder exists but none of our preferred types matched — let it use its own default
+  }
+
+  function stopMediaStream() {
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+  }
+
+  async function startRecording() {
+    setVoiceError(null);
+    if (typeof MediaRecorder === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      setVoiceError("Voice recording isn't supported in this browser. Please type your question instead.");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      const mimeType = pickRecorderMimeType();
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      audioChunksRef.current = [];
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+      recorder.onstop = () => {
+        const usedMimeType = recorder.mimeType || mimeType || "audio/webm";
+        const blob = new Blob(audioChunksRef.current, { type: usedMimeType });
+        setRecordedMimeType(usedMimeType);
+        setRecordedBlobUrl(URL.createObjectURL(blob));
+        setRecordingState("recorded");
+        stopMediaStream();
+      };
+      mediaRecorderRef.current = recorder;
+      recorder.start();
+      setRecordingState("recording");
+      setRecordingSeconds(0);
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingSeconds((s) => {
+          if (s + 1 >= MAX_RECORDING_SECONDS) {
+            stopRecording();
+            return MAX_RECORDING_SECONDS;
+          }
+          return s + 1;
+        });
+      }, 1000);
+    } catch (_e) {
+      setVoiceError("Couldn't access your microphone. Check your browser's permission settings, or type your question instead.");
+    }
+  }
+
+  function stopRecording() {
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+    mediaRecorderRef.current?.stop();
+  }
+
+  function discardAndReRecord() {
+    if (recordedBlobUrl) URL.revokeObjectURL(recordedBlobUrl);
+    setRecordedBlobUrl(null);
+    setRecordedMimeType(null);
+    setRecordingSeconds(0);
+    setRecordingState("idle");
+    setVoiceError(null);
+    setVoiceRecordingPath(null); // explicit "start over" — this is the one action that clears voice origin
+  }
+
+  async function handleUseRecording() {
+    if (!recordedBlobUrl || !recordedMimeType) return;
+    setRecordingState("transcribing");
+    setVoiceError(null);
+    try {
+      const blobRes = await fetch(recordedBlobUrl);
+      const blob = await blobRes.blob();
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error("Read failed"));
+        reader.readAsDataURL(blob);
+      });
+
+      const jwt = getJwt();
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/ugq-transcribe-voice`, {
+        method: "POST",
+        headers: supabaseHeaders(jwt),
+        body: JSON.stringify({ audio_base64: base64, mime_type: recordedMimeType }),
+      });
+      const resJson = await res.json().catch(() => ({}));
+
+      if (!res.ok || !resJson?.ok) {
+        setVoiceError(resJson?.message ?? "Couldn't transcribe that recording. Please try again.");
+        setRecordingState("recorded"); // back to the playback/retry state, keep the recording
+        return;
+      }
+
+      setQuestion(String(resJson.transcript ?? "").slice(0, MAX_LEN));
+      setVoiceRecordingPath(typeof resJson.voice_recording_path === "string" ? resJson.voice_recording_path : null);
+      if (recordedBlobUrl) URL.revokeObjectURL(recordedBlobUrl);
+      setRecordedBlobUrl(null);
+      setRecordedMimeType(null);
+      setRecordingState("idle");
+      setInputMode("text"); // hand off to the existing text review/submit flow
+    } catch (_e) {
+      setVoiceError("Network error while transcribing. Please try again.");
+      setRecordingState("recorded");
+    }
+  }
+
   async function tagAuthority(authorityId: string, fallbackName?: string) {
     if (!questionId || tagStatus === "tagging") return;
     setTagStatus("tagging");
@@ -490,6 +669,16 @@ export function ProposeQuestionModal({
   }
 
   function close() {
+    // Aug 2026, NEW: if the proposer closes the modal mid-recording, stop
+    // the mic stream and timer rather than leaving them running in the
+    // background — the reset effect handles this on the NEXT open, but
+    // there's no reason to keep the mic live in the meantime.
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
     onOpenChange(false);
   }
 
@@ -781,21 +970,117 @@ export function ProposeQuestionModal({
 
             <div className="space-y-4 py-1">
               <div className="space-y-1.5">
-                <Label htmlFor="ugq-question">Your question</Label>
-                <Textarea
-                  id="ugq-question"
-                  value={question}
-                  onChange={(e) => setQuestion(e.target.value.slice(0, MAX_LEN))}
-                  placeholder="What do you want the community to weigh in on?"
-                  rows={4}
-                  autoFocus
-                />
-                <div className="flex justify-between text-xs">
-                  <span className={tooShort ? "text-amber-600" : "text-slate-400"}>
-                    {tooShort ? `At least ${MIN_LEN} characters` : "\u00A0"}
-                  </span>
-                  <span className="text-slate-400">{trimmed.length}/{MAX_LEN}</span>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="ugq-question">Your question</Label>
+                  {/* Aug 2026, NEW: Type/Record toggle. Disabled mid-recording
+                      or mid-transcription so switching away doesn't orphan
+                      a live mic stream or in-flight request. */}
+                  <div className="flex rounded-md border border-slate-200 p-0.5 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setInputMode("text")}
+                      disabled={recordingState === "recording" || recordingState === "transcribing"}
+                      className={`px-2.5 py-1 rounded transition-colors disabled:opacity-50 ${
+                        inputMode === "text" ? "bg-slate-900 text-white" : "text-slate-500 hover:text-slate-700"
+                      }`}
+                    >
+                      Type
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setInputMode("voice")}
+                      disabled={recordingState === "recording" || recordingState === "transcribing"}
+                      className={`px-2.5 py-1 rounded flex items-center gap-1 transition-colors disabled:opacity-50 ${
+                        inputMode === "voice" ? "bg-slate-900 text-white" : "text-slate-500 hover:text-slate-700"
+                      }`}
+                    >
+                      <Mic className="h-3 w-3" /> Record
+                    </button>
+                  </div>
                 </div>
+
+                {inputMode === "text" ? (
+                  <>
+                    <Textarea
+                      id="ugq-question"
+                      value={question}
+                      onChange={(e) => setQuestion(e.target.value.slice(0, MAX_LEN))}
+                      placeholder="What do you want the community to weigh in on?"
+                      rows={4}
+                      autoFocus
+                    />
+                    <div className="flex justify-between text-xs">
+                      <span className={tooShort ? "text-amber-600" : "text-slate-400"}>
+                        {tooShort ? `At least ${MIN_LEN} characters` : "\u00A0"}
+                      </span>
+                      <span className="text-slate-400">{trimmed.length}/{MAX_LEN}</span>
+                    </div>
+                    {voiceRecordingPath ? (
+                      <div className="flex items-center gap-1 text-[11px] text-slate-500">
+                        <Mic className="h-3 w-3" />
+                        <span>From your recording</span>
+                        <span>&#183;</span>
+                        <button
+                          type="button"
+                          onClick={() => { discardAndReRecord(); setInputMode("voice"); }}
+                          className="text-blue-600 hover:underline"
+                        >
+                          Record again
+                        </button>
+                      </div>
+                    ) : null}
+                  </>
+                ) : (
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-6 flex flex-col items-center justify-center gap-3 min-h-[148px]">
+                    {recordingState === "idle" ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={startRecording}
+                          aria-label="Start recording"
+                          className="h-14 w-14 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center transition-colors"
+                        >
+                          <Mic className="h-6 w-6" />
+                        </button>
+                        <p className="text-xs text-slate-500">Tap to record &#183; up to {formatMMSS(MAX_RECORDING_SECONDS)}</p>
+                      </>
+                    ) : recordingState === "recording" ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={stopRecording}
+                          aria-label="Stop recording"
+                          className="h-14 w-14 rounded-full bg-slate-900 hover:bg-slate-800 text-white flex items-center justify-center animate-pulse"
+                        >
+                          <Square className="h-5 w-5" />
+                        </button>
+                        <p className="text-xs text-slate-500 tabular-nums">
+                          {formatMMSS(recordingSeconds)} / {formatMMSS(MAX_RECORDING_SECONDS)}
+                        </p>
+                      </>
+                    ) : recordingState === "recorded" ? (
+                      <>
+                        {recordedBlobUrl ? (
+                          <audio controls src={recordedBlobUrl} className="w-full max-w-xs" />
+                        ) : null}
+                        <div className="flex gap-2">
+                          <Button type="button" size="sm" variant="ghost" onClick={discardAndReRecord}>
+                            <RotateCcw className="h-3.5 w-3.5 mr-1.5" /> Re-record
+                          </Button>
+                          <Button type="button" size="sm" onClick={handleUseRecording}>
+                            Use this recording
+                          </Button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <Loader2 className="h-6 w-6 animate-spin text-slate-500" />
+                        <p className="text-xs text-slate-500">Transcribing your recording&#x2026;</p>
+                      </>
+                    )}
+                    {voiceError ? <p className="text-xs text-red-600 text-center">{voiceError}</p> : null}
+                  </div>
+                )}
               </div>
 
               <div className="space-y-1.5">
@@ -828,7 +1113,7 @@ export function ProposeQuestionModal({
               <Button variant="ghost" onClick={close} disabled={phase === "submitting"}>
                 Cancel
               </Button>
-              <Button onClick={handleSubmit} disabled={!canSubmit}>
+              <Button onClick={handleSubmit} disabled={!canSubmit || recordingState === "recording" || recordingState === "transcribing"}>
                 {phase === "submitting" ? (
                   <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Reviewing&#x2026;</>
                 ) : (
