@@ -180,6 +180,377 @@ function CoverImagePreview({ src }: { src: string | null }) {
   );
 }
 
+// Aug 2026, NEW: standalone, reusable voice recorder — extracted so both the
+// initial question composer AND the refine "add more context" box can
+// record voice input without duplicating the entire recording engine
+// (MediaRecorder + live waveform + cancel/playback state machine) twice in
+// this file. Fully self-contained: manages its own idle/recording/recorded/
+// transcribing state, calls ugq-transcribe-voice itself, and hands back
+// ONLY the result via onTranscript — the caller decides what to do with the
+// text (populate `question`, populate `refineText`, etc.) and, for the
+// question-composer case, what to do with the returned Storage path.
+//
+// Cleanup is unmount-driven rather than imperative: whichever caller stops
+// rendering this component (toggling back to "Type", switching refine's
+// mode, closing the modal) automatically releases the mic/AudioContext via
+// the effect below — no manual ref-reaching-in from the parent needed.
+function VoiceRecorderPanel({
+  onTranscript,
+  maxRecordingSeconds = 90,
+}: {
+  onTranscript: (transcript: string, voiceRecordingPath: string | null) => void;
+  maxRecordingSeconds?: number;
+}) {
+  const [recordingState, setRecordingState] = React.useState<"idle" | "recording" | "recorded" | "transcribing">("idle");
+  const [recordedBlobUrl, setRecordedBlobUrl] = React.useState<string | null>(null);
+  const [recordedMimeType, setRecordedMimeType] = React.useState<string | null>(null);
+  const [recordingSeconds, setRecordingSeconds] = React.useState(0);
+  const [waveformLevels, setWaveformLevels] = React.useState<number[]>(Array(24).fill(4));
+  const [isPlaying, setIsPlaying] = React.useState(false);
+  const [playbackPosition, setPlaybackPosition] = React.useState(0);
+  const [voiceError, setVoiceError] = React.useState<string | null>(null);
+
+  const mediaRecorderRef = React.useRef<MediaRecorder | null>(null);
+  const audioChunksRef = React.useRef<Blob[]>([]);
+  const streamRef = React.useRef<MediaStream | null>(null);
+  const recordingTimerRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const audioContextRef = React.useRef<AudioContext | null>(null);
+  const analyserRef = React.useRef<AnalyserNode | null>(null);
+  const waveformFrameRef = React.useRef<number | null>(null);
+  const cancelledRef = React.useRef(false);
+  const audioPlayerRef = React.useRef<HTMLAudioElement | null>(null);
+
+  // Belt-and-suspenders unmount cleanup: the explicit stop/cancel paths
+  // below already release the mic via onstop, but if the PARENT stops
+  // rendering this component mid-recording (toggles away, closes the
+  // modal) without ever calling stop(), this is what actually turns the
+  // mic off — stopping the raw tracks works regardless of MediaRecorder's
+  // own state, so it doesn't depend on onstop firing at all.
+  React.useEffect(() => {
+    return () => {
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+      if (waveformFrameRef.current) cancelAnimationFrame(waveformFrameRef.current);
+      audioContextRef.current?.close().catch(() => {});
+      if (recordedBlobUrl) URL.revokeObjectURL(recordedBlobUrl);
+    };
+    // Intentionally empty deps — this is unmount-only cleanup; recordedBlobUrl
+    // is read via closure at unmount time, not tracked reactively here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function pickRecorderMimeType(): string | null {
+    if (typeof MediaRecorder === "undefined") return null;
+    // iOS Safari doesn't support webm/opus at all — only mp4/aac. Feature-
+    // detect rather than UA-sniff, since that's robust across browser
+    // version changes.
+    const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/mp4;codecs=aac"];
+    for (const type of candidates) {
+      if (MediaRecorder.isTypeSupported?.(type)) return type;
+    }
+    return ""; // MediaRecorder exists but none of our preferred types matched — let it use its own default
+  }
+
+  function stopMediaStream() {
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+  }
+
+  function cleanupWaveformAnalysis() {
+    if (waveformFrameRef.current) {
+      cancelAnimationFrame(waveformFrameRef.current);
+      waveformFrameRef.current = null;
+    }
+    audioContextRef.current?.close().catch(() => {});
+    audioContextRef.current = null;
+    analyserRef.current = null;
+    setWaveformLevels(Array(24).fill(4));
+  }
+
+  // Best-effort real-time waveform: samples the mic via an AnalyserNode and
+  // renders it as bars. Purely decorative — if AudioContext isn't available,
+  // recording still works fine, the bars just stay flat.
+  function startWaveformLoop(stream: MediaStream) {
+    try {
+      const AudioContextClass = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AudioContextClass) return;
+      const audioCtx = new AudioContextClass();
+      const source = audioCtx.createMediaStreamSource(stream);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 64; // small on purpose — ~24 chunky bars, not a fine-grained spectrum
+      source.connect(analyser);
+      audioContextRef.current = audioCtx;
+      analyserRef.current = analyser;
+
+      const barsCount = 24;
+      const data = new Uint8Array(analyser.frequencyBinCount);
+      const chunk = Math.max(1, Math.floor(data.length / barsCount));
+
+      const tick = () => {
+        if (!analyserRef.current) return;
+        analyserRef.current.getByteFrequencyData(data);
+        const levels: number[] = [];
+        for (let i = 0; i < barsCount; i++) {
+          let sum = 0;
+          for (let j = 0; j < chunk; j++) sum += data[i * chunk + j] ?? 0;
+          const avg = sum / chunk;
+          levels.push(Math.max(4, Math.min(28, (avg / 255) * 28)));
+        }
+        setWaveformLevels(levels);
+        waveformFrameRef.current = requestAnimationFrame(tick);
+      };
+      tick();
+    } catch (_e) {
+      // No waveform this session — recording itself is unaffected.
+    }
+  }
+
+  async function startRecording() {
+    setVoiceError(null);
+    if (typeof MediaRecorder === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      setVoiceError("Voice recording isn't supported in this browser. Please type instead.");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      const mimeType = pickRecorderMimeType();
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      audioChunksRef.current = [];
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+      recorder.onstop = () => {
+        cleanupWaveformAnalysis();
+        stopMediaStream();
+        if (cancelledRef.current) {
+          cancelledRef.current = false;
+          setRecordingState("idle");
+          setRecordingSeconds(0);
+          return;
+        }
+        const usedMimeType = recorder.mimeType || mimeType || "audio/webm";
+        const blob = new Blob(audioChunksRef.current, { type: usedMimeType });
+        setRecordedMimeType(usedMimeType);
+        setRecordedBlobUrl(URL.createObjectURL(blob));
+        setRecordingState("recorded");
+      };
+      mediaRecorderRef.current = recorder;
+      recorder.start();
+      startWaveformLoop(stream);
+      setRecordingState("recording");
+      setRecordingSeconds(0);
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingSeconds((s) => {
+          if (s + 1 >= maxRecordingSeconds) {
+            stopRecording();
+            return maxRecordingSeconds;
+          }
+          return s + 1;
+        });
+      }, 1000);
+    } catch (_e) {
+      setVoiceError("Couldn't access your microphone. Check your browser's permission settings, or type instead.");
+    }
+  }
+
+  function stopRecording() {
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+    mediaRecorderRef.current?.stop();
+  }
+
+  function cancelRecording() {
+    cancelledRef.current = true;
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+    mediaRecorderRef.current?.stop();
+    setVoiceError(null);
+  }
+
+  function discardAndReRecord() {
+    if (recordedBlobUrl) URL.revokeObjectURL(recordedBlobUrl);
+    setRecordedBlobUrl(null);
+    setRecordedMimeType(null);
+    setRecordingSeconds(0);
+    setRecordingState("idle");
+    setVoiceError(null);
+    setIsPlaying(false);
+    setPlaybackPosition(0);
+  }
+
+  function togglePlayback() {
+    const audio = audioPlayerRef.current;
+    if (!audio) return;
+    if (isPlaying) {
+      audio.pause();
+    } else {
+      audio.play().catch(() => {});
+    }
+  }
+
+  async function handleUseRecording() {
+    if (!recordedBlobUrl || !recordedMimeType) return;
+    setRecordingState("transcribing");
+    setVoiceError(null);
+    try {
+      const blobRes = await fetch(recordedBlobUrl);
+      const blob = await blobRes.blob();
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error("Read failed"));
+        reader.readAsDataURL(blob);
+      });
+
+      const jwt = getJwt();
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/ugq-transcribe-voice`, {
+        method: "POST",
+        headers: supabaseHeaders(jwt),
+        body: JSON.stringify({ audio_base64: base64, mime_type: recordedMimeType }),
+      });
+      const resJson = await res.json().catch(() => ({}));
+
+      if (!res.ok || !resJson?.ok) {
+        setVoiceError(resJson?.message ?? "Couldn't transcribe that recording. Please try again.");
+        setRecordingState("recorded");
+        return;
+      }
+
+      const transcript = String(resJson.transcript ?? "");
+      const path = typeof resJson.voice_recording_path === "string" ? resJson.voice_recording_path : null;
+      if (recordedBlobUrl) URL.revokeObjectURL(recordedBlobUrl);
+      setRecordedBlobUrl(null);
+      setRecordedMimeType(null);
+      setRecordingState("idle");
+      onTranscript(transcript, path);
+    } catch (_e) {
+      setVoiceError("Network error while transcribing. Please try again.");
+      setRecordingState("recorded");
+    }
+  }
+
+  // Decorative pattern for the "recorded" playback state — NOT a real
+  // waveform of the audio (that needs offline decoding, more complexity
+  // than this warrants); the LIVE recording bars are real (AnalyserNode),
+  // this static pattern just echoes that visual language while previewing.
+  const playbackBarHeights = React.useMemo(
+    () => Array.from({ length: 28 }, (_, i) => 6 + Math.round(10 * Math.abs(Math.sin(i * 0.9)))),
+    [recordedBlobUrl],
+  );
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-5 flex flex-col items-center justify-center gap-2.5 min-h-[148px]">
+      {recordingState === "idle" ? (
+        <>
+          <button
+            type="button"
+            onClick={startRecording}
+            aria-label="Start recording"
+            className="h-14 w-14 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center transition-colors"
+          >
+            <Mic className="h-6 w-6" />
+          </button>
+          <p className="text-xs text-slate-500">Tap to record &#183; up to {formatMMSS(maxRecordingSeconds)}</p>
+        </>
+      ) : recordingState === "recording" ? (
+        <>
+          <div className="w-full flex items-center gap-2.5 rounded-full border border-slate-200 bg-white pl-2 pr-2 py-2 shadow-sm">
+            <button
+              type="button"
+              onClick={cancelRecording}
+              aria-label="Cancel recording"
+              className="h-8 w-8 shrink-0 rounded-full flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+            <span className="h-2 w-2 shrink-0 rounded-full bg-red-500 animate-pulse" />
+            <span className="text-sm tabular-nums text-slate-700 shrink-0">{formatMMSS(recordingSeconds)}</span>
+            <div className="flex-1 flex items-center justify-center gap-[3px] h-8 overflow-hidden">
+              {waveformLevels.map((h, i) => (
+                <span
+                  key={i}
+                  className="w-[3px] rounded-full bg-slate-400 transition-[height] duration-75"
+                  style={{ height: `${h}px` }}
+                />
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={stopRecording}
+              aria-label="Stop recording"
+              className="h-9 w-9 shrink-0 rounded-full bg-slate-900 hover:bg-slate-800 text-white flex items-center justify-center"
+            >
+              <Square className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <p className="text-[11px] text-slate-400">up to {formatMMSS(maxRecordingSeconds)}</p>
+        </>
+      ) : recordingState === "recorded" ? (
+        <>
+          <div className="w-full flex items-center gap-2.5 rounded-full border border-slate-200 bg-white pl-2 pr-2 py-2 shadow-sm">
+            <button
+              type="button"
+              onClick={discardAndReRecord}
+              aria-label="Discard recording"
+              className="h-8 w-8 shrink-0 rounded-full flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={togglePlayback}
+              aria-label={isPlaying ? "Pause" : "Play"}
+              className="h-8 w-8 shrink-0 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition-colors"
+            >
+              {isPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5 ml-0.5" />}
+            </button>
+            <div className="flex-1 flex items-center gap-[3px] h-8 overflow-hidden">
+              {playbackBarHeights.map((h, i) => (
+                <span
+                  key={i}
+                  className={`w-[3px] rounded-full bg-slate-300 ${isPlaying ? "animate-pulse" : ""}`}
+                  style={{ height: `${h}px`, animationDelay: `${i * 40}ms` }}
+                />
+              ))}
+            </div>
+            <span className="text-xs tabular-nums text-slate-500 shrink-0">
+              {formatMMSS(isPlaying || playbackPosition > 0 ? Math.floor(playbackPosition) : recordingSeconds)}
+            </span>
+            <button
+              type="button"
+              onClick={handleUseRecording}
+              aria-label="Use this recording"
+              className="h-9 w-9 shrink-0 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white flex items-center justify-center"
+            >
+              <Check className="h-4 w-4" />
+            </button>
+          </div>
+          <audio
+            ref={audioPlayerRef}
+            src={recordedBlobUrl ?? undefined}
+            className="hidden"
+            onPlay={() => setIsPlaying(true)}
+            onPause={() => setIsPlaying(false)}
+            onEnded={() => { setIsPlaying(false); setPlaybackPosition(0); }}
+            onTimeUpdate={(e) => setPlaybackPosition(e.currentTarget.currentTime)}
+          />
+        </>
+      ) : (
+        <>
+          <Loader2 className="h-6 w-6 animate-spin text-slate-500" />
+          <p className="text-xs text-slate-500">Transcribing your recording&#x2026;</p>
+        </>
+      )}
+      {voiceError ? <p className="text-xs text-red-600 text-center">{voiceError}</p> : null}
+    </div>
+  );
+}
+
 export function ProposeQuestionModal({
   open,
   onOpenChange,
@@ -215,43 +586,20 @@ export function ProposeQuestionModal({
   const [refining, setRefining] = React.useState(false);
   const [refineError, setRefineError] = React.useState<string | null>(null);
 
-  // Voice recording state (Aug 2026, NEW) — see startRecording/stopRecording/
-  // handleUseRecording. voiceRecordingPath does double duty: it's both the
-  // Storage path forwarded to ugq-submit AND the signal (non-null) that the
-  // current question text originated from a transcription, used to set
-  // input_mode at submit time. "Record again" is the one explicit action
-  // that clears it — short of that, further manual edits to the transcribed
-  // text still count as voice-origin, which is the right call for an
-  // admin-facing trust signal (imperfect edge cases here are harmless).
+  // Voice recording state (Aug 2026, NEW; simplified after extracting
+  // VoiceRecorderPanel). inputMode/refineInputMode just pick which UI shows
+  // (Textarea vs the recorder) for the question composer and the refine box
+  // respectively — the recorder itself is fully self-contained. voiceRecordingPath
+  // does double duty: it's both the Storage path forwarded to ugq-submit AND
+  // the signal (non-null) that the current question text originated from a
+  // transcription, used to set input_mode at submit time. "Record again"
+  // (below) is the one explicit action that clears it — short of that,
+  // further manual edits to the transcribed text still count as
+  // voice-origin, which is the right call for an admin-facing trust signal
+  // (imperfect edge cases here are harmless).
   const [inputMode, setInputMode] = React.useState<"text" | "voice">("text");
-  const [recordingState, setRecordingState] = React.useState<"idle" | "recording" | "recorded" | "transcribing">("idle");
-  const [recordedBlobUrl, setRecordedBlobUrl] = React.useState<string | null>(null);
-  const [recordedMimeType, setRecordedMimeType] = React.useState<string | null>(null);
-  const [recordingSeconds, setRecordingSeconds] = React.useState(0);
+  const [refineInputMode, setRefineInputMode] = React.useState<"text" | "voice">("text");
   const [voiceRecordingPath, setVoiceRecordingPath] = React.useState<string | null>(null);
-  const [voiceError, setVoiceError] = React.useState<string | null>(null);
-  // Live bar heights (px) driven by the mic via AnalyserNode while
-  // recordingState==="recording" — see startWaveformLoop. Falls back to a
-  // flat baseline if AudioContext isn't available; recording itself still
-  // works either way, this is purely decorative.
-  const [waveformLevels, setWaveformLevels] = React.useState<number[]>(Array(24).fill(4));
-  // Playback state for the custom "recorded" preview player.
-  const [isPlaying, setIsPlaying] = React.useState(false);
-  const [playbackPosition, setPlaybackPosition] = React.useState(0);
-
-  const mediaRecorderRef = React.useRef<MediaRecorder | null>(null);
-  const audioChunksRef = React.useRef<Blob[]>([]);
-  const streamRef = React.useRef<MediaStream | null>(null);
-  const recordingTimerRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
-  const audioContextRef = React.useRef<AudioContext | null>(null);
-  const analyserRef = React.useRef<AnalyserNode | null>(null);
-  const waveformFrameRef = React.useRef<number | null>(null);
-  // Distinguishes the trash/cancel button (discard, back to idle) from the
-  // stop button (keep it, go to preview) — both call MediaRecorder.stop(),
-  // which only fires one onstop handler, so this flag tells it which
-  // outcome the user actually wanted.
-  const cancelledRef = React.useRef(false);
-  const audioPlayerRef = React.useRef<HTMLAudioElement | null>(null);
 
   // Authority tagging (post-publish) state.
   const [suggestedAuthorities, setSuggestedAuthorities] = React.useState<Authority[]>([]);
@@ -282,29 +630,8 @@ export function ProposeQuestionModal({
       setRefining(false);
       setRefineError(null);
       setInputMode("text");
-      setRecordingState("idle");
-      if (recordedBlobUrl) URL.revokeObjectURL(recordedBlobUrl);
-      setRecordedBlobUrl(null);
-      setRecordedMimeType(null);
-      setRecordingSeconds(0);
+      setRefineInputMode("text");
       setVoiceRecordingPath(null);
-      setVoiceError(null);
-      setWaveformLevels(Array(24).fill(4));
-      setIsPlaying(false);
-      setPlaybackPosition(0);
-      streamRef.current?.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
-      if (recordingTimerRef.current) {
-        clearInterval(recordingTimerRef.current);
-        recordingTimerRef.current = null;
-      }
-      if (waveformFrameRef.current) {
-        cancelAnimationFrame(waveformFrameRef.current);
-        waveformFrameRef.current = null;
-      }
-      audioContextRef.current?.close().catch(() => {});
-      audioContextRef.current = null;
-      analyserRef.current = null;
       setSuggestedAuthorities([]);
       setTagStatus("idle");
       setTaggedName(null);
@@ -525,220 +852,6 @@ export function ProposeQuestionModal({
     }
   }
 
-  // ── Voice recording (Aug 2026, NEW) ──────────────────────────────────────
-  // Records via MediaRecorder, then hands the blob to ugq-transcribe-voice
-  // and drops the returned transcript straight into `question` — the SAME
-  // state the typed flow uses — before switching inputMode back to "text".
-  // This means the proposer reviews/edits their transcribed text in the
-  // exact same textarea, with the exact same MIN_LEN/MAX_LEN validation and
-  // Submit button, that typed proposals already use. No parallel submit
-  // path exists for voice; it only ever produces text that feeds the
-  // existing one.
-  function pickRecorderMimeType(): string | null {
-    if (typeof MediaRecorder === "undefined") return null;
-    // iOS Safari doesn't support webm/opus at all — only mp4/aac. Feature-
-    // detect rather than UA-sniff, since that's robust across browser
-    // version changes.
-    const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/mp4;codecs=aac"];
-    for (const type of candidates) {
-      if (MediaRecorder.isTypeSupported?.(type)) return type;
-    }
-    return ""; // MediaRecorder exists but none of our preferred types matched — let it use its own default
-  }
-
-  function stopMediaStream() {
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    streamRef.current = null;
-  }
-
-  // Stops the live waveform animation and releases the AudioContext. Safe
-  // to call multiple times / when nothing is active.
-  function cleanupWaveformAnalysis() {
-    if (waveformFrameRef.current) {
-      cancelAnimationFrame(waveformFrameRef.current);
-      waveformFrameRef.current = null;
-    }
-    audioContextRef.current?.close().catch(() => {});
-    audioContextRef.current = null;
-    analyserRef.current = null;
-    setWaveformLevels(Array(24).fill(4));
-  }
-
-  // Best-effort real-time waveform: samples the mic via an AnalyserNode and
-  // renders it as bars in the recording pill. Purely decorative — if
-  // AudioContext isn't available (older browser, odd permissions state),
-  // recording still works fine, the bars just stay flat.
-  function startWaveformLoop(stream: MediaStream) {
-    try {
-      const AudioContextClass = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-      if (!AudioContextClass) return;
-      const audioCtx = new AudioContextClass();
-      const source = audioCtx.createMediaStreamSource(stream);
-      const analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 64; // small on purpose — gives ~24 chunky bars, not a fine-grained spectrum
-      source.connect(analyser);
-      audioContextRef.current = audioCtx;
-      analyserRef.current = analyser;
-
-      const barsCount = 24;
-      const data = new Uint8Array(analyser.frequencyBinCount);
-      const chunk = Math.max(1, Math.floor(data.length / barsCount));
-
-      const tick = () => {
-        if (!analyserRef.current) return;
-        analyserRef.current.getByteFrequencyData(data);
-        const levels: number[] = [];
-        for (let i = 0; i < barsCount; i++) {
-          let sum = 0;
-          for (let j = 0; j < chunk; j++) sum += data[i * chunk + j] ?? 0;
-          const avg = sum / chunk;
-          levels.push(Math.max(4, Math.min(28, (avg / 255) * 28)));
-        }
-        setWaveformLevels(levels);
-        waveformFrameRef.current = requestAnimationFrame(tick);
-      };
-      tick();
-    } catch (_e) {
-      // No waveform this session — recording itself is unaffected.
-    }
-  }
-
-  async function startRecording() {
-    setVoiceError(null);
-    if (typeof MediaRecorder === "undefined" || !navigator.mediaDevices?.getUserMedia) {
-      setVoiceError("Voice recording isn't supported in this browser. Please type your question instead.");
-      return;
-    }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
-      const mimeType = pickRecorderMimeType();
-      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
-      audioChunksRef.current = [];
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) audioChunksRef.current.push(e.data);
-      };
-      recorder.onstop = () => {
-        cleanupWaveformAnalysis();
-        stopMediaStream();
-        // cancelRecording() sets this before calling stop() — discard
-        // entirely and go back to idle rather than the usual "recorded"
-        // preview state.
-        if (cancelledRef.current) {
-          cancelledRef.current = false;
-          setRecordingState("idle");
-          setRecordingSeconds(0);
-          return;
-        }
-        const usedMimeType = recorder.mimeType || mimeType || "audio/webm";
-        const blob = new Blob(audioChunksRef.current, { type: usedMimeType });
-        setRecordedMimeType(usedMimeType);
-        setRecordedBlobUrl(URL.createObjectURL(blob));
-        setRecordingState("recorded");
-      };
-      mediaRecorderRef.current = recorder;
-      recorder.start();
-      startWaveformLoop(stream);
-      setRecordingState("recording");
-      setRecordingSeconds(0);
-      recordingTimerRef.current = setInterval(() => {
-        setRecordingSeconds((s) => {
-          if (s + 1 >= MAX_RECORDING_SECONDS) {
-            stopRecording();
-            return MAX_RECORDING_SECONDS;
-          }
-          return s + 1;
-        });
-      }, 1000);
-    } catch (_e) {
-      setVoiceError("Couldn't access your microphone. Check your browser's permission settings, or type your question instead.");
-    }
-  }
-
-  // Stop + keep: transitions to the "recorded" preview/playback state.
-  function stopRecording() {
-    if (recordingTimerRef.current) {
-      clearInterval(recordingTimerRef.current);
-      recordingTimerRef.current = null;
-    }
-    mediaRecorderRef.current?.stop();
-  }
-
-  // Stop + discard (the trash icon shown WHILE recording, matching the
-  // WhatsApp-style pattern) — goes straight back to idle, skips the preview
-  // state entirely.
-  function cancelRecording() {
-    cancelledRef.current = true;
-    if (recordingTimerRef.current) {
-      clearInterval(recordingTimerRef.current);
-      recordingTimerRef.current = null;
-    }
-    mediaRecorderRef.current?.stop();
-    setVoiceError(null);
-  }
-
-  function discardAndReRecord() {
-    if (recordedBlobUrl) URL.revokeObjectURL(recordedBlobUrl);
-    setRecordedBlobUrl(null);
-    setRecordedMimeType(null);
-    setRecordingSeconds(0);
-    setRecordingState("idle");
-    setVoiceError(null);
-    setIsPlaying(false);
-    setPlaybackPosition(0);
-    setVoiceRecordingPath(null); // explicit "start over" — this is the one action that clears voice origin
-  }
-
-  function togglePlayback() {
-    const audio = audioPlayerRef.current;
-    if (!audio) return;
-    if (isPlaying) {
-      audio.pause();
-    } else {
-      audio.play().catch(() => {});
-    }
-  }
-
-  async function handleUseRecording() {
-    if (!recordedBlobUrl || !recordedMimeType) return;
-    setRecordingState("transcribing");
-    setVoiceError(null);
-    try {
-      const blobRes = await fetch(recordedBlobUrl);
-      const blob = await blobRes.blob();
-      const base64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = () => reject(new Error("Read failed"));
-        reader.readAsDataURL(blob);
-      });
-
-      const jwt = getJwt();
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/ugq-transcribe-voice`, {
-        method: "POST",
-        headers: supabaseHeaders(jwt),
-        body: JSON.stringify({ audio_base64: base64, mime_type: recordedMimeType }),
-      });
-      const resJson = await res.json().catch(() => ({}));
-
-      if (!res.ok || !resJson?.ok) {
-        setVoiceError(resJson?.message ?? "Couldn't transcribe that recording. Please try again.");
-        setRecordingState("recorded"); // back to the playback/retry state, keep the recording
-        return;
-      }
-
-      setQuestion(String(resJson.transcript ?? "").slice(0, MAX_LEN));
-      setVoiceRecordingPath(typeof resJson.voice_recording_path === "string" ? resJson.voice_recording_path : null);
-      if (recordedBlobUrl) URL.revokeObjectURL(recordedBlobUrl);
-      setRecordedBlobUrl(null);
-      setRecordedMimeType(null);
-      setRecordingState("idle");
-      setInputMode("text"); // hand off to the existing text review/submit flow
-    } catch (_e) {
-      setVoiceError("Network error while transcribing. Please try again.");
-      setRecordingState("recorded");
-    }
-  }
 
   async function tagAuthority(authorityId: string, fallbackName?: string) {
     if (!questionId || tagStatus === "tagging") return;
@@ -785,37 +898,12 @@ export function ProposeQuestionModal({
   }
 
   function close() {
-    // Aug 2026, NEW: if the proposer closes the modal mid-recording, stop
-    // the mic stream, timer, and waveform analysis rather than leaving them
-    // running in the background — the reset effect handles this on the NEXT
-    // open, but there's no reason to keep the mic live in the meantime.
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    streamRef.current = null;
-    if (recordingTimerRef.current) {
-      clearInterval(recordingTimerRef.current);
-      recordingTimerRef.current = null;
-    }
-    if (waveformFrameRef.current) {
-      cancelAnimationFrame(waveformFrameRef.current);
-      waveformFrameRef.current = null;
-    }
-    audioContextRef.current?.close().catch(() => {});
-    audioContextRef.current = null;
-    analyserRef.current = null;
+    // Aug 2026, NEW: mic/AudioContext cleanup no longer needs to happen
+    // here — VoiceRecorderPanel's own unmount effect handles it whenever
+    // the Dialog stops rendering its content (which is what onOpenChange
+    // triggers), regardless of whether a recording was in progress.
     onOpenChange(false);
   }
-
-  // Decorative bar pattern for the "recorded" playback state — NOT a real
-  // waveform of the audio (that needs offline decoding, more complexity
-  // than this UI polish pass warrants); the LIVE recording bars above are
-  // real (driven by AnalyserNode), this static pattern just echoes that
-  // visual language while previewing. Regenerates per new recording via the
-  // recordedBlobUrl dependency so it isn't identical every time, but is
-  // stable within one preview (doesn't jitter on re-render).
-  const playbackBarHeights = React.useMemo(
-    () => Array.from({ length: 28 }, (_, i) => 6 + Math.round(10 * Math.abs(Math.sin(i * 0.9)))),
-    [recordedBlobUrl],
-  );
 
   const preview = previewReframe;
 
@@ -1024,43 +1112,78 @@ export function ProposeQuestionModal({
                   </button>
                 ) : (
                   <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
-                    <Label htmlFor="ugq-refine-context" className="text-xs text-slate-600">
-                      What should we add or fix?
-                    </Label>
-                    <Textarea
-                      id="ugq-refine-context"
-                      value={refineText}
-                      onChange={(e) => setRefineText(e.target.value.slice(0, REFINE_MAX_LEN))}
-                      placeholder="e.g. this happened in March, or it's specifically about UP"
-                      rows={2}
-                      disabled={refining}
-                    />
                     <div className="flex items-center justify-between">
-                      <span className="text-[11px] text-slate-400">
-                        {refineText.trim().length}/{REFINE_MAX_LEN}
-                      </span>
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          disabled={refining}
-                          onClick={() => { setRefineOpen(false); setRefineText(""); setRefineError(null); }}
-                        >
-                          Cancel
-                        </Button>
-                        <Button
-                          size="sm"
-                          disabled={refining || refineText.trim().length < REFINE_MIN_LEN}
-                          onClick={handleRefine}
-                        >
-                          {refining ? (
-                            <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Regenerating&#x2026;</>
-                          ) : (
-                            "Regenerate preview"
-                          )}
-                        </Button>
-                      </div>
+                      <Label htmlFor="ugq-refine-context" className="text-xs text-slate-600">
+                        What should we add or fix?
+                      </Label>
+                      {/* Aug 2026, NEW: same VoiceRecorderPanel the question
+                          composer uses, so recording context here doesn't
+                          need its own separate implementation. */}
+                      <button
+                        type="button"
+                        onClick={() => setRefineInputMode(refineInputMode === "text" ? "voice" : "text")}
+                        disabled={refining}
+                        className="inline-flex items-center gap-1 text-[11px] text-slate-500 hover:text-slate-700 disabled:opacity-50"
+                      >
+                        {refineInputMode === "text" ? (
+                          <><Mic className="h-3 w-3" /> Record instead</>
+                        ) : (
+                          "Type instead"
+                        )}
+                      </button>
                     </div>
+
+                    {refineInputMode === "text" ? (
+                      <>
+                        <Textarea
+                          id="ugq-refine-context"
+                          value={refineText}
+                          onChange={(e) => setRefineText(e.target.value.slice(0, REFINE_MAX_LEN))}
+                          placeholder="e.g. this happened in March, or it's specifically about UP"
+                          rows={2}
+                          disabled={refining}
+                        />
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] text-slate-400">
+                            {refineText.trim().length}/{REFINE_MAX_LEN}
+                          </span>
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              disabled={refining}
+                              onClick={() => { setRefineOpen(false); setRefineText(""); setRefineError(null); setRefineInputMode("text"); }}
+                            >
+                              Cancel
+                            </Button>
+                            <Button
+                              size="sm"
+                              disabled={refining || refineText.trim().length < REFINE_MIN_LEN}
+                              onClick={handleRefine}
+                            >
+                              {refining ? (
+                                <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Regenerating&#x2026;</>
+                              ) : (
+                                "Regenerate preview"
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <VoiceRecorderPanel
+                        maxRecordingSeconds={MAX_RECORDING_SECONDS}
+                        onTranscript={(text) => {
+                          // Refine text doesn't carry a voice_recording_path
+                          // anywhere downstream (ugq-refine-preview only
+                          // ever sends plain text) — recording here is
+                          // purely a faster way to type, nothing tracks its
+                          // origin the way the main composer does.
+                          setRefineText(text.trim().slice(0, REFINE_MAX_LEN));
+                          setRefineInputMode("text");
+                        }}
+                      />
+                    )}
                     {refineError ? <p className="text-xs text-red-600">{refineError}</p> : null}
                   </div>
                 )}
@@ -1107,15 +1230,16 @@ export function ProposeQuestionModal({
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
                   <Label htmlFor="ugq-question">Your question</Label>
-                  {/* Aug 2026, NEW: Type/Record toggle. Disabled mid-recording
-                      or mid-transcription so switching away doesn't orphan
-                      a live mic stream or in-flight request. */}
+                  {/* Aug 2026, NEW: Type/Record toggle. Safe to switch at
+                      any time, including mid-recording — VoiceRecorderPanel's
+                      unmount effect releases the mic/AudioContext whenever
+                      this stops rendering it, so no manual guard is needed
+                      here. */}
                   <div className="flex rounded-md border border-slate-200 p-0.5 text-xs">
                     <button
                       type="button"
                       onClick={() => setInputMode("text")}
-                      disabled={recordingState === "recording" || recordingState === "transcribing"}
-                      className={`px-2.5 py-1 rounded transition-colors disabled:opacity-50 ${
+                      className={`px-2.5 py-1 rounded transition-colors ${
                         inputMode === "text" ? "bg-slate-900 text-white" : "text-slate-500 hover:text-slate-700"
                       }`}
                     >
@@ -1124,8 +1248,7 @@ export function ProposeQuestionModal({
                     <button
                       type="button"
                       onClick={() => setInputMode("voice")}
-                      disabled={recordingState === "recording" || recordingState === "transcribing"}
-                      className={`px-2.5 py-1 rounded flex items-center gap-1 transition-colors disabled:opacity-50 ${
+                      className={`px-2.5 py-1 rounded flex items-center gap-1 transition-colors ${
                         inputMode === "voice" ? "bg-slate-900 text-white" : "text-slate-500 hover:text-slate-700"
                       }`}
                     >
@@ -1157,7 +1280,7 @@ export function ProposeQuestionModal({
                         <span>&#183;</span>
                         <button
                           type="button"
-                          onClick={() => { discardAndReRecord(); setInputMode("voice"); }}
+                          onClick={() => { setVoiceRecordingPath(null); setInputMode("voice"); }}
                           className="text-blue-600 hover:underline"
                         >
                           Record again
@@ -1166,110 +1289,14 @@ export function ProposeQuestionModal({
                     ) : null}
                   </>
                 ) : (
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-5 flex flex-col items-center justify-center gap-2.5 min-h-[148px]">
-                    {recordingState === "idle" ? (
-                      <>
-                        <button
-                          type="button"
-                          onClick={startRecording}
-                          aria-label="Start recording"
-                          className="h-14 w-14 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center transition-colors"
-                        >
-                          <Mic className="h-6 w-6" />
-                        </button>
-                        <p className="text-xs text-slate-500">Tap to record &#183; up to {formatMMSS(MAX_RECORDING_SECONDS)}</p>
-                      </>
-                    ) : recordingState === "recording" ? (
-                      <>
-                        <div className="w-full flex items-center gap-2.5 rounded-full border border-slate-200 bg-white pl-2 pr-2 py-2 shadow-sm">
-                          <button
-                            type="button"
-                            onClick={cancelRecording}
-                            aria-label="Cancel recording"
-                            className="h-8 w-8 shrink-0 rounded-full flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                          <span className="h-2 w-2 shrink-0 rounded-full bg-red-500 animate-pulse" />
-                          <span className="text-sm tabular-nums text-slate-700 shrink-0">{formatMMSS(recordingSeconds)}</span>
-                          <div className="flex-1 flex items-center justify-center gap-[3px] h-8 overflow-hidden">
-                            {waveformLevels.map((h, i) => (
-                              <span
-                                key={i}
-                                className="w-[3px] rounded-full bg-slate-400 transition-[height] duration-75"
-                                style={{ height: `${h}px` }}
-                              />
-                            ))}
-                          </div>
-                          <button
-                            type="button"
-                            onClick={stopRecording}
-                            aria-label="Stop recording"
-                            className="h-9 w-9 shrink-0 rounded-full bg-slate-900 hover:bg-slate-800 text-white flex items-center justify-center"
-                          >
-                            <Square className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                        <p className="text-[11px] text-slate-400">up to {formatMMSS(MAX_RECORDING_SECONDS)}</p>
-                      </>
-                    ) : recordingState === "recorded" ? (
-                      <>
-                        <div className="w-full flex items-center gap-2.5 rounded-full border border-slate-200 bg-white pl-2 pr-2 py-2 shadow-sm">
-                          <button
-                            type="button"
-                            onClick={discardAndReRecord}
-                            aria-label="Discard recording"
-                            className="h-8 w-8 shrink-0 rounded-full flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={togglePlayback}
-                            aria-label={isPlaying ? "Pause" : "Play"}
-                            className="h-8 w-8 shrink-0 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition-colors"
-                          >
-                            {isPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5 ml-0.5" />}
-                          </button>
-                          <div className="flex-1 flex items-center gap-[3px] h-8 overflow-hidden">
-                            {playbackBarHeights.map((h, i) => (
-                              <span
-                                key={i}
-                                className={`w-[3px] rounded-full bg-slate-300 ${isPlaying ? "animate-pulse" : ""}`}
-                                style={{ height: `${h}px`, animationDelay: `${i * 40}ms` }}
-                              />
-                            ))}
-                          </div>
-                          <span className="text-xs tabular-nums text-slate-500 shrink-0">
-                            {formatMMSS(isPlaying || playbackPosition > 0 ? Math.floor(playbackPosition) : recordingSeconds)}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={handleUseRecording}
-                            aria-label="Use this recording"
-                            className="h-9 w-9 shrink-0 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white flex items-center justify-center"
-                          >
-                            <Check className="h-4 w-4" />
-                          </button>
-                        </div>
-                        <audio
-                          ref={audioPlayerRef}
-                          src={recordedBlobUrl ?? undefined}
-                          className="hidden"
-                          onPlay={() => setIsPlaying(true)}
-                          onPause={() => setIsPlaying(false)}
-                          onEnded={() => { setIsPlaying(false); setPlaybackPosition(0); }}
-                          onTimeUpdate={(e) => setPlaybackPosition(e.currentTarget.currentTime)}
-                        />
-                      </>
-                    ) : (
-                      <>
-                        <Loader2 className="h-6 w-6 animate-spin text-slate-500" />
-                        <p className="text-xs text-slate-500">Transcribing your recording&#x2026;</p>
-                      </>
-                    )}
-                    {voiceError ? <p className="text-xs text-red-600 text-center">{voiceError}</p> : null}
-                  </div>
+                  <VoiceRecorderPanel
+                    maxRecordingSeconds={MAX_RECORDING_SECONDS}
+                    onTranscript={(text, path) => {
+                      setQuestion(text.slice(0, MAX_LEN));
+                      setVoiceRecordingPath(path);
+                      setInputMode("text"); // hand off to the existing text review/submit flow
+                    }}
+                  />
                 )}
               </div>
 
@@ -1303,7 +1330,7 @@ export function ProposeQuestionModal({
               <Button variant="ghost" onClick={close} disabled={phase === "submitting"}>
                 Cancel
               </Button>
-              <Button onClick={handleSubmit} disabled={!canSubmit || recordingState === "recording" || recordingState === "transcribing"}>
+              <Button onClick={handleSubmit} disabled={!canSubmit || inputMode === "voice"}>
                 {phase === "submitting" ? (
                   <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Reviewing&#x2026;</>
                 ) : (
