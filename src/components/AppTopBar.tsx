@@ -17,6 +17,8 @@ import {
 import { ChevronDown, Plus, Search, Compass, X } from "lucide-react";
 import { NotificationsBell } from "@/components/notifications/NotificationsBell";
 import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_PROJECT_REF, getJwt } from "@/lib/env";
+import { useTranslation } from "react-i18next";
+import { useLanguage } from "@/hooks/useLanguage";
 
 type Profile = {
   random_id: string;
@@ -147,6 +149,14 @@ export default function AppTopBar({
   const sb = React.useMemo(getSupabase, []);
   const isAuthed = !!session;
   const userId = session?.user?.id ?? null;
+  const { t, i18n } = useTranslation();
+  const { languageCode } = useLanguage(userId);
+  // Keeps i18next's active language exactly in sync with useLanguage's own
+  // resolution (URL ?lang= > profiles.preferred_language_code > 'en') —
+  // deliberately not a second, independent detector. See src/lib/i18n.ts.
+  React.useEffect(() => {
+    if (i18n.language !== languageCode) i18n.changeLanguage(languageCode);
+  }, [languageCode, i18n]);
   const onLoginPage = location.pathname === "/login";
   const onSignupPage = location.pathname === "/signup";
   const onAuthPage = onLoginPage || onSignupPage;
@@ -233,7 +243,7 @@ export default function AppTopBar({
 <Link
   to="/"
   className="flex items-center space-x-2 group"
-  title="Track how views change over time"
+  title={t("nav.brandTitle")}
 >
   <svg
     className="h-7 w-7 shrink-0"
@@ -263,7 +273,7 @@ export default function AppTopBar({
     Stance
   </span>
   <span className="text-xs text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity hidden sm:inline">
-    Track evolving views
+    {t("nav.brandTagline")}
   </span>
 </Link>
 
@@ -273,26 +283,26 @@ export default function AppTopBar({
             <>
               {/* Logged-in Navigation */}
               <NavItem to="/topics" active={isActive("/topics")}>
-                Explore
+                {t("nav.explore")}
               </NavItem>
               <NavItem to="/for-you" active={isActive("/for-you")}>
-                For You
+                {t("nav.forYou")}
               </NavItem>
               <NavItem to="/me/stances" active={isActive("/me/stances")}>
-                My Stances
+                {t("nav.myStances")}
               </NavItem>
               <NavItem to="/insights" active={isActive("/insights")}>
-                Insights
+                {t("nav.insights")}
               </NavItem>
               <NavItem to="/profile/proposals" active={isActive("/profile/proposals")}>
-                My Proposals
+                {t("nav.myProposals")}
               </NavItem>
             </>
           ) : (
             <>
               {/* Logged-out Navigation */}
               <NavItem to="/topics" active={isActive("/topics")}>
-                Explore
+                {t("nav.explore")}
               </NavItem>
             </>
           )}
@@ -305,7 +315,7 @@ export default function AppTopBar({
           <div className="hidden sm:flex items-center gap-3">
             <div
               className="inline-flex items-center rounded-full border border-border bg-muted p-1"
-              aria-label="View mode"
+              aria-label={t("nav.viewModeLabel")}
             >
               <button
                 type="button"
@@ -323,9 +333,9 @@ export default function AppTopBar({
                     : "text-muted-foreground hover:text-foreground hover:bg-accent",
                 ].join(" ")}
                 aria-pressed={!isAuthed}
-                title={!isAuthed ? "Anonymous mode" : "Sign out to go anonymous"}
+                title={!isAuthed ? t("nav.anonymousModeTitle") : t("nav.signOutToAnonymousTitle")}
               >
-                Anonymous
+                {t("nav.anonymous")}
               </button>
 
               <button
@@ -345,9 +355,9 @@ export default function AppTopBar({
                   onLoginPage && !isAuthed ? "cursor-default" : "",
                 ].join(" ")}
                 aria-pressed={isAuthed || onLoginPage}
-                title={isAuthed ? "Signed in" : onLoginPage ? "You are on the login page" : "Sign in"}
+                title={isAuthed ? t("nav.signedIn") : onLoginPage ? t("nav.onLoginPageTitle") : t("nav.signIn")}
               >
-                {isAuthed ? "Signed in" : "Sign in"}
+                {isAuthed ? t("nav.signedIn") : t("nav.signIn")}
               </button>
             </div>
 
@@ -361,7 +371,7 @@ export default function AppTopBar({
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   onKeyDown={handleSearchKeyDown}
-                  placeholder="Search questions and topics..."
+                  placeholder={t("nav.searchPlaceholder")}
                   className="w-48 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
                 />
                 <button
@@ -370,7 +380,7 @@ export default function AppTopBar({
                   disabled={!searchQuery.trim()}
                   className="text-xs font-medium text-primary hover:text-primary/80 disabled:opacity-40 disabled:cursor-not-allowed px-1"
                 >
-                  Go
+                  {t("nav.searchGo")}
                 </button>
                 <button type="button" onClick={closeSearch} className="text-muted-foreground hover:text-foreground">
                   <X className="h-3.5 w-3.5" />
@@ -380,13 +390,13 @@ export default function AppTopBar({
               <PillButton
                 onClick={openSearch}
                 icon={<Search className="h-4 w-4" />}
-                label="Search"
+                label={t("nav.searchLabel")}
               />
             )}
             <PillButton
               onClick={() => navigate("/topics")}
               icon={<Compass className="h-4 w-4" />}
-              label="Explore topics"
+              label={t("nav.exploreTopics")}
             />
           </div>
 
@@ -398,14 +408,14 @@ export default function AppTopBar({
                 className="hidden sm:flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-full hover:bg-primary/90 transition-colors text-sm font-medium"
               >
                 <Plus className="h-4 w-4" />
-                <span>Answer</span>
+                <span>{t("nav.answer")}</span>
               </button>
 
               {/* Mobile CTA */}
               <button
                 onClick={() => navigate("/")}
                 className="sm:hidden flex items-center justify-center w-10 h-10 bg-primary text-primary-foreground rounded-full hover:bg-primary/90 transition-colors"
-                aria-label="Answer question"
+                aria-label={t("nav.answerQuestion")}
               >
                 <Plus className="h-5 w-5" />
               </button>
@@ -430,19 +440,19 @@ export default function AppTopBar({
                   <DropdownMenuSeparator />
                   
                   <DropdownMenuItem onClick={() => navigate("/settings/profile")}>
-                    Profile
+                    {t("nav.profile")}
                   </DropdownMenuItem>
 
                   <DropdownMenuItem onClick={() => navigate("/profile/proposals")}>
-                    My Proposals
+                    {t("nav.myProposals")}
                   </DropdownMenuItem>
                   
                   <DropdownMenuItem onClick={() => navigate("/settings/location")}>
-                    Location
+                    {t("nav.location")}
                   </DropdownMenuItem>
                   
                   <DropdownMenuItem onClick={() => navigate("/settings/privacy")}>
-                    Privacy
+                    {t("nav.privacy")}
                   </DropdownMenuItem>
                   
                   <DropdownMenuSeparator />
@@ -450,10 +460,10 @@ export default function AppTopBar({
                   {profile && (
                     <DropdownMenuItem onClick={handleToggleDisplayMode}>
                       {profile.display_handle_mode === "username"
-                        ? `Switch to #${profile.random_id}`
+                        ? t("nav.switchToId", { id: profile.random_id })
                         : profile.username
-                          ? `Switch to @${profile.username}`
-                          : "Set username to switch"}
+                          ? t("nav.switchToUsername", { username: profile.username })
+                          : t("nav.setUsernameToSwitch")}
                     </DropdownMenuItem>
                   )}
 
@@ -463,7 +473,7 @@ export default function AppTopBar({
                     onClick={handleLogout}
                     className="text-red-600 focus:text-red-600 focus:bg-red-50"
                   >
-                    Log out
+                    {t("nav.logOut")}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -482,7 +492,7 @@ export default function AppTopBar({
                 }
                 aria-current={onSignupPage ? "page" : undefined}
               >
-                Create account
+                {t("nav.createAccount")}
               </button>
             </>
           )}
@@ -508,7 +518,7 @@ export default function AppTopBar({
                   : "text-muted-foreground"
               }`}
             >
-              Explore
+              {t("nav.explore")}
             </Link>
             <Link
               to="/for-you"
@@ -518,7 +528,7 @@ export default function AppTopBar({
                   : "text-muted-foreground"
               }`}
             >
-              For You
+              {t("nav.forYou")}
             </Link>
             <Link
               to="/me/stances"
@@ -528,7 +538,7 @@ export default function AppTopBar({
                   : "text-muted-foreground"
               }`}
             >
-              My Stances
+              {t("nav.myStances")}
             </Link>
             <Link
               to="/insights"
@@ -538,7 +548,7 @@ export default function AppTopBar({
                   : "text-muted-foreground"
               }`}
             >
-              Insights
+              {t("nav.insights")}
             </Link>
             <Link
               to="/profile/proposals"
@@ -548,7 +558,7 @@ export default function AppTopBar({
                   : "text-muted-foreground"
               }`}
             >
-              Proposals
+              {t("nav.proposals")}
             </Link>
           </nav>
         </div>

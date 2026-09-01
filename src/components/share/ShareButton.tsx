@@ -20,6 +20,15 @@ import { supabase } from "@/integrations/supabase/client";
 import { getSupabase } from "@/lib/supabaseClient";
 import { useToast } from "@/hooks/use-toast";
 import { getMyForwardRef } from "@/lib/webStance";
+import { useTranslation } from "react-i18next";
+// NOTE: read-only useTranslation here, deliberately no i18n.changeLanguage()
+// call. i18next's active language is global state, not component-scoped —
+// this component's own `languageCode` prop defaults to 'en' at 4 of its 5
+// render sites (only QuestionDetailPage.tsx passes the real value today), so
+// calling changeLanguage() from here would silently flip the WHOLE APP back
+// to English the moment ShareButton mounted anywhere else. AppTopBar (always
+// mounted, genuinely resolves via useLanguage()) is the authoritative source
+// for UI language; this component only reads whatever that already set.
 
 type Platform = "twitter" | "twitter_direct" | "facebook" | "whatsapp" | "linkedin" | "copy" | "native";
 type ShareType = "question" | "stance";
@@ -218,11 +227,11 @@ interface PlatformConfig {
   buildUrl: ((text: string, url: string) => string | null) | null;
 }
 
-function buildPlatformConfigs(hasXToken: boolean): Record<Platform, PlatformConfig> {
+function buildPlatformConfigs(hasXToken: boolean, t: (key: string) => string): Record<Platform, PlatformConfig> {
   return {
     twitter_direct: {
-      label: "Post to X",
-      sublabel: hasXToken ? "Posts with image card" : undefined,
+      label: t("share.postToX"),
+      sublabel: hasXToken ? t("share.postToXSublabel") : undefined,
       icon: (
         // X (Twitter) logo
         <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -237,8 +246,8 @@ function buildPlatformConfigs(hasXToken: boolean): Record<Platform, PlatformConf
       buildUrl: null, // handled by custom logic
     },
     twitter: {
-      label: "Share to X",
-      sublabel: "Opens X in browser",
+      label: t("share.shareToX"),
+      sublabel: t("share.opensXInBrowser"),
       icon: (
         <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
           <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.737-8.857L1.254 2.25H8.08l4.253 5.622zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
@@ -282,14 +291,14 @@ function buildPlatformConfigs(hasXToken: boolean): Record<Platform, PlatformConf
         `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}`,
     },
     copy: {
-      label: "Copy link",
+      label: t("share.copyLink"),
       icon: <Link2 className="h-4 w-4" />,
       bgClass: "bg-slate-100 hover:bg-slate-200",
       textClass: "text-slate-700",
       buildUrl: null,
     },
     native: {
-      label: "More options",
+      label: t("share.moreOptions"),
       icon: <Share2 className="h-4 w-4" />,
       bgClass: "bg-slate-100 hover:bg-slate-200",
       textClass: "text-slate-700",
@@ -315,6 +324,7 @@ export function ShareButton({
   const [copied, setCopied] = React.useState(false);
   const { hasToken, loading: tokenLoading } = useXPostStatus();
   const { toast } = useToast();
+  const { t } = useTranslation();
   const panelRef = React.useRef<HTMLDivElement>(null);
 
   // Positioning fix: the panel used to always open upward (bottom-full), which
@@ -329,8 +339,8 @@ export function ShareButton({
   const ESTIMATED_PANEL_HEIGHT = 420; // header + optional X-nudge + up to 6 platform rows
 
   const PLATFORMS = React.useMemo(
-    () => buildPlatformConfigs(hasToken),
-    [hasToken],
+    () => buildPlatformConfigs(hasToken, t),
+    [hasToken, t],
   );
 
   // Close on outside click
@@ -368,7 +378,7 @@ export function ShareButton({
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
         setOpen(false);
-        toast({ title: "Link copied to clipboard" });
+        toast({ title: t("share.linkCopied") });
         return;
       }
 
@@ -384,8 +394,8 @@ export function ShareButton({
         if (!hasToken) {
           // Shouldn't be called when no token, but guard anyway
           toast({
-            title: "Connect your X account first",
-            description: "Go to Settings → Account to connect X for direct posting.",
+            title: t("share.connectXFirst"),
+            description: t("share.connectXFirstDesc"),
           });
           return;
         }
@@ -394,17 +404,17 @@ export function ShareButton({
 
         if (result.success) {
           toast({
-            title: "Posted to X ✓",
+            title: t("share.postedToX"),
             description: result.tweetId
-              ? `View your post: x.com/i/web/status/${result.tweetId}`
-              : "Your stance has been shared.",
+              ? t("share.postedToXDescWithId", { tweetId: result.tweetId })
+              : t("share.postedToXDescFallback"),
           });
           setOpen(false);
         } else {
           // On failure, offer web intent fallback
           toast({
-            title: "Direct post failed",
-            description: "Opening X in your browser instead.",
+            title: t("share.directPostFailed"),
+            description: t("share.openingXInBrowser"),
             variant: "destructive",
           });
           const intentUrl =
@@ -428,7 +438,7 @@ export function ShareButton({
     } catch (e: any) {
       if (e?.name !== "AbortError") {
         toast({
-          title: "Share failed",
+          title: t("share.shareFailed"),
           description: e?.message,
           variant: "destructive",
         });
@@ -474,11 +484,11 @@ export function ShareButton({
             ? "p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100"
             : "px-3 py-1.5 text-sm font-medium text-slate-600 border border-slate-200 hover:bg-slate-50",
         ].join(" ")}
-        aria-label="Share this question"
-        title="Share"
+        aria-label={t("share.panelTitle")}
+        title={t("share.button")}
       >
         <Share2 className={compact ? "h-4 w-4" : "h-3.5 w-3.5"} />
-        {!compact && <span>Share</span>}
+        {!compact && <span>{t("share.button")}</span>}
       </button>
 
       {/* Share panel */}
@@ -492,7 +502,7 @@ export function ShareButton({
           {/* Header */}
           <div className="px-3 py-2.5 border-b border-slate-100">
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-              Share this question
+              {t("share.panelTitle")}
             </p>
           </div>
 
@@ -508,8 +518,8 @@ export function ShareButton({
                 </svg>
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold text-amber-800">Connect X for richer posts</p>
-                <p className="text-[11px] text-amber-600 truncate">Posts include image card & attribution</p>
+                <p className="text-xs font-semibold text-amber-800">{t("share.connectXNudge")}</p>
+                <p className="text-[11px] text-amber-600 truncate">{t("share.connectXNudgeSub")}</p>
               </div>
               <ExternalLink className="h-3.5 w-3.5 text-amber-500 shrink-0" />
             </a>
@@ -552,7 +562,7 @@ export function ShareButton({
                   {/* Label */}
                   <span className="flex-1 min-w-0">
                     <span className="block font-medium text-slate-800 text-sm">
-                      {isCopy && copied ? "Copied!" : cfg.label}
+                      {isCopy && copied ? t("share.copied") : cfg.label}
                     </span>
                     {cfg.sublabel && (
                       <span className="block text-[11px] text-slate-400 mt-0.5">
