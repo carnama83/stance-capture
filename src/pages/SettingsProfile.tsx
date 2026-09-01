@@ -10,6 +10,13 @@
 // M-A07: show_age toggle — requires profiles.show_age boolean column (see migration below).
 //        Renders "Age: X" on public profile if opted in.
 // AA2.2: WhatsApp phone number field with OTP verification.
+// Multilingual: Language preference selector — profiles.preferred_language_code
+//               and public.languages already exist (deployed earlier this
+//               session, see 20260831000000_multilingual_foundation.sql).
+//               No new migration needed here; reuses the same direct
+//               .from("profiles").update() pattern as show_age/bio below,
+//               since profiles RLS already permits a user to update their
+//               own row via that path.
 //
 // MIGRATION REQUIRED (run once in Supabase SQL editor):
 //   ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS show_age boolean NOT NULL DEFAULT false;
@@ -561,7 +568,15 @@ export default function SettingsProfile() {
     avatar_url: "",
     avatar_path: "" as string | null,
     show_age: false,
+    preferred_language_code: "en",
   });
+
+  interface LanguageOption {
+    language_code: string;
+    display_name_native: string;
+    display_name_english: string;
+  }
+  const [activeLanguages, setActiveLanguages] = React.useState<LanguageOption[]>([]);
 
   const [handle, setHandle] = React.useState<string>("");
 
@@ -596,6 +611,24 @@ export default function SettingsProfile() {
     return () => { cancelled = true; unsub?.(); };
   }, [sb]);
 
+  // ── Load selectable languages ──
+  // is_active_for_ui, not is_active_for_ugq — a language can have content
+  // generation running before it's exposed as a user-facing choice, or vice
+  // versa. This only shows what's actually meant to be user-selectable today.
+  React.useEffect(() => {
+    if (!sb) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await sb
+        .from("languages")
+        .select("language_code, display_name_native, display_name_english")
+        .eq("is_active_for_ui", true)
+        .order("display_name_english", { ascending: true });
+      if (!cancelled) setActiveLanguages((data as LanguageOption[]) ?? []);
+    })();
+    return () => { cancelled = true; };
+  }, [sb]);
+
   // ── Load profile ──
   React.useEffect(() => {
     let cancelled = false;
@@ -618,13 +651,14 @@ export default function SettingsProfile() {
         const avatar_url           = data?.avatar_url || "";
         const avatar_path          = (data as any)?.avatar_path ?? null;
         const show_age             = (data as any)?.show_age ?? false;
+        const preferred_language_code = (data as any)?.preferred_language_code ?? "en";
         const rid                  = data?.random_id || "";
         const dob_encrypted        = data?.dob_encrypted;
 
         setUid(sessionUserId);
         setRandomId(rid);
         setDobSet(!!dob_encrypted);
-        setForm({ username, display_handle_mode: mode, bio, avatar_url, avatar_path, show_age });
+        setForm({ username, display_handle_mode: mode, bio, avatar_url, avatar_path, show_age, preferred_language_code });
         setInitialUsername(username);
         setHandle(mode === "username" ? (username || rid) : rid);
       } catch (e: any) {
@@ -654,6 +688,31 @@ export default function SettingsProfile() {
       setMsg("Profile saved.");
     } catch (e: any) {
       setMsg(e.message || "Could not save profile");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // ── Update language preference ──
+  // Immediate-save, like setDisplay below — not deferred to the big "Save
+  // profile" button, since a language switch should just take effect.
+  async function setLanguage(code: string) {
+    setMsg(null);
+    if (!sb) return setMsg("Supabase is OFF (check env).");
+    if (!uid) return setMsg("Session not ready. Please wait a moment and try again.");
+    if (code === form.preferred_language_code) return;
+    try {
+      setBusy(true);
+      const { error } = await sb.from("profiles").update({ preferred_language_code: code }).eq("user_id", uid);
+      if (error) throw error;
+      setForm(f => ({ ...f, preferred_language_code: code }));
+      setMsg("Language updated.");
+      // Must match useLanguage's own queryKey (["preferred-language", userId])
+      // exactly — otherwise the feed/question pages keep serving the OLD
+      // cached preference until an unrelated navigation happens to refetch it.
+      queryClient.invalidateQueries({ queryKey: ["preferred-language", uid] });
+    } catch (e: any) {
+      setMsg(e.message || "Could not update language");
     } finally {
       setBusy(false);
     }
@@ -872,6 +931,37 @@ export default function SettingsProfile() {
         <p className="text-xs text-slate-500">
           When enabled, your age (calculated from your date of birth) is visible on your profile.
         </p>
+      </div>
+
+      {/* Language preference */}
+      <div className="rounded border p-3 space-y-2">
+        <div className="text-sm font-medium">Language</div>
+        <div className="text-xs text-slate-500">
+          Choose which language questions display in, where a translation exists.
+          Falls back to English for anything not yet available in your chosen language.
+        </div>
+        {activeLanguages.length === 0 ? (
+          <div className="text-xs text-slate-400 italic">No additional languages available yet.</div>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {activeLanguages.map(lang => (
+              <button
+                key={lang.language_code}
+                type="button"
+                className={`border rounded px-3 py-1 transition-colors ${
+                  form.preferred_language_code === lang.language_code
+                    ? "bg-slate-900 text-white border-slate-900"
+                    : "border-slate-300 hover:border-slate-400"
+                }`}
+                onClick={() => setLanguage(lang.language_code)}
+                disabled={busy}
+                aria-pressed={form.preferred_language_code === lang.language_code}
+              >
+                {lang.display_name_native} {form.preferred_language_code === lang.language_code ? "✓" : ""}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* M-A06: DOB — set if unset, greyed out if already set */}
