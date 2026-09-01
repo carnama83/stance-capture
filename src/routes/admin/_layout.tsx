@@ -31,6 +31,7 @@ import {
   Rocket,        // Epic Y — Campaigns nav
   Landmark,      // Epic R — Authorities nav
   ScrollText,    // Epic R — Expectation Ledgers nav
+  Languages,     // Multilingual — Rendition Review nav
 } from "lucide-react";
 
 import {
@@ -132,6 +133,11 @@ export default function AdminLayout() {
             to="/admin/ugq-queue"
             icon={<Inbox className="h-4 w-4" />}
             label="UGQ Queue"
+          />
+          <AdminLink
+            to="/admin/rendition-review"
+            icon={<Languages className="h-4 w-4" />}
+            label="Rendition Review"
           />
           <AdminLink
             to="/admin/proposers"
