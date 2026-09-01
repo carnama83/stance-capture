@@ -30,6 +30,16 @@ export interface ShareButtonProps {
   questionSummary?: string | null;
   /** OG image URL — passed from QuestionDetailPage via useOgMeta */
   ogImageUrl?: string | null;
+  /**
+   * Language the viewer is currently seeing this question in. Threaded into
+   * the /s/<id>/<lang> path segment (see api/s/[slug].js) so the WhatsApp
+   * link preview — and everything downstream through a forward chain —
+   * renders in the right language instead of always English. Optional,
+   * defaults to 'en': call sites that don't pass it keep behaving exactly
+   * as before. Not yet wired at every ShareButton render site — only
+   * QuestionDetailPage.tsx passes it today.
+   */
+  languageCode?: string;
   shareType?: ShareType;
   /** Compact icon-only mode for question cards */
   compact?: boolean;
@@ -105,7 +115,12 @@ function useXPostStatus(): XTokenStatus {
 
 // ─── Share URL builder ─────────────────────────────────────────────────────────
 
-function buildShareUrl(questionId: string, platform: string, shareId: string): string {
+function buildShareUrl(
+  questionId: string,
+  platform: string,
+  shareId: string,
+  languageCode: string
+): string {
   const base = window.location.origin;
   // Always route through /s/<id> — this is the endpoint (api/s/[slug].js) that
   // server-renders per-question OG tags for link crawlers (WhatsApp, FB, X,
@@ -113,13 +128,20 @@ function buildShareUrl(questionId: string, platform: string, shareId: string): s
   // since HashRouter content never reaches the server, so every share that
   // wasn't part of a forward chain showed the generic site-default card.
   //
+  // Language segment: /s/<id>/<lang>, matching the vercel.json rewrite. 'en'
+  // (the canonical default) deliberately produces no segment at all — see
+  // the api/s/[slug].js header comment on why that matters: it keeps the
+  // English link's cache identity exactly as it's always been, rather than
+  // fragmenting it into a redundant "/en" variant.
+  //
   // Web-forward chain: if THIS visitor has their own minted ref (they answered
   // anonymously via a forwarded link), carry their ref so the next hop is
   // parented to them. `via` keeps platform analytics in that case.
+  const langSegment = languageCode && languageCode !== "en" ? `/${languageCode}` : "";
   const fwd = getMyForwardRef(questionId);
   const ref = fwd ?? platform;
   const via = fwd ? `&via=${platform}` : "";
-  return `${base}/s/${questionId}?ref=${ref}${via}&sid=${shareId}`;
+  return `${base}/s/${questionId}${langSegment}?ref=${ref}${via}&sid=${shareId}`;
 }
 
 function buildShareText(questionText: string, questionSummary?: string | null): string {
@@ -283,6 +305,7 @@ export function ShareButton({
   questionText,
   questionSummary,
   ogImageUrl,
+  languageCode = "en",
   shareType = "question",
   compact = false,
   className = "",
@@ -335,7 +358,7 @@ export function ShareButton({
       }
 
       const sid = shareId ?? "unknown";
-      const shareUrl = buildShareUrl(questionId, platform, sid);
+      const shareUrl = buildShareUrl(questionId, platform, sid, languageCode);
       const shareText = buildShareText(questionText, questionSummary);
       const whatsAppText = buildWhatsAppText(questionText, questionSummary);
 

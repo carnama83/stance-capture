@@ -1577,6 +1577,7 @@ export default function QuestionDetailPage() {
                       questionText={question.question}
                       questionSummary={question.summary}
                       ogImageUrl={ogImageUrl}
+                      languageCode={languageCode}
                     />
                     <FollowTopicButton topicId={question.topic_id} />
                   </div>
