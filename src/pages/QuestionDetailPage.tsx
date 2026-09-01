@@ -13,6 +13,7 @@
 import * as React from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useLanguage } from "@/hooks/useLanguage";
+import { useTranslation } from "react-i18next";
 import PageLayout from "../components/PageLayout";
 import { QuestionCommentsPanel } from "@/components/question/QuestionCommentsPanel";
 import { useQuestionView } from "@/hooks/useQuestionView";
@@ -466,6 +467,7 @@ function EditorialHeroImage({
   alt: string;
   height?: number;
 }) {
+  const { t } = useTranslation();
   const isSignedGuardian = React.useMemo(() => {
     try {
       const u = new URL(
@@ -493,7 +495,7 @@ function EditorialHeroImage({
   if (broken) {
     return (
       <div className="w-full rounded-xl bg-slate-100 flex items-center justify-center" style={{ height }}>
-        <span className="text-[11px] text-slate-400">Image unavailable</span>
+        <span className="text-[11px] text-slate-400">{t("stance.imageUnavailable")}</span>
       </div>
     );
   }
@@ -525,14 +527,21 @@ type ContextUpdateRow = {
   updated_at: string;
 };
 
-const PHASE_LABELS: Record<string, string> = {
-  update:     "Update",
-  resolution: "Resolved",
-  follow_up:  "Follow-up",
-};
+// Was a module-level constant — moved to a function taking t since hooks
+// can't be called outside a component, same pattern as buildPlatformConfigs
+// in ShareButton.tsx.
+function phaseLabels(t: (key: string) => string): Record<string, string> {
+  return {
+    update:     t("stance.phaseUpdate"),
+    resolution: t("stance.phaseResolved"),
+    follow_up:  t("stance.phaseFollowUp"),
+  };
+}
 
 function QuestionContextUpdates({ questionId }: { questionId: string }) {
   const sb = getSupabase();
+  const { t } = useTranslation();
+  const PHASE_LABELS = phaseLabels(t);
   const { data: updates, isLoading } = useQuery<ContextUpdateRow[]>({
     queryKey: ["question-context-updates", questionId],
     staleTime: 5 * 60_000,
@@ -578,7 +587,7 @@ function QuestionContextUpdates({ questionId }: { questionId: string }) {
                   rel="noopener noreferrer"
                   className="text-[11px] text-blue-600 hover:underline truncate max-w-[200px]"
                 >
-                  Source {i + 1} ↗
+                  {t("stance.sourceLink", { num: i + 1 })}
                 </a>
               ))}
             </div>
@@ -591,6 +600,7 @@ function QuestionContextUpdates({ questionId }: { questionId: string }) {
 
 // ---------- RegionComparison ----------
 function RegionComparison({ stats }: { stats: QuestionStats | null }) {
+  const { t } = useTranslation();
   if (!stats?.regions) return null;
   const { regions, location } = stats;
   if (!regions) return null;
@@ -600,13 +610,13 @@ function RegionComparison({ stats }: { stats: QuestionStats | null }) {
   if (location?.county && regions.county) scopeLabels.push({ scope: "county", label: location.county });
   if (location?.state && regions.state) scopeLabels.push({ scope: "state", label: location.state });
   if (location?.country && regions.country) scopeLabels.push({ scope: "country", label: location.country });
-  if (regions.global) scopeLabels.push({ scope: "global", label: "Global" });
+  if (regions.global) scopeLabels.push({ scope: "global", label: t("stance.global") });
   if (scopeLabels.length === 0) return null;
 
   return (
     <div className="space-y-2">
       <div className="text-[11px] font-semibold tracking-wide uppercase text-slate-500">
-        Compare by region
+        {t("stance.compareByRegion")}
       </div>
       <div className="space-y-1.5">
         {scopeLabels.map(({ scope, label }) => {
@@ -618,10 +628,10 @@ function RegionComparison({ stats }: { stats: QuestionStats | null }) {
               <div className="text-slate-600 flex items-center gap-1.5">
                 {(() => {
                   const parts: React.ReactNode[] = [];
-                  if ((r.pct_agree ?? 0) > 0)    parts.push(<span key="a" className="text-slate-700 font-medium">{Math.round(r.pct_agree!)}% agree</span>);
-                  if ((r.pct_disagree ?? 0) > 0)  parts.push(<span key="d">{Math.round(r.pct_disagree!)}% disagree</span>);
-                  if ((r.pct_neutral ?? 0) > 0)   parts.push(<span key="n" className="text-slate-500">{Math.round(r.pct_neutral!)}% neutral</span>);
-                  if (parts.length === 0) return <span className="text-slate-400">No data yet</span>;
+                  if ((r.pct_agree ?? 0) > 0)    parts.push(<span key="a" className="text-slate-700 font-medium">{t("stance.pctAgree", { pct: Math.round(r.pct_agree!) })}</span>);
+                  if ((r.pct_disagree ?? 0) > 0)  parts.push(<span key="d">{t("stance.pctDisagree", { pct: Math.round(r.pct_disagree!) })}</span>);
+                  if ((r.pct_neutral ?? 0) > 0)   parts.push(<span key="n" className="text-slate-500">{t("stance.pctNeutral", { pct: Math.round(r.pct_neutral!) })}</span>);
+                  if (parts.length === 0) return <span className="text-slate-400">{t("stance.noDataYet")}</span>;
                   return parts.reduce<React.ReactNode[]>((acc, el, i) =>
                     i === 0 ? [el] : [...acc, <span key={`sep-${i}`} className="text-slate-300">·</span>, el], []
                   );
@@ -640,14 +650,15 @@ function RegionComparison({ stats }: { stats: QuestionStats | null }) {
 
 function ConfidenceFeedback({ onSubmit }: { onSubmit: (score: number) => void }) {
   const [hovered, setHovered] = React.useState<number | null>(null);
+  const { t } = useTranslation();
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 mt-3">
       <p className="text-xs font-medium text-slate-700 mb-0.5">
-        How confident are you in this stance?
+        {t("stance.howConfident")}
       </p>
       <p className="text-[11px] text-slate-400 mb-3">
-        Private — helps us understand conviction vs. uncertainty across the community.
+        {t("stance.confidencePrivacyNote")}
       </p>
       <div className="flex items-center gap-1.5">
         {[1, 2, 3, 4, 5].map((star) => {
@@ -659,7 +670,7 @@ function ConfidenceFeedback({ onSubmit }: { onSubmit: (score: number) => void })
               onMouseEnter={() => setHovered(star)}
               onMouseLeave={() => setHovered(null)}
               onClick={() => onSubmit(star)}
-              aria-label={`${star} out of 5`}
+              aria-label={t("stance.starOutOf5", { star })}
               className="transition-transform hover:scale-110"
             >
               <svg
@@ -679,12 +690,12 @@ function ConfidenceFeedback({ onSubmit }: { onSubmit: (score: number) => void })
           );
         })}
         <span className="ml-2 text-[11px] text-slate-400">
-          {hovered === 1 ? "Not very confident"
-            : hovered === 2 ? "Somewhat uncertain"
-            : hovered === 3 ? "Moderately confident"
-            : hovered === 4 ? "Quite confident"
-            : hovered === 5 ? "Very confident"
-            : "Tap to rate"}
+          {hovered === 1 ? t("stance.confidence1")
+            : hovered === 2 ? t("stance.confidence2")
+            : hovered === 3 ? t("stance.confidence3")
+            : hovered === 4 ? t("stance.confidence4")
+            : hovered === 5 ? t("stance.confidence5")
+            : t("stance.tapToRate")}
         </span>
       </div>
     </div>
@@ -710,6 +721,7 @@ function StanceCard({
   onExpectationConfirm,
   onExpectationSkip,
   isArchived,
+  languageCode,
 }: {
   isAuthed: boolean;
   questionId: string;
@@ -728,11 +740,13 @@ function StanceCard({
   onExpectationConfirm?: (types: ExpectationType[]) => void;
   onExpectationSkip?: () => void;
   isArchived?: boolean;
+  languageCode: string;
 }) {
+  const { t } = useTranslation();
   return (
     <section className="rounded-xl border border-slate-200 bg-slate-50 p-4 md:p-5 shadow-sm">
       <h3 className="text-[11px] font-semibold tracking-wide uppercase text-slate-500 mb-1">
-        Your stance
+        {t("stance.yourStance")}
       </h3>
 
       {/* Epic R — M-R07: incident summary card. US-R14: shown before the
@@ -779,16 +793,16 @@ function StanceCard({
         <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 flex items-start gap-2">
           <span className="text-amber-500 mt-0.5 text-base">📦</span>
           <div>
-            <p className="text-sm font-medium text-amber-800">This question is archived</p>
+            <p className="text-sm font-medium text-amber-800">{t("stance.questionArchived")}</p>
             {question.archive_reason && (
               <p className="text-xs text-amber-700 mt-0.5">{question.archive_reason}</p>
             )}
             {question.archived_at && (
               <p className="text-xs text-amber-600 mt-0.5">
-                Archived on {new Date(question.archived_at).toLocaleDateString(undefined, { dateStyle: "long" })}
+                {t("stance.archivedOn", { date: new Date(question.archived_at).toLocaleDateString(undefined, { dateStyle: "long" }) })}
               </p>
             )}
-            <p className="text-xs text-amber-600 mt-1">Stances are no longer accepted for this question.</p>
+            <p className="text-xs text-amber-600 mt-1">{t("stance.stancesNoLongerAccepted")}</p>
           </div>
         </div>
       )}
@@ -797,7 +811,7 @@ function StanceCard({
       {(
         <>
           <p className="text-sm font-medium text-slate-700 mb-3">
-            Where do you stand on this issue?
+            {t("stance.whereDoYouStand")}
           </p>
 
           {/* S4: Trade-off explorer — shown before user commits stance */}
@@ -875,20 +889,20 @@ function StanceCard({
 
           <div className="text-[11px] text-slate-500 flex items-center gap-2 mt-1">
             {stanceLoading ? (
-              <span>Loading your stance…</span>
+              <span>{t("stance.loadingYourStance")}</span>
             ) : stanceMutation.isPending ? (
-              <span>Saving…</span>
+              <span>{t("stance.saving")}</span>
             ) : myStance === null || myStance === undefined ? (
-              <span>No stance recorded yet.</span>
+              <span>{t("stance.noStanceRecorded")}</span>
             ) : (
               <span>
-                Saved as {buildStanceLabels(question?.slider_low_label, question?.slider_high_label)[myStance ?? 0]}.
+                {t("stance.savedAs", { label: buildStanceLabels(question?.slider_low_label, question?.slider_high_label, languageCode)[myStance ?? 0] })}
               </span>
             )}
 
             {isAuthed && myStance != null && !stanceMutation.isPending && (
               <button type="button" className="underline" onClick={() => handleSetStance(null)}>
-                Clear
+                {t("stance.clear")}
               </button>
             )}
           </div>
@@ -921,6 +935,7 @@ export default function QuestionDetailPage() {
   const userId = session?.user?.id ?? null;
   const isAuthed = !!session;
   const { languageCode, isLoading: languageLoading } = useLanguage(userId);
+  const { t } = useTranslation();
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -1006,8 +1021,8 @@ export default function QuestionDetailPage() {
 
   // W2: Dynamic OG meta for social share previews (must be after question + supabaseUrl)
   useOgMeta({
-    title: question?.question ?? "A question for you",
-    description: question?.summary ?? "Share your stance on Stance Capture.",
+    title: question?.question ?? t("stance.aQuestionForYou"),
+    description: question?.summary ?? t("stance.shareDefaultDescription"),
     questionId,
   });
 
@@ -1212,14 +1227,14 @@ export default function QuestionDetailPage() {
       const label =
         resolvedScore == null
           ? null
-          : (buildStanceLabels(question?.slider_low_label, question?.slider_high_label)[resolvedScore] ?? `Score ${resolvedScore}`);
+          : (buildStanceLabels(question?.slider_low_label, question?.slider_high_label, languageCode)[resolvedScore] ?? t("stance.scoreFallback", { score: resolvedScore }));
 
       toast({
-        title: resolvedScore == null ? "Stance cleared" : "Stance saved",
+        title: resolvedScore == null ? t("stance.stanceCleared") : t("stance.stanceSaved"),
         description:
           resolvedScore == null
-            ? "Your stance was removed from this question."
-            : `Your stance is now: ${label}.`,
+            ? t("stance.stanceRemoved")
+            : t("stance.stanceIsNow", { label }),
         duration: 2200,
       });
 
@@ -1243,10 +1258,10 @@ export default function QuestionDetailPage() {
         { qid: debugQid, isTimeout, code: err?.code ?? null, message: err?.message ?? null }
       );
       toast({
-        title: isTimeout ? "Save timed out" : "Error saving stance",
+        title: isTimeout ? t("stance.saveTimedOut") : t("stance.errorSavingStance"),
         description: isTimeout
-          ? "Connection issue — please try again. If this keeps happening, reload the page."
-          : (err?.message ?? "Failed to save your stance. Please try again."),
+          ? t("stance.connectionIssue")
+          : (err?.message ?? t("stance.failedToSaveStance")),
         variant: "destructive",
       });
     },
@@ -1350,6 +1365,7 @@ export default function QuestionDetailPage() {
     handleSetStance,
     handleRequireLogin,
     showConfidence,
+    languageCode,
     onConfidenceSubmit: (score: number) => {
       setConfidenceScore(score);
       setShowConfidence(false);
@@ -1399,7 +1415,7 @@ export default function QuestionDetailPage() {
   if (isLoading) {
     content = (
       <div className="rounded-xl border border-slate-200 bg-white px-6 py-8 shadow-sm">
-        <p className="text-sm text-slate-500">Loading question...</p>
+        <p className="text-sm text-slate-500">{t("stance.loadingQuestion")}</p>
       </div>
     );
   } else if (isError) {
@@ -1414,7 +1430,7 @@ export default function QuestionDetailPage() {
   } else if (!question) {
     content = (
       <div className="rounded-xl border border-slate-200 bg-white px-6 py-8 shadow-sm">
-        <p className="text-sm text-slate-500">Question not found.</p>
+        <p className="text-sm text-slate-500">{t("stance.questionNotFound")}</p>
       </div>
     );
   } else {
@@ -1429,7 +1445,7 @@ export default function QuestionDetailPage() {
             {/* Meta row */}
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <span className="text-[11px] font-semibold tracking-wide uppercase text-slate-500">
-                Question
+                {t("stance.questionLabel")}
               </span>
               <span aria-hidden className="text-slate-300">·</span>
               {question.published_at ? (
@@ -1500,7 +1516,7 @@ export default function QuestionDetailPage() {
                 height={420}
               />
               <p className="mt-2 text-xs text-slate-500 leading-snug">
-                Image source: news article
+                {t("stance.imageSourceCaption")}
               </p>
             </div>
           )}
@@ -1516,12 +1532,12 @@ export default function QuestionDetailPage() {
           <section className="mt-10 border-t border-slate-200 pt-8">
             <h2 className="text-sm font-semibold text-slate-900 mb-4">
               {question.location_label
-                ? `Related questions in ${question.location_label}`
-                : "Related questions"}
+                ? t("stance.relatedQuestionsIn", { location: question.location_label })
+                : t("stance.relatedQuestions")}
             </h2>
 
-            {relatedLoading && <p className="text-xs text-slate-500">Loading related questions…</p>}
-            {!relatedLoading && !hasRelated && <p className="text-xs text-slate-500">No related questions yet.</p>}
+            {relatedLoading && <p className="text-xs text-slate-500">{t("stance.loadingRelatedQuestions")}</p>}
+            {!relatedLoading && !hasRelated && <p className="text-xs text-slate-500">{t("stance.noRelatedQuestionsYet")}</p>}
 
             {hasRelated && relatedQuestions && (
               <div className="space-y-3">
@@ -1566,9 +1582,9 @@ export default function QuestionDetailPage() {
               <section className="rounded-xl border border-slate-200 bg-white p-4 md:p-5 shadow-sm">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-[11px] font-semibold tracking-wide uppercase text-slate-500">Topic</div>
+                    <div className="text-[11px] font-semibold tracking-wide uppercase text-slate-500">{t("stance.topic")}</div>
                     <div className="mt-1 text-sm font-medium text-slate-900">
-                      {topicLite?.title ?? "View topic"}
+                      {topicLite?.title ?? t("stance.viewTopic")}
                     </div>
                   </div>
                   <div className="shrink-0 flex items-center gap-2">
@@ -1584,7 +1600,7 @@ export default function QuestionDetailPage() {
                 </div>
                 <div className="mt-3">
                   <Link to={`/topics/${question.topic_id}`} className="text-xs text-slate-600 hover:underline">
-                    View topic →
+                    {t("stance.viewTopicArrow")}
                   </Link>
                 </div>
               </section>
@@ -1626,24 +1642,21 @@ export default function QuestionDetailPage() {
             {threadSentimentLoading && !threadSentiment && (
               <section className="rounded-xl border border-slate-200 bg-white p-4 md:p-5 shadow-sm">
                 <h3 className="text-[11px] font-semibold tracking-wide uppercase text-slate-500 mb-3">
-                  Discussion mood
+                  {t("stance.discussionMood")}
                 </h3>
-                <p className="text-xs text-slate-500">Analyzing discussion sentiment…</p>
+                <p className="text-xs text-slate-500">{t("stance.analyzingSentiment")}</p>
               </section>
             )}
 
             {threadSentiment && (
               <section className="rounded-xl border border-slate-200 bg-white p-4 md:p-5 shadow-sm">
                 <h3 className="text-[11px] font-semibold tracking-wide uppercase text-slate-500 mb-3">
-                  Discussion mood
+                  {t("stance.discussionMood")}
                 </h3>
                 <p className="text-xs text-slate-600">
-                  <span className="text-xs text-slate-700 font-medium">
-                    {threadSentiment.comment_count ?? 0}
-                  </span>{" "}
-                  comment{threadSentiment.comment_count === 1 ? "" : "s"}
+                  {t("stance.commentCount", { count: threadSentiment.comment_count ?? 0 })}
                   {typeof threadSentiment.avg_sentiment === "number" &&
-                    ` · avg sentiment ${threadSentiment.avg_sentiment.toFixed(2)} (−1 to +1)`}
+                    ` · ${t("stance.avgSentimentSuffix", { score: threadSentiment.avg_sentiment.toFixed(2) })}`}
                 </p>
                 {threadSentiment.summary_text && (
                   <p className="text-sm text-slate-700 mt-2">{threadSentiment.summary_text}</p>

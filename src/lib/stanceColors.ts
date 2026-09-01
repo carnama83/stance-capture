@@ -2,6 +2,18 @@
 //
 // Centralized color helpers for stance slider and sentiment mood.
 
+// Plain JSON import, not react-i18next's useTranslation — this file has no
+// component/hook context to call useTranslation() from. Importing the same
+// locale files directly keeps ONE source of truth for these words rather
+// than a second, disconnected Hindi string living only here.
+import en from "@/locales/en/common.json";
+import hi from "@/locales/hi/common.json";
+
+const STANCE_WORDS: Record<string, { neutral: string; leanOppose: string; leanSupport: string }> = {
+  en: en.stance,
+  hi: hi.stance,
+};
+
 /**
  * Map stance value (-2..2) to a hex color.
  * Used for the stance slider fill / thumb styling.
@@ -69,9 +81,19 @@ export function getSentimentColorHex(
 
 export function deriveLeanLabel(
   endpointLabel: string | null | undefined,
-  fallback: string
+  fallback: string,
+  languageCode: string = "en"
 ): string {
   if (!endpointLabel) return fallback;
+  // BUG FIX: this used to prepend the English phrase "Lean toward " onto
+  // whatever endpointLabel was and lowercase its first character —
+  // a mechanical trick that only works for English grammar. Applied to a
+  // Hindi rendition (e.g. "पूरी तरह असहमत"), it produced broken,
+  // mixed-language text like "Lean toward पूरी तरह असहमत" — worse than
+  // just showing untranslated English. For any non-English language, skip
+  // the derivation entirely and use the static fallback instead: less
+  // specific than English's dynamically-derived version, but never broken.
+  if (languageCode !== "en") return fallback;
   // Take the first 3 words, lowercase the first character so it reads
   // naturally after "Lean toward" (e.g. "Protect" → "protecting" is handled
   // by the lowercase — the actual word stays as-is, which is close enough
@@ -83,13 +105,15 @@ export function deriveLeanLabel(
 
 export function buildStanceLabels(
   sliderLowLabel?: string | null,
-  sliderHighLabel?: string | null
+  sliderHighLabel?: string | null,
+  languageCode: string = "en"
 ): Record<number, string> {
+  const words = STANCE_WORDS[languageCode] ?? STANCE_WORDS.en;
   return {
     [-2]: sliderLowLabel  ?? "Strongly oppose",
-    [-1]: deriveLeanLabel(sliderLowLabel,  "Lean oppose"),
-    [0]:  "Neutral",
-    [1]:  deriveLeanLabel(sliderHighLabel, "Lean support"),
+    [-1]: deriveLeanLabel(sliderLowLabel,  words.leanOppose, languageCode),
+    [0]:  words.neutral,
+    [1]:  deriveLeanLabel(sliderHighLabel, words.leanSupport, languageCode),
     [2]:  sliderHighLabel ?? "Strongly support",
   };
 }
