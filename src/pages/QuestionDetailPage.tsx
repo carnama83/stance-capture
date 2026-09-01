@@ -12,6 +12,7 @@
 
 import * as React from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { useLanguage } from "@/hooks/useLanguage";
 import PageLayout from "../components/PageLayout";
 import { QuestionCommentsPanel } from "@/components/question/QuestionCommentsPanel";
 import { useQuestionView } from "@/hooks/useQuestionView";
@@ -160,17 +161,18 @@ function useSupabaseSession() {
 }
 
 // ---------- Data fetchers ----------
-async function fetchQuestionById(id: string): Promise<LiveQuestion | null> {
+async function fetchQuestionById(id: string, languageCode: string): Promise<LiveQuestion | null> {
   const sb = getSupabase();
   if (!sb) throw new Error("Supabase client not available");
 
-  const { data, error } = await sb
-    .from("questions")
-    .select(
-      "id, topic_id, question, summary, context_summary, supporting_links, content_type, tags, location_label, published_at, status, phase, cover_image_url, state, archive_reason, archived_at, context_version, slider_low_label, slider_high_label, source, source_meta"
-    )
-    .eq("id", id)
-    .limit(1);
+  // NOTE: context_summary is NOT localized — no rendition field exists for
+  // it yet (same known gap flagged in api/s/[slug].js). question and the
+  // slider labels are resolved server-side; everything else on LiveQuestion
+  // is language-independent metadata, unchanged either way.
+  const { data, error } = await sb.rpc("get_question_localized", {
+    p_question_id: id,
+    p_language_code: languageCode,
+  });
 
   if (error) {
     console.error("Failed to load question detail", error);
@@ -385,24 +387,21 @@ async function fetchRelatedQuestions(
   questionId: string,
   tags: string[],
   locationLabel: string | null,
+  languageCode: string,
   limit = 4
 ): Promise<LiveQuestion[]> {
   const sb = getSupabase();
   if (!sb) throw new Error("Supabase client not available");
   if (!tags.length) return [];
 
-  let q = sb
-    .from("v_live_questions")
-    .select("id, question, summary, tags, location_label, published_at, status")
-    .neq("id", questionId)
-    .eq("status", "active")
-    .overlaps("tags", tags);
+  const { data, error } = await sb.rpc("get_related_questions_localized", {
+    p_question_id: questionId,
+    p_tags: tags,
+    p_location_label: locationLabel,
+    p_limit: limit,
+    p_language_code: languageCode,
+  });
 
-  if (locationLabel && locationLabel.trim()) {
-    q = q.eq("location_label", locationLabel.trim());
-  }
-
-  const { data, error } = await q.order("published_at", { ascending: false }).limit(limit);
   if (error) { console.error("Failed to load related questions", error); return []; }
   return (data ?? []) as LiveQuestion[];
 }
@@ -921,6 +920,7 @@ export default function QuestionDetailPage() {
   const session = useSupabaseSession();
   const userId = session?.user?.id ?? null;
   const isAuthed = !!session;
+  const { languageCode, isLoading: languageLoading } = useLanguage(userId);
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -929,9 +929,9 @@ export default function QuestionDetailPage() {
   useQuestionView(questionId);
 
   const { data: question, isLoading, isError, error } = useQuery({
-    enabled: !!questionId,
-    queryKey: ["question-detail", questionId],
-    queryFn: () => fetchQuestionById(questionId),
+    enabled: !!questionId && !languageLoading,
+    queryKey: ["question-detail", questionId, languageCode],
+    queryFn: () => fetchQuestionById(questionId, languageCode),
     staleTime: 60_000,
   });
 
@@ -966,13 +966,14 @@ export default function QuestionDetailPage() {
   });
 
   const { data: relatedQuestions, isLoading: relatedLoading } = useQuery({
-    enabled: !!questionId && !!question && !!question.tags && question.tags.length > 0,
-    queryKey: ["related-questions", questionId, question?.tags ?? [], question?.location_label ?? null],
+    enabled: !!questionId && !!question && !!question.tags && question.tags.length > 0 && !languageLoading,
+    queryKey: ["related-questions", questionId, question?.tags ?? [], question?.location_label ?? null, languageCode],
     queryFn: () =>
       fetchRelatedQuestions(
         questionId,
         (question?.tags as string[]) ?? [],
-        (question?.location_label as string | null) ?? null
+        (question?.location_label as string | null) ?? null,
+        languageCode
       ),
     staleTime: 60_000,
   });
