@@ -22,6 +22,7 @@
 import * as React from "react";
 import { Loader2 } from "lucide-react";
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/env";
+import { useTranslation } from "react-i18next";
 
 type Step = "phone" | "otp";
 
@@ -40,6 +41,7 @@ async function callFunction(name: string, body: Record<string, unknown>) {
 }
 
 export default function PhoneSignInFlow() {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = React.useState(false);
   const [step, setStep] = React.useState<Step>("phone");
   const [phone, setPhone] = React.useState("");
@@ -51,7 +53,7 @@ export default function PhoneSignInFlow() {
   async function handleSendOtp() {
     setErr(null);
     if (!phone.trim()) {
-      setErr("Enter your phone number.");
+      setErr(t("auth.enterPhoneNumber"));
       return;
     }
     setBusy(true);
@@ -63,15 +65,15 @@ export default function PhoneSignInFlow() {
       if (!ok || !data?.sent) {
         setErr(
           data?.reason === "opted_out"
-            ? "This number has opted out of WhatsApp messages. Reply START on WhatsApp first."
-            : "Couldn't send a code. Check the number and try again."
+            ? t("auth.optedOutOfWhatsApp")
+            : t("auth.couldntSendCode")
         );
         return;
       }
       setVerificationToken(data.verification_token);
       setStep("otp");
     } catch {
-      setErr("Couldn't reach the server. Check your connection and try again.");
+      setErr(t("auth.couldntReachServer"));
     } finally {
       setBusy(false);
     }
@@ -80,11 +82,11 @@ export default function PhoneSignInFlow() {
   async function handleVerifyOtp() {
     setErr(null);
     if (!otp || otp.length !== 6) {
-      setErr("Enter the 6-digit code from WhatsApp.");
+      setErr(t("auth.enterSixDigitCodeWhatsApp"));
       return;
     }
     if (!verificationToken) {
-      setErr("Verification session expired. Please request a new code.");
+      setErr(t("auth.verificationExpired"));
       setStep("phone");
       return;
     }
@@ -97,10 +99,10 @@ export default function PhoneSignInFlow() {
       if (!ok || !data?.ok || !data?.token) {
         setErr(
           data?.reason === "no_account_for_number"
-            ? "No account found for this number. Text SUBSCRIBE on WhatsApp first to create one."
+            ? t("auth.noAccountForNumber")
             : data?.reason === "invalid_or_expired_code"
-            ? "Incorrect or expired code. Please try again."
-            : "Verification failed. Please try again."
+            ? t("auth.incorrectOrExpiredCode")
+            : t("auth.verificationFailed")
         );
         return;
       }
@@ -108,7 +110,7 @@ export default function PhoneSignInFlow() {
       // session-establishment logic needed past this point.
       window.location.href = `${window.location.origin}/#/auth/whatsapp-signin?token=${encodeURIComponent(data.token)}`;
     } catch {
-      setErr("Couldn't reach the server. Check your connection and try again.");
+      setErr(t("auth.couldntReachServer"));
     } finally {
       setBusy(false);
     }
@@ -121,7 +123,7 @@ export default function PhoneSignInFlow() {
         onClick={() => setExpanded(true)}
         className="w-full text-sm text-slate-600 underline text-center"
       >
-        Signed up via WhatsApp? Sign in with your phone number
+        {t("auth.signedUpViaWhatsApp")}
       </button>
     );
   }
@@ -130,7 +132,7 @@ export default function PhoneSignInFlow() {
     <div className="rounded border p-3 space-y-2">
       {step === "phone" ? (
         <>
-          <div className="text-sm font-medium">Sign in with your phone number</div>
+          <div className="text-sm font-medium">{t("auth.signInWithPhoneNumber")}</div>
           <input
             type="tel"
             className="w-full border rounded px-3 py-2"
@@ -146,12 +148,12 @@ export default function PhoneSignInFlow() {
             onClick={handleSendOtp}
             disabled={busy}
           >
-            {busy ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : "Send code via WhatsApp"}
+            {busy ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : t("auth.sendCodeViaWhatsApp")}
           </button>
         </>
       ) : (
         <>
-          <div className="text-sm font-medium">Enter the code from WhatsApp</div>
+          <div className="text-sm font-medium">{t("auth.enterCodeFromWhatsApp")}</div>
           <input
             inputMode="numeric"
             maxLength={6}
@@ -169,7 +171,7 @@ export default function PhoneSignInFlow() {
               onClick={handleVerifyOtp}
               disabled={busy || otp.length < 6}
             >
-              {busy ? "Verifying…" : "Verify & sign in"}
+              {busy ? t("auth.verifying") : t("auth.verifyAndSignIn")}
             </button>
             <button
               type="button"
@@ -181,7 +183,7 @@ export default function PhoneSignInFlow() {
               }}
               disabled={busy}
             >
-              Back
+              {t("auth.back")}
             </button>
           </div>
         </>

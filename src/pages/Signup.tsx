@@ -6,6 +6,7 @@ import UsernameField from "../components/UsernameField";
 import { DobField } from "../components/DobField";
 import PageLayout from "../components/PageLayout";
 import SocialAuthButtons from "../auth/SocialAuthButtons";
+import { useTranslation } from "react-i18next";
 
 // ---------- Types ----------
 type Gender =
@@ -156,25 +157,26 @@ interface GeoSuggestionBannerProps {
 }
 
 function GeoSuggestionBanner({ countryName, regionName, onAccept, onDismiss }: GeoSuggestionBannerProps) {
+  const { t } = useTranslation();
   const locationLabel = regionName ? `${regionName}, ${countryName}` : countryName;
   return (
     <div className="flex items-center gap-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm">
       <span className="text-sky-700 flex-1">
-        📍 We detected your location as <span className="font-semibold">{locationLabel}</span>. Use this?
+        📍 {t("signup.weDetectedLocation", { location: locationLabel })}
       </span>
       <button
         type="button"
         className="rounded border border-sky-300 bg-white px-2 py-1 text-xs font-medium text-sky-800 hover:bg-sky-100"
         onClick={onAccept}
       >
-        Yes, use this
+        {t("signup.yesUseThis")}
       </button>
       <button
         type="button"
         className="rounded border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
         onClick={onDismiss}
       >
-        Enter manually
+        {t("signup.enterManually")}
       </button>
     </div>
   );
@@ -357,8 +359,8 @@ function useGeoData() {
 // country — India uses "District", not "County". This is display-only: the
 // underlying field/column/type stays `county` everywhere (state, RPC params,
 // locations.type enum) to avoid a much larger rename across the stack.
-function adminTier3Label(countryCode: string): string {
-  return countryCode === "IN" ? "District" : "County";
+function adminTier3Label(countryCode: string, t: (key: string) => string): string {
+  return countryCode === "IN" ? t("signup.districtLabel") : t("signup.countyLabel");
 }
 
 function LocationSelect(props: {
@@ -383,6 +385,7 @@ function LocationSelect(props: {
   /** QA-A01 fix: single shared useGeoData instance hoisted from Signup */
   geoData: ReturnType<typeof useGeoData>;
 }) {
+  const { t } = useTranslation();
   const {
     ready,
     countries,
@@ -460,17 +463,17 @@ function LocationSelect(props: {
   return (
     <div className="space-y-2" aria-live="polite">
       <label className="block text-sm font-medium">
-        Location <span className="text-rose-600">*</span>
+        {t("signup.locationLabel")} <span className="text-rose-600">*</span>
       </label>
       <p className="text-xs text-muted-foreground">
-        Used to personalize regional trends. You can change this later.
+        {t("signup.locationHelper")}
       </p>
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         {/* Country (required) */}
         <div>
           <label htmlFor="country" className="block text-xs font-medium">
-            Country <span className="text-rose-600">*</span>
+            {t("signup.countryLabel")} <span className="text-rose-600">*</span>
           </label>
           <select
             id="country"
@@ -494,19 +497,19 @@ function LocationSelect(props: {
             aria-busy={!ready}
             aria-invalid={!!props.errorCountry}
           >
-            {!ready && <option value="">Loading countries…</option>}
-            {ready && <option value="">Select country</option>}
+            {!ready && <option value="">{t("signup.loadingCountries")}</option>}
+            {ready && <option value="">{t("signup.selectCountry")}</option>}
             {countries.map((c) => (
               <option key={c.code} value={c.code}>
                 {c.name} ({c.code})
-                {props.detectedCountryCode === c.code ? " · auto-detected" : ""}
+                {props.detectedCountryCode === c.code ? t("signup.autoDetectedSuffix") : ""}
               </option>
             ))}
           </select>
           {/* M-A01: subtle hint when auto-detected country is currently selected */}
           {props.detectedCountryCode &&
             props.country === props.detectedCountryCode && (
-              <p className="mt-1 text-xs text-sky-600">📍 Pre-filled from your IP address</p>
+              <p className="mt-1 text-xs text-sky-600">{t("signup.prefilledFromIp")}</p>
           )}
           {props.errorCountry && (
             <p className="mt-1 text-xs text-rose-600">{props.errorCountry}</p>
@@ -516,7 +519,7 @@ function LocationSelect(props: {
         {/* State (optional) */}
         <div>
           <label htmlFor="state" className="block text-xs font-medium">
-            State / Region (optional)
+            {t("signup.stateRegionOptional")}
           </label>
           <select
             id="state"
@@ -530,12 +533,12 @@ function LocationSelect(props: {
             aria-busy={loadingStates}
             aria-invalid={!!props.errorState}
           >
-            {!props.country && <option value="">Select country first</option>}
+            {!props.country && <option value="">{t("signup.selectCountryFirst")}</option>}
             {props.country && loadingStates && (
-              <option value="">Loading states…</option>
+              <option value="">{t("signup.loadingStates")}</option>
             )}
             {props.country && !loadingStates && (
-              <option value="">Select state</option>
+              <option value="">{t("signup.selectState")}</option>
             )}
             {states.map((s) => (
               <option key={s.code} value={s.code}>
@@ -545,7 +548,7 @@ function LocationSelect(props: {
           </select>
           {props.country && !loadingStates && states.length === 0 && (
             <p className="mt-1 text-xs text-amber-600">
-              No states found for this country.
+              {t("signup.noStatesFound")}
             </p>
           )}
           {props.errorState && (
@@ -556,7 +559,7 @@ function LocationSelect(props: {
         {/* County / District (optional) — label varies by country */}
         <div>
           <label htmlFor="county" className="block text-xs font-medium">
-            {adminTier3Label(props.country)} (optional)
+            {t("signup.optionalLabel", { field: adminTier3Label(props.country, t) })}
           </label>
           <select
             id="county"
@@ -570,14 +573,14 @@ function LocationSelect(props: {
             aria-busy={loadingCounties}
             aria-invalid={!!props.errorCounty}
           >
-            {!props.stateCode && <option value="">Select state first</option>}
+            {!props.stateCode && <option value="">{t("signup.selectStateFirst")}</option>}
             {props.stateCode && loadingCounties && (
               <option value="">
-                Loading {adminTier3Label(props.country).toLowerCase()}s…
+                {props.country === "IN" ? t("signup.loadingDistricts") : t("signup.loadingCounties")}
               </option>
             )}
             {props.stateCode && !loadingCounties && (
-              <option value="">(None)</option>
+              <option value="">{t("signup.noneOption")}</option>
             )}
             {counties.map((k) => (
               <option key={k.code} value={k.code}>
@@ -593,7 +596,7 @@ function LocationSelect(props: {
         {/* City (optional; real select) */}
         <div>
           <label htmlFor="city" className="block text-xs font-medium">
-            City (optional)
+            {t("signup.cityOptional")}
           </label>
           <select
             id="city"
@@ -609,12 +612,12 @@ function LocationSelect(props: {
           >
             <option value="">
               {!props.stateCode
-                ? "Select state first"
+                ? t("signup.selectStateFirst")
                 : loadingCities
-                ? "Loading cities…"
+                ? t("signup.loadingCities")
                 : cities.length === 0
-                ? "(No cities available)"
-                : "Select city"}
+                ? t("signup.noCitiesAvailable")
+                : t("signup.selectCity")}
             </option>
             {cities.map((ct) => (
               <option key={ct.id} value={ct.id}>
@@ -635,6 +638,7 @@ function LocationSelect(props: {
 export default function Signup() {
   const sb = React.useMemo(getSupabase, []);
   const nav = useNavigate();
+  const { t } = useTranslation();
 
   // ---- Debug mode: supports HashRouter (#/signup?debug=1) ----
   const debugEnabled = React.useMemo(() => getDebugFlag(), []);
@@ -747,9 +751,9 @@ export default function Signup() {
     return (
       <PageLayout>
         <div className="mx-auto max-w-md p-6 space-y-4">
-          <h1 className="text-2xl font-bold">Sign up</h1>
+          <h1 className="text-2xl font-bold">{t("auth.signUp")}</h1>
           <div className="rounded border border-rose-200 bg-rose-50 p-3 text-rose-700">
-            Supabase is OFF (check env).
+            {t("auth.supabaseOff")}
           </div>
         </div>
       </PageLayout>
@@ -776,48 +780,48 @@ export default function Signup() {
     const next: Record<string, string> = {};
 
     if (!email.trim()) {
-      next.email = "Email is required.";
+      next.email = t("auth.emailRequired");
     } else if (!/^\S+@\S+\.\S+$/.test(email.trim())) {
-      next.email = "Enter a valid email address.";
+      next.email = t("auth.enterValidEmail");
     }
 
     if (!password) {
-      next.password = "Password is required.";
+      next.password = t("auth.passwordRequired");
     } else if (password.length < 8) {
-      next.password = "Password must be at least 8 characters.";
+      next.password = t("auth.passwordMinLength");
     }
 
     if (!username.trim()) {
-      next.username = "Username is required.";
+      next.username = t("auth.usernameRequired");
     } else if (!/^[a-zA-Z0-9_.]+$/.test(username)) {
-      next.username = "Only letters, numbers, underscore and dot allowed.";
+      next.username = t("auth.usernameCharsAllowed");
     } else if (username.length < 3 || username.length > 20) {
-      next.username = "Username must be 3–20 characters.";
+      next.username = t("auth.usernameLength");
     }
 
     // DOB required
     if (!dob || !dob.trim()) {
-      next.dob = "Date of birth is required.";
+      next.dob = t("auth.dobRequired");
     } else if (!/^\d{4}-\d{2}-\d{2}$/.test(dob)) {
-      next.dob = "Use format YYYY-MM-DD.";
+      next.dob = t("auth.useDateFormat");
     } else {
       const age = calcAge(dob);
       if (age != null && age < 13) {
-        next.dob = "You must be at least 13 to use this app.";
+        next.dob = t("auth.mustBe13");
       }
     }
 
     if (!gender.value) {
-      next.gender = "Please select a gender option.";
+      next.gender = t("auth.selectGenderOption");
     } else if (
       gender.value === "self_described" &&
       !gender.selfDescribe.trim()
     ) {
-      next.gender = "Please describe your gender.";
+      next.gender = t("auth.describeGender");
     }
 
     if (!country) {
-      next.country = "Please select your country.";
+      next.country = t("auth.selectYourCountry");
     }
 
     return next;
@@ -922,7 +926,7 @@ export default function Signup() {
     // 2) DOB REQUIRED via helper (always call)
     if (!dob || !dob.trim()) {
       addLog("onboarding.dob.missing");
-      throw new Error("Date of birth is required.");
+      throw new Error(t("auth.dobRequired"));
     }
     addLog("onboarding.set_dob.start", { dob });
     const d = await sb.rpc("profile_set_dob_checked", { p_dob_text: dob });
@@ -984,7 +988,7 @@ export default function Signup() {
       const uid = u.user?.id;
       if (!uid) {
         addLog("onboarding.location.no_uid");
-        throw new Error("Not authenticated after signup.");
+        throw new Error(t("auth.notAuthenticatedAfterSignup"));
       }
 
       addLog("onboarding.location.set.start", {
@@ -1163,7 +1167,7 @@ export default function Signup() {
           }
         }
 
-        setMsg("Account created!");
+        setMsg(t("auth.accountCreated"));
         addLog("nav.profile");
         nav("/profile");
         return;
@@ -1177,7 +1181,7 @@ export default function Signup() {
       addLog("confirm_email.notice_shown");
     } catch (err: any) {
       addLog("submit.error", safeErr(err));
-      setMsg(err?.message || "Sign up failed.");
+      setMsg(err?.message || t("auth.signUpFailed"));
     } finally {
       setBusy(false);
       addLog("submit.done");
@@ -1191,27 +1195,27 @@ export default function Signup() {
       <PageLayout>
         <div className="mx-auto max-w-md p-6 flex flex-col items-center text-center space-y-5">
           <div className="text-5xl">📬</div>
-          <h1 className="text-2xl font-bold">Check your email</h1>
+          <h1 className="text-2xl font-bold">{t("auth.checkYourEmail")}</h1>
           <p className="text-slate-600 text-sm leading-relaxed">
-            We sent a confirmation link to <span className="font-semibold text-slate-900">{email}</span>.
-            Click the link in that email to verify your account, then log in to finish setting up your profile.
+            {t("auth.confirmationSentTo")} <span className="font-semibold text-slate-900">{email}</span>.
+            {" "}{t("auth.confirmationInstructions")}
           </p>
           <p className="text-xs text-slate-400">
-            Didn't receive it? Check your spam folder, or{" "}
+            {t("auth.didntReceiveIt")}{" "}
             <button
               type="button"
               className="underline text-slate-500 hover:text-slate-700"
               onClick={() => setRegistered(false)}
             >
-              go back
+              {t("auth.goBack")}
             </button>{" "}
-            to try again.
+            {t("auth.toTryAgain")}
           </p>
           <Link
             to="/login"
             className="mt-2 inline-block rounded-lg bg-slate-900 px-6 py-2 text-sm font-semibold text-white hover:bg-slate-800 transition-colors"
           >
-            Go to login
+            {t("auth.goToLogin")}
           </Link>
         </div>
       </PageLayout>
@@ -1221,13 +1225,13 @@ export default function Signup() {
   return (
     <PageLayout>
       <div className="mx-auto max-w-md p-6 space-y-5">
-        <h1 className="text-2xl font-bold">Sign up</h1>
+        <h1 className="text-2xl font-bold">{t("auth.signUp")}</h1>
 
         <form className="space-y-4" onSubmit={onSubmit} noValidate>
           {/* Email */}
           <div>
             <label className="block text-sm font-medium" htmlFor="email">
-              Email
+              {t("auth.emailLabel")}
             </label>
             <input
               id="email"
@@ -1249,7 +1253,7 @@ export default function Signup() {
           {/* Password */}
           <div>
             <label className="block text-sm font-medium" htmlFor="password">
-              Password
+              {t("auth.passwordLabel")}
             </label>
             <input
               id="password"
@@ -1293,7 +1297,7 @@ export default function Signup() {
           {/* Gender */}
           <div>
             <label className="block text-sm font-medium" htmlFor="gender">
-              Gender
+              {t("auth.genderLabel")}
             </label>
             <select
               id="gender"
@@ -1309,18 +1313,18 @@ export default function Signup() {
                 }))
               }
             >
-              <option value="">Select an option</option>
-              <option value="male">Male</option>
-              <option value="female">Female</option>
-              <option value="nonbinary">Non-binary</option>
-              <option value="prefer_not_to_say">Prefer not to say</option>
-              <option value="self_described">Self-described</option>
+              <option value="">{t("auth.selectAnOption")}</option>
+              <option value="male">{t("auth.genderMale")}</option>
+              <option value="female">{t("auth.genderFemale")}</option>
+              <option value="nonbinary">{t("auth.genderNonBinary")}</option>
+              <option value="prefer_not_to_say">{t("auth.genderPreferNotToSay")}</option>
+              <option value="self_described">{t("auth.genderSelfDescribed")}</option>
             </select>
             {gender.value === "self_described" && (
               <input
                 className="mt-2 w-full rounded-lg border p-2"
                 type="text"
-                placeholder="Describe your gender"
+                placeholder={t("auth.describeGenderPlaceholder")}
                 value={gender.selfDescribe}
                 onChange={(e) =>
                   setGender((prev) => ({
@@ -1388,7 +1392,7 @@ export default function Signup() {
             className="mt-4 w-full rounded-lg bg-slate-900 py-2 text-sm font-semibold text-white disabled:opacity-60"
             disabled={busy}
           >
-            {busy ? "Creating account…" : "Sign up"}
+            {busy ? t("auth.creatingAccount") : t("auth.signUp")}
           </button>
         </form>
 
@@ -1446,9 +1450,9 @@ export default function Signup() {
         />
 
         <p className="text-sm">
-          Already have an account?{" "}
+          {t("auth.alreadyHaveAccount")}{" "}
           <Link to="/login" className="underline">
-            Log in
+            {t("auth.logIn")}
           </Link>
         </p>
       </div>

@@ -130,6 +130,7 @@ export interface HeroSectionProps {
   // SectionAQuestion — undefined/false is a safe no-op for the guest branch.
   showSliderTip?: boolean;
   onDismissSliderTip?: () => void;
+  languageCode?: string;
 }
 
 // Minimal alignment snapshot shape (matches AlignmentSnapshotRow in Index.tsx)
@@ -1151,6 +1152,7 @@ function SectionAQuestion({
   isFallbackMode = false,
   showSliderTip,
   onDismissSliderTip,
+  languageCode,
 }: {
   question: HeroQuestion;
   status: HeroStatus;
@@ -1171,6 +1173,7 @@ function SectionAQuestion({
   isFallbackMode?: boolean;
   showSliderTip?: boolean;
   onDismissSliderTip?: () => void;
+  languageCode?: string;
 }) {
   const isResultMode =
     status === "hero_answered_result" || status === "hero_transitioning";
@@ -1303,6 +1306,7 @@ function SectionAQuestion({
                     questionText={question.question_text}
                     questionSummary={question.summary}
                     compact
+                    languageCode={languageCode}
                   />
                 }
               />
@@ -1534,6 +1538,7 @@ export function HeroSection({
   onSignup,
   showSliderTip,
   onDismissSliderTip,
+  languageCode,
 }: HeroSectionProps) {
   const {
     status,
@@ -1635,6 +1640,7 @@ export function HeroSection({
                   isFallbackMode={isFallbackMode}
                   showSliderTip={showSliderTip}
                   onDismissSliderTip={onDismissSliderTip}
+                  languageCode={languageCode}
                 />
               )}
           </div>

@@ -866,6 +866,7 @@ function StanceCard({
               questionText={question.question}
               questionSummary={question.summary}
               onDismiss={onShareDismiss}
+              languageCode={languageCode}
             />
           )}
 

@@ -50,6 +50,7 @@ import { HeroSection } from "@/components/hero/HeroSection";
 import { useContributionAcknowledgement } from "@/hooks/useContributionAcknowledgement";
 import { useIPLocation } from "@/hooks/useIPLocation";
 import { useLanguage } from "@/hooks/useLanguage";
+import { useTranslation } from "react-i18next";
 import { SUPABASE_URL, getJwt, supabaseHeaders } from "@/lib/env";
 import { toast } from "sonner";
 import { ProposeQuestionButton } from "@/components/ugq/ProposeQuestionButton";
@@ -320,17 +321,10 @@ type PersonalAnalyticsTrendPoint = {
 
 type AlignmentTrendDirection = "up" | "down" | "flat" | "insufficient";
 type DivergenceDirection = "more_supportive" | "more_opposed" | "mixed" | null;
-type OpinionFingerprintTag =
-  | "Strong convictions"
-  | "Moderate convictions"
-  | "Nuanced responses"
-  | "Often diverges from consensus"
-  | "Sometimes diverges from consensus"
-  | "Often aligns with consensus"
-  | "Focused on a few topics"
-  | "Broad across topics"
-  | "Consistent stance pattern"
-  | "Varied stance pattern";
+// Was a union of fixed English string literals — relaxed to `string` since
+// buildFingerprintTags now generates these via t() and the actual values
+// depend on the active language, not a fixed English set.
+type OpinionFingerprintTag = string;
 
 type PersonalAnalyticsResponse = {
   totalAnswered: number;
@@ -371,7 +365,7 @@ type PersonalAnalyticsTier = "empty" | "sparse" | "basic" | "mature";
 
 // ─── Epic E helpers (unchanged) ───────────────────────────────────────────────
 
-function buildPersonalAnalyticsResponse(raw: unknown): PersonalAnalyticsResponse {
+function buildPersonalAnalyticsResponse(raw: unknown, t: (key: string) => string): PersonalAnalyticsResponse {
   const r = raw as any;
   const trend = r?.alignment_trend ?? {};
   const fp = r?.opinion_fingerprint ?? {};
@@ -414,7 +408,7 @@ function buildPersonalAnalyticsResponse(raw: unknown): PersonalAnalyticsResponse
       strongestTopicId: fp?.strongest_topic_id ?? null,
       strongestTopicTitle: fp?.strongest_topic_title ?? null,
       strongestTopicAvgScore: fp?.strongest_topic_avg_score ?? null,
-      summaryTags: buildFingerprintTags(fp, r?.topics_answered ?? 0),
+      summaryTags: buildFingerprintTags(fp, r?.topics_answered ?? 0, t),
     },
   };
 }
@@ -428,7 +422,8 @@ function getPersonalAnalyticsTier(totalAnswered: number): PersonalAnalyticsTier 
 
 function buildFingerprintTags(
   fp: Record<string, number | null>,
-  topicsAnswered: number
+  topicsAnswered: number,
+  t: (key: string) => string
 ): OpinionFingerprintTag[] {
   const tags: OpinionFingerprintTag[] = [];
   const abs = fp?.absolute_avg_score ?? null;
@@ -437,44 +432,44 @@ function buildFingerprintTags(
   const cons = fp?.consistency_score ?? null;
 
   if (abs !== null) {
-    if (abs >= 1.35) tags.push("Strong convictions");
-    else if (abs >= 0.75) tags.push("Moderate convictions");
-    else tags.push("Nuanced responses");
+    if (abs >= 1.35) tags.push(t("home.tagStrongConvictions"));
+    else if (abs >= 0.75) tags.push(t("home.tagModerateConvictions"));
+    else tags.push(t("home.tagNuancedResponses"));
   }
 
   if (divRate !== null) {
-    if (divRate >= 0.45) tags.push("Often diverges from consensus");
-    else if (divRate >= 0.20) tags.push("Sometimes diverges from consensus");
-    else tags.push("Often aligns with consensus");
+    if (divRate >= 0.45) tags.push(t("home.tagOftenDivergesFromConsensus"));
+    else if (divRate >= 0.20) tags.push(t("home.tagSometimesDivergesFromConsensus"));
+    else tags.push(t("home.tagOftenAlignsWithConsensus"));
   }
 
   if (conc !== null) {
-    if (conc >= 0.60) tags.push("Focused on a few topics");
-    else if (topicsAnswered >= 4) tags.push("Broad across topics");
+    if (conc >= 0.60) tags.push(t("home.tagFocusedFewTopics"));
+    else if (topicsAnswered >= 4) tags.push(t("home.tagBroadAcrossTopics"));
   }
 
   if (cons !== null) {
-    if (cons >= 0.70) tags.push("Consistent stance pattern");
-    else if (cons < 0.45) tags.push("Varied stance pattern");
+    if (cons >= 0.70) tags.push(t("home.tagConsistentStancePattern"));
+    else if (cons < 0.45) tags.push(t("home.tagVariedStancePattern"));
   }
 
   return tags.slice(0, 3);
 }
 
-function getAlignmentTrendCopy(direction: AlignmentTrendDirection): string {
+function getAlignmentTrendCopy(direction: AlignmentTrendDirection, t: (key: string) => string): string {
   switch (direction) {
-    case "up":   return "You've been aligning a bit more with community sentiment lately.";
-    case "down": return "You've been diverging a bit more in recent responses.";
-    case "flat": return "Your alignment has stayed fairly stable lately.";
-    default:     return "Answer a few more questions to see your alignment trend.";
+    case "up":   return t("home.alignmentUp");
+    case "down": return t("home.alignmentDown");
+    case "flat": return t("home.alignmentFlat");
+    default:     return t("home.alignmentDefault");
   }
 }
 
-function getDivergenceCopy(direction: DivergenceDirection): string {
+function getDivergenceCopy(direction: DivergenceDirection, t: (key: string) => string): string {
   switch (direction) {
-    case "more_supportive": return "Your responses here are more supportive than the current community average.";
-    case "more_opposed":    return "Your responses here are more opposed than the current community average.";
-    default:                return "Your responses here differ from the current community average.";
+    case "more_supportive": return t("home.divergenceMoreSupportive");
+    case "more_opposed":    return t("home.divergenceMoreOpposed");
+    default:                return t("home.divergenceDefault");
   }
 }
 
@@ -622,10 +617,11 @@ function toMomentum(signal: string | null | undefined): Momentum | null {
 }
 
 function MomentumTag({ state }: { state: Momentum }) {
+  const { t } = useTranslation();
   const map: Record<Momentum, { label: string; dot: string; text: string }> = {
-    rising:     { label: "Rising",     dot: C.rising,     text: C.rising },
-    polarising: { label: "Polarising", dot: C.polarising, text: C.polarising },
-    steady:     { label: "Steady",     dot: C.steady,     text: C.meta },
+    rising:     { label: t("home.momentumRising"),     dot: C.rising,     text: C.rising },
+    polarising: { label: t("home.momentumPolarising"), dot: C.polarising, text: C.polarising },
+    steady:     { label: t("home.momentumSteady"),     dot: C.steady,     text: C.meta },
   };
   const m = map[state];
   return (
@@ -764,6 +760,7 @@ function SinceLastVisitStrip({
   moved: RevisitItem[];
   totalAnswered: number;
 }) {
+  const { t } = useTranslation();
   const changes = data?.changes ?? [];
   const newResponses = changes.reduce((n, c) => n + (c.new_responses ?? 0), 0);
   const shifted = changes.filter(
@@ -779,10 +776,8 @@ function SinceLastVisitStrip({
 
   const away =
     data?.days_away == null || data.days_away < 1
-      ? "Today"
-      : data.days_away === 1
-      ? "1 day ago"
-      : data.days_away + " days ago";
+      ? t("home.today")
+      : t("home.daysAgo", { count: data.days_away });
 
   return (
     <section className={card + " mb-6 px-5 py-4"}>
@@ -792,39 +787,39 @@ function SinceLastVisitStrip({
             className="text-xs font-bold uppercase"
             style={{ color: C.meta, letterSpacing: "0.14em" }}
           >
-            {isFirstVisit ? "Welcome to Stance" : "Since you last visited"}
+            {isFirstVisit ? t("home.welcomeToStance") : t("home.sinceYouLastVisited")}
           </p>
           <p className="mt-0.5 text-xs" style={{ color: C.meta }}>
             {loading
-              ? "Checking…"
+              ? t("home.checking")
               : isFirstVisit
-              ? "Answer your first question to start building your stance profile."
+              ? t("home.answerFirstQuestion")
               : isAuthed
               ? away
-              : "Tracked once you sign in"}
+              : t("home.trackedOnceSignedIn")}
           </p>
         </div>
 
         {hasData ? (
           <div className="grid flex-1 grid-cols-1 gap-5 sm:grid-cols-3">
-            <SinceStat value={gaining} label="topics gaining attention" />
-            <SinceStat value={shifted} label="of your stances moved" />
-            <SinceStat value={newResponses} label="new responses where you answered" />
+            <SinceStat value={gaining} label={t("home.topicsGainingAttentionStat")} />
+            <SinceStat value={shifted} label={t("home.stancesMovedStat")} />
+            <SinceStat value={newResponses} label={t("home.newResponsesAnsweredStat")} />
           </div>
         ) : (
           <div className="grid flex-1 grid-cols-1 gap-x-5 gap-y-2 sm:grid-cols-3">
             {[
-              "Topics gaining attention",
-              "Stances that moved into the minority",
-              "New responses on questions you answered",
-            ].map((t) => (
-              <div key={t} className="flex items-start gap-2">
+              t("home.topicsGainingAttention"),
+              t("home.stancesMovedMinority"),
+              t("home.newResponsesAnswered"),
+            ].map((label) => (
+              <div key={label} className="flex items-start gap-2">
                 <span
                   className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full"
                   style={{ background: C.line }}
                 />
                 <span className="text-sm leading-snug" style={{ color: C.body }}>
-                  {t}
+                  {label}
                 </span>
               </div>
             ))}
@@ -836,7 +831,7 @@ function SinceLastVisitStrip({
           className="whitespace-nowrap text-sm font-semibold"
           style={{ color: C.brand }}
         >
-          {hasData ? "Catch me up →" : isAuthed ? "Explore topics →" : "Start tracking →"}
+          {hasData ? t("home.catchMeUp") : isAuthed ? t("home.exploreTopicsArrow") : t("home.startTrackingArrow")}
         </Link>
       </div>
 
@@ -846,10 +841,10 @@ function SinceLastVisitStrip({
         <div className="mt-4 pt-3.5" style={{ borderTop: `1px solid ${C.hairline}` }}>
           <div className="mb-1.5 flex items-baseline justify-between gap-4">
             <p className="text-sm font-semibold" style={{ color: C.ink }}>
-              Moved since you answered
+              {t("home.movedSinceYouAnswered")}
             </p>
             <Link to="/my-stances" className="text-xs font-semibold" style={{ color: C.brand }}>
-              {totalAnswered > 0 ? `All ${totalAnswered} in My stances →` : "My stances →"}
+              {totalAnswered > 0 ? t("home.allInMyStances", { count: totalAnswered }) : t("home.myStancesArrow")}
             </Link>
           </div>
           <div>
@@ -943,6 +938,7 @@ function TheRoomRightNow({
   participation: ParticipationStatsRow | null;
   regionLabel: string;
 }) {
+  const { t } = useTranslation();
   const iconGlyph = (icon: SocietalPulseOutput["chips"][number]["icon"]) => {
     switch (icon) {
       case "reawakening": return "↺";
@@ -958,8 +954,8 @@ function TheRoomRightNow({
     <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
 
         <RoomCard
-          title="Society right now"
-          blurb={"Aggregate sentiment across today's questions in " + regionLabel + "."}
+          title={t("home.societyRightNow")}
+          blurb={t("home.aggregateSentimentIn", { region: regionLabel })}
         >
           {pulse?.narrative || (pulse?.chips?.length ?? 0) > 0 ? (
             <>
@@ -999,23 +995,21 @@ function TheRoomRightNow({
             </>
           ) : (
             <Promise_>
-              Once the day's questions have responses, this reads the balance back to
-              you in a sentence — which way {regionLabel} is leaning, and how thin the
-              middle is.
+              {t("home.societyPromise", { region: regionLabel })}
             </Promise_>
           )}
         </RoomCard>
 
-        <RoomCard title="Media surge" blurb="Coverage volume against the 7-day average.">
+        <RoomCard title={t("home.mediaSurge")} blurb={t("home.coverageVolumeBlurb")}>
           {media ? (
             <>
               <p className="line-clamp-2 text-sm font-semibold" style={{ color: C.ink }}>
                 {media.cluster_title}
               </p>
               <div className="mt-2.5 flex flex-wrap gap-2">
-                {surge != null && <Pill>{surge}× surge</Pill>}
-                <Pill>{media.outlets_24h} outlets · 24h</Pill>
-                <Pill>{media.articles_24h} articles · 24h</Pill>
+                {surge != null && <Pill>{t("home.surgeMultiplier", { surge })}</Pill>}
+                <Pill>{t("home.outlets24h", { count: media.outlets_24h })}</Pill>
+                <Pill>{t("home.articles24h", { count: media.articles_24h })}</Pill>
               </div>
               {media.sample_title && (
                 <p className="mt-2.5 line-clamp-2 text-sm" style={{ color: C.body }}>
@@ -1030,19 +1024,18 @@ function TheRoomRightNow({
                   className="mt-auto pt-3 text-sm font-semibold"
                   style={{ color: C.brand }}
                 >
-                  Read the coverage →
+                  {t("home.readTheCoverage")}
                 </a>
               )}
             </>
           ) : (
             <Promise_>
-              When a story starts running well above its usual volume, it shows up here
-              first — so you can take a position before the coverage peaks.
+              {t("home.mediaSurgePromise")}
             </Promise_>
           )}
         </RoomCard>
 
-        <RoomCard title="Live participation" blurb="Positions taken across the platform.">
+        <RoomCard title={t("home.liveParticipation")} blurb={t("home.positionsTakenBlurb")}>
           {participation ? (
             <>
               <div className="flex items-end gap-2">
@@ -1053,13 +1046,13 @@ function TheRoomRightNow({
                   {formatNum(participation.stances_window)}
                 </span>
                 <span className="pb-1 text-xs" style={{ color: C.meta }}>
-                  in the last 24h
+                  {t("home.inLast24h")}
                 </span>
               </div>
               <div className="mt-4 space-y-2.5">
                 {[
-                  { label: "signals · 7d", value: participation.stances_7d },
-                  { label: "people · 24h", value: participation.unique_users_window },
+                  { label: t("home.signals7d"), value: participation.stances_7d },
+                  { label: t("home.people24h"), value: participation.unique_users_window },
                 ].map((row) => (
                   <div key={row.label} className="flex items-baseline justify-between gap-3">
                     <span className="text-sm" style={{ color: C.body }}>{row.label}</span>
@@ -1077,13 +1070,12 @@ function TheRoomRightNow({
                 className="mt-auto pt-3 text-sm font-semibold"
                 style={{ color: C.brand }}
               >
-                Explore all topics →
+                {t("home.exploreAllTopics")}
               </Link>
             </>
           ) : (
             <Promise_>
-              Every position taken feeds the counts here. It is the fastest way to see
-              whether a question is actually live or already settled.
+              {t("home.participationPromise")}
             </Promise_>
           )}
         </RoomCard>
@@ -1115,20 +1107,21 @@ function TodaysPicture({
   snapshot: MyStanceSnapshot | null;
   regionLabel: string;
 }) {
+  const { t } = useTranslation();
   return (
     <section className="flex flex-col gap-3.5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-xl font-semibold tracking-tight" style={{ color: C.ink }}>
-            Today's picture
+            {t("home.todaysPicture")}
           </h2>
           <p className="mt-0.5 text-sm" style={{ color: C.body }}>
-            Where {regionLabel} sits right now, and where you sit inside it.
+            {t("home.whereRegionSits", { region: regionLabel })}
           </p>
         </div>
         <span className="inline-flex items-center gap-1.5 text-xs" style={{ color: C.meta }}>
           <span className="h-1.5 w-1.5 rounded-full" style={{ background: C.rising }} />
-          Updating live
+          {t("home.updatingLive")}
         </span>
       </div>
 
@@ -1178,6 +1171,7 @@ function YouVsSociety({
   snapshot: MyStanceSnapshot | null;
   regionLabel: string;
 }) {
+  const { t } = useTranslation();
   const analyticsTier = getPersonalAnalyticsTier(analytics?.totalAnswered ?? 0);
   // A snapshot row can exist and still say nothing (0 comparable questions) —
   // in that case this is still a sample view, not the reader's own numbers.
@@ -1192,8 +1186,8 @@ function YouVsSociety({
   const topicsAnswered = analytics?.topicsAnswered ?? topics.length;
 
   // Fingerprint tiles: one square per answered topic, coloured on the stance scale.
-  const fpTiles = topics.slice(0, 18).map((t) => {
-    const v = t.avgScore ?? 0;
+  const fpTiles = topics.slice(0, 18).map((topic) => {
+    const v = topic.avgScore ?? 0;
     return v <= -1 ? C.stanceLow
       : v < -0.3 ? "#6FB6AC"
       : v <= 0.3 ? C.stanceMid
@@ -1208,16 +1202,16 @@ function YouVsSociety({
           className="flex flex-wrap items-center gap-x-2 gap-y-1 px-5 py-2.5 text-xs"
           style={{ background: C.brandWash }}
         >
-          <span className="font-semibold" style={{ color: C.brand }}>Sample view</span>
+          <span className="font-semibold" style={{ color: C.brand }}>{t("home.sampleView")}</span>
           <span style={{ color: C.body }}>
-            These become your own numbers after five answers — nothing here is guessed for you.
+            {t("home.sampleViewNote")}
           </span>
         </div>
       )}
 
       <div className="grid gap-0 md:grid-cols-[300px_1fr]">
         <div className="p-5" style={{ borderRight: "1px solid " + C.hairline }}>
-          <Eyebrow>You and society</Eyebrow>
+          <Eyebrow>{t("home.youAndSociety")}</Eyebrow>
           {hasAlignment ? (
             <>
               <div className="flex items-end gap-2">
@@ -1228,14 +1222,11 @@ function YouVsSociety({
                   {formatPct(snap.alignment_pct)}
                 </span>
                 <span className="pb-1.5 text-sm" style={{ color: C.body }}>
-                  aligned with {regionLabel}
+                  {t("home.alignedWithRegion", { region: regionLabel })}
                 </span>
               </div>
               <p className="mt-3 text-sm leading-relaxed" style={{ color: C.body }}>
-                You hold the minority view on{" "}
-                <strong style={{ color: C.ink }}>{snap.minority_count}</strong> of{" "}
-                {snap.comparable_count} comparable question
-                {snap.comparable_count === 1 ? "" : "s"}.
+                {t("home.minorityViewOn", { minority: snap.minority_count, comparable: snap.comparable_count })}
               </p>
             </>
           ) : (
@@ -1248,21 +1239,19 @@ function YouVsSociety({
                   --%
                 </span>
                 <span className="pb-1.5 text-sm" style={{ color: C.body }}>
-                  aligned with {regionLabel}
+                  {t("home.alignedWithRegion", { region: regionLabel })}
                 </span>
               </div>
               <p className="mt-3 text-sm leading-relaxed" style={{ color: C.body }}>
-                One number for how often you land with your region — and the list of
-                questions where you do not. It needs five answers to mean anything, so
-                it waits until then.
+                {t("home.alignmentNeedsFiveAnswers")}
               </p>
             </>
           )}
 
           {fingerprint && fingerprint.summaryTags.length > 0 && (
             <div className="mt-4 flex flex-wrap gap-1.5">
-              {fingerprint.summaryTags.map((t) => (
-                <Pill key={t}>{t}</Pill>
+              {fingerprint.summaryTags.map((tag) => (
+                <Pill key={tag}>{tag}</Pill>
               ))}
             </div>
           )}
@@ -1273,7 +1262,7 @@ function YouVsSociety({
               className="mt-4 inline-flex text-sm font-semibold"
               style={{ color: C.brand }}
             >
-              Revisit your most divergent view →
+              {t("home.revisitMostDivergent")}
             </Link>
           )}
         </div>
@@ -1281,29 +1270,29 @@ function YouVsSociety({
         <div className="p-5">
           <div className="mb-4 flex items-baseline justify-between gap-4">
             <p className="text-sm font-semibold" style={{ color: C.ink }}>
-              Where you sit against {regionLabel}
+              {t("home.whereYouSitAgainst", { region: regionLabel })}
             </p>
             {topics.length > 0 && (
               <Link to="/topics" className="text-xs font-semibold" style={{ color: C.brand }}>
-                All {topics.length} topics →
+                {t("home.allTopicsArrow", { count: topics.length })}
               </Link>
             )}
           </div>
 
           {topics.length > 0 ? (
             <div className="space-y-4">
-              {topics.slice(0, 3).map((t) => {
-                const you = Math.max(2, Math.min(98, ((t.avgScore ?? 0) + 2) / 4 * 100));
-                const dot = (t.avgScore ?? 0) < -0.3 ? C.stanceLow
-                  : (t.avgScore ?? 0) > 0.3 ? C.stanceHigh
+              {topics.slice(0, 3).map((topic) => {
+                const you = Math.max(2, Math.min(98, ((topic.avgScore ?? 0) + 2) / 4 * 100));
+                const dot = (topic.avgScore ?? 0) < -0.3 ? C.stanceLow
+                  : (topic.avgScore ?? 0) > 0.3 ? C.stanceHigh
                   : C.stanceMid;
                 return (
                   <div
-                    key={t.topicTitle}
+                    key={topic.topicTitle}
                     className="grid grid-cols-[130px_1fr] items-center gap-4 sm:grid-cols-[190px_1fr_88px]"
                   >
                     <span className="truncate text-sm" style={{ color: C.ink }}>
-                      {t.topicTitle}
+                      {topic.topicTitle}
                     </span>
                     <div
                       className="relative h-2 rounded-full"
@@ -1329,9 +1318,9 @@ function YouVsSociety({
                       className="hidden text-right text-xs sm:block"
                       style={{ color: C.meta }}
                     >
-                      {Math.abs(t.scorePct ?? 0) < 8
-                        ? "In step"
-                        : Math.round(Math.abs(t.scorePct ?? 0)) + " pts apart"}
+                      {Math.abs(topic.scorePct ?? 0) < 8
+                        ? t("home.inStep")
+                        : t("home.ptsApart", { pts: Math.round(Math.abs(topic.scorePct ?? 0)) })}
                     </span>
                   </div>
                 );
@@ -1339,9 +1328,7 @@ function YouVsSociety({
             </div>
           ) : (
             <Promise_>
-              Every topic you answer in gets a line here: your position, the regional
-              average, and the distance between them. Three answers is enough for the
-              first line to appear.
+              {t("home.topicLinePromise")}
             </Promise_>
           )}
 
@@ -1354,11 +1341,11 @@ function YouVsSociety({
                 className="h-2.5 w-2.5 rounded-full"
                 style={{ background: C.stanceLow }}
               />
-              You
+              {t("home.legendYou")}
             </span>
             <span className="inline-flex items-center gap-1.5">
               <span className="h-2 w-2 rounded-full" style={{ background: C.meta }} />
-              Regional average
+              {t("home.legendRegionalAverage")}
             </span>
           </div>
         </div>
@@ -1373,7 +1360,7 @@ function YouVsSociety({
           className="flex flex-col p-5"
           style={{ borderRight: "1px solid " + C.hairline }}
         >
-          <TileHead>Your stance profile</TileHead>
+          <TileHead>{t("home.yourStanceProfile")}</TileHead>
           {fingerprint?.summaryTags.length ? (
             <>
               <p
@@ -1383,14 +1370,12 @@ function YouVsSociety({
                 {fingerprint.summaryTags.slice(0, 2).join(", ").toLowerCase()}
               </p>
               <p className="mt-1.5 text-sm leading-relaxed" style={{ color: C.body }}>
-                Drawn from {answered} answer{answered === 1 ? "" : "s"} across{" "}
-                {topicsAnswered} topic{topicsAnswered === 1 ? "" : "s"}.
+                {t("home.drawnFromAnswers", { answered, topics: topicsAnswered })}
               </p>
             </>
           ) : (
             <p className="mt-2.5 text-sm leading-relaxed" style={{ color: C.body }}>
-              A plain-language read of how you answer — how strongly you commit, and
-              how widely you range across topics.
+              {t("home.stanceProfilePromise")}
             </p>
           )}
           <div className="mt-auto flex items-center gap-3 pt-4">
@@ -1407,7 +1392,7 @@ function YouVsSociety({
               />
             </div>
             <span className="text-xs tabular-nums" style={{ color: C.meta }}>
-              {answered} answered
+              {t("home.answeredCount", { count: answered })}
             </span>
           </div>
         </div>
@@ -1416,7 +1401,7 @@ function YouVsSociety({
           className="flex flex-col p-5"
           style={{ borderRight: "1px solid " + C.hairline }}
         >
-          <TileHead>Alignment trend</TileHead>
+          <TileHead>{t("home.alignmentTrend")}</TileHead>
           {trend && trend.points.length > 1 ? (
             <>
               <div className="mt-2.5 flex items-baseline gap-2">
@@ -1426,18 +1411,16 @@ function YouVsSociety({
                 >
                   {trend.delta == null
                     ? "—"
-                    : (trend.delta > 0 ? "+" : "") +
-                      Math.round(trend.delta * 100) +
-                      " pts"}
+                    : t("home.ptsChange", { sign: trend.delta > 0 ? "+" : "", pts: Math.round(trend.delta * 100) })}
                 </span>
                 <span className="text-xs" style={{ color: C.body }}>
-                  last {trend.windowDays} days
+                  {t("home.lastNDays", { days: trend.windowDays })}
                 </span>
               </div>
               <p className="mt-1.5 text-sm leading-relaxed" style={{ color: C.body }}>
                 {analyticsTier === "sparse"
-                  ? "You've started building a stance history. Answer a few more and the line fills in."
-                  : getAlignmentTrendCopy(trend.direction)}
+                  ? t("home.buildingStanceHistory")
+                  : getAlignmentTrendCopy(trend.direction, t)}
               </p>
               <div className="mt-auto pt-4">
                 <PersonalAnalyticsSparkline points={trend.points} />
@@ -1445,8 +1428,7 @@ function YouVsSociety({
             </>
           ) : (
             <p className="mt-2.5 text-sm leading-relaxed" style={{ color: C.body }}>
-              Alignment is not fixed. This tracks whether you are drifting toward the
-              regional centre or away from it, month over month.
+              {t("home.alignmentNotFixed")}
             </p>
           )}
         </div>
@@ -1455,7 +1437,7 @@ function YouVsSociety({
           className="flex flex-col p-5"
           style={{ borderRight: "1px solid " + C.hairline }}
         >
-          <TileHead>Most divergent topic</TileHead>
+          <TileHead>{t("home.mostDivergentTopic")}</TileHead>
           {divergent?.topicTitle ? (
             <>
               <p
@@ -1471,7 +1453,7 @@ function YouVsSociety({
                 )}
               </p>
               <p className="mt-1.5 text-sm leading-relaxed" style={{ color: C.body }}>
-                {getDivergenceCopy(divergent.direction)}
+                {getDivergenceCopy(divergent.direction, t)}
               </p>
               <div className="mt-auto pt-4">
                 <div
@@ -1506,25 +1488,23 @@ function YouVsSociety({
                   )}
                 </div>
                 <p className="mt-2 text-xs" style={{ color: C.meta }}>
-                  {divergent.answeredCount} answer
-                  {divergent.answeredCount === 1 ? "" : "s"} in this topic
+                  {t("home.answersInTopic", { count: divergent.answeredCount })}
                 </p>
               </div>
             </>
           ) : (
             <p className="mt-2.5 text-sm leading-relaxed" style={{ color: C.body }}>
-              The topic where you sit furthest from everyone else — usually the most
-              interesting thing the platform can tell you about yourself.
+              {t("home.divergentTopicPromise")}
             </p>
           )}
         </div>
 
         <div className="flex flex-col p-5">
-          <TileHead>Opinion fingerprint</TileHead>
+          <TileHead>{t("home.opinionFingerprint")}</TileHead>
           <p className="mt-2.5 text-sm leading-relaxed" style={{ color: C.body }}>
             {fpTiles.length > 0
-              ? "Your position on every topic you've answered, at a glance. No two profiles look alike."
-              : "One square per topic, coloured by where you stand. It becomes a shape only you have."}
+              ? t("home.fingerprintFilled")
+              : t("home.fingerprintEmpty")}
           </p>
           <div className="mt-auto pt-4">
             <div className="grid grid-cols-6 gap-1">
@@ -1541,8 +1521,8 @@ function YouVsSociety({
             </div>
             <p className="mt-2.5 text-xs" style={{ color: C.meta }}>
               {fpTiles.length > 0
-                ? fpTiles.length + " of 18 tiles filled"
-                : "Fills in as you answer"}
+                ? t("home.tilesFilled", { count: fpTiles.length })
+                : t("home.fillsInAsYouAnswer")}
             </p>
           </div>
         </div>
@@ -1567,18 +1547,20 @@ type RevisitItem = {
 
 // ─────────────────────────── Scroll-collapse helpers (unchanged) ─────────────
 
-const STANCE_LABELS_SHORT: Record<number, string> = {
-  [-2]: "Strongly disagree",
-  [-1]: "Disagree",
-  [0]: "Neutral",
-  [1]: "Agree",
-  [2]: "Strongly agree",
-};
-
-function clampLabel(v: number | null | undefined): string {
-  if (v == null || !Number.isFinite(v)) return "Neutral";
+// Was a module-level constant — moved into the function since hooks can't
+// be called outside a component, same pattern as phaseLabels in
+// QuestionDetailPage.tsx.
+function clampLabel(v: number | null | undefined, t: (key: string) => string): string {
+  if (v == null || !Number.isFinite(v)) return t("home.stanceNeutralShort");
   const clamped = Math.max(-2, Math.min(2, Math.round(v)));
-  return STANCE_LABELS_SHORT[clamped] ?? "Neutral";
+  const labels: Record<number, string> = {
+    [-2]: t("home.stanceStronglyDisagree"),
+    [-1]: t("home.stanceDisagree"),
+    [0]:  t("home.stanceNeutralShort"),
+    [1]:  t("home.stanceAgree"),
+    [2]:  t("home.stanceStronglyAgree"),
+  };
+  return labels[clamped] ?? t("home.stanceNeutralShort");
 }
 
 function useScrollCollapse(
@@ -1620,6 +1602,7 @@ function CompactAnsweredStrip({
   lowLabel?: string | null;
   highLabel?: string | null;
 }) {
+  const { t } = useTranslation();
   return (
     <button
       type="button"
@@ -1640,7 +1623,7 @@ function CompactAnsweredStrip({
                 : C.body,
             }}
           >
-            {clampLabel(stanceValue)}
+            {clampLabel(stanceValue, t)}
           </span>
           <svg className="h-3.5 w-3.5" style={{ color: C.meta }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
@@ -1668,10 +1651,11 @@ function CompactAnsweredStrip({
 
 // Unset-slider hint — an untouched control must never read as "already answered".
 function SliderHint({ answered }: { answered: boolean }) {
+  const { t } = useTranslation();
   if (answered) return null;
   return (
     <p className="mt-3 text-xs" style={{ color: C.meta }}>
-      Drag to take a position
+      {t("home.dragToTakePosition")}
     </p>
   );
 }
@@ -1699,6 +1683,7 @@ function FeaturedQuestionCard({
   submittingQuestionId?: string | null;
   cardStats?: Map<string, QuestionStats>;
 }) {
+  const { t } = useTranslation();
   const postAnswerStats = cardStats?.get(q.question_id) ?? null;
   const effectiveStats = postAnswerStats ?? featuredStats ?? null;
   const globalRegion = effectiveStats?.regions?.global ?? null;
@@ -1729,7 +1714,7 @@ function FeaturedQuestionCard({
       <div className="order-2 p-6 md:order-1">
         <div className="mb-3 flex flex-wrap items-center gap-2">
           {q.tags && q.tags.length > 0 && <Tag primary>{q.tags[0]}</Tag>}
-          {q.tags && q.tags.slice(1, 3).map((t) => <Tag key={t}>{t}</Tag>)}
+          {q.tags && q.tags.slice(1, 3).map((tag) => <Tag key={tag}>{tag}</Tag>)}
           {momentum && <MomentumTag state={momentum} />}
           {q.origin_location_label && q.origin_location_label !== q.audience_location_label && (
             <Pill>{q.origin_location_label}</Pill>
@@ -1774,7 +1759,7 @@ function FeaturedQuestionCard({
               {postAnswerStats && globalRegion && (
                 <div className="mt-4 pt-4" style={{ borderTop: `1px solid ${C.hairline}` }}>
                   <p className="mb-2 text-xs font-bold uppercase" style={{ color: C.meta, letterSpacing: "0.14em" }}>
-                    Where the responses sit
+                    {t("home.whereResponsesSit")}
                   </p>
                   <StanceDistributionBar
                     distribution={{
@@ -1815,7 +1800,7 @@ function FeaturedQuestionCard({
               style={{ color: C.brand }}
               onClick={() => onOpen(q.question_id)}
             >
-              Open full discussion →
+              {t("home.openFullDiscussion")}
             </button>
           </div>
         </div>
@@ -1853,12 +1838,13 @@ function FeaturedQuestionCardAnon({
   onStage?: (questionId: string, value: number) => void;
   onOpen: (id: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className={`${card} overflow-hidden md:grid md:grid-cols-[1.25fr_1fr]`}>
       <div className="order-2 p-6 md:order-1">
         <div className="mb-3 flex flex-wrap gap-2">
           {q.tags && q.tags.length > 0 && <Tag primary>{q.tags[0]}</Tag>}
-          {q.tags && q.tags.slice(1, 3).map((t) => <Tag key={t}>{t}</Tag>)}
+          {q.tags && q.tags.slice(1, 3).map((tag) => <Tag key={tag}>{tag}</Tag>)}
           {q.origin_location_label && q.origin_location_label !== q.audience_location_label && (
             <Pill>{q.origin_location_label}</Pill>
           )}
@@ -1899,7 +1885,7 @@ function FeaturedQuestionCardAnon({
               style={{ color: C.brand }}
               onClick={() => onOpen(q.id)}
             >
-              Open full discussion →
+              {t("home.openFullDiscussion")}
             </button>
           </div>
         </div>
@@ -1936,6 +1922,7 @@ function GridQuestionCard({
   submittingQuestionId?: string | null;
   cardStats?: Map<string, QuestionStats>;
 }) {
+  const { t } = useTranslation();
   const postAnswerStats = cardStats?.get(q.question_id) ?? null;
   const globalRegion = postAnswerStats?.regions?.global ?? null;
   const [collapsed, setCollapsed] = React.useState(false);
@@ -2011,7 +1998,7 @@ function GridQuestionCard({
               {postAnswerStats && globalRegion && (
                 <div className="mt-4 pt-4" style={{ borderTop: `1px solid ${C.hairline}` }}>
                   <p className="mb-2 text-xs font-bold uppercase" style={{ color: C.meta, letterSpacing: "0.14em" }}>
-                    Where the responses sit
+                    {t("home.whereResponsesSit")}
                   </p>
                   <StanceDistributionBar
                     distribution={{
@@ -2050,7 +2037,7 @@ function GridQuestionCard({
               style={{ color: C.brand }}
               onClick={() => onOpen(q.question_id)}
             >
-              Open →
+              {t("home.openArrow")}
             </button>
           </div>
         </div>
@@ -2070,6 +2057,7 @@ function GridQuestionCardAnon({
   onStage?: (questionId: string, value: number) => void;
   onOpen: (id: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className={`${card} flex flex-col overflow-hidden`}>
       <QuestionCoverImage
@@ -2118,7 +2106,7 @@ function GridQuestionCardAnon({
               style={{ color: C.brand }}
               onClick={() => onOpen(q.id)}
             >
-              Open →
+              {t("home.openArrow")}
             </button>
           </div>
         </div>
@@ -2137,6 +2125,7 @@ export default function IndexPage() {
   const sb = React.useMemo(getSupabase, []);
   const userId = session?.user?.id ?? null;
   const { languageCode, isLoading: languageLoading } = useLanguage(userId);
+  const { t } = useTranslation();
 
   // Onboarding coach-marks: two of the app's four total tips live here,
   // sequenced (home_propose only becomes eligible once home_slider is
@@ -2158,18 +2147,18 @@ export default function IndexPage() {
         className="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm transition-colors hover:bg-slate-50"
         style={{ borderColor: C.line, color: C.body }}
         onClick={() => navigate("/search")}
-        aria-label="Search questions"
+        aria-label={t("home.searchQuestionsLabel")}
       >
         <Search className="h-4 w-4" />
-        <span className="hidden sm:inline">Search</span>
+        <span className="hidden sm:inline">{t("home.searchShort")}</span>
       </button>
       <button
         className="rounded-lg border px-3 py-1.5 text-sm transition-colors hover:bg-slate-50"
         style={{ borderColor: C.line, color: C.body }}
         onClick={() => navigate("/topics")}
-        aria-label="Explore topics"
+        aria-label={t("home.exploreTopicsLabel")}
       >
-        Explore topics
+        {t("home.exploreTopicsLabel")}
       </button>
     </div>
   );
@@ -2410,17 +2399,17 @@ export default function IndexPage() {
               updated_at: new Date().toISOString(),
               state: "FOCUSED",
               narrative: {
-                title: row.headline || "Societal Pulse",
+                title: row.headline || t("home.societalPulseTitle"),
                 sentence_1:
                   row.description ||
-                  "Signals are updating. Explore shifting topics to see where public sentiment is moving right now.",
+                  t("home.signalsUpdating"),
                 sentence_2: null,
               },
-              chips: featured.slice(0, 3).map((t) => ({
-                topic_id: String(t.topic_id),
-                title: String(t.title ?? ""),
+              chips: featured.slice(0, 3).map((ft) => ({
+                topic_id: String(ft.topic_id),
+                title: String(ft.title ?? ""),
                 icon: "up",
-                href: `/topics/${String(t.topic_id)}`,
+                href: `/topics/${String(ft.topic_id)}`,
               })),
               micro_metrics:
                 rpcChips.length > 0
@@ -2431,7 +2420,7 @@ export default function IndexPage() {
                           ? null
                           : Number(c.value),
                     }))
-                  : [{ label: "topics surfacing", value: Number(row.topic_count ?? 0) }],
+                  : [{ label: t("home.topicsSurfacing"), value: Number(row.topic_count ?? 0) }],
             };
             return mapped;
           }
@@ -2488,16 +2477,16 @@ export default function IndexPage() {
         updated_at: legacyRow?.generated_at ?? new Date().toISOString(),
         state: "FOCUSED" as const,
         narrative: {
-          title: "Societal Pulse",
+          title: t("home.societalPulseTitle"),
           sentence_1:
-            "Signals are updating. Explore shifting topics to see where public sentiment is moving right now.",
+            t("home.signalsUpdating"),
           sentence_2: null,
         },
         chips: trendChips,
         micro_metrics: legacyRow ? [
-          { label: "topics shifting rapidly", value: Number(legacyRow.rapid_shifts_count ?? 0) },
-          { label: "polarized", value: Number(legacyRow.polarized_count ?? 0) },
-          { label: "reawakening", value: Number(legacyRow.reawakening_count ?? 0) },
+          { label: t("home.topicsShiftingRapidly"), value: Number(legacyRow.rapid_shifts_count ?? 0) },
+          { label: t("home.polarizedLabel"), value: Number(legacyRow.polarized_count ?? 0) },
+          { label: t("home.reawakeningLabel"), value: Number(legacyRow.reawakening_count ?? 0) },
         ] : [],
       } as SocietalPulseOutput;
     },
@@ -2599,14 +2588,14 @@ export default function IndexPage() {
       });
       if (error) throw error;
       const raw = data as any;
-      const topics: TopicStanceItem[] = ((raw?.topics ?? []) as any[]).map((t) => ({
-        topicTitle: t.topic_title ?? "General",
-        avgScore: typeof t.avg_score === "number" ? t.avg_score : 0,
-        answerCount: t.n ?? 0,
-        scorePct: Math.round(((typeof t.avg_score === "number" ? t.avg_score : 0) / 2) * 100),
-        latestScore: t.latest_score == null ? null : Number(t.latest_score),
-        latestLowLabel: t.latest_low_label ?? null,
-        latestHighLabel: t.latest_high_label ?? null,
+      const topics: TopicStanceItem[] = ((raw?.topics ?? []) as any[]).map((rawTopic) => ({
+        topicTitle: rawTopic.topic_title ?? t("home.generalTopicFallback"),
+        avgScore: typeof rawTopic.avg_score === "number" ? rawTopic.avg_score : 0,
+        answerCount: rawTopic.n ?? 0,
+        scorePct: Math.round(((typeof rawTopic.avg_score === "number" ? rawTopic.avg_score : 0) / 2) * 100),
+        latestScore: rawTopic.latest_score == null ? null : Number(rawTopic.latest_score),
+        latestLowLabel: rawTopic.latest_low_label ?? null,
+        latestHighLabel: rawTopic.latest_high_label ?? null,
       }));
       return {
         totalAnswered: raw?.total_answered ?? 0,
@@ -2694,7 +2683,7 @@ export default function IndexPage() {
         p_days: 90,
       }).single();
       if (error) throw error;
-      return buildPersonalAnalyticsResponse(data);
+      return buildPersonalAnalyticsResponse(data, t);
     },
     staleTime: 2 * 60_000,
     retry: false,
@@ -2708,9 +2697,9 @@ export default function IndexPage() {
     if (snap?.minority_count > 0 && snap.most_divergent_question_id) {
       return {
         type: "minority_shift",
-        title: "You may be in the minority",
-        body: "Public opinion moved away from your position on a question you answered.",
-        ctaLabel: "See question",
+        title: t("home.minorityTitle"),
+        body: t("home.minorityBody"),
+        ctaLabel: t("home.seeQuestion"),
         href: `/q/${snap.most_divergent_question_id}`,
       };
     }
@@ -2719,9 +2708,9 @@ export default function IndexPage() {
     if (reopened) {
       return {
         type: "opinion_shift",
-        title: "Public opinion moved since you answered",
-        body: "The community balance changed on one of your questions.",
-        ctaLabel: "See update",
+        title: t("home.opinionShiftTitle"),
+        body: t("home.opinionShiftBody"),
+        ctaLabel: t("home.seeUpdate"),
         href: `/q/${reopened.question_id}`,
       };
     }
@@ -2730,9 +2719,9 @@ export default function IndexPage() {
     if (continuing) {
       return {
         type: "new_in_topics",
-        title: "New questions in your topics",
-        body: "Fresh questions appeared in areas where you've already shared your stance.",
-        ctaLabel: "Explore",
+        title: t("home.newInTopicsTitle"),
+        body: t("home.newInTopicsBody"),
+        ctaLabel: t("home.exploreCta"),
         href: continuing.topic_id
           ? `/topics/${continuing.topic_id}`
           : `/q/${continuing.question_id}`,
@@ -2742,9 +2731,9 @@ export default function IndexPage() {
     if (totalAnswered < 3) {
       return {
         type: "answer_more",
-        title: "Build your stance profile",
-        body: "Answer a few more questions to unlock stronger insight about where you stand.",
-        ctaLabel: "Answer more",
+        title: t("home.buildStanceProfileTitle"),
+        body: t("home.buildStanceProfileBody"),
+        ctaLabel: t("home.answerMoreCta"),
         href: "/",
       };
     }
@@ -3358,7 +3347,7 @@ export default function IndexPage() {
         key: `newphase-${q.question_id}`,
         text: q.question_text,
         href: `/q/${q.question_id}`,
-        meta: "New phase since you answered",
+        meta: t("home.newPhaseSinceAnswered"),
         momentum: toMomentum(q.trend_micro_signal) ?? "rising",
       });
     });
@@ -3371,8 +3360,8 @@ export default function IndexPage() {
         meta:
           r.reason ??
           (r.public_shift_proxy != null
-            ? `Public balance moved ${Math.round(r.public_shift_proxy * 10) / 10} since you answered`
-            : "Public balance moved since you answered"),
+            ? t("home.publicBalanceMovedByAmount", { amount: Math.round(r.public_shift_proxy * 10) / 10 })
+            : t("home.publicBalanceMoved")),
         momentum: "polarising",
       });
     });
@@ -3419,22 +3408,22 @@ export default function IndexPage() {
               <div>
                 <h1 className="text-2xl font-semibold tracking-tight" style={{ color: C.ink }}>
                   {!isAuthed
-                    ? "Where does society stand today?"
+                    ? t("home.whereDoesSocietyStand")
                     : sinceLastVisitQuery.data?.is_first_visit
-                    ? `Welcome, ${displayName}`
-                    : `Welcome back, ${displayName}`}
+                    ? t("home.welcomeName", { name: displayName })
+                    : t("home.welcomeBackName", { name: displayName })}
                 </h1>
                 <p className="mt-1 text-sm" style={{ color: C.body }}>
                   {isAuthed
-                    ? "Take a position, then see where your region sits."
-                    : "Take a position in seconds — see how your region compares."}
+                    ? t("home.takePositionAuthed")
+                    : t("home.takePositionAnon")}
                 </p>
               </div>
               <TabsList>
                 {effectiveHasCountry && (
                   <TabsTrigger value="country">{effectiveCountryLabel}</TabsTrigger>
                 )}
-                <TabsTrigger value="global">Global</TabsTrigger>
+                <TabsTrigger value="global">{t("home.globalTab")}</TabsTrigger>
               </TabsList>
             </div>
 
@@ -3481,13 +3470,13 @@ export default function IndexPage() {
                 if (rpcChips.length > 0) return rpcChips;
                 const snapshotTopics = myStanceSnapshotQuery.data?.topics ?? [];
                 if (snapshotTopics.length > 0) {
-                  return snapshotTopics.slice(0, 5).map((t, i) => ({
+                  return snapshotTopics.slice(0, 5).map((st, i) => ({
                     topic_id: `local-${i}`,
-                    title: t.topicTitle,
+                    title: st.topicTitle,
                     icon: (
-                      t.scorePct >= 50 ? "up"
-                      : t.scorePct <= -30 ? "polarized"
-                      : t.avgScore > 0 ? "up"
+                      st.scorePct >= 50 ? "up"
+                      : st.scorePct <= -30 ? "polarized"
+                      : st.avgScore > 0 ? "up"
                       : "steady"
                     ) as "up" | "reawakening" | "polarized" | "steady",
                     href: "/topics",
@@ -3509,6 +3498,7 @@ export default function IndexPage() {
               onSignup={() => navigate("/signup")}
               showSliderTip={tips.isVisible("home_slider")}
               onDismissSliderTip={() => tips.dismiss("home_slider")}
+              languageCode={languageCode}
             />
 
             <TabsContent value={regionTab} className="mt-8 space-y-10">
@@ -3527,8 +3517,8 @@ export default function IndexPage() {
               {/* ── Feed — the ONE place questions are listed ── */}
               <section>
                 <SectionHeader
-                  title="Add your voice"
-                  subtitle="Only questions you haven't answered. Answered ones clear out once you've seen the result."
+                  title={t("home.addYourVoice")}
+                  subtitle={t("home.onlyUnansweredQuestions")}
                 />
 
                 {feedIsLoading ? (
@@ -3539,10 +3529,10 @@ export default function IndexPage() {
                     </div>
                   </div>
                 ) : !isAuthed && anonIsError ? (
-                  <ErrorFallback message="Failed to load questions. Please refresh the page." />
+                  <ErrorFallback message={t("home.failedToLoadQuestions")} />
                 ) : !feedHasContent ? (
                   <div className={`${card} px-5 py-4 text-sm`} style={{ color: C.body }}>
-                    You're caught up. New questions arrive through the day.
+                    {t("home.caughtUp")}
                   </div>
                 ) : (
                   <div className="space-y-5">
@@ -3618,7 +3608,7 @@ export default function IndexPage() {
                 {!hasNextPage &&
                   (trendingQuestions.length > 1 || anonQuestions.length > 1) && (
                     <p className="py-4 text-center text-xs" style={{ color: C.meta }}>
-                      You've seen all available questions
+                      {t("home.seenAllQuestions")}
                     </p>
                   )}
 
@@ -3671,7 +3661,7 @@ export default function IndexPage() {
           size and misplace an absolutely-positioned bubble inside it. */}
       {isAuthed && tips.isVisible("home_propose") && (
         <CoachMark
-          text="Got a question the world should answer? Propose it here."
+          text={t("home.proposeQuestionCoachMark")}
           fixed={{ bottom: "bottom-24", right: "right-6" }}
           zIndexClassName="z-50"
           onDismiss={() => tips.dismiss("home_propose")}

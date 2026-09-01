@@ -21,10 +21,12 @@ import PageLayout from "../components/PageLayout";
 import SocialAuthButtons from "../auth/SocialAuthButtons";
 import WhatsAppSignInButton from "../auth/WhatsAppSignInButton";
 import PhoneSignInFlow from "../auth/PhoneSignInFlow";
+import { useTranslation } from "react-i18next";
 
 export default function Login() {
   const sb = React.useMemo(getSupabase, []);
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
@@ -88,7 +90,7 @@ export default function Login() {
   async function onLogin(e: React.FormEvent) {
     e.preventDefault();
     setMsg(null);
-    if (!sb) return setMsg("Supabase is OFF (check env).");
+    if (!sb) return setMsg(t("auth.supabaseOff"));
 
     try {
       setBusy(true);
@@ -104,11 +106,11 @@ export default function Login() {
         // Fetch enrolled factors now so we don't have to do it again in verifyMfa.
         const { data: factors, error: factorsErr } = await sb.auth.mfa.listFactors();
         if (factorsErr || !factors?.totp?.length) {
-          throw new Error("No MFA factor found. Please re-enrol authenticator app.");
+          throw new Error(t("auth.noMfaFactorReenrol"));
         }
         setMfaFactorId(factors.totp[0].id);
         setNeedsMfa(true);
-        setMsg("Enter the code from your authenticator app.");
+        setMsg(t("auth.enterAuthenticatorCode"));
         setBusy(false);
         return;
       }
@@ -119,20 +121,20 @@ export default function Login() {
       //    against PublicOnly's <Navigate>.
       //    The onAuthStateChange listener above remains as a secondary safety net.
       if (data.session) {
-        setMsg("Logged in. Redirecting...");
+        setMsg(t("auth.loggedInRedirecting"));
         handleSuccessfulLogin();
       }
     } catch (e: any) {
-      setMsg(e.message || "Login failed");
+      setMsg(e.message || t("auth.loginFailed"));
       setBusy(false);
     }
   }
 
   async function verifyMfa() {
     setMsg(null);
-    if (!sb) return setMsg("Supabase is OFF (check env).");
+    if (!sb) return setMsg(t("auth.supabaseOff"));
     if (!mfaCode || mfaCode.length < 6)
-      return setMsg("Code must be at least 6 digits.");
+      return setMsg(t("auth.codeMinLength"));
 
     // factorId was resolved in onLogin when MFA was detected.
     // If somehow it is missing (e.g. component remounted), re-fetch.
@@ -140,7 +142,7 @@ export default function Login() {
     if (!factorId) {
       const { data: factors, error: factorsErr } = await sb.auth.mfa.listFactors();
       if (factorsErr || !factors?.totp?.length) {
-        return setMsg("No MFA factor found. Please re-enrol your authenticator app.");
+        return setMsg(t("auth.noMfaFactorReenrolYour"));
       }
       factorId = factors.totp[0].id;
       setMfaFactorId(factorId);
@@ -161,10 +163,10 @@ export default function Login() {
 
       // MFA verified — SIGNED_IN fires after verify(), so the auth listener
       // above handles the redirect. Also call directly as a safety net.
-      setMsg("MFA verified. Redirecting...");
+      setMsg(t("auth.mfaVerifiedRedirecting"));
       handleSuccessfulLogin();
     } catch (e: any) {
-      setMsg(e.message || "MFA verification failed");
+      setMsg(e.message || t("auth.mfaVerificationFailed"));
       setBusy(false);
     }
   }
@@ -172,20 +174,20 @@ export default function Login() {
   return (
     <PageLayout>
       <div className="mx-auto max-w-md p-6 space-y-4">
-        <h1 className="text-2xl font-bold">Log in</h1>
+        <h1 className="text-2xl font-bold">{t("auth.logIn")}</h1>
 
         {/* EMAIL CONFIRMATION BANNER */}
         {emailConfirmed && (
           <div className="flex items-start gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
             <span className="mt-0.5">✓</span>
             <div>
-              <span className="font-medium">Email confirmed!</span> Your account is verified. Log in below to continue setting up your profile.
+              <span className="font-medium">{t("auth.emailConfirmedBanner")}</span> {t("auth.emailConfirmedBody")}
             </div>
             <button
               type="button"
               className="ml-auto text-green-600 hover:text-green-800 leading-none"
               onClick={() => setEmailConfirmed(false)}
-              aria-label="Dismiss"
+              aria-label={t("auth.dismiss")}
             >
               ×
             </button>
@@ -196,7 +198,7 @@ export default function Login() {
           <input
             type="email"
             className="w-full border rounded px-3 py-2"
-            placeholder="Email"
+            placeholder={t("auth.emailPlaceholder")}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             autoComplete="email"
@@ -205,7 +207,7 @@ export default function Login() {
           <input
             type="password"
             className="w-full border rounded px-3 py-2"
-            placeholder="Password"
+            placeholder={t("auth.passwordPlaceholder")}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             autoComplete="current-password"
@@ -216,14 +218,14 @@ export default function Login() {
             className="w-full rounded bg-slate-900 text-white py-2"
             disabled={busy}
           >
-            {busy ? "Logging in…" : "Log in"}
+            {busy ? t("auth.loggingIn") : t("auth.logIn")}
           </button>
         </form>
 
         {/* MFA prompt */}
         {needsMfa && (
           <div className="rounded border p-3 space-y-2">
-            <div className="text-sm">Enter the 6-digit code from your authenticator app.</div>
+            <div className="text-sm">{t("auth.enterSixDigitCode")}</div>
             <input
               inputMode="numeric"
               maxLength={8}
@@ -238,7 +240,7 @@ export default function Login() {
                 onClick={verifyMfa}
                 disabled={busy || mfaCode.length < 6}
               >
-                {busy ? "Verifying…" : "Verify"}
+                {busy ? t("auth.verifying") : t("auth.verify")}
               </button>
               <button
                 className="rounded border px-4 py-2"
@@ -250,7 +252,7 @@ export default function Login() {
                 }}
                 disabled={busy}
               >
-                Cancel
+                {t("auth.cancel")}
               </button>
             </div>
           </div>
@@ -260,7 +262,7 @@ export default function Login() {
 
         <div className="text-sm">
           <Link className="underline" to="/reset-password">
-            Forgot password?
+            {t("auth.forgotPassword")}
           </Link>
         </div>
 
@@ -286,9 +288,9 @@ export default function Login() {
         <PhoneSignInFlow />
 
         <div className="text-sm text-center text-slate-600">
-          Don't have an account?{" "}
+          {t("auth.dontHaveAccount")}{" "}
           <Link className="underline text-slate-900" to="/signup">
-            Sign up
+            {t("auth.signUp")}
           </Link>
         </div>
       </div>

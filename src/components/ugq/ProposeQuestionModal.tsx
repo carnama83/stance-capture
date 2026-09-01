@@ -43,6 +43,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { SUPABASE_URL, getJwt, supabaseHeaders } from "@/lib/env";
+import { useTranslation } from "react-i18next";
 
 const MIN_LEN = 20;
 const MAX_LEN = 1000;
@@ -133,11 +134,12 @@ function hostnameOf(url: string): string {
 // here isn't a different-looking placeholder. Thumb sits at center/Neutral
 // since there's no real position yet — nobody's answered this question.
 function StanceScalePreview({ low, high }: { low: string | null; high: string | null }) {
+  const { t } = useTranslation();
   if (!low && !high) return null;
   return (
     <div className="pt-1.5">
       <p className="text-[10.5px] text-slate-500 mb-2">
-        Here&#x2019;s how the stance scale will appear to users:
+        {t("ugq.stanceScalePreviewNote")}
       </p>
       <div className="relative py-1.5">
         <div
@@ -154,9 +156,9 @@ function StanceScalePreview({ low, high }: { low: string | null; high: string | 
         />
       </div>
       <div className="flex items-start justify-between gap-2 text-[11px] text-slate-600">
-        <span className="max-w-[42%] leading-tight">{low ?? "Oppose"}</span>
-        <span className="text-slate-400 shrink-0">Neutral</span>
-        <span className="max-w-[42%] text-right leading-tight">{high ?? "Support"}</span>
+        <span className="max-w-[42%] leading-tight">{low ?? t("ugq.opposeDefault")}</span>
+        <span className="text-slate-400 shrink-0">{t("ugq.neutralLabel")}</span>
+        <span className="max-w-[42%] text-right leading-tight">{high ?? t("ugq.supportDefault")}</span>
       </div>
     </div>
   );
@@ -201,6 +203,7 @@ function VoiceRecorderPanel({
   onTranscript: (transcript: string, voiceRecordingPath: string | null) => void;
   maxRecordingSeconds?: number;
 }) {
+  const { t } = useTranslation();
   const [recordingState, setRecordingState] = React.useState<"idle" | "recording" | "recorded" | "transcribing">("idle");
   const [recordedBlobUrl, setRecordedBlobUrl] = React.useState<string | null>(null);
   const [recordedMimeType, setRecordedMimeType] = React.useState<string | null>(null);
@@ -308,7 +311,7 @@ function VoiceRecorderPanel({
   async function startRecording() {
     setVoiceError(null);
     if (typeof MediaRecorder === "undefined" || !navigator.mediaDevices?.getUserMedia) {
-      setVoiceError("Voice recording isn't supported in this browser. Please type instead.");
+      setVoiceError(t("ugq.voiceNotSupported"));
       return;
     }
     try {
@@ -350,7 +353,7 @@ function VoiceRecorderPanel({
         });
       }, 1000);
     } catch (_e) {
-      setVoiceError("Couldn't access your microphone. Check your browser's permission settings, or type instead.");
+      setVoiceError(t("ugq.micAccessDenied"));
     }
   }
 
@@ -416,7 +419,7 @@ function VoiceRecorderPanel({
       const resJson = await res.json().catch(() => ({}));
 
       if (!res.ok || !resJson?.ok) {
-        setVoiceError(resJson?.message ?? "Couldn't transcribe that recording. Please try again.");
+        setVoiceError(resJson?.message ?? t("ugq.transcribeFailed"));
         setRecordingState("recorded");
         return;
       }
@@ -429,7 +432,7 @@ function VoiceRecorderPanel({
       setRecordingState("idle");
       onTranscript(transcript, path);
     } catch (_e) {
-      setVoiceError("Network error while transcribing. Please try again.");
+      setVoiceError(t("ugq.networkErrorTranscribing"));
       setRecordingState("recorded");
     }
   }
@@ -450,12 +453,12 @@ function VoiceRecorderPanel({
           <button
             type="button"
             onClick={startRecording}
-            aria-label="Start recording"
+            aria-label={t("ugq.startRecording")}
             className="h-14 w-14 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center transition-colors"
           >
             <Mic className="h-6 w-6" />
           </button>
-          <p className="text-xs text-slate-500">Tap to record &#183; up to {formatMMSS(maxRecordingSeconds)}</p>
+          <p className="text-xs text-slate-500">{t("ugq.tapToRecordUpTo", { time: formatMMSS(maxRecordingSeconds) })}</p>
         </>
       ) : recordingState === "recording" ? (
         <>
@@ -463,7 +466,7 @@ function VoiceRecorderPanel({
             <button
               type="button"
               onClick={cancelRecording}
-              aria-label="Cancel recording"
+              aria-label={t("ugq.cancelRecording")}
               className="h-8 w-8 shrink-0 rounded-full flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
             >
               <Trash2 className="h-4 w-4" />
@@ -482,13 +485,13 @@ function VoiceRecorderPanel({
             <button
               type="button"
               onClick={stopRecording}
-              aria-label="Stop recording"
+              aria-label={t("ugq.stopRecording")}
               className="h-9 w-9 shrink-0 rounded-full bg-slate-900 hover:bg-slate-800 text-white flex items-center justify-center"
             >
               <Square className="h-3.5 w-3.5" />
             </button>
           </div>
-          <p className="text-[11px] text-slate-400">up to {formatMMSS(maxRecordingSeconds)}</p>
+          <p className="text-[11px] text-slate-400">{t("ugq.upToTime", { time: formatMMSS(maxRecordingSeconds) })}</p>
         </>
       ) : recordingState === "recorded" ? (
         <>
@@ -496,7 +499,7 @@ function VoiceRecorderPanel({
             <button
               type="button"
               onClick={discardAndReRecord}
-              aria-label="Discard recording"
+              aria-label={t("ugq.discardRecording")}
               className="h-8 w-8 shrink-0 rounded-full flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
             >
               <Trash2 className="h-4 w-4" />
@@ -504,7 +507,7 @@ function VoiceRecorderPanel({
             <button
               type="button"
               onClick={togglePlayback}
-              aria-label={isPlaying ? "Pause" : "Play"}
+              aria-label={isPlaying ? t("ugq.pause") : t("ugq.play")}
               className="h-8 w-8 shrink-0 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition-colors"
             >
               {isPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5 ml-0.5" />}
@@ -524,7 +527,7 @@ function VoiceRecorderPanel({
             <button
               type="button"
               onClick={handleUseRecording}
-              aria-label="Use this recording"
+              aria-label={t("ugq.useThisRecording")}
               className="h-9 w-9 shrink-0 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white flex items-center justify-center"
             >
               <Check className="h-4 w-4" />
@@ -543,7 +546,7 @@ function VoiceRecorderPanel({
       ) : (
         <>
           <Loader2 className="h-6 w-6 animate-spin text-slate-500" />
-          <p className="text-xs text-slate-500">Transcribing your recording&#x2026;</p>
+          <p className="text-xs text-slate-500">{t("ugq.transcribingRecording")}</p>
         </>
       )}
       {voiceError ? <p className="text-xs text-red-600 text-center">{voiceError}</p> : null}
@@ -559,6 +562,7 @@ export function ProposeQuestionModal({
   presetConstituencyId = null,
   defaultLocation = null,
 }: Props) {
+  const { t } = useTranslation();
   const [question, setQuestion] = React.useState("");
   const [sourceUrl, setSourceUrl] = React.useState("");
   const [location, setLocation] = React.useState(defaultLocation ?? "");
@@ -674,7 +678,7 @@ export function ProposeQuestionModal({
           clearInterval(timer);
           setErrorMsg(typeof row.rejection_note === "string" && row.rejection_note
             ? row.rejection_note
-            : "Your question wasn't accepted. Try rephrasing it.");
+            : t("ugq.questionNotAccepted"));
           setPhase("form");
           return;
         }
@@ -747,14 +751,14 @@ export function ProposeQuestionModal({
       const json = await res.json().catch(() => ({}));
 
       if (!res.ok || !json?.ok) {
-        const msg = json?.message ?? "Something went wrong. Please try again.";
+        const msg = json?.message ?? t("ugq.somethingWentWrong");
         setErrorMsg(msg);
         setPhase("form");
         return;
       }
 
       if (json.status === "rejected") {
-        setErrorMsg(json.message ?? "Your question wasn't accepted. Try rephrasing it.");
+        setErrorMsg(json.message ?? t("ugq.questionNotAccepted"));
         setPhase("form");
         return;
       }
@@ -775,7 +779,7 @@ export function ProposeQuestionModal({
 
       setPhase("review");
     } catch (_e) {
-      setErrorMsg("Network error. Please check your connection and try again.");
+      setErrorMsg(t("ugq.networkErrorCheckConnection"));
       setPhase("form");
     }
   }
@@ -794,7 +798,7 @@ export function ProposeQuestionModal({
       const json = await res.json().catch(() => ({}));
 
       if (!res.ok || !json?.ok) {
-        setErrorMsg(json?.message ?? "Couldn't publish just now. Please try again.");
+        setErrorMsg(json?.message ?? t("ugq.couldntPublishNow"));
         setPhase("review");
         return;
       }
@@ -803,7 +807,7 @@ export function ProposeQuestionModal({
       setSuggestedAuthorities(parseAuthorities(json.suggested_authorities));
       setPhase("published");
     } catch (_e) {
-      setErrorMsg("Network error. Please check your connection and try again.");
+      setErrorMsg(t("ugq.networkErrorCheckConnection"));
       setPhase("review");
     }
   }
@@ -830,14 +834,14 @@ export function ProposeQuestionModal({
       const json = await res.json().catch(() => ({}));
 
       if (!res.ok || !json?.ok) {
-        setRefineError(json?.message ?? "Couldn't regenerate just now. Please try again.");
+        setRefineError(json?.message ?? t("ugq.couldntRegenerateNow"));
         return;
       }
 
       if (json.refined === false) {
         // Backend tried and failed both attempts — it left the existing
         // preview untouched, so just surface the message and keep going.
-        setRefineError(json.message ?? "Couldn't regenerate with that context — your original preview is still here.");
+        setRefineError(json.message ?? t("ugq.couldntRegenerateContext"));
         return;
       }
 
@@ -846,7 +850,7 @@ export function ProposeQuestionModal({
       setRefineText("");
       setRefineError(null);
     } catch (_e) {
-      setRefineError("Network error. Please check your connection and try again.");
+      setRefineError(t("ugq.networkErrorCheckConnection"));
     } finally {
       setRefining(false);
     }
@@ -866,14 +870,14 @@ export function ProposeQuestionModal({
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json?.ok) {
-        setTagError(json?.message ?? "Couldn't tag that authority. Please try again.");
+        setTagError(json?.message ?? t("ugq.couldntTagAuthority"));
         setTagStatus("idle");
         return;
       }
       setTaggedName(typeof json.authority_name === "string" ? json.authority_name : fallbackName ?? null);
       setTagStatus("tagged");
     } catch (_e) {
-      setTagError("Network error. Please try again.");
+      setTagError(t("ugq.networkErrorShort"));
       setTagStatus("idle");
     }
   }
@@ -922,18 +926,16 @@ export function ProposeQuestionModal({
         {phase === "published" ? (
           <div className="flex flex-col items-center text-center py-6 gap-3">
             <CheckCircle2 className="h-10 w-10 text-green-600" />
-            <DialogTitle className="text-lg">You&#x2019;re live!</DialogTitle>
+            <DialogTitle className="text-lg">{t("ugq.youreLive")}</DialogTitle>
             <DialogDescription>
-              {autoPublished
-                ? "Your question is live right now. Our team will also give it a quick review shortly."
-                : "Your question is live right now. Our team will also give it a quick review shortly."}
+              {t("ugq.questionLiveDescription")}
             </DialogDescription>
 
             {preview ? (
               <div className="w-full mt-1 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-left space-y-2">
                 <div className="flex items-center gap-1.5 text-xs font-medium text-green-700">
                   <Sparkles className="h-3.5 w-3.5" />
-                  Your question, live now
+                  {t("ugq.yourQuestionLiveNow")}
                 </div>
                 <CoverImagePreview src={preview.cover_image_url} />
                 <p className="text-sm text-slate-800 leading-snug">{preview.question}</p>
@@ -946,14 +948,14 @@ export function ProposeQuestionModal({
               <div className="w-full rounded-lg border border-purple-200 bg-purple-50 px-4 py-3 text-left">
                 <p className="text-sm text-purple-800">
                   <Landmark className="h-3.5 w-3.5 inline mr-1 -mt-0.5" />
-                  Tagged <strong>{taggedName}</strong> &#x2014; sent to our team to confirm.
+                  {t("ugq.taggedAuthority", { name: taggedName })}
                 </p>
               </div>
             ) : tagStatus === "skipped" ? null : (
               <div className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-left space-y-2">
                 <p className="text-xs font-medium text-slate-600">
                   <Landmark className="h-3.5 w-3.5 inline mr-1 -mt-0.5" />
-                  Think this is related to a specific authority?
+                  {t("ugq.relatedToAuthority")}
                 </p>
                 {suggestedAuthorities.length > 0 && !browseOpen ? (
                   <div className="flex flex-wrap gap-1.5">
@@ -966,7 +968,7 @@ export function ProposeQuestionModal({
                         onClick={() => tagAuthority(a.id, a.name)}
                       >
                         {tagStatus === "tagging" ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : null}
-                        Tag {a.name}
+                        {t("ugq.tagAuthorityButton", { name: a.name })}
                       </Button>
                     ))}
                   </div>
@@ -976,7 +978,7 @@ export function ProposeQuestionModal({
                   <div className="space-y-2">
                     {browseLoading ? (
                       <p className="text-xs text-slate-500 flex items-center gap-1.5">
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading authorities&#x2026;
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" /> {t("ugq.loadingAuthorities")}
                       </p>
                     ) : (allAuthorities?.length ?? 0) > 0 ? (
                       <>
@@ -985,7 +987,7 @@ export function ProposeQuestionModal({
                           onChange={(e) => setBrowseSelection(e.target.value)}
                           className="w-full h-9 rounded-md border border-slate-300 px-2 text-sm bg-white"
                         >
-                          <option value="">Select an authority&#x2026;</option>
+                          <option value="">{t("ugq.selectAnAuthority")}</option>
                           {allAuthorities!.map((a) => (
                             <option key={a.id} value={a.id}>
                               {a.name} {a.domain ? `(${a.domain})` : ""}
@@ -1000,11 +1002,11 @@ export function ProposeQuestionModal({
                             if (picked) tagAuthority(picked.id, picked.name);
                           }}
                         >
-                          {tagStatus === "tagging" ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Tagging&#x2026;</> : "Tag this authority"}
+                          {tagStatus === "tagging" ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> {t("ugq.tagging")}</> : t("ugq.tagThisAuthority")}
                         </Button>
                       </>
                     ) : (
-                      <p className="text-xs text-slate-500">No authorities found.</p>
+                      <p className="text-xs text-slate-500">{t("ugq.noAuthoritiesFound")}</p>
                     )}
                   </div>
                 ) : (
@@ -1013,7 +1015,7 @@ export function ProposeQuestionModal({
                     onClick={openBrowseAuthorities}
                     className="inline-flex items-center gap-0.5 text-xs text-blue-600 hover:underline"
                   >
-                    Browse all authorities <ChevronDown className="h-3 w-3" />
+                    {t("ugq.browseAllAuthorities")} <ChevronDown className="h-3 w-3" />
                   </button>
                 )}
 
@@ -1025,7 +1027,7 @@ export function ProposeQuestionModal({
                     onClick={() => setTagStatus("skipped")}
                     className="text-[11px] text-slate-400 hover:text-slate-600 hover:underline"
                   >
-                    No thanks, skip this
+                    {t("ugq.noThanksSkip")}
                   </button>
                 )}
               </div>
@@ -1038,11 +1040,11 @@ export function ProposeQuestionModal({
               {questionId ? (
                 <Button variant="outline" asChild>
                   <a href={`#/q/${questionId}`} onClick={close}>
-                    View it live <ExternalLink className="h-3.5 w-3.5 ml-1.5" />
+                    {t("ugq.viewItLive")} <ExternalLink className="h-3.5 w-3.5 ml-1.5" />
                   </a>
                 </Button>
               ) : null}
-              <Button onClick={close}>Done</Button>
+              <Button onClick={close}>{t("ugq.done")}</Button>
             </div>
           </div>
         ) : phase === "review" || phase === "publishing" ? (
@@ -1050,14 +1052,14 @@ export function ProposeQuestionModal({
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Sparkles className="h-5 w-5 text-amber-500" />
-                {preview ? "Here\u2019s how this looks" : pollExhausted ? "Still processing" : "Almost ready"}
+                {preview ? t("ugq.hereHowThisLooks") : pollExhausted ? t("ugq.stillProcessing") : t("ugq.almostReady")}
               </DialogTitle>
               <DialogDescription>
                 {preview
-                  ? "Review it, then publish when you're ready. Our team will also take a quick look shortly after."
+                  ? t("ugq.reviewThenPublish")
                   : pollExhausted
-                  ? "This is taking longer than usual \u2014 check My Proposals in a bit, or come back here later."
-                  : "We're finishing up your preview \u2014 this can take up to a minute with everything we check."}
+                  ? t("ugq.takingLongerThanUsual")
+                  : t("ugq.finishingUpPreview")}
               </DialogDescription>
             </DialogHeader>
 
@@ -1069,7 +1071,7 @@ export function ProposeQuestionModal({
 
                 {preview.context_summary ? (
                   <div className="pt-2 mt-1 border-t border-amber-200/70 space-y-1">
-                    <p className="text-[11px] font-medium text-amber-700">Background</p>
+                    <p className="text-[11px] font-medium text-amber-700">{t("ugq.background")}</p>
                     <p className="text-xs text-slate-700 leading-relaxed">{preview.context_summary}</p>
                     {preview.supporting_links.length > 0 ? (
                       <div className="flex flex-wrap gap-x-3 gap-y-1 pt-0.5">
@@ -1085,13 +1087,13 @@ export function ProposeQuestionModal({
                 ) : null}
 
                 <p className="text-[11px] text-amber-700/80 pt-1">
-                  Not fact-checked yet &#x2014; our team reviews shortly after this goes live and may refine the wording.
+                  {t("ugq.notFactCheckedYet")}
                 </p>
               </div>
             ) : !pollExhausted ? (
               <div className="flex flex-col items-center justify-center gap-2 py-8 text-slate-500">
                 <Loader2 className="h-5 w-5 animate-spin" />
-                <p className="text-xs">Checking for your preview&#x2026;</p>
+                <p className="text-xs">{t("ugq.checkingForPreview")}</p>
               </div>
             ) : null}
 
@@ -1108,13 +1110,13 @@ export function ProposeQuestionModal({
                     disabled={refining}
                     className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline disabled:opacity-50"
                   >
-                    <Wand2 className="h-3 w-3" /> Add more context and regenerate
+                    <Wand2 className="h-3 w-3" /> {t("ugq.addContextRegenerate")}
                   </button>
                 ) : (
                   <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
                     <div className="flex items-center justify-between">
                       <Label htmlFor="ugq-refine-context" className="text-xs text-slate-600">
-                        What should we add or fix?
+                        {t("ugq.whatToAddOrFix")}
                       </Label>
                       {/* Aug 2026, NEW: same VoiceRecorderPanel the question
                           composer uses, so recording context here doesn't
@@ -1126,9 +1128,9 @@ export function ProposeQuestionModal({
                         className="inline-flex items-center gap-1 text-[11px] text-slate-500 hover:text-slate-700 disabled:opacity-50"
                       >
                         {refineInputMode === "text" ? (
-                          <><Mic className="h-3 w-3" /> Record instead</>
+                          <><Mic className="h-3 w-3" /> {t("ugq.recordInstead")}</>
                         ) : (
-                          "Type instead"
+                          t("ugq.typeInstead")
                         )}
                       </button>
                     </div>
@@ -1139,7 +1141,7 @@ export function ProposeQuestionModal({
                           id="ugq-refine-context"
                           value={refineText}
                           onChange={(e) => setRefineText(e.target.value.slice(0, REFINE_MAX_LEN))}
-                          placeholder="e.g. this happened in March, or it's specifically about UP"
+                          placeholder={t("ugq.refinePlaceholder")}
                           rows={2}
                           disabled={refining}
                         />
@@ -1154,7 +1156,7 @@ export function ProposeQuestionModal({
                               disabled={refining}
                               onClick={() => { setRefineOpen(false); setRefineText(""); setRefineError(null); setRefineInputMode("text"); }}
                             >
-                              Cancel
+                              {t("auth.cancel")}
                             </Button>
                             <Button
                               size="sm"
@@ -1162,9 +1164,9 @@ export function ProposeQuestionModal({
                               onClick={handleRefine}
                             >
                               {refining ? (
-                                <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Regenerating&#x2026;</>
+                                <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> {t("ugq.regenerating")}</>
                               ) : (
-                                "Regenerate preview"
+                                t("ugq.regeneratePreview")
                               )}
                             </Button>
                           </div>
@@ -1194,14 +1196,14 @@ export function ProposeQuestionModal({
 
             <DialogFooter>
               <Button variant="ghost" onClick={close} disabled={phase === "publishing" || refining}>
-                {preview ? "Not now" : "Done"}
+                {preview ? t("ugq.notNow") : t("ugq.done")}
               </Button>
               {preview ? (
                 <Button onClick={handlePublish} disabled={phase === "publishing" || refining}>
                   {phase === "publishing" ? (
-                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Publishing&#x2026;</>
+                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> {t("ugq.publishing")}</>
                   ) : (
-                    "Publish"
+                    t("ugq.publish")
                   )}
                 </Button>
               ) : null}
@@ -1212,24 +1214,23 @@ export function ProposeQuestionModal({
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Lightbulb className="h-5 w-5 text-amber-500" />
-                Propose a question
+                {t("ugq.proposeQuestion")}
               </DialogTitle>
               <DialogDescription>
-                Surface an issue you care about. If it meets our civic-framing bar, it goes
-                live as a stance card &#x2014; with credit to you.
+                {t("ugq.proposeQuestionDescription")}
               </DialogDescription>
             </DialogHeader>
 
             {presetTopicTitle ? (
               <div>
-                <Badge variant="secondary">Topic: {presetTopicTitle}</Badge>
+                <Badge variant="secondary">{t("ugq.topicPrefix", { title: presetTopicTitle })}</Badge>
               </div>
             ) : null}
 
             <div className="space-y-4 py-1">
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="ugq-question">Your question</Label>
+                  <Label htmlFor="ugq-question">{t("ugq.yourQuestion")}</Label>
                   {/* Aug 2026, NEW: Type/Record toggle. Safe to switch at
                       any time, including mid-recording — VoiceRecorderPanel's
                       unmount effect releases the mic/AudioContext whenever
@@ -1243,7 +1244,7 @@ export function ProposeQuestionModal({
                         inputMode === "text" ? "bg-slate-900 text-white" : "text-slate-500 hover:text-slate-700"
                       }`}
                     >
-                      Type
+                      {t("ugq.type")}
                     </button>
                     <button
                       type="button"
@@ -1252,7 +1253,7 @@ export function ProposeQuestionModal({
                         inputMode === "voice" ? "bg-slate-900 text-white" : "text-slate-500 hover:text-slate-700"
                       }`}
                     >
-                      <Mic className="h-3 w-3" /> Record
+                      <Mic className="h-3 w-3" /> {t("ugq.record")}
                     </button>
                   </div>
                 </div>
@@ -1263,27 +1264,27 @@ export function ProposeQuestionModal({
                       id="ugq-question"
                       value={question}
                       onChange={(e) => setQuestion(e.target.value.slice(0, MAX_LEN))}
-                      placeholder="What do you want the community to weigh in on?"
+                      placeholder={t("ugq.questionComposerPlaceholder")}
                       rows={4}
                       autoFocus
                     />
                     <div className="flex justify-between text-xs">
                       <span className={tooShort ? "text-amber-600" : "text-slate-400"}>
-                        {tooShort ? `At least ${MIN_LEN} characters` : "\u00A0"}
+                        {tooShort ? t("ugq.atLeastNCharacters", { count: MIN_LEN }) : "\u00A0"}
                       </span>
                       <span className="text-slate-400">{trimmed.length}/{MAX_LEN}</span>
                     </div>
                     {voiceRecordingPath ? (
                       <div className="flex items-center gap-1 text-[11px] text-slate-500">
                         <Mic className="h-3 w-3" />
-                        <span>From your recording</span>
+                        <span>{t("ugq.fromYourRecording")}</span>
                         <span>&#183;</span>
                         <button
                           type="button"
                           onClick={() => { setVoiceRecordingPath(null); setInputMode("voice"); }}
                           className="text-blue-600 hover:underline"
                         >
-                          Record again
+                          {t("ugq.recordAgain")}
                         </button>
                       </div>
                     ) : null}
@@ -1301,23 +1302,23 @@ export function ProposeQuestionModal({
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="ugq-source">Source link <span className="text-slate-400">(optional)</span></Label>
+                <Label htmlFor="ugq-source">{t("ugq.sourceLinkOptional")} <span className="text-slate-400">{t("ugq.optional")}</span></Label>
                 <Input
                   id="ugq-source"
                   value={sourceUrl}
                   onChange={(e) => setSourceUrl(e.target.value)}
-                  placeholder="Add a link for context"
+                  placeholder={t("ugq.addLinkForContext")}
                   inputMode="url"
                 />
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="ugq-location">Location <span className="text-slate-400">(optional)</span></Label>
+                <Label htmlFor="ugq-location">{t("ugq.locationOptional")} <span className="text-slate-400">{t("ugq.optional")}</span></Label>
                 <Input
                   id="ugq-location"
                   value={location}
                   onChange={(e) => setLocation(e.target.value)}
-                  placeholder="e.g. Lucknow, UP"
+                  placeholder={t("ugq.locationPlaceholder")}
                 />
               </div>
 
@@ -1328,13 +1329,13 @@ export function ProposeQuestionModal({
 
             <DialogFooter>
               <Button variant="ghost" onClick={close} disabled={phase === "submitting"}>
-                Cancel
+                {t("auth.cancel")}
               </Button>
               <Button onClick={handleSubmit} disabled={!canSubmit || inputMode === "voice"}>
                 {phase === "submitting" ? (
-                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Reviewing&#x2026;</>
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> {t("ugq.reviewing")}</>
                 ) : (
-                  "Submit for review"
+                  t("ugq.submitForReview")
                 )}
               </Button>
             </DialogFooter>
