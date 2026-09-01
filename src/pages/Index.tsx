@@ -49,6 +49,7 @@ import { useGlobalAndCountryIds } from "@/hooks/useLocationIds";
 import { HeroSection } from "@/components/hero/HeroSection";
 import { useContributionAcknowledgement } from "@/hooks/useContributionAcknowledgement";
 import { useIPLocation } from "@/hooks/useIPLocation";
+import { useLanguage } from "@/hooks/useLanguage";
 import { SUPABASE_URL, getJwt, supabaseHeaders } from "@/lib/env";
 import { toast } from "sonner";
 import { ProposeQuestionButton } from "@/components/ugq/ProposeQuestionButton";
@@ -2135,6 +2136,7 @@ export default function IndexPage() {
   const isAuthed = !!session;
   const sb = React.useMemo(getSupabase, []);
   const userId = session?.user?.id ?? null;
+  const { languageCode, isLoading: languageLoading } = useLanguage(userId);
 
   // Onboarding coach-marks: two of the app's four total tips live here,
   // sequenced (home_propose only becomes eligible once home_slider is
@@ -2766,9 +2768,9 @@ export default function IndexPage() {
   // ── Infinite queries (all preserved exactly) ──
 
   const canTrendingNational =
-    !!sb && !!userId && !!countryLabel && !!COUNTRY_LOCATION_ID && !locationIdsLoading;
+    !!sb && !!userId && !!countryLabel && !!COUNTRY_LOCATION_ID && !locationIdsLoading && !languageLoading;
   const canTrendingGlobal =
-    !!sb && !!userId && !!GLOBAL_LOCATION_ID && !locationIdsLoading;
+    !!sb && !!userId && !!GLOBAL_LOCATION_ID && !locationIdsLoading && !languageLoading;
 
   React.useEffect(() => {
     console.log("[FeedDebug]", {
@@ -2779,12 +2781,14 @@ export default function IndexPage() {
       GLOBAL_LOCATION_ID,
       COUNTRY_LOCATION_ID,
       locationIdsLoading,
+      languageCode,
+      languageLoading,
       canTrendingNational,
       canTrendingGlobal,
       sessionResolved,
       isAuthed,
     });
-  }, [!!sb, userId, countryLabel, globalLabel, GLOBAL_LOCATION_ID, COUNTRY_LOCATION_ID, locationIdsLoading, canTrendingNational, canTrendingGlobal, sessionResolved, isAuthed]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [!!sb, userId, countryLabel, globalLabel, GLOBAL_LOCATION_ID, COUNTRY_LOCATION_ID, locationIdsLoading, languageCode, languageLoading, canTrendingNational, canTrendingGlobal, sessionResolved, isAuthed]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const trendingQuestionsNationalQuery = useInfiniteQuery({
     enabled: canTrendingNational,
@@ -2794,6 +2798,7 @@ export default function IndexPage() {
       userId,
       countryLabel,
       COUNTRY_LOCATION_ID,
+      languageCode,
     ],
     initialPageParam: 0,
     getNextPageParam: (
@@ -2809,6 +2814,7 @@ export default function IndexPage() {
         p_location_id: COUNTRY_LOCATION_ID,
         p_limit: 10,
         p_offset: pageParam,
+        p_language_code: languageCode,
       });
       if (error) throw error;
       return await hydrateCoversForTrendingRows(
@@ -2820,7 +2826,7 @@ export default function IndexPage() {
 
   const trendingQuestionsGlobalQuery = useInfiniteQuery({
     enabled: canTrendingGlobal,
-    queryKey: ["home-trending-questions", "global", userId, GLOBAL_LOCATION_ID],
+    queryKey: ["home-trending-questions", "global", userId, GLOBAL_LOCATION_ID, languageCode],
     initialPageParam: 0,
     getNextPageParam: (
       lastPage: TrendingHomepageQuestionRow[],
@@ -2828,7 +2834,7 @@ export default function IndexPage() {
       lastPageParam: number
     ) => (lastPage.length < 10 ? undefined : lastPageParam + 10),
     queryFn: async ({ pageParam = 0 }) => {
-      console.log("[FeedDebug] global queryFn firing", { userId, globalLabel, GLOBAL_LOCATION_ID, pageParam });
+      console.log("[FeedDebug] global queryFn firing", { userId, globalLabel, GLOBAL_LOCATION_ID, pageParam, languageCode });
       const { data, error } = await sb!.rpc("get_trending_questions_homepage", {
         p_user_id: userId,
         p_region_scope: "global",
@@ -2836,6 +2842,7 @@ export default function IndexPage() {
         p_location_id: GLOBAL_LOCATION_ID,
         p_limit: 10,
         p_offset: pageParam,
+        p_language_code: languageCode,
       });
       console.log("[FeedDebug] global queryFn result", { count: data?.length, error });
       if (error) throw error;
@@ -2847,8 +2854,8 @@ export default function IndexPage() {
   });
 
   const anonTrendingQuery = useInfiniteQuery({
-    enabled: !!sb && !isAuthed,
-    queryKey: ["home-questions-anon", regionLabel],
+    enabled: !!sb && !isAuthed && !languageLoading,
+    queryKey: ["home-questions-anon", regionLabel, languageCode],
     initialPageParam: 0,
     getNextPageParam: (
       lastPage: AnonQuestionRow[],
@@ -2856,26 +2863,25 @@ export default function IndexPage() {
       lastPageParam: number
     ) => (lastPage.length < 10 ? undefined : lastPageParam + 10),
     queryFn: async ({ pageParam = 0 }) => {
-      // Raw fetch, not sb.from() — the SDK client's internal auth-mutex lock
-      // can stall this exact call on a cold navigation (fresh tab, no cached
-      // session yet), leaving the anon feed empty until a manual refresh.
-      // Matches the raw-fetch + getJwt()/supabaseHeaders() pattern used
-      // everywhere else in this app for exactly this reason.
-      const params = new URLSearchParams({
-        select:
-          "id,question,summary,tags,location_label,origin_location_label,audience_location_label,published_at,status,cover_image_url,slider_low_label,slider_high_label",
-        order: "published_at.desc",
-        limit: "10",
-        offset: String(pageParam),
-      });
-      if (regionLabel !== "Global") {
-        params.set("audience_location_label", `eq.${regionLabel}`);
-      } else if (effectiveCountryLabel) {
-        params.set("audience_location_label", `neq.${effectiveCountryLabel}`);
-      }
-
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/v_live_questions?${params.toString()}`, {
+      // Raw fetch, not sb.rpc() — same auth-mutex concern as before (see
+      // lib/env.ts getJwt() comment): the SDK client can stall this exact
+      // call on a cold navigation with no cached session yet, leaving the
+      // anon feed empty until a manual refresh. This used to read
+      // v_live_questions directly; now calls get_live_questions_localized
+      // (same filtering/ordering, adds question_renditions resolution) so
+      // anonymous WhatsApp-forward traffic — which never has a stored
+      // language preference — gets the right language via ?lang= on the
+      // share link instead of always seeing English.
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/get_live_questions_localized`, {
+        method: "POST",
         headers: supabaseHeaders(getJwt()),
+        body: JSON.stringify({
+          p_language_code: languageCode,
+          p_limit: 10,
+          p_offset: pageParam,
+          p_region_label: regionLabel,
+          p_exclude_country_label: regionLabel === "Global" ? (effectiveCountryLabel || null) : null,
+        }),
       });
       if (!res.ok) {
         const errBody = await res.text().catch(() => "");
@@ -2904,15 +2910,18 @@ export default function IndexPage() {
     primaryUnanswered.length === 0;
 
   const fallbackFeedQuery = useQuery({
-    enabled: needsFallback,
-    queryKey: ["home-fallback-feed", userId],
+    enabled: needsFallback && !languageLoading,
+    queryKey: ["home-fallback-feed", userId, languageCode],
     queryFn: async (): Promise<FallbackQuestionRow[]> => {
-      console.log("[FeedDebug] fallback queryFn firing", { userId, needsFallback });
-      const { data, error } = await sb!
-        .from("v_live_questions")
-        .select("id, question, summary, tags, location_label, origin_location_label, audience_location_label, cover_image_url, topic_title, slider_low_label, slider_high_label")
-        .order("published_at", { ascending: false })
-        .limit(15);
+      console.log("[FeedDebug] fallback queryFn firing", { userId, needsFallback, languageCode });
+      // sb.rpc() here (not raw fetch) matches this call's existing style —
+      // needsFallback already requires userId, so by the time this fires the
+      // session is resolved and the anon-path cold-navigation mutex concern
+      // (see anonTrendingQuery above) doesn't apply the same way.
+      const { data, error } = await sb!.rpc("get_live_questions_localized", {
+        p_language_code: languageCode,
+        p_limit: 15,
+      });
       if (error) throw error;
 
       const rows = (data ?? []) as FallbackQuestionRow[];
