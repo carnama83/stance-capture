@@ -33,7 +33,7 @@
 // (ugq-moderate) before it becomes the public "who's responsible" answer.
 
 import * as React from "react";
-import { Loader2, CheckCircle2, Lightbulb, Sparkles, ExternalLink, Landmark, ChevronDown, Wand2, Mic, Square, Trash2, Play, Pause, Check } from "lucide-react";
+import { Loader2, CheckCircle2, Lightbulb, Sparkles, ExternalLink, Landmark, ChevronDown, Wand2, Mic, Square, Trash2, Play, Pause, Check, Video } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
@@ -44,6 +44,8 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { SUPABASE_URL, getJwt, supabaseHeaders } from "@/lib/env";
 import { useTranslation } from "react-i18next";
+import { VideoRecorderPanel } from "./VideoRecorderPanel";
+import { VideoPublishChoice } from "./VideoPublishChoice";
 
 const MIN_LEN = 20;
 const MAX_LEN = 1000;
@@ -601,9 +603,20 @@ export function ProposeQuestionModal({
   // further manual edits to the transcribed text still count as
   // voice-origin, which is the right call for an admin-facing trust signal
   // (imperfect edge cases here are harmless).
-  const [inputMode, setInputMode] = React.useState<"text" | "voice">("text");
+  const [inputMode, setInputMode] = React.useState<"text" | "voice" | "video">("text");
   const [refineInputMode, setRefineInputMode] = React.useState<"text" | "voice">("text");
   const [voiceRecordingPath, setVoiceRecordingPath] = React.useState<string | null>(null);
+
+  // Epic X (video, NEW). VideoRecorderPanel is fully self-contained — unlike
+  // voice, it does its OWN capture/transcribe/submit (including the framing-
+  // gate resubmit loop), never populating `question`/handleSubmit at all.
+  // isVideoProposal just tells the review/published phases to render
+  // VideoPublishChoice instead of the generic Publish button once
+  // VideoRecorderPanel's onSubmitted hands off a proposalId. derogatoryFlagReason
+  // is informational-only (see checkVideoFraming) — shown inside
+  // VideoPublishChoice as a recommendation, never blocks Publish.
+  const [isVideoProposal, setIsVideoProposal] = React.useState(false);
+  const [derogatoryFlagReason, setDerogatoryFlagReason] = React.useState<string | null>(null);
 
   // Authority tagging (post-publish) state.
   const [suggestedAuthorities, setSuggestedAuthorities] = React.useState<Authority[]>([]);
@@ -636,6 +649,8 @@ export function ProposeQuestionModal({
       setInputMode("text");
       setRefineInputMode("text");
       setVoiceRecordingPath(null);
+      setIsVideoProposal(false);
+      setDerogatoryFlagReason(null);
       setSuggestedAuthorities([]);
       setTagStatus("idle");
       setTaggedName(null);
@@ -810,6 +825,89 @@ export function ProposeQuestionModal({
       setErrorMsg(t("ugq.networkErrorCheckConnection"));
       setPhase("review");
     }
+  }
+
+  // Epic X (video, NEW): adapter matching VideoRecorderPanel's expected
+  // transcribeAudio contract — same ugq-transcribe-voice call/base64 approach
+  // VoiceRecorderPanel's handleUseRecording already uses above, just wrapped
+  // as a standalone function since VideoRecorderPanel records its own
+  // separate audio-only track and can't reach into that component's
+  // internal state.
+  const transcribeAudioForVideo = React.useCallback(
+    async (audioBlob: Blob): Promise<{ transcript: string; recording_path?: string }> => {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error("Read failed"));
+        reader.readAsDataURL(audioBlob);
+      });
+      const jwt = getJwt();
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/ugq-transcribe-voice`, {
+        method: "POST",
+        headers: supabaseHeaders(jwt),
+        body: JSON.stringify({ audio_base64: base64, mime_type: audioBlob.type || "audio/webm" }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.ok) {
+        throw new Error(json?.message ?? t("ugq.transcribeFailed"));
+      }
+      return {
+        transcript: String(json.transcript ?? ""),
+        recording_path: typeof json.voice_recording_path === "string" ? json.voice_recording_path : undefined,
+      };
+    },
+    [t],
+  );
+
+  // Epic X (video, NEW): VideoRecorderPanel already resolved the proposal
+  // past the framing gate (it handles "resubmit_requested" — and now
+  // "rejected" — entirely internally, offering its own re-record UI; this
+  // only ever fires for a proposal that's actually headed somewhere).
+  // Deliberately does NOT pass preview_reframe/published/question_id through
+  // from ugq-submit's response — the existing poll effect below already
+  // resolves all three outcomes (preview ready / rejected / auto-published)
+  // once given just a proposalId + phase="review", so reusing it here avoids
+  // duplicating that resolution logic for a second input mode.
+  function handleVideoSubmitted(result: {
+    proposalId: string;
+    status: string;
+    framingFlagReason: string | null;
+    derogatoryFlagReason: string | null;
+  }) {
+    setIsVideoProposal(true);
+    setProposalId(result.proposalId);
+    setDerogatoryFlagReason(result.derogatoryFlagReason);
+    setPreviewReframe(null);
+    setPollAttempts(0);
+    setPollExhausted(false);
+    setErrorMsg(null);
+    setPhase("review");
+  }
+
+  // Epic X (video, NEW): mirrors handlePublish's success path — same two
+  // state updates, just sourced from VideoPublishChoice's own
+  // ugq-confirm-publish call instead of one made here.
+  function handleVideoPublished(qId: string, authorities: Authority[]) {
+    setQuestionId(qId);
+    setSuggestedAuthorities(authorities);
+    setPhase("published");
+  }
+
+  // Epic X (video, NEW): routes VideoPublishChoice's "Re-record instead"
+  // link back to a fresh capture. Abandons the current proposal row rather
+  // than deleting it — same as any other proposal a user navigates away
+  // from without publishing; nothing elsewhere in this modal issues an
+  // explicit withdraw call either.
+  function handleVideoReRecord() {
+    setPhase("form");
+    setInputMode("video");
+    setProposalId(null);
+    setPreviewReframe(null);
+    setDerogatoryFlagReason(null);
+    setIsVideoProposal(false);
+    setPollAttempts(0);
+    setPollExhausted(false);
+    setErrorMsg(null);
   }
 
   // Aug 2026, NEW: lets the proposer add extra context and get ugq-screen to
@@ -1194,20 +1292,42 @@ export function ProposeQuestionModal({
 
             {errorMsg ? <p className="text-sm text-red-600">{errorMsg}</p> : null}
 
-            <DialogFooter>
-              <Button variant="ghost" onClick={close} disabled={phase === "publishing" || refining}>
-                {preview ? t("ugq.notNow") : t("ugq.done")}
-              </Button>
-              {preview ? (
-                <Button onClick={handlePublish} disabled={phase === "publishing" || refining}>
-                  {phase === "publishing" ? (
-                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> {t("ugq.publishing")}</>
-                  ) : (
-                    t("ugq.publish")
-                  )}
+            {/* Epic X (video, NEW): video proposals choose raw_only vs.
+                raw_plus_overlay AND see the derogatory-language
+                recommendation right here, alongside the same preview above —
+                VideoPublishChoice calls ugq-confirm-publish itself, so this
+                replaces the generic Publish button rather than sitting next
+                to it. Only once `preview` is ready, matching the same gate
+                the generic Publish button already uses (ugq-confirm-publish
+                requires preview_reframe + a resolved topic either way). */}
+            {isVideoProposal && preview ? (
+              <div className="flex flex-col gap-3">
+                <VideoPublishChoice
+                  proposalId={proposalId!}
+                  derogatoryFlagReason={derogatoryFlagReason}
+                  onReRecord={handleVideoReRecord}
+                  onPublished={handleVideoPublished}
+                />
+                <Button variant="ghost" size="sm" onClick={close} className="self-start -mt-1">
+                  {t("ugq.notNow")}
                 </Button>
-              ) : null}
-            </DialogFooter>
+              </div>
+            ) : (
+              <DialogFooter>
+                <Button variant="ghost" onClick={close} disabled={phase === "publishing" || refining}>
+                  {preview ? t("ugq.notNow") : t("ugq.done")}
+                </Button>
+                {preview ? (
+                  <Button onClick={handlePublish} disabled={phase === "publishing" || refining}>
+                    {phase === "publishing" ? (
+                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> {t("ugq.publishing")}</>
+                    ) : (
+                      t("ugq.publish")
+                    )}
+                  </Button>
+                ) : null}
+              </DialogFooter>
+            )}
           </div>
         ) : (
           <>
@@ -1255,6 +1375,19 @@ export function ProposeQuestionModal({
                     >
                       <Mic className="h-3 w-3" /> {t("ugq.record")}
                     </button>
+                    {/* Epic X, NEW: raw video is published as-is (never
+                        rewritten like text/voice), so it's a genuinely
+                        different mode, not just another input method — see
+                        VideoRecorderPanel's own header note. */}
+                    <button
+                      type="button"
+                      onClick={() => setInputMode("video")}
+                      className={`px-2.5 py-1 rounded flex items-center gap-1 transition-colors ${
+                        inputMode === "video" ? "bg-slate-900 text-white" : "text-slate-500 hover:text-slate-700"
+                      }`}
+                    >
+                      <Video className="h-3 w-3" /> {t("ugq.video")}
+                    </button>
                   </div>
                 </div>
 
@@ -1289,7 +1422,7 @@ export function ProposeQuestionModal({
                       </div>
                     ) : null}
                   </>
-                ) : (
+                ) : inputMode === "voice" ? (
                   <VoiceRecorderPanel
                     maxRecordingSeconds={MAX_RECORDING_SECONDS}
                     onTranscript={(text, path) => {
@@ -1297,6 +1430,18 @@ export function ProposeQuestionModal({
                       setVoiceRecordingPath(path);
                       setInputMode("text"); // hand off to the existing text review/submit flow
                     }}
+                  />
+                ) : (
+                  // Epic X, NEW: unlike voice, this does its OWN full submit
+                  // (including the framing-gate resubmit loop) and hands off
+                  // via onSubmitted rather than populating `question` for the
+                  // Submit button below — see handleVideoSubmitted.
+                  <VideoRecorderPanel
+                    transcribeAudio={transcribeAudioForVideo}
+                    sourceUrl={sourceUrl}
+                    locationLabel={location}
+                    onSubmitted={handleVideoSubmitted}
+                    onCancel={() => setInputMode("text")}
                   />
                 )}
               </div>
@@ -1331,7 +1476,7 @@ export function ProposeQuestionModal({
               <Button variant="ghost" onClick={close} disabled={phase === "submitting"}>
                 {t("auth.cancel")}
               </Button>
-              <Button onClick={handleSubmit} disabled={!canSubmit || inputMode === "voice"}>
+              <Button onClick={handleSubmit} disabled={!canSubmit || inputMode === "voice" || inputMode === "video"}>
                 {phase === "submitting" ? (
                   <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> {t("ugq.reviewing")}</>
                 ) : (

@@ -97,6 +97,7 @@
     "yourQuestion": "Your question",
     "type": "Type",
     "record": "Record",
+    "video": "Video",
     "questionComposerPlaceholder": "What do you want the community to weigh in on?",
     "atLeastNCharacters": "At least {{count}} characters",
     "fromYourRecording": "From your recording",
@@ -110,6 +111,7 @@
     "submitForReview": "Submit for review"
   },
   "signup": {
+    "languageLabel": "Language",
     "weDetectedLocation": "We detected your location as {{location}}. Use this?",
     "yesUseThis": "Yes, use this",
     "enterManually": "Enter manually",

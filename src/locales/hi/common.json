@@ -97,6 +97,7 @@
     "yourQuestion": "आपका प्रश्न",
     "type": "टाइप करें",
     "record": "रिकॉर्ड करें",
+    "video": "वीडियो",
     "questionComposerPlaceholder": "आप चाहते हैं कि समुदाय किस बारे में अपना रुख बताए?",
     "atLeastNCharacters": "कम से कम {{count}} अक्षर",
     "fromYourRecording": "आपकी रिकॉर्डिंग से",
@@ -110,6 +111,7 @@
     "submitForReview": "समीक्षा के लिए भेजें"
   },
   "signup": {
+    "languageLabel": "भाषा",
     "weDetectedLocation": "हमने आपका स्थान {{location}} के रूप में पहचाना है। इसका उपयोग करें?",
     "yesUseThis": "हां, इसका उपयोग करें",
     "enterManually": "मैन्युअल रूप से दर्ज करें",

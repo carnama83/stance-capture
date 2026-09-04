@@ -638,7 +638,7 @@ function LocationSelect(props: {
 export default function Signup() {
   const sb = React.useMemo(getSupabase, []);
   const nav = useNavigate();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
 
   // ---- Debug mode: supports HashRouter (#/signup?debug=1) ----
   const debugEnabled = React.useMemo(() => getDebugFlag(), []);
@@ -696,6 +696,36 @@ export default function Signup() {
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [username, setUsername] = React.useState("");
+
+  // Language preference (NEW) — chosen up front so the rest of this form,
+  // and the whole app after first login, can render in it. Options are
+  // loaded from public.languages (is_active_for_ui=true) rather than
+  // hardcoded, same source SettingsProfile's own language switcher already
+  // uses, so adding a language only ever means flipping that one flag.
+  // i18n.changeLanguage() is called directly on selection — unlike the rest
+  // of the app, this page renders before any session exists, so there's no
+  // AppTopBar/useLanguage(userId) around to sync i18next from the DB value.
+  interface LanguageOption {
+    language_code: string;
+    display_name_native: string;
+    display_name_english: string;
+  }
+  const [activeLanguages, setActiveLanguages] = React.useState<LanguageOption[]>([]);
+  const [preferredLanguageCode, setPreferredLanguageCode] = React.useState<string>("en");
+
+  React.useEffect(() => {
+    if (!sb) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await sb
+        .from("languages")
+        .select("language_code, display_name_native, display_name_english")
+        .eq("is_active_for_ui", true)
+        .order("display_name_english", { ascending: true });
+      if (!cancelled) setActiveLanguages((data as LanguageOption[]) ?? []);
+    })();
+    return () => { cancelled = true; };
+  }, [sb]);
 
   const [dob, setDob] = React.useState<string>("");
   const [gender, setGender] = React.useState<GenderState>({
@@ -1133,6 +1163,11 @@ export default function Signup() {
             city_id: cityId || null,
             campaign_audience: campaignAudience,
             entry_path: entryPath,
+            // NEW: read by bootstrap_user_after_login() on first login and
+            // written to profiles.preferred_language_code, same pattern as
+            // every other field above — see that function for the
+            // is_active_for_ui re-check it does before writing this.
+            preferred_language_code: preferredLanguageCode,
           },
         },
       });
@@ -1226,6 +1261,36 @@ export default function Signup() {
     <PageLayout>
       <div className="mx-auto max-w-md p-6 space-y-5">
         <h1 className="text-2xl font-bold">{t("auth.signUp")}</h1>
+
+        {/* Language preference — shown first, above the form itself, so
+            picking it takes effect (via i18n.changeLanguage below) before
+            the proposer reads any of the labels that follow. */}
+        {activeLanguages.length > 0 && (
+          <div>
+            <label className="block text-sm font-medium">{t("signup.languageLabel")}</label>
+            <div className="mt-1 flex flex-wrap gap-2">
+              {activeLanguages.map((lang) => (
+                <button
+                  key={lang.language_code}
+                  type="button"
+                  className={cx(
+                    "rounded-lg border px-3 py-1.5 text-sm transition-colors",
+                    preferredLanguageCode === lang.language_code
+                      ? "border-slate-900 bg-slate-900 text-white"
+                      : "border-slate-300 hover:border-slate-400"
+                  )}
+                  onClick={() => {
+                    setPreferredLanguageCode(lang.language_code);
+                    i18n.changeLanguage(lang.language_code);
+                  }}
+                  aria-pressed={preferredLanguageCode === lang.language_code}
+                >
+                  {lang.display_name_native}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <form className="space-y-4" onSubmit={onSubmit} noValidate>
           {/* Email */}
