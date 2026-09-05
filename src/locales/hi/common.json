@@ -13,6 +13,7 @@
     "searchLabel": "खोजें",
     "exploreTopics": "विषय एक्सप्लोर करें",
     "viewModeLabel": "व्यू मोड",
+    "languageToggle": "भाषा",
     "anonymous": "अज्ञात",
     "anonymousModeTitle": "अज्ञात मोड",
     "signOutToAnonymousTitle": "अज्ञात मोड में जाने के लिए साइन आउट करें",
@@ -111,7 +112,6 @@
     "submitForReview": "समीक्षा के लिए भेजें"
   },
   "signup": {
-    "languageLabel": "भाषा",
     "weDetectedLocation": "हमने आपका स्थान {{location}} के रूप में पहचाना है। इसका उपयोग करें?",
     "yesUseThis": "हां, इसका उपयोग करें",
     "enterManually": "मैन्युअल रूप से दर्ज करें",

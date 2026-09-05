@@ -18,7 +18,7 @@ import { ChevronDown, Plus, Search, Compass, X } from "lucide-react";
 import { NotificationsBell } from "@/components/notifications/NotificationsBell";
 import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_PROJECT_REF, getJwt } from "@/lib/env";
 import { useTranslation } from "react-i18next";
-import { useLanguage } from "@/hooks/useLanguage";
+import { useUiLanguage } from "@/hooks/useUiLanguage";
 
 type Profile = {
   random_id: string;
@@ -149,14 +149,13 @@ export default function AppTopBar({
   const sb = React.useMemo(getSupabase, []);
   const isAuthed = !!session;
   const userId = session?.user?.id ?? null;
-  const { t, i18n } = useTranslation();
-  const { languageCode } = useLanguage(userId);
-  // Keeps i18next's active language exactly in sync with useLanguage's own
-  // resolution (URL ?lang= > profiles.preferred_language_code > 'en') —
-  // deliberately not a second, independent detector. See src/lib/i18n.ts.
-  React.useEffect(() => {
-    if (i18n.language !== languageCode) i18n.changeLanguage(languageCode);
-  }, [languageCode, i18n]);
+  const { t } = useTranslation();
+  // Global UI-chrome language toggle (header control below) — resolves and
+  // keeps i18next/<html lang> in sync internally; see useUiLanguage.ts for
+  // why this is deliberately NOT the same hook that drives content-language
+  // resolution elsewhere (useLanguage), even though it falls back to that
+  // hook's result for a signed-in user's first load on a fresh device.
+  const { languageCode, setLanguageCode } = useUiLanguage(userId);
   const onLoginPage = location.pathname === "/login";
   const onSignupPage = location.pathname === "/signup";
   const onAuthPage = onLoginPage || onSignupPage;
@@ -358,6 +357,43 @@ export default function AppTopBar({
                 title={isAuthed ? t("nav.signedIn") : onLoginPage ? t("nav.onLoginPageTitle") : t("nav.signIn")}
               >
                 {isAuthed ? t("nav.signedIn") : t("nav.signIn")}
+              </button>
+            </div>
+
+            {/* Language toggle — compact by design (short codes, not full
+                names): this sits in the header on every page, unlike
+                Signup's old picker which had a whole labeled section to
+                itself. Visible regardless of auth state, same as the
+                Anonymous/Sign-in pill next to it. */}
+            <div
+              className="inline-flex items-center rounded-full border border-border bg-muted p-1"
+              aria-label={t("nav.languageToggle")}
+            >
+              <button
+                type="button"
+                onClick={() => setLanguageCode("en")}
+                className={[
+                  "px-2.5 py-1.5 text-xs font-medium rounded-full transition",
+                  languageCode === "en"
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground hover:bg-accent",
+                ].join(" ")}
+                aria-pressed={languageCode === "en"}
+              >
+                EN
+              </button>
+              <button
+                type="button"
+                onClick={() => setLanguageCode("hi")}
+                className={[
+                  "px-2.5 py-1.5 text-xs font-medium rounded-full transition",
+                  languageCode === "hi"
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground hover:bg-accent",
+                ].join(" ")}
+                aria-pressed={languageCode === "hi"}
+              >
+                हिं
               </button>
             </div>
 

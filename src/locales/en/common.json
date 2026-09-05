@@ -13,6 +13,7 @@
     "searchLabel": "Search",
     "exploreTopics": "Explore topics",
     "viewModeLabel": "View mode",
+    "languageToggle": "Language",
     "anonymous": "Anonymous",
     "anonymousModeTitle": "Anonymous mode",
     "signOutToAnonymousTitle": "Sign out to go anonymous",
@@ -111,7 +112,6 @@
     "submitForReview": "Submit for review"
   },
   "signup": {
-    "languageLabel": "Language",
     "weDetectedLocation": "We detected your location as {{location}}. Use this?",
     "yesUseThis": "Yes, use this",
     "enterManually": "Enter manually",
