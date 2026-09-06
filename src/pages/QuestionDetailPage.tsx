@@ -166,10 +166,14 @@ async function fetchQuestionById(id: string, languageCode: string): Promise<Live
   const sb = getSupabase();
   if (!sb) throw new Error("Supabase client not available");
 
-  // NOTE: context_summary is NOT localized — no rendition field exists for
-  // it yet (same known gap flagged in api/s/[slug].js). question and the
-  // slider labels are resolved server-side; everything else on LiveQuestion
-  // is language-independent metadata, unchanged either way.
+  // Sep 2026: question, the slider labels, AND context_summary are all now
+  // resolved server-side via question_renditions (context_summary was the
+  // last one still falling back to English unconditionally — see
+  // get_question_localized and generate-question-renditions). `summary` (a
+  // different, shorter field used by IncidentSummaryCard etc.) and the
+  // social-share meta description in api/s/[slug].js are separate, still-
+  // English-only surfaces, not fixed by this. Everything else on
+  // LiveQuestion is language-independent metadata, unchanged either way.
   const { data, error } = await sb.rpc("get_question_localized", {
     p_question_id: id,
     p_language_code: languageCode,
