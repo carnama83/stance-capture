@@ -908,7 +908,7 @@ function StanceCard({
               <span>{t("stance.noStanceRecorded")}</span>
             ) : (
               <span>
-                {t("stance.savedAs", { label: buildStanceLabels(question?.slider_low_label, question?.slider_high_label, languageCode)[myStance ?? 0] })}
+                {t("stance.savedAs", { label: buildStanceLabels(question?.slider_low_label, question?.slider_high_label, { neutral: t("stance.neutral"), leanOppose: t("stance.leanOppose"), leanSupport: t("stance.leanSupport") }, languageCode)[myStance ?? 0] })}
               </span>
             )}
 
@@ -1239,7 +1239,7 @@ export default function QuestionDetailPage() {
       const label =
         resolvedScore == null
           ? null
-          : (buildStanceLabels(question?.slider_low_label, question?.slider_high_label, languageCode)[resolvedScore] ?? t("stance.scoreFallback", { score: resolvedScore }));
+          : (buildStanceLabels(question?.slider_low_label, question?.slider_high_label, { neutral: t("stance.neutral"), leanOppose: t("stance.leanOppose"), leanSupport: t("stance.leanSupport") }, languageCode)[resolvedScore] ?? t("stance.scoreFallback", { score: resolvedScore }));
 
       toast({
         title: resolvedScore == null ? t("stance.stanceCleared") : t("stance.stanceSaved"),

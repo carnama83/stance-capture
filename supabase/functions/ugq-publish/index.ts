@@ -68,12 +68,47 @@ const corsHeaders = {
 
 const PUBLISH_REWARD = 10; // spec §4.3
 
-// Sep 2026, NEW — see header note. Devanagari block: U+0900–U+097F, covers
-// Hindi and several other Indic scripts that share it; the only non-Latin
-// script this platform's UGQ pipeline currently has to worry about, since
-// Hindi is the only non-English UI/rendition language today (see `languages`
-// table). Broaden this if/when another non-Latin UGQ language is added.
-const DEVANAGARI_RE = /[ऀ-ॿ]/;
+// Sep 2026, NEW — see header note. Small vetted map of script-name ->
+// Unicode range, keyed off languages.script (confirmed live values: 'en'
+// has script='Latin', 'hi' has script='Devanagari'). Unicode blocks are a
+// fixed, bounded set (unlike free-text place names), so a maintained map is
+// the right level of generalization here — unlike text_mentions_india()'s
+// keyword list, this doesn't need per-language custom logic, just one more
+// entry when a language with a genuinely new script is added. Covers every
+// major Indic script so Tamil/Telugu/etc. are already handled the moment a
+// languages row for them exists with is_active_for_ugq=true, with zero code
+// change here.
+const SCRIPT_RANGES: Record<string, RegExp> = {
+  Devanagari: /[ऀ-ॿ]/,
+  Bengali: /[ঀ-৿]/,
+  Gurmukhi: /[਀-੿]/,
+  Gujarati: /[઀-૿]/,
+  Odia: /[଀-୿]/,
+  Tamil: /[஀-௿]/,
+  Telugu: /[ఀ-౿]/,
+  Kannada: /[ಀ-೿]/,
+  Malayalam: /[ഀ-ൿ]/,
+};
+
+// Builds a single combined regex from whichever non-English, UGQ-active
+// languages' scripts are actually registered right now — data-driven, not a
+// fixed single-script check. Falls back to just Devanagari (today's exact
+// behavior) if the query fails or nothing matches, so an outage here never
+// makes this guardrail silently permissive.
+async function nonEnglishScriptRegex(adminSb: ReturnType<typeof createClient>): Promise<RegExp> {
+  try {
+    const { data } = await adminSb.from("languages")
+      .select("script").eq("is_active_for_ugq", true).neq("language_code", "en");
+    const ranges = (data ?? [])
+      .map((r) => SCRIPT_RANGES[r.script as string])
+      .filter((r): r is RegExp => !!r);
+    if (ranges.length === 0) return SCRIPT_RANGES.Devanagari;
+    const combined = ranges.map((r) => r.source.slice(1, -1)).join("");
+    return new RegExp(`[${combined}]`);
+  } catch {
+    return SCRIPT_RANGES.Devanagari;
+  }
+}
 
 function json(status: number, payload: unknown) {
   return new Response(JSON.stringify(payload), {
@@ -120,7 +155,8 @@ Deno.serve(async (req) => {
     // an admin can resolve this via ugq-moderate same as any other publish
     // failure — this is not meant to be common once ugq-screen's prompt fix
     // is live, just a safety net for if it ever regresses.
-    if (DEVANAGARI_RE.test(reframed)) {
+    const nonEnglishRe = await nonEnglishScriptRegex(adminSb);
+    if (nonEnglishRe.test(reframed)) {
       console.error(JSON.stringify({
         tag: "ugq-publish.non_english_canonical_rejected", proposal_id: proposalId,
       }));

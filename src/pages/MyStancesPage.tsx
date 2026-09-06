@@ -21,6 +21,7 @@ import { QuestionPhaseBadge } from "@/components/question/QuestionPhaseBadge";
 import { StanceSparkline } from "@/components/StanceSparkline";
 import { RationaleEditor } from "@/components/RationaleEditor";
 import { Link, useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getSupabase } from "../lib/supabaseClient";
 import PageLayout from "../components/PageLayout";
@@ -560,6 +561,7 @@ function useTrendBadge(questionId: string) {
 }
 
 function MyStanceCard({ row, userId }: { row: MyStanceRow; userId: string }) {
+  const { t, i18n } = useTranslation();
   const q = row.question;
   const updatedAt = row.updated_at ?? row.created_at;
   const dateLabel = updatedAt
@@ -576,7 +578,12 @@ function MyStanceCard({ row, userId }: { row: MyStanceRow; userId: string }) {
 
   // Dynamic 5-point labels derived from question's reframe pipeline output —
   // same logic as QDP and homepage. Falls back to generic labels when null.
-  const stanceLabels = buildStanceLabels(q?.slider_low_label, q?.slider_high_label);
+  const stanceLabels = buildStanceLabels(
+    q?.slider_low_label,
+    q?.slider_high_label,
+    { neutral: t("stance.neutral"), leanOppose: t("stance.leanOppose"), leanSupport: t("stance.leanSupport") },
+    i18n.language
+  );
 
   const currentLabel = stanceLabels[editing ? selectedScore : row.score] ?? String(row.score);
   const currentTone: "pos" | "neg" | "neu" =

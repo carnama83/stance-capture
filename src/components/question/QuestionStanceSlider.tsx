@@ -11,6 +11,7 @@
 
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
 import { getSupabase } from "@/lib/supabaseClient";
@@ -222,6 +223,7 @@ export function QuestionStanceSlider({
   headerAction,
   languageCode,
 }: QuestionStanceSliderProps) {
+  const { t } = useTranslation();
   const [value, setValue] = React.useState<number>(clampStance(initialValue));
   const [committed, setCommitted] = React.useState(
     typeof initialValue === "number" && initialValue !== null
@@ -255,7 +257,12 @@ export function QuestionStanceSlider({
     languageCode
   );
 
-  const stanceLabels = buildStanceLabels(sliderLowLabel, sliderHighLabel);
+  const stanceLabels = buildStanceLabels(
+    sliderLowLabel,
+    sliderHighLabel,
+    { neutral: t("stance.neutral"), leanOppose: t("stance.leanOppose"), leanSupport: t("stance.leanSupport") },
+    languageCode
+  );
   const label = stanceLabels[value] ?? "Select stance";
   const fallbackTip = STANCE_TIPS_FALLBACK[value] ?? "";
   const tip = aiData?.tip || fallbackTip;

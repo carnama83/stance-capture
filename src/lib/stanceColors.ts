@@ -2,18 +2,6 @@
 //
 // Centralized color helpers for stance slider and sentiment mood.
 
-// Plain JSON import, not react-i18next's useTranslation — this file has no
-// component/hook context to call useTranslation() from. Importing the same
-// locale files directly keeps ONE source of truth for these words rather
-// than a second, disconnected Hindi string living only here.
-import en from "@/locales/en/common.json";
-import hi from "@/locales/hi/common.json";
-
-const STANCE_WORDS: Record<string, { neutral: string; leanOppose: string; leanSupport: string }> = {
-  en: en.stance,
-  hi: hi.stance,
-};
-
 /**
  * Map stance value (-2..2) to a hex color.
  * Used for the stance slider fill / thumb styling.
@@ -103,12 +91,21 @@ export function deriveLeanLabel(
   return `Lean toward ${lowered}`;
 }
 
+// Sep 2026, GENERALIZED: this used to look up a hardcoded { en, hi } map of
+// neutral/leanOppose/leanSupport words kept in this file — fine for one
+// language, but meant every future language (Tamil, Telugu, ...) needed a
+// code change here too, duplicating what's already in the locale JSON.
+// Callers now resolve these three words themselves via useTranslation()'s
+// t("stance.neutral" | "stance.leanOppose" | "stance.leanSupport") — they
+// have the component/hook context this file lacks, and i18next already
+// carries every language's real strings, so a new language needs a locale
+// file entry, not an edit here.
 export function buildStanceLabels(
-  sliderLowLabel?: string | null,
-  sliderHighLabel?: string | null,
+  sliderLowLabel: string | null | undefined,
+  sliderHighLabel: string | null | undefined,
+  words: { neutral: string; leanOppose: string; leanSupport: string },
   languageCode: string = "en"
 ): Record<number, string> {
-  const words = STANCE_WORDS[languageCode] ?? STANCE_WORDS.en;
   return {
     [-2]: sliderLowLabel  ?? "Strongly oppose",
     [-1]: deriveLeanLabel(sliderLowLabel,  words.leanOppose, languageCode),

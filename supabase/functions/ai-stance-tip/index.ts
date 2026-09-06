@@ -27,15 +27,32 @@ const FALLBACK_TIPS = {
 function buildFallbackTip(stance) {
   return FALLBACK_TIPS[stance] ?? "This describes how strongly you feel about this question.";
 }
-// Sep 2026, NEW — small, deliberately non-exhaustive map: this platform's UI
-// only supports English + Hindi today (see the `languages` table's
-// is_active_for_ugq rows). An unmapped non-"en" code still gets an explicit
-// instruction using the raw code itself, so a future language "just works"
-// without needing this map updated first — the model can interpret a
-// language name or an ISO code either way.
-const LANGUAGE_NAMES = {
-  hi: "Hindi"
-};
+// Sep 2026, GENERALIZED: this used to be a hardcoded { hi: "Hindi" } map —
+// fine for exactly one non-English language, but meant every future
+// language needed a code change here too. Now looks up display_name_english
+// from the `languages` table directly (same REST pattern
+// generate-question-renditions' fetchLanguageName() already uses), so
+// adding Tamil/Telugu/etc. needs a data row, not a deploy of this function.
+// Falls back to the raw code (unchanged behavior) if the lookup fails or
+// finds nothing — the model can interpret an ISO code reasonably well on
+// its own either way.
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+
+async function fetchLanguageName(languageCode: string): Promise<string> {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return languageCode;
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/languages?language_code=eq.${languageCode}&select=display_name_english`,
+      { headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` } },
+    );
+    if (!res.ok) return languageCode;
+    const rows = await res.json();
+    return rows[0]?.display_name_english ?? languageCode;
+  } catch {
+    return languageCode;
+  }
+}
 serve(async (req)=>{
   // CORS preflight
   if (req.method === "OPTIONS") {
@@ -125,7 +142,7 @@ Stance scale for THIS question (the two ends are defined below):
   // change) whenever there's nothing non-English to ask for.
   const targetLanguageCode = typeof language_code === "string" ? language_code.trim().toLowerCase() : "";
   const targetLanguageName = targetLanguageCode && targetLanguageCode !== "en"
-    ? (LANGUAGE_NAMES[targetLanguageCode] ?? targetLanguageCode)
+    ? await fetchLanguageName(targetLanguageCode)
     : "";
   const languageInstruction = targetLanguageName
     ? `\n\nCRITICAL: Write your entire answer in ${targetLanguageName}, not English — the question and its scale labels above are already in ${targetLanguageName} because that's the viewer's chosen language; your explanation must match, so they can actually read it.`
