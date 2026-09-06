@@ -44,6 +44,7 @@ import { QuestionStanceSlider } from "@/components/question/QuestionStanceSlider
 import { recordWebStance } from "@/lib/webStance";
 import { HomeOptInPrompt } from "@/components/HomeOptInPrompt";
 import { QuestionCoverImage } from "@/components/question/QuestionCoverImage";
+import { VideoThumbnailCard } from "@/components/question/VideoThumbnailCard";
 import { StanceDistributionBar } from "@/components/question/StanceDistributionBar";
 import { useGlobalAndCountryIds } from "@/hooks/useLocationIds";
 import { HeroSection } from "@/components/hero/HeroSection";
@@ -115,6 +116,9 @@ type TrendingHomepageQuestionRow = {
   user_stance_value?: number | null;
   slider_low_label?: string | null;
   slider_high_label?: string | null;
+  // Sep 2026, NEW — see VideoThumbnailCard.
+  content_type?: string | null;
+  video_recording_path?: string | null;
 };
 
 type AnonQuestionRow = {
@@ -130,6 +134,9 @@ type AnonQuestionRow = {
   cover_image_url?: string | null;
   slider_low_label?: string | null;
   slider_high_label?: string | null;
+  // Sep 2026, NEW — see VideoThumbnailCard.
+  content_type?: string | null;
+  video_recording_path?: string | null;
 };
 
 // FallbackQuestionRow — returned by the "any unanswered live question" safety-net query.
@@ -145,6 +152,9 @@ type FallbackQuestionRow = {
   topic_title: string | null;
   slider_low_label?: string | null;
   slider_high_label?: string | null;
+  // Sep 2026, NEW — see VideoThumbnailCard.
+  content_type?: string | null;
+  video_recording_path?: string | null;
 };
 
 type SocietyPulseRow = {
@@ -1811,7 +1821,13 @@ function FeaturedQuestionCard({
       </div>
 
       <div className="order-1 min-h-[200px] md:order-2">
-        {q.cover_image_url ? (
+        {q.content_type === "video" && q.video_recording_path ? (
+          <VideoThumbnailCard
+            questionId={q.question_id}
+            posterUrl={q.cover_image_url}
+            className="h-56 w-full md:h-full"
+          />
+        ) : q.cover_image_url ? (
           <img
             src={q.cover_image_url}
             alt=""
@@ -1899,12 +1915,20 @@ function FeaturedQuestionCardAnon({
       </div>
 
       <div className="order-1 min-h-[200px] md:order-2">
-        <QuestionCoverImage
-          imageUrl={q.cover_image_url ?? null}
-          tags={q.tags}
-          variant="banner"
-          bannerHeight={220}
-        />
+        {q.content_type === "video" && q.video_recording_path ? (
+          <VideoThumbnailCard
+            questionId={q.id}
+            posterUrl={q.cover_image_url}
+            className="h-56 w-full md:h-full"
+          />
+        ) : (
+          <QuestionCoverImage
+            imageUrl={q.cover_image_url ?? null}
+            tags={q.tags}
+            variant="banner"
+            bannerHeight={220}
+          />
+        )}
       </div>
     </div>
   );
@@ -1958,7 +1982,13 @@ function GridQuestionCard({
 
   return (
     <div ref={cardRef} className={`${card} flex flex-col overflow-hidden`}>
-      {q.cover_image_url ? (
+      {q.content_type === "video" && q.video_recording_path ? (
+        <VideoThumbnailCard
+          questionId={q.question_id}
+          posterUrl={q.cover_image_url}
+          className="h-40 w-full"
+        />
+      ) : q.cover_image_url ? (
         <img src={q.cover_image_url} alt="" className="h-40 w-full object-cover" loading="lazy" />
       ) : (
         <QuestionCoverImage
@@ -2073,12 +2103,20 @@ function GridQuestionCardAnon({
   const { t } = useTranslation();
   return (
     <div className={`${card} flex flex-col overflow-hidden`}>
-      <QuestionCoverImage
-        imageUrl={q.cover_image_url ?? null}
-        tags={q.tags}
-        variant="banner"
-        bannerHeight={140}
-      />
+      {q.content_type === "video" && q.video_recording_path ? (
+        <VideoThumbnailCard
+          questionId={q.id}
+          posterUrl={q.cover_image_url}
+          className="h-40 w-full"
+        />
+      ) : (
+        <QuestionCoverImage
+          imageUrl={q.cover_image_url ?? null}
+          tags={q.tags}
+          variant="banner"
+          bannerHeight={140}
+        />
+      )}
       <div className="flex flex-1 flex-col p-5">
         <div className="mb-2.5 flex flex-wrap gap-2">
           {q.tags && q.tags.length > 0 && <Tag primary>{q.tags[0]}</Tag>}
@@ -3006,6 +3044,8 @@ export default function IndexPage() {
     impact_normalized: null,
     slider_low_label: r.slider_low_label ?? null,
     slider_high_label: r.slider_high_label ?? null,
+    content_type: r.content_type ?? null,
+    video_recording_path: r.video_recording_path ?? null,
   }));
 
   // finalHeroQuestions and isFallbackMode used to be computed separately with
@@ -3472,6 +3512,8 @@ export default function IndexPage() {
                 impact_normalized: null,
                 slider_low_label: q.slider_low_label ?? null,
                 slider_high_label: q.slider_high_label ?? null,
+                content_type: q.content_type ?? null,
+                video_recording_path: q.video_recording_path ?? null,
               }))}
               isLoading={isAuthed ? authedIsLoading : anonIsLoading}
               isAuthed={isAuthed}

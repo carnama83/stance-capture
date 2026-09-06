@@ -1527,7 +1527,7 @@ export default function QuestionDetailPage() {
             // choice controls lives entirely server-side (the published
             // question row's own text), nothing extra to branch on here.
             <div className="mt-6">
-              <RawVideoReveal questionId={question.id} />
+              <RawVideoReveal questionId={question.id} posterUrl={question.cover_image_url} />
             </div>
           ) : (
             question.cover_image_url && (
