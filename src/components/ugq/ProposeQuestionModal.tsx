@@ -33,7 +33,7 @@
 // (ugq-moderate) before it becomes the public "who's responsible" answer.
 
 import * as React from "react";
-import { Loader2, CheckCircle2, Lightbulb, Sparkles, ExternalLink, Landmark, ChevronDown } from "lucide-react";
+import { Loader2, CheckCircle2, Lightbulb, Sparkles, ExternalLink, Landmark, ChevronDown, Wand2, Mic, Square, Trash2, Play, Pause, Check, Video } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
@@ -43,9 +43,21 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { SUPABASE_URL, getJwt, supabaseHeaders } from "@/lib/env";
+import { useTranslation } from "react-i18next";
+import { VideoRecorderPanel } from "./VideoRecorderPanel";
+import { VideoPublishChoice } from "./VideoPublishChoice";
 
 const MIN_LEN = 20;
 const MAX_LEN = 1000;
+// Aug 2026, NEW: bounds for the "add more context" refine textarea — kept
+// in sync with ugq-refine-preview's own REFINE_MIN_LEN/REFINE_MAX_LEN so
+// the button disables at the same point the backend would reject anyway.
+const REFINE_MIN_LEN = 5;
+const REFINE_MAX_LEN = 500;
+// Aug 2026, NEW: voice recording input. Matches ugq-transcribe-voice's
+// MAX_AUDIO_BYTES budget — auto-stops the recording client-side rather than
+// relying solely on the server's byte-size defense-in-depth check.
+const MAX_RECORDING_SECONDS = 90;
 
 type Props = {
   open: boolean;
@@ -65,6 +77,17 @@ type PreviewReframe = {
   context_summary: string | null;
   supporting_links: string[];
   quality_notes?: string | null;
+  // Aug 2026, NEW: og:image/twitter:image scraped from supporting_links (or
+  // the proposer's source_url) by ugq-screen's attachCoverImage, at preview
+  // time — so this can be null either because scraping hasn't run yet on an
+  // old row, or because it genuinely found nothing. Either way, absent just
+  // means no image to show.
+  cover_image_url: string | null;
+  // Sep 2026, NEW: true only for a preview ugq-verify-preview upgraded via
+  // the Stage A/B/C fact-check pipeline (voice/video proposals only — see
+  // triggerVerifiedPreview). Undefined/false means the fast, unverified
+  // ugq-screen preview — same "notFactCheckedYet" disclaimer as before.
+  verified?: boolean;
 };
 
 type Authority = { id: string; name: string; domain: string; jurisdiction_level: string };
@@ -83,6 +106,9 @@ function parsePreviewReframe(raw: unknown): PreviewReframe | null {
       ? r.supporting_links.filter((u): u is string => typeof u === "string")
       : [],
     quality_notes: typeof r.quality_notes === "string" ? r.quality_notes : null,
+    cover_image_url: typeof r.cover_image_url === "string" && r.cover_image_url.trim()
+      ? r.cover_image_url.trim() : null,
+    verified: r.verified === true,
   };
 }
 
@@ -99,8 +125,441 @@ function parseAuthorities(raw: unknown): Authority[] {
     .filter((a) => a.id && a.name);
 }
 
+// Aug 2026, NEW: formats seconds as m:ss for the recording timer.
+function formatMMSS(totalSeconds: number): string {
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
 function hostnameOf(url: string): string {
   try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; }
+}
+
+// Static, non-interactive preview of the real stance scale — matches
+// QuestionStanceSlider's visual language exactly (same gradient colors/track
+// height, same thumb border/size as ui/slider.tsx) so what the proposer sees
+// here isn't a different-looking placeholder. Thumb sits at center/Neutral
+// since there's no real position yet — nobody's answered this question.
+function StanceScalePreview({ low, high }: { low: string | null; high: string | null }) {
+  const { t } = useTranslation();
+  if (!low && !high) return null;
+  return (
+    <div className="pt-1.5">
+      <p className="text-[10.5px] text-slate-500 mb-2">
+        {t("ugq.stanceScalePreviewNote")}
+      </p>
+      <div className="relative py-1.5">
+        <div
+          className="absolute inset-x-0 top-1/2 -translate-y-1/2 rounded-full"
+          style={{
+            height: "8px",
+            background: "linear-gradient(to right, rgba(248,113,113,0.3), rgba(203,213,225,0.3), rgba(74,222,128,0.3))",
+          }}
+          aria-hidden
+        />
+        <div
+          className="absolute left-1/2 top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-slate-400 bg-white"
+          aria-hidden
+        />
+      </div>
+      <div className="flex items-start justify-between gap-2 text-[11px] text-slate-600">
+        <span className="max-w-[42%] leading-tight">{low ?? t("ugq.opposeDefault")}</span>
+        <span className="text-slate-400 shrink-0">{t("ugq.neutralLabel")}</span>
+        <span className="max-w-[42%] text-right leading-tight">{high ?? t("ugq.supportDefault")}</span>
+      </div>
+    </div>
+  );
+}
+
+// Cover image found via og:image/twitter:image scraping at preview time
+// (Aug 2026, NEW — see ugq-screen's attachCoverImage). Best-effort scrape
+// result, not guaranteed reachable, so this hides itself silently on load
+// failure rather than showing a broken-image icon.
+function CoverImagePreview({ src }: { src: string | null }) {
+  const [failed, setFailed] = React.useState(false);
+  React.useEffect(() => { setFailed(false); }, [src]); // reset if a new preview replaces this one
+  if (!src || failed) return null;
+  return (
+    <img
+      src={src}
+      alt=""
+      className="w-full h-36 object-cover rounded-md"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
+// Aug 2026, NEW: standalone, reusable voice recorder — extracted so both the
+// initial question composer AND the refine "add more context" box can
+// record voice input without duplicating the entire recording engine
+// (MediaRecorder + live waveform + cancel/playback state machine) twice in
+// this file. Fully self-contained: manages its own idle/recording/recorded/
+// transcribing state, calls ugq-transcribe-voice itself, and hands back
+// ONLY the result via onTranscript — the caller decides what to do with the
+// text (populate `question`, populate `refineText`, etc.) and, for the
+// question-composer case, what to do with the returned Storage path.
+//
+// Cleanup is unmount-driven rather than imperative: whichever caller stops
+// rendering this component (toggling back to "Type", switching refine's
+// mode, closing the modal) automatically releases the mic/AudioContext via
+// the effect below — no manual ref-reaching-in from the parent needed.
+function VoiceRecorderPanel({
+  onTranscript,
+  maxRecordingSeconds = 90,
+}: {
+  onTranscript: (transcript: string, voiceRecordingPath: string | null) => void;
+  maxRecordingSeconds?: number;
+}) {
+  const { t } = useTranslation();
+  const [recordingState, setRecordingState] = React.useState<"idle" | "recording" | "recorded" | "transcribing">("idle");
+  const [recordedBlobUrl, setRecordedBlobUrl] = React.useState<string | null>(null);
+  const [recordedMimeType, setRecordedMimeType] = React.useState<string | null>(null);
+  const [recordingSeconds, setRecordingSeconds] = React.useState(0);
+  const [waveformLevels, setWaveformLevels] = React.useState<number[]>(Array(24).fill(4));
+  const [isPlaying, setIsPlaying] = React.useState(false);
+  const [playbackPosition, setPlaybackPosition] = React.useState(0);
+  const [voiceError, setVoiceError] = React.useState<string | null>(null);
+
+  const mediaRecorderRef = React.useRef<MediaRecorder | null>(null);
+  const audioChunksRef = React.useRef<Blob[]>([]);
+  const streamRef = React.useRef<MediaStream | null>(null);
+  const recordingTimerRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const audioContextRef = React.useRef<AudioContext | null>(null);
+  const analyserRef = React.useRef<AnalyserNode | null>(null);
+  const waveformFrameRef = React.useRef<number | null>(null);
+  const cancelledRef = React.useRef(false);
+  const audioPlayerRef = React.useRef<HTMLAudioElement | null>(null);
+
+  // Belt-and-suspenders unmount cleanup: the explicit stop/cancel paths
+  // below already release the mic via onstop, but if the PARENT stops
+  // rendering this component mid-recording (toggles away, closes the
+  // modal) without ever calling stop(), this is what actually turns the
+  // mic off — stopping the raw tracks works regardless of MediaRecorder's
+  // own state, so it doesn't depend on onstop firing at all.
+  React.useEffect(() => {
+    return () => {
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+      if (waveformFrameRef.current) cancelAnimationFrame(waveformFrameRef.current);
+      audioContextRef.current?.close().catch(() => {});
+      if (recordedBlobUrl) URL.revokeObjectURL(recordedBlobUrl);
+    };
+    // Intentionally empty deps — this is unmount-only cleanup; recordedBlobUrl
+    // is read via closure at unmount time, not tracked reactively here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function pickRecorderMimeType(): string | null {
+    if (typeof MediaRecorder === "undefined") return null;
+    // iOS Safari doesn't support webm/opus at all — only mp4/aac. Feature-
+    // detect rather than UA-sniff, since that's robust across browser
+    // version changes.
+    const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/mp4;codecs=aac"];
+    for (const type of candidates) {
+      if (MediaRecorder.isTypeSupported?.(type)) return type;
+    }
+    return ""; // MediaRecorder exists but none of our preferred types matched — let it use its own default
+  }
+
+  function stopMediaStream() {
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+  }
+
+  function cleanupWaveformAnalysis() {
+    if (waveformFrameRef.current) {
+      cancelAnimationFrame(waveformFrameRef.current);
+      waveformFrameRef.current = null;
+    }
+    audioContextRef.current?.close().catch(() => {});
+    audioContextRef.current = null;
+    analyserRef.current = null;
+    setWaveformLevels(Array(24).fill(4));
+  }
+
+  // Best-effort real-time waveform: samples the mic via an AnalyserNode and
+  // renders it as bars. Purely decorative — if AudioContext isn't available,
+  // recording still works fine, the bars just stay flat.
+  function startWaveformLoop(stream: MediaStream) {
+    try {
+      const AudioContextClass = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AudioContextClass) return;
+      const audioCtx = new AudioContextClass();
+      const source = audioCtx.createMediaStreamSource(stream);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 64; // small on purpose — ~24 chunky bars, not a fine-grained spectrum
+      source.connect(analyser);
+      audioContextRef.current = audioCtx;
+      analyserRef.current = analyser;
+
+      const barsCount = 24;
+      const data = new Uint8Array(analyser.frequencyBinCount);
+      const chunk = Math.max(1, Math.floor(data.length / barsCount));
+
+      const tick = () => {
+        if (!analyserRef.current) return;
+        analyserRef.current.getByteFrequencyData(data);
+        const levels: number[] = [];
+        for (let i = 0; i < barsCount; i++) {
+          let sum = 0;
+          for (let j = 0; j < chunk; j++) sum += data[i * chunk + j] ?? 0;
+          const avg = sum / chunk;
+          levels.push(Math.max(4, Math.min(28, (avg / 255) * 28)));
+        }
+        setWaveformLevels(levels);
+        waveformFrameRef.current = requestAnimationFrame(tick);
+      };
+      tick();
+    } catch (_e) {
+      // No waveform this session — recording itself is unaffected.
+    }
+  }
+
+  async function startRecording() {
+    setVoiceError(null);
+    if (typeof MediaRecorder === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      setVoiceError(t("ugq.voiceNotSupported"));
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      const mimeType = pickRecorderMimeType();
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      audioChunksRef.current = [];
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+      recorder.onstop = () => {
+        cleanupWaveformAnalysis();
+        stopMediaStream();
+        if (cancelledRef.current) {
+          cancelledRef.current = false;
+          setRecordingState("idle");
+          setRecordingSeconds(0);
+          return;
+        }
+        const usedMimeType = recorder.mimeType || mimeType || "audio/webm";
+        const blob = new Blob(audioChunksRef.current, { type: usedMimeType });
+        setRecordedMimeType(usedMimeType);
+        setRecordedBlobUrl(URL.createObjectURL(blob));
+        setRecordingState("recorded");
+      };
+      mediaRecorderRef.current = recorder;
+      recorder.start();
+      startWaveformLoop(stream);
+      setRecordingState("recording");
+      setRecordingSeconds(0);
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingSeconds((s) => {
+          if (s + 1 >= maxRecordingSeconds) {
+            stopRecording();
+            return maxRecordingSeconds;
+          }
+          return s + 1;
+        });
+      }, 1000);
+    } catch (_e) {
+      setVoiceError(t("ugq.micAccessDenied"));
+    }
+  }
+
+  function stopRecording() {
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+    mediaRecorderRef.current?.stop();
+  }
+
+  function cancelRecording() {
+    cancelledRef.current = true;
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+    mediaRecorderRef.current?.stop();
+    setVoiceError(null);
+  }
+
+  function discardAndReRecord() {
+    if (recordedBlobUrl) URL.revokeObjectURL(recordedBlobUrl);
+    setRecordedBlobUrl(null);
+    setRecordedMimeType(null);
+    setRecordingSeconds(0);
+    setRecordingState("idle");
+    setVoiceError(null);
+    setIsPlaying(false);
+    setPlaybackPosition(0);
+  }
+
+  function togglePlayback() {
+    const audio = audioPlayerRef.current;
+    if (!audio) return;
+    if (isPlaying) {
+      audio.pause();
+    } else {
+      audio.play().catch(() => {});
+    }
+  }
+
+  async function handleUseRecording() {
+    if (!recordedBlobUrl || !recordedMimeType) return;
+    setRecordingState("transcribing");
+    setVoiceError(null);
+    try {
+      const blobRes = await fetch(recordedBlobUrl);
+      const blob = await blobRes.blob();
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error("Read failed"));
+        reader.readAsDataURL(blob);
+      });
+
+      const jwt = getJwt();
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/ugq-transcribe-voice`, {
+        method: "POST",
+        headers: supabaseHeaders(jwt),
+        body: JSON.stringify({ audio_base64: base64, mime_type: recordedMimeType }),
+      });
+      const resJson = await res.json().catch(() => ({}));
+
+      if (!res.ok || !resJson?.ok) {
+        setVoiceError(resJson?.message ?? t("ugq.transcribeFailed"));
+        setRecordingState("recorded");
+        return;
+      }
+
+      const transcript = String(resJson.transcript ?? "");
+      const path = typeof resJson.voice_recording_path === "string" ? resJson.voice_recording_path : null;
+      if (recordedBlobUrl) URL.revokeObjectURL(recordedBlobUrl);
+      setRecordedBlobUrl(null);
+      setRecordedMimeType(null);
+      setRecordingState("idle");
+      onTranscript(transcript, path);
+    } catch (_e) {
+      setVoiceError(t("ugq.networkErrorTranscribing"));
+      setRecordingState("recorded");
+    }
+  }
+
+  // Decorative pattern for the "recorded" playback state — NOT a real
+  // waveform of the audio (that needs offline decoding, more complexity
+  // than this warrants); the LIVE recording bars are real (AnalyserNode),
+  // this static pattern just echoes that visual language while previewing.
+  const playbackBarHeights = React.useMemo(
+    () => Array.from({ length: 28 }, (_, i) => 6 + Math.round(10 * Math.abs(Math.sin(i * 0.9)))),
+    [recordedBlobUrl],
+  );
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-5 flex flex-col items-center justify-center gap-2.5 min-h-[148px]">
+      {recordingState === "idle" ? (
+        <>
+          <button
+            type="button"
+            onClick={startRecording}
+            aria-label={t("ugq.startRecording")}
+            className="h-14 w-14 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center transition-colors"
+          >
+            <Mic className="h-6 w-6" />
+          </button>
+          <p className="text-xs text-slate-500">{t("ugq.tapToRecordUpTo", { time: formatMMSS(maxRecordingSeconds) })}</p>
+        </>
+      ) : recordingState === "recording" ? (
+        <>
+          <div className="w-full flex items-center gap-2.5 rounded-full border border-slate-200 bg-white pl-2 pr-2 py-2 shadow-sm">
+            <button
+              type="button"
+              onClick={cancelRecording}
+              aria-label={t("ugq.cancelRecording")}
+              className="h-8 w-8 shrink-0 rounded-full flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+            <span className="h-2 w-2 shrink-0 rounded-full bg-red-500 animate-pulse" />
+            <span className="text-sm tabular-nums text-slate-700 shrink-0">{formatMMSS(recordingSeconds)}</span>
+            <div className="flex-1 flex items-center justify-center gap-[3px] h-8 overflow-hidden">
+              {waveformLevels.map((h, i) => (
+                <span
+                  key={i}
+                  className="w-[3px] rounded-full bg-slate-400 transition-[height] duration-75"
+                  style={{ height: `${h}px` }}
+                />
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={stopRecording}
+              aria-label={t("ugq.stopRecording")}
+              className="h-9 w-9 shrink-0 rounded-full bg-slate-900 hover:bg-slate-800 text-white flex items-center justify-center"
+            >
+              <Square className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <p className="text-[11px] text-slate-400">{t("ugq.upToTime", { time: formatMMSS(maxRecordingSeconds) })}</p>
+        </>
+      ) : recordingState === "recorded" ? (
+        <>
+          <div className="w-full flex items-center gap-2.5 rounded-full border border-slate-200 bg-white pl-2 pr-2 py-2 shadow-sm">
+            <button
+              type="button"
+              onClick={discardAndReRecord}
+              aria-label={t("ugq.discardRecording")}
+              className="h-8 w-8 shrink-0 rounded-full flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={togglePlayback}
+              aria-label={isPlaying ? t("ugq.pause") : t("ugq.play")}
+              className="h-8 w-8 shrink-0 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition-colors"
+            >
+              {isPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5 ml-0.5" />}
+            </button>
+            <div className="flex-1 flex items-center gap-[3px] h-8 overflow-hidden">
+              {playbackBarHeights.map((h, i) => (
+                <span
+                  key={i}
+                  className={`w-[3px] rounded-full bg-slate-300 ${isPlaying ? "animate-pulse" : ""}`}
+                  style={{ height: `${h}px`, animationDelay: `${i * 40}ms` }}
+                />
+              ))}
+            </div>
+            <span className="text-xs tabular-nums text-slate-500 shrink-0">
+              {formatMMSS(isPlaying || playbackPosition > 0 ? Math.floor(playbackPosition) : recordingSeconds)}
+            </span>
+            <button
+              type="button"
+              onClick={handleUseRecording}
+              aria-label={t("ugq.useThisRecording")}
+              className="h-9 w-9 shrink-0 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white flex items-center justify-center"
+            >
+              <Check className="h-4 w-4" />
+            </button>
+          </div>
+          <audio
+            ref={audioPlayerRef}
+            src={recordedBlobUrl ?? undefined}
+            className="hidden"
+            onPlay={() => setIsPlaying(true)}
+            onPause={() => setIsPlaying(false)}
+            onEnded={() => { setIsPlaying(false); setPlaybackPosition(0); }}
+            onTimeUpdate={(e) => setPlaybackPosition(e.currentTarget.currentTime)}
+          />
+        </>
+      ) : (
+        <>
+          <Loader2 className="h-6 w-6 animate-spin text-slate-500" />
+          <p className="text-xs text-slate-500">{t("ugq.transcribingRecording")}</p>
+        </>
+      )}
+      {voiceError ? <p className="text-xs text-red-600 text-center">{voiceError}</p> : null}
+    </div>
+  );
 }
 
 export function ProposeQuestionModal({
@@ -111,6 +570,7 @@ export function ProposeQuestionModal({
   presetConstituencyId = null,
   defaultLocation = null,
 }: Props) {
+  const { t } = useTranslation();
   const [question, setQuestion] = React.useState("");
   const [sourceUrl, setSourceUrl] = React.useState("");
   const [location, setLocation] = React.useState(defaultLocation ?? "");
@@ -120,6 +580,57 @@ export function ProposeQuestionModal({
   const [previewReframe, setPreviewReframe] = React.useState<PreviewReframe | null>(null);
   const [questionId, setQuestionId] = React.useState<string | null>(null);
   const [autoPublished, setAutoPublished] = React.useState(false); // legacy path fallback, see header note
+
+  // Polling state — see the effect below. Only relevant while phase==="review"
+  // and previewReframe is still null (ugq-submit's ~20s internal wait gave up
+  // before ugq-screen finished — the screening itself keeps running
+  // server-side regardless, this just picks up the result once it lands
+  // instead of leaving the proposer at a dead end).
+  const [pollAttempts, setPollAttempts] = React.useState(0);
+  const [pollExhausted, setPollExhausted] = React.useState(false);
+
+  // Sep 2026, NEW — see triggerVerifiedPreview. True while a voice/video
+  // proposal's Stage A/B/C fact-check is in flight; blocks the poll effect
+  // below from showing ugq-screen's fast/unverified preview in the
+  // meantime, so the reviewer only ever sees the fact-checked version (or,
+  // if verification fails open, falls through to the same poll fallback a
+  // text proposal already uses).
+  const [awaitingVerification, setAwaitingVerification] = React.useState(false);
+
+  // Refine state (Aug 2026, NEW) — see handleRefine. Only relevant during
+  // phase==="review", independent of the poll state above (by the time
+  // refine is available, previewReframe is already populated, so the poll
+  // effect's own guard already keeps it from firing concurrently).
+  const [refineOpen, setRefineOpen] = React.useState(false);
+  const [refineText, setRefineText] = React.useState("");
+  const [refining, setRefining] = React.useState(false);
+  const [refineError, setRefineError] = React.useState<string | null>(null);
+
+  // Voice recording state (Aug 2026, NEW; simplified after extracting
+  // VoiceRecorderPanel). inputMode/refineInputMode just pick which UI shows
+  // (Textarea vs the recorder) for the question composer and the refine box
+  // respectively — the recorder itself is fully self-contained. voiceRecordingPath
+  // does double duty: it's both the Storage path forwarded to ugq-submit AND
+  // the signal (non-null) that the current question text originated from a
+  // transcription, used to set input_mode at submit time. "Record again"
+  // (below) is the one explicit action that clears it — short of that,
+  // further manual edits to the transcribed text still count as
+  // voice-origin, which is the right call for an admin-facing trust signal
+  // (imperfect edge cases here are harmless).
+  const [inputMode, setInputMode] = React.useState<"text" | "voice" | "video">("text");
+  const [refineInputMode, setRefineInputMode] = React.useState<"text" | "voice">("text");
+  const [voiceRecordingPath, setVoiceRecordingPath] = React.useState<string | null>(null);
+
+  // Epic X (video, NEW). VideoRecorderPanel is fully self-contained — unlike
+  // voice, it does its OWN capture/transcribe/submit (including the framing-
+  // gate resubmit loop), never populating `question`/handleSubmit at all.
+  // isVideoProposal just tells the review/published phases to render
+  // VideoPublishChoice instead of the generic Publish button once
+  // VideoRecorderPanel's onSubmitted hands off a proposalId. derogatoryFlagReason
+  // is informational-only (see checkVideoFraming) — shown inside
+  // VideoPublishChoice as a recommendation, never blocks Publish.
+  const [isVideoProposal, setIsVideoProposal] = React.useState(false);
+  const [derogatoryFlagReason, setDerogatoryFlagReason] = React.useState<string | null>(null);
 
   // Authority tagging (post-publish) state.
   const [suggestedAuthorities, setSuggestedAuthorities] = React.useState<Authority[]>([]);
@@ -143,6 +654,18 @@ export function ProposeQuestionModal({
       setPreviewReframe(null);
       setQuestionId(null);
       setAutoPublished(false);
+      setPollAttempts(0);
+      setPollExhausted(false);
+      setAwaitingVerification(false);
+      setRefineOpen(false);
+      setRefineText("");
+      setRefining(false);
+      setRefineError(null);
+      setInputMode("text");
+      setRefineInputMode("text");
+      setVoiceRecordingPath(null);
+      setIsVideoProposal(false);
+      setDerogatoryFlagReason(null);
       setSuggestedAuthorities([]);
       setTagStatus("idle");
       setTaggedName(null);
@@ -153,6 +676,108 @@ export function ProposeQuestionModal({
       setBrowseSelection("");
     }
   }, [open, defaultLocation]);
+
+  // Poll for a preview that wasn't ready in time. Only active while
+  // phase==="review" AND previewReframe is still null AND we haven't given
+  // up yet — naturally stops (via the cleanup below) the moment any of those
+  // flips: preview arrives, phase changes (published/closed/back to form),
+  // or the attempt cap is hit. Reads the proposal directly via REST — RLS
+  // (uqp_select_own_or_admin) already lets a proposer read their own row, so
+  // no new endpoint is needed for this.
+  const POLL_INTERVAL_MS = 3000;
+  const POLL_MAX_ATTEMPTS = 10; // 10 * 3s = 30s of polling on top of ugq-submit's own ~20s wait
+
+  React.useEffect(() => {
+    if (phase !== "review" || previewReframe || !proposalId || pollExhausted || awaitingVerification) return;
+
+    let cancelled = false;
+    const timer = setInterval(async () => {
+      if (cancelled) return;
+      try {
+        const jwt = getJwt();
+        const res = await fetch(
+          `${SUPABASE_URL}/rest/v1/user_question_proposals?id=eq.${proposalId}&select=status,preview_reframe,rejection_reason,rejection_note,reframed_question_id`,
+          { headers: supabaseHeaders(jwt) },
+        );
+        if (!res.ok || cancelled) return; // transient — try again next tick
+        const rows = await res.json().catch(() => []);
+        const row = Array.isArray(rows) && rows.length ? (rows[0] as Record<string, unknown>) : null;
+        if (!row || cancelled) return;
+
+        if (row.status === "rejected") {
+          clearInterval(timer);
+          setErrorMsg(typeof row.rejection_note === "string" && row.rejection_note
+            ? row.rejection_note
+            : t("ugq.questionNotAccepted"));
+          setPhase("form");
+          return;
+        }
+
+        if (row.status === "published" && typeof row.reframed_question_id === "string") {
+          // Backward-compat auto-publish path resolved while we were
+          // waiting — same handling as the direct response case in
+          // handleSubmit.
+          clearInterval(timer);
+          setQuestionId(row.reframed_question_id);
+          setAutoPublished(true);
+          setPhase("published");
+          return;
+        }
+
+        const parsed = parsePreviewReframe(row.preview_reframe);
+        if (parsed) {
+          clearInterval(timer);
+          setPreviewReframe(parsed); // stays in "review" — now renders the full preview + Publish button
+          return;
+        }
+
+        setPollAttempts((n) => {
+          const next = n + 1;
+          if (next >= POLL_MAX_ATTEMPTS) {
+            clearInterval(timer);
+            setPollExhausted(true);
+          }
+          return next;
+        });
+      } catch {
+        // Network hiccup — just try again next tick, don't give up on one blip.
+      }
+    }, POLL_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [phase, previewReframe, proposalId, pollExhausted, awaitingVerification]);
+
+  // Sep 2026, NEW: for voice/video proposals only, upgrades ugq-screen's
+  // fast/unverified preview to the real Stage A/B/C fact-checked one — see
+  // ugq-verify-preview for why this is scoped to voice/video (that's where
+  // the Hinglish/mis-transcription risk lives) rather than every
+  // submission. Fails OPEN: on any non-verified outcome (infra hiccup,
+  // timeout, no topic yet), this just stops blocking the poll effect above,
+  // which then shows whatever ugq-screen already wrote (or keeps waiting if
+  // it hasn't yet) — same fallback a network blip on the fast path already
+  // relied on.
+  async function triggerVerifiedPreview(pid: string) {
+    try {
+      const jwt = getJwt();
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/ugq-verify-preview`, {
+        method: "POST",
+        headers: supabaseHeaders(jwt),
+        body: JSON.stringify({ proposal_id: pid }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json?.ok && json.verified === true) {
+        const parsed = parsePreviewReframe(json.preview_reframe);
+        if (parsed) setPreviewReframe(parsed);
+      }
+    } catch {
+      // Network hiccup — fall through to the poll effect fallback.
+    } finally {
+      setAwaitingVerification(false);
+    }
+  }
 
   const trimmed = question.trim();
   const tooShort = trimmed.length > 0 && trimmed.length < MIN_LEN;
@@ -173,25 +798,40 @@ export function ProposeQuestionModal({
           location_label: location.trim() || null,
           suggested_topic_id: presetTopicId,
           constituency_id: presetConstituencyId,
+          // Aug 2026, NEW: non-null voiceRecordingPath means this question
+          // originated from a voice recording (even if edited afterward) —
+          // see the voice recording state block for exactly when this
+          // clears. ugq-submit needs a matching update to persist these two
+          // fields on the new proposal row; harmless extra JSON otherwise.
+          input_mode: voiceRecordingPath ? "voice" : "text",
+          voice_recording_path: voiceRecordingPath,
         }),
       });
       const json = await res.json().catch(() => ({}));
 
       if (!res.ok || !json?.ok) {
-        const msg = json?.message ?? "Something went wrong. Please try again.";
+        const msg = json?.message ?? t("ugq.somethingWentWrong");
         setErrorMsg(msg);
         setPhase("form");
         return;
       }
 
       if (json.status === "rejected") {
-        setErrorMsg(json.message ?? "Your question wasn't accepted. Try rephrasing it.");
+        setErrorMsg(json.message ?? t("ugq.questionNotAccepted"));
         setPhase("form");
         return;
       }
 
-      setProposalId(typeof json.proposal_id === "string" ? json.proposal_id : null);
-      setPreviewReframe(parsePreviewReframe(json.preview_reframe));
+      const newProposalId = typeof json.proposal_id === "string" ? json.proposal_id : null;
+      setProposalId(newProposalId);
+
+      // Sep 2026, NEW: voice proposals run Stage A/B/C synchronously before
+      // any preview is shown — see triggerVerifiedPreview. The fast/
+      // unverified preview_reframe ugq-submit already computed is
+      // deliberately NOT displayed here; the existing "checking for your
+      // preview" spinner covers this wait instead.
+      const isVoice = !!voiceRecordingPath;
+      setPreviewReframe(isVoice ? null : parsePreviewReframe(json.preview_reframe));
 
       // Backward compat: if this environment still has silent auto-publish on
       // (UGQ_AUTOPUBLISH_ENABLED=true server-side), ugq-submit already
@@ -204,15 +844,20 @@ export function ProposeQuestionModal({
         return;
       }
 
+      if (isVoice && newProposalId) {
+        setAwaitingVerification(true);
+        void triggerVerifiedPreview(newProposalId);
+      }
+
       setPhase("review");
     } catch (_e) {
-      setErrorMsg("Network error. Please check your connection and try again.");
+      setErrorMsg(t("ugq.networkErrorCheckConnection"));
       setPhase("form");
     }
   }
 
   async function handlePublish() {
-    if (!proposalId || phase === "publishing") return;
+    if (!proposalId || phase === "publishing" || refining) return;
     setPhase("publishing");
     setErrorMsg(null);
     try {
@@ -225,7 +870,7 @@ export function ProposeQuestionModal({
       const json = await res.json().catch(() => ({}));
 
       if (!res.ok || !json?.ok) {
-        setErrorMsg(json?.message ?? "Couldn't publish just now. Please try again.");
+        setErrorMsg(json?.message ?? t("ugq.couldntPublishNow"));
         setPhase("review");
         return;
       }
@@ -234,10 +879,145 @@ export function ProposeQuestionModal({
       setSuggestedAuthorities(parseAuthorities(json.suggested_authorities));
       setPhase("published");
     } catch (_e) {
-      setErrorMsg("Network error. Please check your connection and try again.");
+      setErrorMsg(t("ugq.networkErrorCheckConnection"));
       setPhase("review");
     }
   }
+
+  // Epic X (video, NEW): adapter matching VideoRecorderPanel's expected
+  // transcribeAudio contract — same ugq-transcribe-voice call/base64 approach
+  // VoiceRecorderPanel's handleUseRecording already uses above, just wrapped
+  // as a standalone function since VideoRecorderPanel records its own
+  // separate audio-only track and can't reach into that component's
+  // internal state.
+  const transcribeAudioForVideo = React.useCallback(
+    async (audioBlob: Blob): Promise<{ transcript: string; recording_path?: string }> => {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error("Read failed"));
+        reader.readAsDataURL(audioBlob);
+      });
+      const jwt = getJwt();
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/ugq-transcribe-voice`, {
+        method: "POST",
+        headers: supabaseHeaders(jwt),
+        body: JSON.stringify({ audio_base64: base64, mime_type: audioBlob.type || "audio/webm" }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.ok) {
+        throw new Error(json?.message ?? t("ugq.transcribeFailed"));
+      }
+      return {
+        transcript: String(json.transcript ?? ""),
+        recording_path: typeof json.voice_recording_path === "string" ? json.voice_recording_path : undefined,
+      };
+    },
+    [t],
+  );
+
+  // Epic X (video, NEW): VideoRecorderPanel already resolved the proposal
+  // past the framing gate (it handles "resubmit_requested" — and now
+  // "rejected" — entirely internally, offering its own re-record UI; this
+  // only ever fires for a proposal that's actually headed somewhere).
+  // Deliberately does NOT pass preview_reframe/published/question_id through
+  // from ugq-submit's response — the existing poll effect below already
+  // resolves all three outcomes (preview ready / rejected / auto-published)
+  // once given just a proposalId + phase="review", so reusing it here avoids
+  // duplicating that resolution logic for a second input mode.
+  function handleVideoSubmitted(result: {
+    proposalId: string;
+    status: string;
+    framingFlagReason: string | null;
+    derogatoryFlagReason: string | null;
+  }) {
+    setIsVideoProposal(true);
+    setProposalId(result.proposalId);
+    setDerogatoryFlagReason(result.derogatoryFlagReason);
+    setPreviewReframe(null);
+    setPollAttempts(0);
+    setPollExhausted(false);
+    setErrorMsg(null);
+    // Sep 2026, NEW: same synchronous Stage A/B/C upgrade as the voice path
+    // — see triggerVerifiedPreview. Video never had the fast preview text
+    // in hand here to begin with, so on a fail-open outcome this just lets
+    // the poll effect above pick it up from the DB exactly as before.
+    setAwaitingVerification(true);
+    void triggerVerifiedPreview(result.proposalId);
+    setPhase("review");
+  }
+
+  // Epic X (video, NEW): mirrors handlePublish's success path — same two
+  // state updates, just sourced from VideoPublishChoice's own
+  // ugq-confirm-publish call instead of one made here.
+  function handleVideoPublished(qId: string, authorities: Authority[]) {
+    setQuestionId(qId);
+    setSuggestedAuthorities(authorities);
+    setPhase("published");
+  }
+
+  // Epic X (video, NEW): routes VideoPublishChoice's "Re-record instead"
+  // link back to a fresh capture. Abandons the current proposal row rather
+  // than deleting it — same as any other proposal a user navigates away
+  // from without publishing; nothing elsewhere in this modal issues an
+  // explicit withdraw call either.
+  function handleVideoReRecord() {
+    setPhase("form");
+    setInputMode("video");
+    setProposalId(null);
+    setPreviewReframe(null);
+    setDerogatoryFlagReason(null);
+    setIsVideoProposal(false);
+    setPollAttempts(0);
+    setPollExhausted(false);
+    setAwaitingVerification(false);
+    setErrorMsg(null);
+  }
+
+  // Aug 2026, NEW: lets the proposer add extra context and get ugq-screen to
+  // regenerate the preview before they commit to Publish — see
+  // ugq-refine-preview. Deliberately does NOT touch `phase` (stays
+  // "review" throughout) since this is still the same review step, just
+  // iterating on it; `refining` is a separate, local loading flag so the
+  // Publish/Not now buttons can be disabled during a regeneration without
+  // the phase machinery treating this like the publishing step itself.
+  async function handleRefine() {
+    const trimmedContext = refineText.trim();
+    if (trimmedContext.length < REFINE_MIN_LEN || trimmedContext.length > REFINE_MAX_LEN || refining || !proposalId) return;
+    setRefining(true);
+    setRefineError(null);
+    try {
+      const jwt = getJwt();
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/ugq-refine-preview`, {
+        method: "POST",
+        headers: supabaseHeaders(jwt),
+        body: JSON.stringify({ proposal_id: proposalId, additional_context: trimmedContext }),
+      });
+      const json = await res.json().catch(() => ({}));
+
+      if (!res.ok || !json?.ok) {
+        setRefineError(json?.message ?? t("ugq.couldntRegenerateNow"));
+        return;
+      }
+
+      if (json.refined === false) {
+        // Backend tried and failed both attempts — it left the existing
+        // preview untouched, so just surface the message and keep going.
+        setRefineError(json.message ?? t("ugq.couldntRegenerateContext"));
+        return;
+      }
+
+      setPreviewReframe(parsePreviewReframe(json.preview_reframe));
+      setRefineOpen(false);
+      setRefineText("");
+      setRefineError(null);
+    } catch (_e) {
+      setRefineError(t("ugq.networkErrorCheckConnection"));
+    } finally {
+      setRefining(false);
+    }
+  }
+
 
   async function tagAuthority(authorityId: string, fallbackName?: string) {
     if (!questionId || tagStatus === "tagging") return;
@@ -252,14 +1032,14 @@ export function ProposeQuestionModal({
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json?.ok) {
-        setTagError(json?.message ?? "Couldn't tag that authority. Please try again.");
+        setTagError(json?.message ?? t("ugq.couldntTagAuthority"));
         setTagStatus("idle");
         return;
       }
       setTaggedName(typeof json.authority_name === "string" ? json.authority_name : fallbackName ?? null);
       setTagStatus("tagged");
     } catch (_e) {
-      setTagError("Network error. Please try again.");
+      setTagError(t("ugq.networkErrorShort"));
       setTagStatus("idle");
     }
   }
@@ -284,6 +1064,10 @@ export function ProposeQuestionModal({
   }
 
   function close() {
+    // Aug 2026, NEW: mic/AudioContext cleanup no longer needs to happen
+    // here — VoiceRecorderPanel's own unmount effect handles it whenever
+    // the Dialog stops rendering its content (which is what onOpenChange
+    // triggers), regardless of whether a recording was in progress.
     onOpenChange(false);
   }
 
@@ -304,27 +1088,20 @@ export function ProposeQuestionModal({
         {phase === "published" ? (
           <div className="flex flex-col items-center text-center py-6 gap-3">
             <CheckCircle2 className="h-10 w-10 text-green-600" />
-            <DialogTitle className="text-lg">You&#x2019;re live!</DialogTitle>
+            <DialogTitle className="text-lg">{t("ugq.youreLive")}</DialogTitle>
             <DialogDescription>
-              {autoPublished
-                ? "Your question is live right now. Our team will also give it a quick review shortly."
-                : "Your question is live right now. Our team will also give it a quick review shortly."}
+              {t("ugq.questionLiveDescription")}
             </DialogDescription>
 
             {preview ? (
               <div className="w-full mt-1 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-left space-y-2">
                 <div className="flex items-center gap-1.5 text-xs font-medium text-green-700">
                   <Sparkles className="h-3.5 w-3.5" />
-                  Your question, live now
+                  {t("ugq.yourQuestionLiveNow")}
                 </div>
+                <CoverImagePreview src={preview.cover_image_url} />
                 <p className="text-sm text-slate-800 leading-snug">{preview.question}</p>
-                {(preview.slider_low_label || preview.slider_high_label) ? (
-                  <div className="flex items-center justify-between gap-2 text-[11px] text-slate-500 pt-1">
-                    <span className="truncate">{preview.slider_low_label ?? "Oppose"}</span>
-                    <span className="text-slate-300 shrink-0">&#8596;</span>
-                    <span className="truncate text-right">{preview.slider_high_label ?? "Support"}</span>
-                  </div>
-                ) : null}
+                <StanceScalePreview low={preview.slider_low_label} high={preview.slider_high_label} />
               </div>
             ) : null}
 
@@ -333,14 +1110,14 @@ export function ProposeQuestionModal({
               <div className="w-full rounded-lg border border-purple-200 bg-purple-50 px-4 py-3 text-left">
                 <p className="text-sm text-purple-800">
                   <Landmark className="h-3.5 w-3.5 inline mr-1 -mt-0.5" />
-                  Tagged <strong>{taggedName}</strong> &#x2014; sent to our team to confirm.
+                  {t("ugq.taggedAuthority", { name: taggedName })}
                 </p>
               </div>
             ) : tagStatus === "skipped" ? null : (
               <div className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-left space-y-2">
                 <p className="text-xs font-medium text-slate-600">
                   <Landmark className="h-3.5 w-3.5 inline mr-1 -mt-0.5" />
-                  Think this is related to a specific authority?
+                  {t("ugq.relatedToAuthority")}
                 </p>
                 {suggestedAuthorities.length > 0 && !browseOpen ? (
                   <div className="flex flex-wrap gap-1.5">
@@ -353,7 +1130,7 @@ export function ProposeQuestionModal({
                         onClick={() => tagAuthority(a.id, a.name)}
                       >
                         {tagStatus === "tagging" ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : null}
-                        Tag {a.name}
+                        {t("ugq.tagAuthorityButton", { name: a.name })}
                       </Button>
                     ))}
                   </div>
@@ -363,7 +1140,7 @@ export function ProposeQuestionModal({
                   <div className="space-y-2">
                     {browseLoading ? (
                       <p className="text-xs text-slate-500 flex items-center gap-1.5">
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading authorities&#x2026;
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" /> {t("ugq.loadingAuthorities")}
                       </p>
                     ) : (allAuthorities?.length ?? 0) > 0 ? (
                       <>
@@ -372,7 +1149,7 @@ export function ProposeQuestionModal({
                           onChange={(e) => setBrowseSelection(e.target.value)}
                           className="w-full h-9 rounded-md border border-slate-300 px-2 text-sm bg-white"
                         >
-                          <option value="">Select an authority&#x2026;</option>
+                          <option value="">{t("ugq.selectAnAuthority")}</option>
                           {allAuthorities!.map((a) => (
                             <option key={a.id} value={a.id}>
                               {a.name} {a.domain ? `(${a.domain})` : ""}
@@ -387,11 +1164,11 @@ export function ProposeQuestionModal({
                             if (picked) tagAuthority(picked.id, picked.name);
                           }}
                         >
-                          {tagStatus === "tagging" ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Tagging&#x2026;</> : "Tag this authority"}
+                          {tagStatus === "tagging" ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> {t("ugq.tagging")}</> : t("ugq.tagThisAuthority")}
                         </Button>
                       </>
                     ) : (
-                      <p className="text-xs text-slate-500">No authorities found.</p>
+                      <p className="text-xs text-slate-500">{t("ugq.noAuthoritiesFound")}</p>
                     )}
                   </div>
                 ) : (
@@ -400,7 +1177,7 @@ export function ProposeQuestionModal({
                     onClick={openBrowseAuthorities}
                     className="inline-flex items-center gap-0.5 text-xs text-blue-600 hover:underline"
                   >
-                    Browse all authorities <ChevronDown className="h-3 w-3" />
+                    {t("ugq.browseAllAuthorities")} <ChevronDown className="h-3 w-3" />
                   </button>
                 )}
 
@@ -412,7 +1189,7 @@ export function ProposeQuestionModal({
                     onClick={() => setTagStatus("skipped")}
                     className="text-[11px] text-slate-400 hover:text-slate-600 hover:underline"
                   >
-                    No thanks, skip this
+                    {t("ugq.noThanksSkip")}
                   </button>
                 )}
               </div>
@@ -425,11 +1202,11 @@ export function ProposeQuestionModal({
               {questionId ? (
                 <Button variant="outline" asChild>
                   <a href={`#/q/${questionId}`} onClick={close}>
-                    View it live <ExternalLink className="h-3.5 w-3.5 ml-1.5" />
+                    {t("ugq.viewItLive")} <ExternalLink className="h-3.5 w-3.5 ml-1.5" />
                   </a>
                 </Button>
               ) : null}
-              <Button onClick={close}>Done</Button>
+              <Button onClick={close}>{t("ugq.done")}</Button>
             </div>
           </div>
         ) : phase === "review" || phase === "publishing" ? (
@@ -437,29 +1214,26 @@ export function ProposeQuestionModal({
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Sparkles className="h-5 w-5 text-amber-500" />
-                {preview ? "Here\u2019s how this looks" : "Under review"}
+                {preview ? t("ugq.hereHowThisLooks") : pollExhausted ? t("ugq.stillProcessing") : t("ugq.almostReady")}
               </DialogTitle>
               <DialogDescription>
                 {preview
-                  ? "Review it, then publish when you're ready. Our team will also take a quick look shortly after."
-                  : "We're still processing your question \u2014 check My Proposals in a bit, or come back here later."}
+                  ? t("ugq.reviewThenPublish")
+                  : pollExhausted
+                  ? t("ugq.takingLongerThanUsual")
+                  : t("ugq.finishingUpPreview")}
               </DialogDescription>
             </DialogHeader>
 
             {preview ? (
               <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 space-y-2">
+                <CoverImagePreview src={preview.cover_image_url} />
                 <p className="text-sm text-slate-800 leading-snug">{preview.question}</p>
-                {(preview.slider_low_label || preview.slider_high_label) ? (
-                  <div className="flex items-center justify-between gap-2 text-[11px] text-slate-500">
-                    <span className="truncate">{preview.slider_low_label ?? "Oppose"}</span>
-                    <span className="text-slate-300 shrink-0">&#8596;</span>
-                    <span className="truncate text-right">{preview.slider_high_label ?? "Support"}</span>
-                  </div>
-                ) : null}
+                <StanceScalePreview low={preview.slider_low_label} high={preview.slider_high_label} />
 
                 {preview.context_summary ? (
                   <div className="pt-2 mt-1 border-t border-amber-200/70 space-y-1">
-                    <p className="text-[11px] font-medium text-amber-700">Background</p>
+                    <p className="text-[11px] font-medium text-amber-700">{t("ugq.background")}</p>
                     <p className="text-xs text-slate-700 leading-relaxed">{preview.context_summary}</p>
                     {preview.supporting_links.length > 0 ? (
                       <div className="flex flex-wrap gap-x-3 gap-y-1 pt-0.5">
@@ -474,85 +1248,287 @@ export function ProposeQuestionModal({
                   </div>
                 ) : null}
 
-                <p className="text-[11px] text-amber-700/80 pt-1">
-                  Not fact-checked yet &#x2014; our team reviews shortly after this goes live and may refine the wording.
+                <p className={preview.verified ? "text-[11px] text-emerald-700/90 pt-1 flex items-center gap-1" : "text-[11px] text-amber-700/80 pt-1"}>
+                  {preview.verified ? <CheckCircle2 className="h-3 w-3 shrink-0" /> : null}
+                  {preview.verified ? t("ugq.factChecked") : t("ugq.notFactCheckedYet")}
                 </p>
+              </div>
+            ) : !pollExhausted ? (
+              <div className="flex flex-col items-center justify-center gap-2 py-8 text-slate-500">
+                <Loader2 className="h-5 w-5 animate-spin" />
+                <p className="text-xs">{t("ugq.checkingForPreview")}</p>
+              </div>
+            ) : null}
+
+            {/* Aug 2026, NEW: "add more context and regenerate" — lets the
+                proposer course-correct the preview before Publish instead of
+                either publishing something that missed the mark or
+                abandoning the proposal outright. */}
+            {preview ? (
+              <div className="pt-0.5">
+                {!refineOpen ? (
+                  <button
+                    type="button"
+                    onClick={() => setRefineOpen(true)}
+                    disabled={refining}
+                    className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline disabled:opacity-50"
+                  >
+                    <Wand2 className="h-3 w-3" /> {t("ugq.addContextRegenerate")}
+                  </button>
+                ) : (
+                  <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="ugq-refine-context" className="text-xs text-slate-600">
+                        {t("ugq.whatToAddOrFix")}
+                      </Label>
+                      {/* Aug 2026, NEW: same VoiceRecorderPanel the question
+                          composer uses, so recording context here doesn't
+                          need its own separate implementation. */}
+                      <button
+                        type="button"
+                        onClick={() => setRefineInputMode(refineInputMode === "text" ? "voice" : "text")}
+                        disabled={refining}
+                        className="inline-flex items-center gap-1 text-[11px] text-slate-500 hover:text-slate-700 disabled:opacity-50"
+                      >
+                        {refineInputMode === "text" ? (
+                          <><Mic className="h-3 w-3" /> {t("ugq.recordInstead")}</>
+                        ) : (
+                          t("ugq.typeInstead")
+                        )}
+                      </button>
+                    </div>
+
+                    {refineInputMode === "text" ? (
+                      <>
+                        <Textarea
+                          id="ugq-refine-context"
+                          value={refineText}
+                          onChange={(e) => setRefineText(e.target.value.slice(0, REFINE_MAX_LEN))}
+                          placeholder={t("ugq.refinePlaceholder")}
+                          rows={2}
+                          disabled={refining}
+                        />
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] text-slate-400">
+                            {refineText.trim().length}/{REFINE_MAX_LEN}
+                          </span>
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              disabled={refining}
+                              onClick={() => { setRefineOpen(false); setRefineText(""); setRefineError(null); setRefineInputMode("text"); }}
+                            >
+                              {t("auth.cancel")}
+                            </Button>
+                            <Button
+                              size="sm"
+                              disabled={refining || refineText.trim().length < REFINE_MIN_LEN}
+                              onClick={handleRefine}
+                            >
+                              {refining ? (
+                                <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> {t("ugq.regenerating")}</>
+                              ) : (
+                                t("ugq.regeneratePreview")
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <VoiceRecorderPanel
+                        maxRecordingSeconds={MAX_RECORDING_SECONDS}
+                        onTranscript={(text) => {
+                          // Refine text doesn't carry a voice_recording_path
+                          // anywhere downstream (ugq-refine-preview only
+                          // ever sends plain text) — recording here is
+                          // purely a faster way to type, nothing tracks its
+                          // origin the way the main composer does.
+                          setRefineText(text.trim().slice(0, REFINE_MAX_LEN));
+                          setRefineInputMode("text");
+                        }}
+                      />
+                    )}
+                    {refineError ? <p className="text-xs text-red-600">{refineError}</p> : null}
+                  </div>
+                )}
               </div>
             ) : null}
 
             {errorMsg ? <p className="text-sm text-red-600">{errorMsg}</p> : null}
 
-            <DialogFooter>
-              <Button variant="ghost" onClick={close} disabled={phase === "publishing"}>
-                {preview ? "Not now" : "Done"}
-              </Button>
-              {preview ? (
-                <Button onClick={handlePublish} disabled={phase === "publishing"}>
-                  {phase === "publishing" ? (
-                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Publishing&#x2026;</>
-                  ) : (
-                    "Publish"
-                  )}
+            {/* Epic X (video, NEW): video proposals choose raw_only vs.
+                raw_plus_overlay AND see the derogatory-language
+                recommendation right here, alongside the same preview above —
+                VideoPublishChoice calls ugq-confirm-publish itself, so this
+                replaces the generic Publish button rather than sitting next
+                to it. Only once `preview` is ready, matching the same gate
+                the generic Publish button already uses (ugq-confirm-publish
+                requires preview_reframe + a resolved topic either way). */}
+            {isVideoProposal && preview ? (
+              <div className="flex flex-col gap-3">
+                <VideoPublishChoice
+                  proposalId={proposalId!}
+                  derogatoryFlagReason={derogatoryFlagReason}
+                  onReRecord={handleVideoReRecord}
+                  onPublished={handleVideoPublished}
+                />
+                <Button variant="ghost" size="sm" onClick={close} className="self-start -mt-1">
+                  {t("ugq.notNow")}
                 </Button>
-              ) : null}
-            </DialogFooter>
+              </div>
+            ) : (
+              <DialogFooter>
+                <Button variant="ghost" onClick={close} disabled={phase === "publishing" || refining}>
+                  {preview ? t("ugq.notNow") : t("ugq.done")}
+                </Button>
+                {preview ? (
+                  <Button onClick={handlePublish} disabled={phase === "publishing" || refining}>
+                    {phase === "publishing" ? (
+                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> {t("ugq.publishing")}</>
+                    ) : (
+                      t("ugq.publish")
+                    )}
+                  </Button>
+                ) : null}
+              </DialogFooter>
+            )}
           </div>
         ) : (
           <>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Lightbulb className="h-5 w-5 text-amber-500" />
-                Propose a question
+                {t("ugq.proposeQuestion")}
               </DialogTitle>
               <DialogDescription>
-                Surface an issue you care about. If it meets our civic-framing bar, it goes
-                live as a stance card &#x2014; with credit to you.
+                {t("ugq.proposeQuestionDescription")}
               </DialogDescription>
             </DialogHeader>
 
             {presetTopicTitle ? (
               <div>
-                <Badge variant="secondary">Topic: {presetTopicTitle}</Badge>
+                <Badge variant="secondary">{t("ugq.topicPrefix", { title: presetTopicTitle })}</Badge>
               </div>
             ) : null}
 
             <div className="space-y-4 py-1">
               <div className="space-y-1.5">
-                <Label htmlFor="ugq-question">Your question</Label>
-                <Textarea
-                  id="ugq-question"
-                  value={question}
-                  onChange={(e) => setQuestion(e.target.value.slice(0, MAX_LEN))}
-                  placeholder="What do you want the community to weigh in on?"
-                  rows={4}
-                  autoFocus
-                />
-                <div className="flex justify-between text-xs">
-                  <span className={tooShort ? "text-amber-600" : "text-slate-400"}>
-                    {tooShort ? `At least ${MIN_LEN} characters` : "\u00A0"}
-                  </span>
-                  <span className="text-slate-400">{trimmed.length}/{MAX_LEN}</span>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="ugq-question">{t("ugq.yourQuestion")}</Label>
+                  {/* Aug 2026, NEW: Type/Record toggle. Safe to switch at
+                      any time, including mid-recording — VoiceRecorderPanel's
+                      unmount effect releases the mic/AudioContext whenever
+                      this stops rendering it, so no manual guard is needed
+                      here. */}
+                  <div className="flex rounded-md border border-slate-200 p-0.5 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setInputMode("text")}
+                      className={`px-2.5 py-1 rounded transition-colors ${
+                        inputMode === "text" ? "bg-slate-900 text-white" : "text-slate-500 hover:text-slate-700"
+                      }`}
+                    >
+                      {t("ugq.type")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setInputMode("voice")}
+                      className={`px-2.5 py-1 rounded flex items-center gap-1 transition-colors ${
+                        inputMode === "voice" ? "bg-slate-900 text-white" : "text-slate-500 hover:text-slate-700"
+                      }`}
+                    >
+                      <Mic className="h-3 w-3" /> {t("ugq.record")}
+                    </button>
+                    {/* Epic X, NEW: raw video is published as-is (never
+                        rewritten like text/voice), so it's a genuinely
+                        different mode, not just another input method — see
+                        VideoRecorderPanel's own header note. */}
+                    <button
+                      type="button"
+                      onClick={() => setInputMode("video")}
+                      className={`px-2.5 py-1 rounded flex items-center gap-1 transition-colors ${
+                        inputMode === "video" ? "bg-slate-900 text-white" : "text-slate-500 hover:text-slate-700"
+                      }`}
+                    >
+                      <Video className="h-3 w-3" /> {t("ugq.video")}
+                    </button>
+                  </div>
                 </div>
+
+                {inputMode === "text" ? (
+                  <>
+                    <Textarea
+                      id="ugq-question"
+                      value={question}
+                      onChange={(e) => setQuestion(e.target.value.slice(0, MAX_LEN))}
+                      placeholder={t("ugq.questionComposerPlaceholder")}
+                      rows={4}
+                      autoFocus
+                    />
+                    <div className="flex justify-between text-xs">
+                      <span className={tooShort ? "text-amber-600" : "text-slate-400"}>
+                        {tooShort ? t("ugq.atLeastNCharacters", { count: MIN_LEN }) : "\u00A0"}
+                      </span>
+                      <span className="text-slate-400">{trimmed.length}/{MAX_LEN}</span>
+                    </div>
+                    {voiceRecordingPath ? (
+                      <div className="flex items-center gap-1 text-[11px] text-slate-500">
+                        <Mic className="h-3 w-3" />
+                        <span>{t("ugq.fromYourRecording")}</span>
+                        <span>&#183;</span>
+                        <button
+                          type="button"
+                          onClick={() => { setVoiceRecordingPath(null); setInputMode("voice"); }}
+                          className="text-blue-600 hover:underline"
+                        >
+                          {t("ugq.recordAgain")}
+                        </button>
+                      </div>
+                    ) : null}
+                  </>
+                ) : inputMode === "voice" ? (
+                  <VoiceRecorderPanel
+                    maxRecordingSeconds={MAX_RECORDING_SECONDS}
+                    onTranscript={(text, path) => {
+                      setQuestion(text.slice(0, MAX_LEN));
+                      setVoiceRecordingPath(path);
+                      setInputMode("text"); // hand off to the existing text review/submit flow
+                    }}
+                  />
+                ) : (
+                  // Epic X, NEW: unlike voice, this does its OWN full submit
+                  // (including the framing-gate resubmit loop) and hands off
+                  // via onSubmitted rather than populating `question` for the
+                  // Submit button below — see handleVideoSubmitted.
+                  <VideoRecorderPanel
+                    transcribeAudio={transcribeAudioForVideo}
+                    sourceUrl={sourceUrl}
+                    locationLabel={location}
+                    onSubmitted={handleVideoSubmitted}
+                    onCancel={() => setInputMode("text")}
+                  />
+                )}
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="ugq-source">Source link <span className="text-slate-400">(optional)</span></Label>
+                <Label htmlFor="ugq-source">{t("ugq.sourceLinkOptional")} <span className="text-slate-400">{t("ugq.optional")}</span></Label>
                 <Input
                   id="ugq-source"
                   value={sourceUrl}
                   onChange={(e) => setSourceUrl(e.target.value)}
-                  placeholder="Add a link for context"
+                  placeholder={t("ugq.addLinkForContext")}
                   inputMode="url"
                 />
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="ugq-location">Location <span className="text-slate-400">(optional)</span></Label>
+                <Label htmlFor="ugq-location">{t("ugq.locationOptional")} <span className="text-slate-400">{t("ugq.optional")}</span></Label>
                 <Input
                   id="ugq-location"
                   value={location}
                   onChange={(e) => setLocation(e.target.value)}
-                  placeholder="e.g. Lucknow, UP"
+                  placeholder={t("ugq.locationPlaceholder")}
                 />
               </div>
 
@@ -563,13 +1539,13 @@ export function ProposeQuestionModal({
 
             <DialogFooter>
               <Button variant="ghost" onClick={close} disabled={phase === "submitting"}>
-                Cancel
+                {t("auth.cancel")}
               </Button>
-              <Button onClick={handleSubmit} disabled={!canSubmit}>
+              <Button onClick={handleSubmit} disabled={!canSubmit || inputMode === "voice" || inputMode === "video"}>
                 {phase === "submitting" ? (
-                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Reviewing&#x2026;</>
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> {t("ugq.reviewing")}</>
                 ) : (
-                  "Submit for review"
+                  t("ugq.submitForReview")
                 )}
               </Button>
             </DialogFooter>

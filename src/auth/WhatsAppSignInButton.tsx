@@ -21,6 +21,7 @@
 // nothing staged to attach.
 import * as React from "react";
 import { buildWaHref } from "@/lib/whatsapp";
+import { useTranslation } from "react-i18next";
 
 function WhatsAppIcon() {
   return (
@@ -34,6 +35,7 @@ function WhatsAppIcon() {
 }
 
 export default function WhatsAppSignInButton() {
+  const { t } = useTranslation();
   return (
     <a
       href={buildWaHref("SUBSCRIBE")}
@@ -45,10 +47,10 @@ export default function WhatsAppSignInButton() {
         "bg-[#25D366] hover:bg-[#20BD5A]",
         "text-white border-transparent",
       ].join(" ")}
-      aria-label="Sign in via WhatsApp"
+      aria-label={t("auth.signInViaWhatsApp")}
     >
       <WhatsAppIcon />
-      <span>Sign in via WhatsApp</span>
+      <span>{t("auth.signInViaWhatsApp")}</span>
     </a>
   );
 }

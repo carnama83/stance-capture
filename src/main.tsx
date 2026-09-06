@@ -5,6 +5,10 @@ import { handleOAuthHashRedirect } from "./lib/oauthHashHandler";
 // HashRouter-compatible /#/auth/callback#access_token so Supabase can parse it.
 handleOAuthHashRedirect();
 
+// Must also run before React renders — components call useTranslation() on
+// first render, which needs i18next already initialized with its resources.
+import "./lib/i18n";
+
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
