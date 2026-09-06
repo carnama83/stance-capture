@@ -1,12 +1,18 @@
 // src/hooks/useIPLocation.ts
-// Detects the anonymous user's country via IP geolocation (ipapi.co).
-// Used to show a country-filtered feed tab for logged-out users.
+// Detects a visitor's country via IP geolocation (ipapi.co). General-purpose —
+// `enabled` is caller-controlled, not hardcoded to any one auth state.
 //
-// - Only fires when the user is NOT authenticated
-// - Cached for 24 hours in TanStack Query (single request per day)
+// - Cached for 24 hours in TanStack Query (single request per day per visitor)
 // - Fails silently — returns null country on any error, falling back to Global
 //
-// The actual ipapi.co fetch now lives in src/lib/ipLocation.ts, shared with
+// Callers (Sep 2026): Index.tsx enables this for anonymous (`!isAuthed`)
+// visitors, to show a country-filtered feed tab for logged-out users.
+// useShouldShowLanguageToggle.ts also enables it — for anonymous visitors
+// unconditionally, and for signed-in visitors only as a fallback once their
+// profile has confirmed it has no location set — to decide whether the
+// EN/Hindi toggle should render at all.
+//
+// The actual ipapi.co fetch lives in src/lib/ipLocation.ts, shared with
 // OAuthCallbackPage.tsx's claim_oauth_ip_location() fallback — this hook's
 // own caching/enabled behavior is unchanged.
 

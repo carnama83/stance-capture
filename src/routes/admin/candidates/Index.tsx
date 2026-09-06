@@ -102,6 +102,7 @@ type SourceDocument = {
 
 type Party = { id: string; name: string; abbreviation: string; brand_colour: string | null };
 type Constituency = { id: string; name: string; constituency_code: string };
+type LanguageOption = { language_code: string; display_name_english: string };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -284,6 +285,7 @@ function AddDocumentDialog({
   electionId,
   parties,
   candidates,
+  languages,
   onClose,
   onAdded,
 }: {
@@ -291,6 +293,7 @@ function AddDocumentDialog({
   electionId: string;
   parties: Party[];
   candidates: Candidate[];
+  languages: LanguageOption[];
   onClose: () => void;
   onAdded: () => void;
 }) {
@@ -400,13 +403,11 @@ function AddDocumentDialog({
               <Select value={originalLanguage} onValueChange={setOriginalLanguage}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="en">English</SelectItem>
-                  <SelectItem value="hi">Hindi (हिन्दी)</SelectItem>
-                  <SelectItem value="ur">Urdu (اردو)</SelectItem>
-                  <SelectItem value="mr">Marathi</SelectItem>
-                  <SelectItem value="ta">Tamil</SelectItem>
-                  <SelectItem value="te">Telugu</SelectItem>
-                  <SelectItem value="bn">Bengali</SelectItem>
+                  {languages.map((l) => (
+                    <SelectItem key={l.language_code} value={l.language_code}>
+                      {l.display_name_english}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
               {originalLanguage !== "en" && (
@@ -661,6 +662,7 @@ export default function AdminCandidatesPage() {
   const [candidates, setCandidates] = React.useState<Candidate[]>([]);
   const [documents, setDocuments] = React.useState<SourceDocument[]>([]);
   const [parties, setParties] = React.useState<Party[]>([]);
+  const [languages, setLanguages] = React.useState<LanguageOption[]>([]);
 
   const [loadingCandidates, setLoadingCandidates] = React.useState(false);
   const [loadingDocs, setLoadingDocs] = React.useState(false);
@@ -732,6 +734,18 @@ export default function AdminCandidatesPage() {
       const res = await fetch(`${supabaseUrl}/rest/v1/election_parties?select=id,name,abbreviation,brand_colour&country=eq.IN&party_type=eq.PARTY&order=name`, { headers });
       if (!res.ok) return;
       setParties(await res.json());
+    })();
+  }, [getHeaders]);
+
+  // Load languages (source-document original-language options — admin data
+  // entry field, so every registered language is offered here regardless of
+  // is_active_for_ugq/is_active_for_ui, unlike the UGQ/UI-facing pickers).
+  React.useEffect(() => {
+    (async () => {
+      const { headers, supabaseUrl } = getHeaders();
+      const res = await fetch(`${supabaseUrl}/rest/v1/languages?select=language_code,display_name_english&order=display_name_english`, { headers });
+      if (!res.ok) return;
+      setLanguages(await res.json());
     })();
   }, [getHeaders]);
 
@@ -1003,6 +1017,7 @@ export default function AdminCandidatesPage() {
           electionId={selectedElectionId}
           parties={parties}
           candidates={candidates}
+          languages={languages}
           onClose={() => setShowAddDoc(false)}
           onAdded={fetchDocuments}
         />

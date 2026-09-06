@@ -1118,7 +1118,12 @@ export function ProposeQuestionModal({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="sm:max-w-lg"
+        // Sep 2026, NEW: this modal's content (cover image, preview text,
+        // background/context, publish-choice radios, footer) can run taller
+        // than a laptop viewport — the base DialogContent has no height cap
+        // or scroll of its own, so without this the bottom (including the
+        // Publish button) was only reachable by zooming the whole page out.
+        className="sm:max-w-lg max-h-[90vh] overflow-y-auto"
         // Aug 2026: a click outside was silently discarding an already-saved
         // preview mid-review (proposal + screening had already completed —
         // only the browser's copy of the preview was lost). Only explicit

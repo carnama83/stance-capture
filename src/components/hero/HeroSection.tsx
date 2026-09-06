@@ -32,6 +32,7 @@
 import * as React from "react";
 import { Link } from "react-router-dom";
 import { QuestionStanceSlider } from "@/components/question/QuestionStanceSlider";
+import { VideoThumbnailCard } from "@/components/question/VideoThumbnailCard";
 import { CommunityStanceBar } from "@/components/question/CommunityStanceBar";
 import { ShareButton } from "@/components/share/ShareButton";
 import { clampPole } from "@/lib/poleLabels";
@@ -1185,7 +1186,22 @@ function SectionAQuestion({
       {/* ── Split layout: text left on white, image right with fade ── */}
       <div className="relative overflow-hidden">
 
-        {question.cover_image_url && (
+        {question.content_type === "video" && question.video_recording_path ? (
+          <>
+            <VideoThumbnailCard
+              questionId={question.question_id}
+              posterUrl={question.cover_image_url}
+              className="absolute top-0 right-0 h-full w-3/5 rounded-none"
+            />
+            <div
+              className="absolute top-0 right-0 h-full w-3/5 pointer-events-none"
+              style={{
+                background:
+                  "linear-gradient(to right, white 0%, white 15%, rgba(255,255,255,0.85) 35%, rgba(255,255,255,0.3) 65%, transparent 100%)",
+              }}
+            />
+          </>
+        ) : question.cover_image_url && (
           <>
             <img
               src={question.cover_image_url}
@@ -1294,6 +1310,7 @@ function SectionAQuestion({
                 questionId={question.question_id}
                 questionText={question.question_text}
                 summary={question.summary}
+                languageCode={languageCode}
                 initialValue={isResultMode ? (submittedStance ?? null) : null}
                 disabled={isSubmitting}
                 pulseThumb={!isSubmitting && !isResultMode}
@@ -1327,6 +1344,7 @@ function SectionAQuestion({
               questionId={question.question_id}
               questionText={question.question_text}
               summary={question.summary}
+              languageCode={languageCode}
               initialValue={null}
               onSubmit={(v) => (onStage ? onStage(question.question_id, v) : onLoginRedirect())}
               onInteractionStart={onGuestEngage}
@@ -1429,7 +1447,13 @@ function QueueCard({
         .join(" ")}
     >
       <div className="relative h-24 overflow-hidden bg-slate-100">
-        {question.cover_image_url ? (
+        {question.content_type === "video" && question.video_recording_path ? (
+          <VideoThumbnailCard
+            questionId={question.question_id}
+            posterUrl={question.cover_image_url}
+            className="h-full w-full rounded-none"
+          />
+        ) : question.cover_image_url ? (
           <img
             src={question.cover_image_url}
             alt=""
