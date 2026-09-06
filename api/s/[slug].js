@@ -13,11 +13,14 @@
 // tracked or re-derived downstream. Deliberately a path segment, not a query
 // param — see inline note at `canonical` below for why.
 //
-// KNOWN GAP: question_renditions only stores rendered_text (+ slider labels),
-// not a rendition of share_headline or context_summary/summary. So a Hindi
-// variant gets a Hindi og:title (falling back to the literal question text,
-// since there's no transcreated headline yet) but an English og:description —
-// visible, real imperfection until those get their own rendition fields.
+// KNOWN GAP: question_renditions has no rendition of share_headline — a
+// Hindi variant's og:title still falls back to the literal (transcreated)
+// question text rather than a crafted headline, since share_headline itself
+// is only ever written in the canonical language. context_summary/summary
+// used to have the same gap; context_summary now has its own rendition
+// field (Sep 2026) and og:description below uses it when a resolved
+// rendition has one. `summary` (a shorter, different field used elsewhere,
+// e.g. IncidentSummaryCard) is unaffected and stays English-only.
 //
 // Vercel project env needed (Production + Preview):
 //   SUPABASE_URL          (e.g. https://yzxzpnomcarnxixhjlba.supabase.co)
@@ -54,7 +57,7 @@ async function fetchQuestion(base, anon, filter) {
 // not an error. A Hindi link for a question with no Hindi rendition yet
 // should still resolve and redirect correctly, just showing English.
 async function fetchRendition(base, anon, questionId, lang) {
-  const url = `${base}/rest/v1/question_renditions?question_id=eq.${encodeURIComponent(questionId)}&language_code=eq.${encodeURIComponent(lang)}&transform_status=eq.published&select=rendered_text,slider_low_label,slider_high_label&limit=1`;
+  const url = `${base}/rest/v1/question_renditions?question_id=eq.${encodeURIComponent(questionId)}&language_code=eq.${encodeURIComponent(lang)}&transform_status=eq.published&select=rendered_text,slider_low_label,slider_high_label,context_summary&limit=1`;
   const r = await fetch(url, { headers: { apikey: anon, Authorization: `Bearer ${anon}` } });
   if (!r.ok) return null;
   const rows = await r.json();
@@ -139,9 +142,12 @@ export default async function handler(req, res) {
   const title = esc(
     (rendition?.rendered_text || q?.share_headline || q?.question || "Stance Capture — Where do you stand?").slice(0, 110)
   );
-  // context_summary/summary have no rendition at all — this stays English
-  // even on a resolved Hindi variant. Flagged, not hidden: see file header.
-  const desc = esc((q?.context_summary || q?.summary || "See where people stand and add your view.").slice(0, 180));
+  // Sep 2026: prefer the resolved rendition's context_summary (a genuine
+  // Hindi/etc. translation, not the English fallback) — see file header.
+  // Falls through to the canonical English context_summary/summary exactly
+  // as before whenever no rendition was resolved, or it has none of its own
+  // (e.g. the source question never had a context_summary to translate).
+  const desc = esc((rendition?.context_summary || q?.context_summary || q?.summary || "See where people stand and add your view.").slice(0, 180));
   // BUG FIX: this always used a static generic image, ignoring
   // questions.cover_image_url entirely — the same field the rest of the app
   // (HeroSection, QuestionCard, QuestionDetailPage) reads directly for this
