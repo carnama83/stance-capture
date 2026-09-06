@@ -33,6 +33,7 @@
   },
   "ugq": {
     "stanceScalePreviewNote": "Here\u2019s how the stance scale will appear to users:",
+    "englishCanonicalNote": "This will be published in English:",
     "opposeDefault": "Oppose",
     "supportDefault": "Support",
     "neutralLabel": "Neutral",
