@@ -17,7 +17,7 @@
 
 import * as React from "react";
 import { RefreshCw } from "lucide-react";
-import { resolvePoleLabels, distinctPoleLabels } from "@/lib/poleLabels";
+import { resolvePoleLabels } from "@/lib/poleLabels";
 
 // ── Props ──────────────────────────────────────────────────────────────────────
 
@@ -138,12 +138,14 @@ export function CommunityStanceBar({
   // Negative pole (opposePct / red) → low label; positive pole (supportPct /
   // green) → high label.
   const { negFull, posFull } = resolvePoleLabels(lowLabel, highLabel);
-  const { negShort, posShort } = distinctPoleLabels(negFull, posFull);
 
   // Ghost marker position: map score -2..+2 to 0..100% across the bar.
+  // Clamped to 4..96 (not the full 0..100) so an extreme (-2 or +2) stance's
+  // marker and "you" label — centered on this position via -translate-x-1/2
+  // — stay fully within the bar's width instead of hanging off its edge.
   const hasGhost = myStanceScore != null;
   const ghostPos = hasGhost
-    ? Math.min(100, Math.max(0, ((myStanceScore! + 2) / 4) * 100))
+    ? Math.min(96, Math.max(4, ((myStanceScore! + 2) / 4) * 100))
     : null;
 
   // ── Loading state ──
@@ -168,18 +170,18 @@ export function CommunityStanceBar({
           role="img"
           aria-label="No stances recorded yet"
         />
-        <div className={`flex items-center justify-between ${compact ? "text-[11px]" : "text-xs"} text-slate-400`}>
-          <span title={negFull}>
-            <span className="inline-block h-2 w-2 rounded-full bg-slate-200 mr-1 align-middle" />
-            {negShort} 0%
+        <div className={`flex items-start justify-between gap-2 ${compact ? "text-[11px]" : "text-xs"} text-slate-400`}>
+          <span className="flex min-w-0 flex-1 items-start gap-1">
+            <span className="mt-0.5 inline-block h-2 w-2 shrink-0 rounded-full bg-slate-200" />
+            <span className="break-words">{negFull} 0%</span>
           </span>
-          <span>
-            <span className="inline-block h-2 w-2 rounded-full bg-slate-200 mr-1 align-middle" />
+          <span className="flex shrink-0 items-start gap-1 whitespace-nowrap">
+            <span className="mt-0.5 inline-block h-2 w-2 shrink-0 rounded-full bg-slate-200" />
             Neutral 0%
           </span>
-          <span title={posFull}>
-            <span className="inline-block h-2 w-2 rounded-full bg-slate-200 mr-1 align-middle" />
-            {posShort} 0%
+          <span className="flex min-w-0 flex-1 items-start justify-end gap-1 text-right">
+            <span className="break-words">{posFull} 0%</span>
+            <span className="mt-0.5 inline-block h-2 w-2 shrink-0 rounded-full bg-slate-200" />
           </span>
         </div>
         <p className={`${compact ? "text-[11px]" : "text-xs"} text-slate-400`}>
@@ -210,8 +212,23 @@ export function CommunityStanceBar({
       {/* Label row */}
       <Header compact={compact} onRefresh={onRefresh} isLoading={false} />
 
-      {/* Segmented bar (relative wrapper holds the ghost marker) */}
-      <div className="relative">
+      {/* Segmented bar (relative wrapper holds the ghost marker). Extra
+          bottom margin when a ghost marker is shown — its "you" label
+          floats below the bar via absolute positioning (see GhostMarker).
+          Sep 2026, FIXED (3rd pass, root cause): an mb-* UTILITY CLASS here
+          does nothing — the parent's space-y-2 sets margin-bottom:0 on every
+          non-first child via `> :not([hidden]) ~ :not([hidden])`, a
+          combinator selector that beats a plain single-class utility on
+          specificity, silently cancelling mb-3 and then mb-6 in the two
+          prior attempts (confirmed by measuring actual rendered rects: the
+          gap never moved off space-y-2's own 8px, regardless of the mb-*
+          value used). An inline style bypasses stylesheet specificity
+          entirely. 24px clears the label's real extent: it sits at
+          top:12px within a 10px-tall container, plus its own explicit
+          12px line-height (see the label's lineHeight below) = 24px from
+          the bar's top edge = 14px below the bar's bottom edge; 24px total
+          leaves comfortable margin instead of landing right on the edge. */}
+      <div className="relative" style={hasGhost ? { marginBottom: 24 } : undefined}>
       <div
         className="flex w-full overflow-hidden rounded-full"
         style={{ height: compact ? 8 : 10 }}
@@ -246,23 +263,32 @@ export function CommunityStanceBar({
         )}
       </div>
 
-      {/* Legend row */}
-      <div
-        className={`flex items-center justify-between ${
-          compact ? "text-[11px]" : "text-xs"
-        } text-slate-600`}
-      >
-        <span title={negFull}>
-          <span className="inline-block h-2 w-2 rounded-full bg-red-400 mr-1 align-middle" />
-          {negShort} {formatPct(opposePct)}
+      {/* Legend. Sep 2026, FIXED (3rd pass): truncating to negShort/posShort
+          + ellipsis stopped the overlap but made long custom pole labels
+          permanently unreadable — same "not completely visible" complaint,
+          different cause. Stacking vertically (2nd pass) fixed readability
+          but threw away the left/right spatial mapping to the bar itself
+          (the oppose/red label should read near the bar's LEFT end, the
+          support/green label near its RIGHT end) — a real regression, not
+          a style nitpick. This keeps that left/center/right arrangement
+          (flex-1 on the outer two, justify-end + text-right mirrors it on
+          the right side) but swaps truncate for break-words, so long labels
+          wrap onto multiple lines within their own side instead of either
+          being cut off or losing their position. items-start (not center)
+          keeps the three columns top-aligned when one wraps taller than
+          the others. */}
+      <div className={`flex items-start justify-between gap-2 ${compact ? "text-[11px]" : "text-xs"} text-slate-600`}>
+        <span className="flex min-w-0 flex-1 items-start gap-1">
+          <span className="mt-0.5 inline-block h-2 w-2 shrink-0 rounded-full bg-red-400" />
+          <span className="break-words">{negFull} {formatPct(opposePct)}</span>
         </span>
-        <span>
-          <span className="inline-block h-2 w-2 rounded-full bg-slate-300 mr-1 align-middle" />
+        <span className="flex shrink-0 items-start gap-1 whitespace-nowrap">
+          <span className="mt-0.5 inline-block h-2 w-2 shrink-0 rounded-full bg-slate-300" />
           Neutral {formatPct(neutralPct)}
         </span>
-        <span title={posFull}>
-          <span className="inline-block h-2 w-2 rounded-full bg-emerald-400 mr-1 align-middle" />
-          {posShort} {formatPct(supportPct)}
+        <span className="flex min-w-0 flex-1 items-start justify-end gap-1 text-right">
+          <span className="break-words">{posFull} {formatPct(supportPct)}</span>
+          <span className="mt-0.5 inline-block h-2 w-2 shrink-0 rounded-full bg-emerald-400" />
         </span>
       </div>
 
@@ -321,7 +347,13 @@ function GhostMarker({ pos, counted, compact }: { pos: number; counted: boolean;
       />
       <span
         className="absolute whitespace-nowrap font-semibold"
-        style={{ top: compact ? 10 : 12, fontSize: compact ? 9 : 10, color }}
+        // lineHeight pinned explicitly (not inherited) so its total rendered
+        // extent is knowable — the wrapper's mb-6 above was sized against
+        // this exact value plus the top offset (12 + 12 = 24px from the
+        // bar's own top edge, i.e. 14px clear of the bar's bottom edge).
+        // Letting this inherit an ambient line-height was the root cause of
+        // the first fix (mb-3) falling short by a few pixels.
+        style={{ top: compact ? 10 : 12, fontSize: compact ? 9 : 10, lineHeight: compact ? "10px" : "12px", color }}
       >
         you
       </span>

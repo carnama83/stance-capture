@@ -33,6 +33,7 @@ import { ExpectationPrompt, type ExpectationType } from "@/components/question/E
 import { AuthorityBlock } from "@/components/question/AuthorityBlock";
 import { IncidentSummaryCard } from "@/components/question/IncidentSummaryCard";
 import { QuestionContextCard } from "@/components/question/QuestionContextCard";
+import { RawVideoReveal } from "@/components/question/RawVideoReveal";
 import { ExpectationSignalBlock } from "@/components/question/ExpectationSignalBlock";
 import { AuthorityResponseStatusBlock } from "@/components/question/AuthorityResponseStatusBlock";
 import { fetchUserRegionId } from "@/lib/userRegion";
@@ -74,6 +75,11 @@ type LiveQuestion = {
   slider_high_label?: string | null;
   source?: string | null;
   source_meta?: unknown;
+  // Sep 2026, FIXED: get_question_localized never returned these, so a
+  // published content_type='video' question had no way to surface its
+  // video here at all — see RawVideoReveal.
+  video_recording_path?: string | null;
+  video_publish_choice?: string | null;
 };
 
 type TopicLite = {
@@ -166,10 +172,14 @@ async function fetchQuestionById(id: string, languageCode: string): Promise<Live
   const sb = getSupabase();
   if (!sb) throw new Error("Supabase client not available");
 
-  // NOTE: context_summary is NOT localized — no rendition field exists for
-  // it yet (same known gap flagged in api/s/[slug].js). question and the
-  // slider labels are resolved server-side; everything else on LiveQuestion
-  // is language-independent metadata, unchanged either way.
+  // Sep 2026: question, the slider labels, AND context_summary are all now
+  // resolved server-side via question_renditions (context_summary was the
+  // last one still falling back to English unconditionally — see
+  // get_question_localized and generate-question-renditions). `summary` (a
+  // different, shorter field used by IncidentSummaryCard etc.) and the
+  // social-share meta description in api/s/[slug].js are separate, still-
+  // English-only surfaces, not fixed by this. Everything else on
+  // LiveQuestion is language-independent metadata, unchanged either way.
   const { data, error } = await sb.rpc("get_question_localized", {
     p_question_id: id,
     p_language_code: languageCode,
@@ -841,6 +851,7 @@ function StanceCard({
               questionId={questionId}
               questionText={question.question}
               summary={question.summary ?? null}
+              languageCode={languageCode}
               initialValue={myStance ?? null}
               disabled={stanceMutation.isPending || stanceLoading || isArchived}
               mutationPending={stanceMutation.isPending}
@@ -897,7 +908,7 @@ function StanceCard({
               <span>{t("stance.noStanceRecorded")}</span>
             ) : (
               <span>
-                {t("stance.savedAs", { label: buildStanceLabels(question?.slider_low_label, question?.slider_high_label, languageCode)[myStance ?? 0] })}
+                {t("stance.savedAs", { label: buildStanceLabels(question?.slider_low_label, question?.slider_high_label, { neutral: t("stance.neutral"), leanOppose: t("stance.leanOppose"), leanSupport: t("stance.leanSupport") }, languageCode)[myStance ?? 0] })}
               </span>
             )}
 
@@ -1228,7 +1239,7 @@ export default function QuestionDetailPage() {
       const label =
         resolvedScore == null
           ? null
-          : (buildStanceLabels(question?.slider_low_label, question?.slider_high_label, languageCode)[resolvedScore] ?? t("stance.scoreFallback", { score: resolvedScore }));
+          : (buildStanceLabels(question?.slider_low_label, question?.slider_high_label, { neutral: t("stance.neutral"), leanOppose: t("stance.leanOppose"), leanSupport: t("stance.leanSupport") }, languageCode)[resolvedScore] ?? t("stance.scoreFallback", { score: resolvedScore }));
 
       toast({
         title: resolvedScore == null ? t("stance.stanceCleared") : t("stance.stanceSaved"),
@@ -1509,17 +1520,28 @@ export default function QuestionDetailPage() {
             )}
           </div>
 
-          {question.cover_image_url && (
+          {question.content_type === "video" && question.video_recording_path ? (
+            // Epic X: the raw clip itself, not the auto-scraped cover image
+            // — see RawVideoReveal. video_publish_choice === "raw_only"
+            // still shows this; the AI overlay title/question text that
+            // choice controls lives entirely server-side (the published
+            // question row's own text), nothing extra to branch on here.
             <div className="mt-6">
-              <EditorialHeroImage
-                imageUrl={question.cover_image_url}
-                alt={question.question}
-                height={420}
-              />
-              <p className="mt-2 text-xs text-slate-500 leading-snug">
-                {t("stance.imageSourceCaption")}
-              </p>
+              <RawVideoReveal questionId={question.id} posterUrl={question.cover_image_url} />
             </div>
+          ) : (
+            question.cover_image_url && (
+              <div className="mt-6">
+                <EditorialHeroImage
+                  imageUrl={question.cover_image_url}
+                  alt={question.question}
+                  height={420}
+                />
+                <p className="mt-2 text-xs text-slate-500 leading-snug">
+                  {t("stance.imageSourceCaption")}
+                </p>
+              </div>
+            )
           )}
 
           <div className="mt-6 md:hidden">

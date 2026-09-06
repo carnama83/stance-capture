@@ -19,6 +19,7 @@ import { NotificationsBell } from "@/components/notifications/NotificationsBell"
 import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_PROJECT_REF, getJwt } from "@/lib/env";
 import { useTranslation } from "react-i18next";
 import { useUiLanguage } from "@/hooks/useUiLanguage";
+import { useShouldShowLanguageToggle } from "@/hooks/useShouldShowLanguageToggle";
 
 type Profile = {
   random_id: string;
@@ -156,6 +157,10 @@ export default function AppTopBar({
   // resolution elsewhere (useLanguage), even though it falls back to that
   // hook's result for a signed-in user's first load on a fresh device.
   const { languageCode, setLanguageCode } = useUiLanguage(userId);
+  // Sep 2026, NEW: hides the toggle for visitors clearly outside India —
+  // see useShouldShowLanguageToggle.ts for the full precedence (explicit
+  // past choice always wins, fails open when geography is undetermined).
+  const showLanguageToggle = useShouldShowLanguageToggle(userId);
   const onLoginPage = location.pathname === "/login";
   const onSignupPage = location.pathname === "/signup";
   const onAuthPage = onLoginPage || onSignupPage;
@@ -364,38 +369,42 @@ export default function AppTopBar({
                 names): this sits in the header on every page, unlike
                 Signup's old picker which had a whole labeled section to
                 itself. Visible regardless of auth state, same as the
-                Anonymous/Sign-in pill next to it. */}
-            <div
-              className="inline-flex items-center rounded-full border border-border bg-muted p-1"
-              aria-label={t("nav.languageToggle")}
-            >
-              <button
-                type="button"
-                onClick={() => setLanguageCode("en")}
-                className={[
-                  "px-2.5 py-1.5 text-xs font-medium rounded-full transition",
-                  languageCode === "en"
-                    ? "bg-primary text-primary-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground hover:bg-accent",
-                ].join(" ")}
-                aria-pressed={languageCode === "en"}
+                Anonymous/Sign-in pill next to it — but NOT regardless of
+                geography (Sep 2026, NEW): gated on showLanguageToggle, see
+                useShouldShowLanguageToggle.ts. */}
+            {showLanguageToggle && (
+              <div
+                className="inline-flex items-center rounded-full border border-border bg-muted p-1"
+                aria-label={t("nav.languageToggle")}
               >
-                EN
-              </button>
-              <button
-                type="button"
-                onClick={() => setLanguageCode("hi")}
-                className={[
-                  "px-2.5 py-1.5 text-xs font-medium rounded-full transition",
-                  languageCode === "hi"
-                    ? "bg-primary text-primary-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground hover:bg-accent",
-                ].join(" ")}
-                aria-pressed={languageCode === "hi"}
-              >
-                हिं
-              </button>
-            </div>
+                <button
+                  type="button"
+                  onClick={() => setLanguageCode("en")}
+                  className={[
+                    "px-2.5 py-1.5 text-xs font-medium rounded-full transition",
+                    languageCode === "en"
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground hover:bg-accent",
+                  ].join(" ")}
+                  aria-pressed={languageCode === "en"}
+                >
+                  EN
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLanguageCode("hi")}
+                  className={[
+                    "px-2.5 py-1.5 text-xs font-medium rounded-full transition",
+                    languageCode === "hi"
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground hover:bg-accent",
+                  ].join(" ")}
+                  aria-pressed={languageCode === "hi"}
+                >
+                  हिं
+                </button>
+              </div>
+            )}
 
             {/* Inline Search — expands on click */}
             {searchOpen ? (

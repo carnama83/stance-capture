@@ -66,6 +66,9 @@ export type HeroQuestion = {
   impact_normalized?: number | null;
   slider_low_label?: string | null;
   slider_high_label?: string | null;
+  // Sep 2026, NEW — see VideoThumbnailCard.
+  content_type?: string | null;
+  video_recording_path?: string | null;
 };
 
 // HeroDistribution replaced by CommunityStanceData from @/types/communityStance
