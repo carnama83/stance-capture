@@ -81,6 +81,7 @@
     "finishingUpPreview": "We're finishing up your preview \u2014 this can take up to a minute with everything we check.",
     "background": "Background",
     "notFactCheckedYet": "Not fact-checked yet \u2014 our team reviews shortly after this goes live and may refine the wording.",
+    "factChecked": "Fact-checked against public records before you publish.",
     "checkingForPreview": "Checking for your preview\u2026",
     "addContextRegenerate": "Add more context and regenerate",
     "whatToAddOrFix": "What should we add or fix?",

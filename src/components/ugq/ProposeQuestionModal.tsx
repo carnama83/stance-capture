@@ -83,6 +83,11 @@ type PreviewReframe = {
   // old row, or because it genuinely found nothing. Either way, absent just
   // means no image to show.
   cover_image_url: string | null;
+  // Sep 2026, NEW: true only for a preview ugq-verify-preview upgraded via
+  // the Stage A/B/C fact-check pipeline (voice/video proposals only — see
+  // triggerVerifiedPreview). Undefined/false means the fast, unverified
+  // ugq-screen preview — same "notFactCheckedYet" disclaimer as before.
+  verified?: boolean;
 };
 
 type Authority = { id: string; name: string; domain: string; jurisdiction_level: string };
@@ -103,6 +108,7 @@ function parsePreviewReframe(raw: unknown): PreviewReframe | null {
     quality_notes: typeof r.quality_notes === "string" ? r.quality_notes : null,
     cover_image_url: typeof r.cover_image_url === "string" && r.cover_image_url.trim()
       ? r.cover_image_url.trim() : null,
+    verified: r.verified === true,
   };
 }
 
@@ -583,6 +589,14 @@ export function ProposeQuestionModal({
   const [pollAttempts, setPollAttempts] = React.useState(0);
   const [pollExhausted, setPollExhausted] = React.useState(false);
 
+  // Sep 2026, NEW — see triggerVerifiedPreview. True while a voice/video
+  // proposal's Stage A/B/C fact-check is in flight; blocks the poll effect
+  // below from showing ugq-screen's fast/unverified preview in the
+  // meantime, so the reviewer only ever sees the fact-checked version (or,
+  // if verification fails open, falls through to the same poll fallback a
+  // text proposal already uses).
+  const [awaitingVerification, setAwaitingVerification] = React.useState(false);
+
   // Refine state (Aug 2026, NEW) — see handleRefine. Only relevant during
   // phase==="review", independent of the poll state above (by the time
   // refine is available, previewReframe is already populated, so the poll
@@ -642,6 +656,7 @@ export function ProposeQuestionModal({
       setAutoPublished(false);
       setPollAttempts(0);
       setPollExhausted(false);
+      setAwaitingVerification(false);
       setRefineOpen(false);
       setRefineText("");
       setRefining(false);
@@ -673,7 +688,7 @@ export function ProposeQuestionModal({
   const POLL_MAX_ATTEMPTS = 10; // 10 * 3s = 30s of polling on top of ugq-submit's own ~20s wait
 
   React.useEffect(() => {
-    if (phase !== "review" || previewReframe || !proposalId || pollExhausted) return;
+    if (phase !== "review" || previewReframe || !proposalId || pollExhausted || awaitingVerification) return;
 
     let cancelled = false;
     const timer = setInterval(async () => {
@@ -733,7 +748,36 @@ export function ProposeQuestionModal({
       cancelled = true;
       clearInterval(timer);
     };
-  }, [phase, previewReframe, proposalId, pollExhausted]);
+  }, [phase, previewReframe, proposalId, pollExhausted, awaitingVerification]);
+
+  // Sep 2026, NEW: for voice/video proposals only, upgrades ugq-screen's
+  // fast/unverified preview to the real Stage A/B/C fact-checked one — see
+  // ugq-verify-preview for why this is scoped to voice/video (that's where
+  // the Hinglish/mis-transcription risk lives) rather than every
+  // submission. Fails OPEN: on any non-verified outcome (infra hiccup,
+  // timeout, no topic yet), this just stops blocking the poll effect above,
+  // which then shows whatever ugq-screen already wrote (or keeps waiting if
+  // it hasn't yet) — same fallback a network blip on the fast path already
+  // relied on.
+  async function triggerVerifiedPreview(pid: string) {
+    try {
+      const jwt = getJwt();
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/ugq-verify-preview`, {
+        method: "POST",
+        headers: supabaseHeaders(jwt),
+        body: JSON.stringify({ proposal_id: pid }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json?.ok && json.verified === true) {
+        const parsed = parsePreviewReframe(json.preview_reframe);
+        if (parsed) setPreviewReframe(parsed);
+      }
+    } catch {
+      // Network hiccup — fall through to the poll effect fallback.
+    } finally {
+      setAwaitingVerification(false);
+    }
+  }
 
   const trimmed = question.trim();
   const tooShort = trimmed.length > 0 && trimmed.length < MIN_LEN;
@@ -778,8 +822,16 @@ export function ProposeQuestionModal({
         return;
       }
 
-      setProposalId(typeof json.proposal_id === "string" ? json.proposal_id : null);
-      setPreviewReframe(parsePreviewReframe(json.preview_reframe));
+      const newProposalId = typeof json.proposal_id === "string" ? json.proposal_id : null;
+      setProposalId(newProposalId);
+
+      // Sep 2026, NEW: voice proposals run Stage A/B/C synchronously before
+      // any preview is shown — see triggerVerifiedPreview. The fast/
+      // unverified preview_reframe ugq-submit already computed is
+      // deliberately NOT displayed here; the existing "checking for your
+      // preview" spinner covers this wait instead.
+      const isVoice = !!voiceRecordingPath;
+      setPreviewReframe(isVoice ? null : parsePreviewReframe(json.preview_reframe));
 
       // Backward compat: if this environment still has silent auto-publish on
       // (UGQ_AUTOPUBLISH_ENABLED=true server-side), ugq-submit already
@@ -790,6 +842,11 @@ export function ProposeQuestionModal({
         setAutoPublished(true);
         setPhase("published");
         return;
+      }
+
+      if (isVoice && newProposalId) {
+        setAwaitingVerification(true);
+        void triggerVerifiedPreview(newProposalId);
       }
 
       setPhase("review");
@@ -881,6 +938,12 @@ export function ProposeQuestionModal({
     setPollAttempts(0);
     setPollExhausted(false);
     setErrorMsg(null);
+    // Sep 2026, NEW: same synchronous Stage A/B/C upgrade as the voice path
+    // — see triggerVerifiedPreview. Video never had the fast preview text
+    // in hand here to begin with, so on a fail-open outcome this just lets
+    // the poll effect above pick it up from the DB exactly as before.
+    setAwaitingVerification(true);
+    void triggerVerifiedPreview(result.proposalId);
     setPhase("review");
   }
 
@@ -907,6 +970,7 @@ export function ProposeQuestionModal({
     setIsVideoProposal(false);
     setPollAttempts(0);
     setPollExhausted(false);
+    setAwaitingVerification(false);
     setErrorMsg(null);
   }
 
@@ -1184,8 +1248,9 @@ export function ProposeQuestionModal({
                   </div>
                 ) : null}
 
-                <p className="text-[11px] text-amber-700/80 pt-1">
-                  {t("ugq.notFactCheckedYet")}
+                <p className={preview.verified ? "text-[11px] text-emerald-700/90 pt-1 flex items-center gap-1" : "text-[11px] text-amber-700/80 pt-1"}>
+                  {preview.verified ? <CheckCircle2 className="h-3 w-3 shrink-0" /> : null}
+                  {preview.verified ? t("ugq.factChecked") : t("ugq.notFactCheckedYet")}
                 </p>
               </div>
             ) : !pollExhausted ? (

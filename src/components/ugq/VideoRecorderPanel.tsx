@@ -47,6 +47,15 @@ type Props = {
   // silently dropped since this component posts its own submit body.
   sourceUrl?: string | null;
   locationLabel?: string | null;
+  // Sep 2026, NEW: when set, this is a RESUBMIT of an existing
+  // resubmit_requested video proposal (see ProposalDetailPage.tsx) rather
+  // than a brand-new one — submit() calls ugq-resubmit-video with this id
+  // instead of ugq-submit, updating the SAME row in place (that's what
+  // actually drives its existing video_resubmit_count) rather than creating
+  // a second proposal for what's conceptually one question. Recording,
+  // transcribing and reviewing all work identically either way — only the
+  // final submit target changes.
+  resubmitProposalId?: string;
   onSubmitted: (result: {
     proposalId: string;
     status: string;
@@ -62,7 +71,7 @@ type Props = {
 
 type Stage = "idle" | "recording" | "processing" | "review" | "submitting" | "resubmit";
 
-export function VideoRecorderPanel({ transcribeAudio, sourceUrl = null, locationLabel = null, onSubmitted, onCancel }: Props) {
+export function VideoRecorderPanel({ transcribeAudio, sourceUrl = null, locationLabel = null, resubmitProposalId, onSubmitted, onCancel }: Props) {
   const [stage, setStage] = useState<Stage>("idle");
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -186,22 +195,37 @@ export function VideoRecorderPanel({ transcribeAudio, sourceUrl = null, location
         throw new Error(uploadJson.message ?? "Video upload failed");
       }
 
-      // 2. Submit the proposal — editedTranscript (proposer-reviewed) is
-      //    raw_question; rawTranscript (untouched) is video_raw_transcript,
-      //    which is what the framing gate in ugq-screen actually checks.
-      const submitResp = await fetch(`${SUPABASE_URL}/functions/v1/ugq-submit`, {
-        method: "POST",
-        headers: supabaseHeaders(jwt),
-        body: JSON.stringify({
-          raw_question: editedTranscript.trim(),
-          input_mode: "video",
-          video_recording_path: uploadJson.video_recording_path,
-          video_duration_seconds: uploadJson.video_duration_seconds,
-          video_raw_transcript: rawTranscript.trim(),
-          source_url: sourceUrl?.trim() || null,
-          location_label: locationLabel?.trim() || null,
-        }),
-      });
+      // 2. Submit — editedTranscript (proposer-reviewed) is raw_question;
+      //    rawTranscript (untouched) is video_raw_transcript, which is what
+      //    the framing gate in ugq-screen actually checks. A resubmit hits
+      //    ugq-resubmit-video (same proposal_id, in place) instead of
+      //    ugq-submit (which would create a new proposal) — see the
+      //    resubmitProposalId prop comment.
+      const submitResp = resubmitProposalId
+        ? await fetch(`${SUPABASE_URL}/functions/v1/ugq-resubmit-video`, {
+            method: "POST",
+            headers: supabaseHeaders(jwt),
+            body: JSON.stringify({
+              proposal_id: resubmitProposalId,
+              raw_question: editedTranscript.trim(),
+              video_recording_path: uploadJson.video_recording_path,
+              video_duration_seconds: uploadJson.video_duration_seconds,
+              video_raw_transcript: rawTranscript.trim(),
+            }),
+          })
+        : await fetch(`${SUPABASE_URL}/functions/v1/ugq-submit`, {
+            method: "POST",
+            headers: supabaseHeaders(jwt),
+            body: JSON.stringify({
+              raw_question: editedTranscript.trim(),
+              input_mode: "video",
+              video_recording_path: uploadJson.video_recording_path,
+              video_duration_seconds: uploadJson.video_duration_seconds,
+              video_raw_transcript: rawTranscript.trim(),
+              source_url: sourceUrl?.trim() || null,
+              location_label: locationLabel?.trim() || null,
+            }),
+          });
       const submitJson = await submitResp.json();
       if (!submitResp.ok || !submitJson.ok) {
         throw new Error(submitJson.message ?? "Submission failed");
@@ -233,7 +257,7 @@ export function VideoRecorderPanel({ transcribeAudio, sourceUrl = null, location
       setError((e as Error).message || "Something went wrong. Please try again.");
       setStage("review");
     }
-  }, [editedTranscript, rawTranscript, elapsedSeconds, sourceUrl, locationLabel, onSubmitted]);
+  }, [editedTranscript, rawTranscript, elapsedSeconds, sourceUrl, locationLabel, resubmitProposalId, onSubmitted]);
 
   const reRecord = useCallback(() => {
     setStage("idle");

@@ -100,6 +100,7 @@ import InsightsPage from '@/pages/InsightsPage';
 // My stances
 import MyStancesPage from "./pages/MyStancesPage";
 import MyProposalsPage from "./pages/MyProposalsPage";
+import ProposalDetailPage from "./pages/ProposalDetailPage";
 
 import SettingsLayout from "./pages/SettingsLayout";
 import SettingsLocation from "./pages/SettingsLocation";
@@ -313,6 +314,16 @@ const App: React.FC = () => {
                 element={
                   <Protected>
                     <MyProposalsPage />
+                  </Protected>
+                }
+              />
+              {/* Sep 2026, NEW: single-proposal full detail (protected) —
+                  see ProposalDetailPage.tsx. */}
+              <Route
+                path="/profile/proposals/:id"
+                element={
+                  <Protected>
+                    <ProposalDetailPage />
                   </Protected>
                 }
               />
