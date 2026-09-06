@@ -170,19 +170,19 @@ export function CommunityStanceBar({
           role="img"
           aria-label="No stances recorded yet"
         />
-        <div className={`space-y-1 ${compact ? "text-[11px]" : "text-xs"} text-slate-400`}>
-          <div className="flex items-start gap-1.5">
+        <div className={`flex items-start justify-between gap-2 ${compact ? "text-[11px]" : "text-xs"} text-slate-400`}>
+          <span className="flex min-w-0 flex-1 items-start gap-1">
             <span className="mt-0.5 inline-block h-2 w-2 shrink-0 rounded-full bg-slate-200" />
             <span className="break-words">{negFull} 0%</span>
-          </div>
-          <div className="flex items-start gap-1.5">
+          </span>
+          <span className="flex shrink-0 items-start gap-1 whitespace-nowrap">
             <span className="mt-0.5 inline-block h-2 w-2 shrink-0 rounded-full bg-slate-200" />
-            <span>Neutral 0%</span>
-          </div>
-          <div className="flex items-start gap-1.5">
-            <span className="mt-0.5 inline-block h-2 w-2 shrink-0 rounded-full bg-slate-200" />
+            Neutral 0%
+          </span>
+          <span className="flex min-w-0 flex-1 items-start justify-end gap-1 text-right">
             <span className="break-words">{posFull} 0%</span>
-          </div>
+            <span className="mt-0.5 inline-block h-2 w-2 shrink-0 rounded-full bg-slate-200" />
+          </span>
         </div>
         <p className={`${compact ? "text-[11px]" : "text-xs"} text-slate-400`}>
           No stances recorded yet.
@@ -263,30 +263,33 @@ export function CommunityStanceBar({
         )}
       </div>
 
-      {/* Legend. Sep 2026, FIXED (again): truncating to negShort/posShort +
-          ellipsis technically stopped the overlap, but for a question with
-          long custom pole labels it just replaced "overlapping" with
-          "permanently unreadable" — "Publisher's pri…" never becomes
-          readable no matter how long you look at it, which is exactly the
-          "not completely visible" complaint this was supposed to fix, not
-          a different way to satisfy it. Switched from a cramped 3-across
-          row to a vertical stack, one pole per line, using the FULL label
-          (negFull/posFull) with break-words instead of truncate — a narrow
-          sidebar has plenty of vertical room to spare, just not enough
-          horizontal room for three long labels side by side. */}
-      <div className={`space-y-1 ${compact ? "text-[11px]" : "text-xs"} text-slate-600`}>
-        <div className="flex items-start gap-1.5">
+      {/* Legend. Sep 2026, FIXED (3rd pass): truncating to negShort/posShort
+          + ellipsis stopped the overlap but made long custom pole labels
+          permanently unreadable — same "not completely visible" complaint,
+          different cause. Stacking vertically (2nd pass) fixed readability
+          but threw away the left/right spatial mapping to the bar itself
+          (the oppose/red label should read near the bar's LEFT end, the
+          support/green label near its RIGHT end) — a real regression, not
+          a style nitpick. This keeps that left/center/right arrangement
+          (flex-1 on the outer two, justify-end + text-right mirrors it on
+          the right side) but swaps truncate for break-words, so long labels
+          wrap onto multiple lines within their own side instead of either
+          being cut off or losing their position. items-start (not center)
+          keeps the three columns top-aligned when one wraps taller than
+          the others. */}
+      <div className={`flex items-start justify-between gap-2 ${compact ? "text-[11px]" : "text-xs"} text-slate-600`}>
+        <span className="flex min-w-0 flex-1 items-start gap-1">
           <span className="mt-0.5 inline-block h-2 w-2 shrink-0 rounded-full bg-red-400" />
           <span className="break-words">{negFull} {formatPct(opposePct)}</span>
-        </div>
-        <div className="flex items-start gap-1.5">
+        </span>
+        <span className="flex shrink-0 items-start gap-1 whitespace-nowrap">
           <span className="mt-0.5 inline-block h-2 w-2 shrink-0 rounded-full bg-slate-300" />
-          <span>Neutral {formatPct(neutralPct)}</span>
-        </div>
-        <div className="flex items-start gap-1.5">
-          <span className="mt-0.5 inline-block h-2 w-2 shrink-0 rounded-full bg-emerald-400" />
+          Neutral {formatPct(neutralPct)}
+        </span>
+        <span className="flex min-w-0 flex-1 items-start justify-end gap-1 text-right">
           <span className="break-words">{posFull} {formatPct(supportPct)}</span>
-        </div>
+          <span className="mt-0.5 inline-block h-2 w-2 shrink-0 rounded-full bg-emerald-400" />
+        </span>
       </div>
 
       {/* Response count + optional avg score */}
