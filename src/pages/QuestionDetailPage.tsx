@@ -841,6 +841,7 @@ function StanceCard({
               questionId={questionId}
               questionText={question.question}
               summary={question.summary ?? null}
+              languageCode={languageCode}
               initialValue={myStance ?? null}
               disabled={stanceMutation.isPending || stanceLoading || isArchived}
               mutationPending={stanceMutation.isPending}

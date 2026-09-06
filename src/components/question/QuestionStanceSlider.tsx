@@ -72,6 +72,16 @@ export type QuestionStanceSliderProps = {
   // compact ShareButton). Opt-in only — omitted everywhere except where a
   // caller explicitly passes it, so existing usages are unaffected.
   headerAction?: React.ReactNode;
+  // Sep 2026, NEW: the viewer's current UI language (from useLanguage(),
+  // already resolved by every caller for its own localized data fetch —
+  // threaded through here rather than re-resolving it, same reasoning
+  // useLanguage's own header comment gives for not duplicating session
+  // lookups). Passed to ai-stance-tip so "What this stance means" responds
+  // in this language instead of always English — previously the tip stayed
+  // English even when questionText/summary/labels were already Hindi
+  // renditions, since ai-stance-tip's prompt never said what language to
+  // answer in. Omitted/undefined behaves exactly as before (English).
+  languageCode?: string;
 };
 
 // Oppose/support framing matches the pre-commit prompt ("Do you support or oppose this?")
@@ -134,7 +144,8 @@ function useDebouncedAiStanceTip(
   questionText?: string | null,
   summary?: string | null,
   lowLabel?: string | null,
-  highLabel?: string | null
+  highLabel?: string | null,
+  languageCode?: string
 ) {
   const supabase = getSupabase()!;
   const [debouncedStance, setDebouncedStance] = React.useState(stance);
@@ -147,7 +158,7 @@ function useDebouncedAiStanceTip(
   }, [stance]);
 
   return useQuery({
-    queryKey: ["ai-stance-tip", questionId, debouncedStance, questionText, summary, lowLabel, highLabel],
+    queryKey: ["ai-stance-tip", questionId, debouncedStance, questionText, summary, lowLabel, highLabel, languageCode],
     enabled: !!questionId && Number.isFinite(debouncedStance),
     staleTime: 10 * 60_000,
     queryFn: async () => {
@@ -159,6 +170,7 @@ function useDebouncedAiStanceTip(
           summary: summary ?? null,
           low_label: lowLabel ?? null,
           high_label: highLabel ?? null,
+          language_code: languageCode ?? null,
         },
       });
 
@@ -208,6 +220,7 @@ export function QuestionStanceSlider({
   sliderLowLabel,
   sliderHighLabel,
   headerAction,
+  languageCode,
 }: QuestionStanceSliderProps) {
   const [value, setValue] = React.useState<number>(clampStance(initialValue));
   const [committed, setCommitted] = React.useState(
@@ -238,7 +251,8 @@ export function QuestionStanceSlider({
     questionText,
     summary,
     sliderLowLabel,
-    sliderHighLabel
+    sliderHighLabel,
+    languageCode
   );
 
   const stanceLabels = buildStanceLabels(sliderLowLabel, sliderHighLabel);

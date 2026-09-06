@@ -1672,6 +1672,7 @@ function FeaturedQuestionCard({
   featuredStats,
   submittingQuestionId,
   cardStats,
+  languageCode,
 }: {
   q: TrendingHomepageQuestionRow;
   isAuthed: boolean;
@@ -1682,6 +1683,7 @@ function FeaturedQuestionCard({
   featuredStats?: QuestionStats | null;
   submittingQuestionId?: string | null;
   cardStats?: Map<string, QuestionStats>;
+  languageCode?: string;
 }) {
   const { t } = useTranslation();
   const postAnswerStats = cardStats?.get(q.question_id) ?? null;
@@ -1747,6 +1749,7 @@ function FeaturedQuestionCard({
                 questionId={q.question_id}
                 questionText={q.question_text}
                 summary={q.summary}
+                languageCode={languageCode}
                 initialValue={q.user_stance_value ?? null}
                 stats={effectiveStats}
                 pulseThumb={true}
@@ -1784,6 +1787,7 @@ function FeaturedQuestionCard({
                 questionId={q.question_id}
                 questionText={q.question_text}
                 summary={q.summary}
+                languageCode={languageCode}
                 initialValue={null}
                 onSubmit={(v) => (onStage ? onStage(q.question_id, v) : onLoginRedirect())}
                 sliderLowLabel={q.slider_low_label ?? null}
@@ -1832,11 +1836,13 @@ function FeaturedQuestionCardAnon({
   onLoginRedirect,
   onStage,
   onOpen,
+  languageCode,
 }: {
   q: AnonQuestionRow;
   onLoginRedirect: () => void;
   onStage?: (questionId: string, value: number) => void;
   onOpen: (id: string) => void;
+  languageCode?: string;
 }) {
   const { t } = useTranslation();
   return (
@@ -1870,6 +1876,7 @@ function FeaturedQuestionCardAnon({
               questionId={q.id}
               questionText={q.question}
               summary={q.summary}
+              languageCode={languageCode}
               initialValue={null}
               onSubmit={(v) => (onStage ? onStage(q.id, v) : onLoginRedirect())}
               sliderLowLabel={q.slider_low_label ?? null}
@@ -1912,6 +1919,7 @@ function GridQuestionCard({
   onOpen,
   submittingQuestionId,
   cardStats,
+  languageCode,
 }: {
   q: TrendingHomepageQuestionRow;
   isAuthed: boolean;
@@ -1921,6 +1929,7 @@ function GridQuestionCard({
   onOpen: (id: string) => void;
   submittingQuestionId?: string | null;
   cardStats?: Map<string, QuestionStats>;
+  languageCode?: string;
 }) {
   const { t } = useTranslation();
   const postAnswerStats = cardStats?.get(q.question_id) ?? null;
@@ -1987,6 +1996,7 @@ function GridQuestionCard({
                 questionId={q.question_id}
                 questionText={q.question_text}
                 summary={q.summary}
+                languageCode={languageCode}
                 initialValue={q.user_stance_value ?? null}
                 stats={postAnswerStats}
                 mutationPending={submittingQuestionId === q.question_id}
@@ -2022,6 +2032,7 @@ function GridQuestionCard({
                 questionId={q.question_id}
                 questionText={q.question_text}
                 summary={q.summary}
+                languageCode={languageCode}
                 initialValue={null}
                 onSubmit={(v) => (onStage ? onStage(q.question_id, v) : onLoginRedirect())}
                 sliderLowLabel={q.slider_low_label ?? null}
@@ -2051,11 +2062,13 @@ function GridQuestionCardAnon({
   onLoginRedirect,
   onStage,
   onOpen,
+  languageCode,
 }: {
   q: AnonQuestionRow;
   onLoginRedirect: () => void;
   onStage?: (questionId: string, value: number) => void;
   onOpen: (id: string) => void;
+  languageCode?: string;
 }) {
   const { t } = useTranslation();
   return (
@@ -2092,6 +2105,7 @@ function GridQuestionCardAnon({
               questionId={q.id}
               questionText={q.question}
               summary={q.summary}
+              languageCode={languageCode}
               initialValue={null}
               onSubmit={(v) => (onStage ? onStage(q.id, v) : onLoginRedirect())}
               sliderLowLabel={q.slider_low_label ?? null}
@@ -3548,6 +3562,7 @@ export default function IndexPage() {
                             featuredStats={featuredStatsQuery.data ?? null}
                             submittingQuestionId={submittingQuestionId}
                             cardStats={cardStats}
+                            languageCode={languageCode}
                           />
                         )
                       : featuredAnonQ && (
@@ -3556,6 +3571,7 @@ export default function IndexPage() {
                             onLoginRedirect={loginRedirect}
                             onStage={stageStance}
                             onOpen={goToQuestion}
+                            languageCode={languageCode}
                           />
                         )}
 
@@ -3573,6 +3589,7 @@ export default function IndexPage() {
                                 onOpen={goToQuestion}
                                 submittingQuestionId={submittingQuestionId}
                                 cardStats={cardStats}
+                                languageCode={languageCode}
                               />
                             ))}
                           </div>
@@ -3586,6 +3603,7 @@ export default function IndexPage() {
                                 onLoginRedirect={loginRedirect}
                                 onStage={stageStance}
                                 onOpen={goToQuestion}
+                                languageCode={languageCode}
                               />
                             ))}
                           </div>

@@ -1294,6 +1294,7 @@ function SectionAQuestion({
                 questionId={question.question_id}
                 questionText={question.question_text}
                 summary={question.summary}
+                languageCode={languageCode}
                 initialValue={isResultMode ? (submittedStance ?? null) : null}
                 disabled={isSubmitting}
                 pulseThumb={!isSubmitting && !isResultMode}
@@ -1327,6 +1328,7 @@ function SectionAQuestion({
               questionId={question.question_id}
               questionText={question.question_text}
               summary={question.summary}
+              languageCode={languageCode}
               initialValue={null}
               onSubmit={(v) => (onStage ? onStage(question.question_id, v) : onLoginRedirect())}
               onInteractionStart={onGuestEngage}
