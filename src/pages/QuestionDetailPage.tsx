@@ -33,6 +33,7 @@ import { ExpectationPrompt, type ExpectationType } from "@/components/question/E
 import { AuthorityBlock } from "@/components/question/AuthorityBlock";
 import { IncidentSummaryCard } from "@/components/question/IncidentSummaryCard";
 import { QuestionContextCard } from "@/components/question/QuestionContextCard";
+import { RawVideoReveal } from "@/components/question/RawVideoReveal";
 import { ExpectationSignalBlock } from "@/components/question/ExpectationSignalBlock";
 import { AuthorityResponseStatusBlock } from "@/components/question/AuthorityResponseStatusBlock";
 import { fetchUserRegionId } from "@/lib/userRegion";
@@ -74,6 +75,11 @@ type LiveQuestion = {
   slider_high_label?: string | null;
   source?: string | null;
   source_meta?: unknown;
+  // Sep 2026, FIXED: get_question_localized never returned these, so a
+  // published content_type='video' question had no way to surface its
+  // video here at all — see RawVideoReveal.
+  video_recording_path?: string | null;
+  video_publish_choice?: string | null;
 };
 
 type TopicLite = {
@@ -1514,17 +1520,28 @@ export default function QuestionDetailPage() {
             )}
           </div>
 
-          {question.cover_image_url && (
+          {question.content_type === "video" && question.video_recording_path ? (
+            // Epic X: the raw clip itself, not the auto-scraped cover image
+            // — see RawVideoReveal. video_publish_choice === "raw_only"
+            // still shows this; the AI overlay title/question text that
+            // choice controls lives entirely server-side (the published
+            // question row's own text), nothing extra to branch on here.
             <div className="mt-6">
-              <EditorialHeroImage
-                imageUrl={question.cover_image_url}
-                alt={question.question}
-                height={420}
-              />
-              <p className="mt-2 text-xs text-slate-500 leading-snug">
-                {t("stance.imageSourceCaption")}
-              </p>
+              <RawVideoReveal questionId={question.id} />
             </div>
+          ) : (
+            question.cover_image_url && (
+              <div className="mt-6">
+                <EditorialHeroImage
+                  imageUrl={question.cover_image_url}
+                  alt={question.question}
+                  height={420}
+                />
+                <p className="mt-2 text-xs text-slate-500 leading-snug">
+                  {t("stance.imageSourceCaption")}
+                </p>
+              </div>
+            )
           )}
 
           <div className="mt-6 md:hidden">
