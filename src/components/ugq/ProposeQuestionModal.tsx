@@ -88,6 +88,16 @@ type PreviewReframe = {
   // triggerVerifiedPreview). Undefined/false means the fast, unverified
   // ugq-screen preview — same "notFactCheckedYet" disclaimer as before.
   verified?: boolean;
+  // Sep 2026, NEW — see ugq-screen's PreviewReframe. question/slider_*_label
+  // above are ALWAYS English now (that's what actually gets published as
+  // canonical). detected_language is the proposer's own input language;
+  // when it's not "en", these _native fields carry the SAME question,
+  // natively phrased, so the proposer can review something they can
+  // actually judge for accuracy instead of only ever seeing English.
+  detected_language?: string;
+  question_native?: string | null;
+  slider_low_label_native?: string | null;
+  slider_high_label_native?: string | null;
 };
 
 type Authority = { id: string; name: string; domain: string; jurisdiction_level: string };
@@ -109,6 +119,10 @@ function parsePreviewReframe(raw: unknown): PreviewReframe | null {
     cover_image_url: typeof r.cover_image_url === "string" && r.cover_image_url.trim()
       ? r.cover_image_url.trim() : null,
     verified: r.verified === true,
+    detected_language: typeof r.detected_language === "string" ? r.detected_language : undefined,
+    question_native: typeof r.question_native === "string" && r.question_native.trim() ? r.question_native.trim() : null,
+    slider_low_label_native: typeof r.slider_low_label_native === "string" ? r.slider_low_label_native : null,
+    slider_high_label_native: typeof r.slider_high_label_native === "string" ? r.slider_high_label_native : null,
   };
 }
 
@@ -169,6 +183,34 @@ function StanceScalePreview({ low, high }: { low: string | null; high: string | 
         <span className="max-w-[42%] text-right leading-tight">{high ?? t("ugq.supportDefault")}</span>
       </div>
     </div>
+  );
+}
+
+// Sep 2026, NEW — renders the preview's question + slider labels, preferring
+// the proposer's own-language (_native) text when ugq-screen produced one
+// (i.e. they didn't propose in English) since that's what they can actually
+// judge for accuracy — the English fields are what's guaranteed to actually
+// get published as canonical, shown secondarily so there's no surprise at
+// publish time about which text goes live.
+function PreviewQuestionText({ preview }: { preview: PreviewReframe }) {
+  const { t } = useTranslation();
+  const hasNative = !!preview.question_native;
+  return (
+    <>
+      <p className="text-sm text-slate-800 leading-snug">
+        {hasNative ? preview.question_native : preview.question}
+      </p>
+      <StanceScalePreview
+        low={hasNative ? preview.slider_low_label_native ?? null : preview.slider_low_label}
+        high={hasNative ? preview.slider_high_label_native ?? null : preview.slider_high_label}
+      />
+      {hasNative ? (
+        <div className="pt-1.5 border-t border-slate-200/70 mt-1.5">
+          <p className="text-[10.5px] text-slate-500 mb-1">{t("ugq.englishCanonicalNote")}</p>
+          <p className="text-xs text-slate-600 leading-snug">{preview.question}</p>
+        </div>
+      ) : null}
+    </>
   );
 }
 
@@ -1100,8 +1142,7 @@ export function ProposeQuestionModal({
                   {t("ugq.yourQuestionLiveNow")}
                 </div>
                 <CoverImagePreview src={preview.cover_image_url} />
-                <p className="text-sm text-slate-800 leading-snug">{preview.question}</p>
-                <StanceScalePreview low={preview.slider_low_label} high={preview.slider_high_label} />
+                <PreviewQuestionText preview={preview} />
               </div>
             ) : null}
 
@@ -1228,8 +1269,7 @@ export function ProposeQuestionModal({
             {preview ? (
               <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 space-y-2">
                 <CoverImagePreview src={preview.cover_image_url} />
-                <p className="text-sm text-slate-800 leading-snug">{preview.question}</p>
-                <StanceScalePreview low={preview.slider_low_label} high={preview.slider_high_label} />
+                <PreviewQuestionText preview={preview} />
 
                 {preview.context_summary ? (
                   <div className="pt-2 mt-1 border-t border-amber-200/70 space-y-1">
