@@ -141,9 +141,12 @@ export function CommunityStanceBar({
   const { negShort, posShort } = distinctPoleLabels(negFull, posFull);
 
   // Ghost marker position: map score -2..+2 to 0..100% across the bar.
+  // Clamped to 4..96 (not the full 0..100) so an extreme (-2 or +2) stance's
+  // marker and "you" label — centered on this position via -translate-x-1/2
+  // — stay fully within the bar's width instead of hanging off its edge.
   const hasGhost = myStanceScore != null;
   const ghostPos = hasGhost
-    ? Math.min(100, Math.max(0, ((myStanceScore! + 2) / 4) * 100))
+    ? Math.min(96, Math.max(4, ((myStanceScore! + 2) / 4) * 100))
     : null;
 
   // ── Loading state ──
@@ -168,18 +171,18 @@ export function CommunityStanceBar({
           role="img"
           aria-label="No stances recorded yet"
         />
-        <div className={`flex items-center justify-between ${compact ? "text-[11px]" : "text-xs"} text-slate-400`}>
-          <span title={negFull}>
-            <span className="inline-block h-2 w-2 rounded-full bg-slate-200 mr-1 align-middle" />
-            {negShort} 0%
+        <div className={`flex items-center gap-1.5 ${compact ? "text-[11px]" : "text-xs"} text-slate-400`}>
+          <span className="flex min-w-0 flex-1 items-center truncate" title={negFull}>
+            <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-slate-200 mr-1" />
+            <span className="truncate">{negShort} 0%</span>
           </span>
-          <span>
-            <span className="inline-block h-2 w-2 rounded-full bg-slate-200 mr-1 align-middle" />
+          <span className="flex shrink-0 items-center whitespace-nowrap">
+            <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-slate-200 mr-1" />
             Neutral 0%
           </span>
-          <span title={posFull}>
-            <span className="inline-block h-2 w-2 rounded-full bg-slate-200 mr-1 align-middle" />
-            {posShort} 0%
+          <span className="flex min-w-0 flex-1 items-center justify-end truncate" title={posFull}>
+            <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-slate-200 mr-1" />
+            <span className="truncate">{posShort} 0%</span>
           </span>
         </div>
         <p className={`${compact ? "text-[11px]" : "text-xs"} text-slate-400`}>
@@ -210,8 +213,14 @@ export function CommunityStanceBar({
       {/* Label row */}
       <Header compact={compact} onRefresh={onRefresh} isLoading={false} />
 
-      {/* Segmented bar (relative wrapper holds the ghost marker) */}
-      <div className="relative">
+      {/* Segmented bar (relative wrapper holds the ghost marker). Extra
+          bottom margin when a ghost marker is shown — its "you" label
+          floats below the bar via absolute positioning (see GhostMarker),
+          so it needs real space reserved beneath the bar or it overlaps the
+          legend row below it, which the default space-y-2 gap alone doesn't
+          cover (confirmed visually on a question whose ghost sits at the
+          0%/100% edge, directly under a long, wrapping pole label). */}
+      <div className={`relative ${hasGhost ? "mb-3" : ""}`}>
       <div
         className="flex w-full overflow-hidden rounded-full"
         style={{ height: compact ? 8 : 10 }}
@@ -246,23 +255,28 @@ export function CommunityStanceBar({
         )}
       </div>
 
-      {/* Legend row */}
+      {/* Legend row. Sep 2026, FIXED: labels wrapped onto a second line
+          instead of truncating when a question's own pole labels ran long
+          (e.g. "Explore alternative…"), which then visually collided with
+          the ghost marker's "you" label above it. min-w-0 + truncate on the
+          outer two items lets them ellipsis cleanly instead of wrapping —
+          the full text is still available via the existing title attr. */}
       <div
-        className={`flex items-center justify-between ${
+        className={`flex items-center gap-1.5 ${
           compact ? "text-[11px]" : "text-xs"
         } text-slate-600`}
       >
-        <span title={negFull}>
-          <span className="inline-block h-2 w-2 rounded-full bg-red-400 mr-1 align-middle" />
-          {negShort} {formatPct(opposePct)}
+        <span className="flex min-w-0 flex-1 items-center truncate" title={negFull}>
+          <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-red-400 mr-1" />
+          <span className="truncate">{negShort} {formatPct(opposePct)}</span>
         </span>
-        <span>
-          <span className="inline-block h-2 w-2 rounded-full bg-slate-300 mr-1 align-middle" />
+        <span className="flex shrink-0 items-center whitespace-nowrap">
+          <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-slate-300 mr-1" />
           Neutral {formatPct(neutralPct)}
         </span>
-        <span title={posFull}>
-          <span className="inline-block h-2 w-2 rounded-full bg-emerald-400 mr-1 align-middle" />
-          {posShort} {formatPct(supportPct)}
+        <span className="flex min-w-0 flex-1 items-center justify-end truncate" title={posFull}>
+          <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-emerald-400 mr-1" />
+          <span className="truncate">{posShort} {formatPct(supportPct)}</span>
         </span>
       </div>
 
