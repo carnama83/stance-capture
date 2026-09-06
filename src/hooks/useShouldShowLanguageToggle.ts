@@ -37,11 +37,22 @@ import { getSupabase } from "@/lib/supabaseClient";
 import { useIPLocation } from "./useIPLocation";
 import { UI_LANGUAGE_STORAGE_KEY } from "./useUiLanguage";
 
-function readStoredUiLanguage(): string | null {
+// Sep 2026, FIXED: only a stored value of "hi" counts as an override — NOT
+// "any stored value at all". The toggle showed unconditionally to everyone
+// before this feature shipped, so a huge number of existing browsers already
+// have sc_ui_language="en" saved just from having clicked the (already-
+// active, already-default) EN button once — that's indistinguishable from
+// never having touched the control, and carries no signal that this visitor
+// actually wants/uses Hindi. Treating it as "an explicit choice worth
+// protecting forever" defeated the entire feature for exactly the accounts
+// it's meant to gate (confirmed live: a USA-profile, USA-IP admin account
+// still saw the toggle solely because it had "en" saved from an old click).
+// Only an actual past choice of Hindi should override geography.
+function hasChosenHindiBefore(): boolean {
   try {
-    return window.localStorage.getItem(UI_LANGUAGE_STORAGE_KEY);
+    return window.localStorage.getItem(UI_LANGUAGE_STORAGE_KEY) === "hi";
   } catch {
-    return null; // private browsing / storage disabled — just means no override
+    return false; // private browsing / storage disabled — just means no override
   }
 }
 
@@ -63,7 +74,7 @@ async function fetchProfileCountryCode(userId: string): Promise<string | null> {
 }
 
 export function useShouldShowLanguageToggle(userId: string | null | undefined): boolean {
-  const hasStoredOverride = !!readStoredUiLanguage();
+  const hasStoredOverride = hasChosenHindiBefore();
 
   const {
     data: profileCountryCode,
