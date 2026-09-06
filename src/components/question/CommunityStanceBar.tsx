@@ -215,12 +215,21 @@ export function CommunityStanceBar({
 
       {/* Segmented bar (relative wrapper holds the ghost marker). Extra
           bottom margin when a ghost marker is shown — its "you" label
-          floats below the bar via absolute positioning (see GhostMarker),
-          so it needs real space reserved beneath the bar or it overlaps the
-          legend row below it, which the default space-y-2 gap alone doesn't
-          cover (confirmed visually on a question whose ghost sits at the
-          0%/100% edge, directly under a long, wrapping pole label). */}
-      <div className={`relative ${hasGhost ? "mb-3" : ""}`}>
+          floats below the bar via absolute positioning (see GhostMarker).
+          Sep 2026, FIXED (3rd pass, root cause): an mb-* UTILITY CLASS here
+          does nothing — the parent's space-y-2 sets margin-bottom:0 on every
+          non-first child via `> :not([hidden]) ~ :not([hidden])`, a
+          combinator selector that beats a plain single-class utility on
+          specificity, silently cancelling mb-3 and then mb-6 in the two
+          prior attempts (confirmed by measuring actual rendered rects: the
+          gap never moved off space-y-2's own 8px, regardless of the mb-*
+          value used). An inline style bypasses stylesheet specificity
+          entirely. 24px clears the label's real extent: it sits at
+          top:12px within a 10px-tall container, plus its own explicit
+          12px line-height (see the label's lineHeight below) = 24px from
+          the bar's top edge = 14px below the bar's bottom edge; 24px total
+          leaves comfortable margin instead of landing right on the edge. */}
+      <div className="relative" style={hasGhost ? { marginBottom: 24 } : undefined}>
       <div
         className="flex w-full overflow-hidden rounded-full"
         style={{ height: compact ? 8 : 10 }}
@@ -335,7 +344,13 @@ function GhostMarker({ pos, counted, compact }: { pos: number; counted: boolean;
       />
       <span
         className="absolute whitespace-nowrap font-semibold"
-        style={{ top: compact ? 10 : 12, fontSize: compact ? 9 : 10, color }}
+        // lineHeight pinned explicitly (not inherited) so its total rendered
+        // extent is knowable — the wrapper's mb-6 above was sized against
+        // this exact value plus the top offset (12 + 12 = 24px from the
+        // bar's own top edge, i.e. 14px clear of the bar's bottom edge).
+        // Letting this inherit an ambient line-height was the root cause of
+        // the first fix (mb-3) falling short by a few pixels.
+        style={{ top: compact ? 10 : 12, fontSize: compact ? 9 : 10, lineHeight: compact ? "10px" : "12px", color }}
       >
         you
       </span>
