@@ -52,6 +52,7 @@ import AdminIngestionPage from "@/routes/admin/ingestion/Index";
 import AdminDraftsPage from "@/routes/admin/drafts/Index";
 import AdminQuestionsPage from "@/routes/admin/questions/Index";
 import AdminUGQQueuePage from "@/routes/admin/ugq-queue/Index";
+import AdminRenditionReviewPage from "@/routes/admin/rendition-review/Index";
 import AdminProposerPage from "@/routes/admin/proposers/Index";
 import ShareAnalyticsPage from "@/routes/admin/share-analytics/Index";
 import AdminIngestionReviewPage from "@/routes/admin/ingestion-review/Index";
@@ -99,6 +100,7 @@ import InsightsPage from '@/pages/InsightsPage';
 // My stances
 import MyStancesPage from "./pages/MyStancesPage";
 import MyProposalsPage from "./pages/MyProposalsPage";
+import ProposalDetailPage from "./pages/ProposalDetailPage";
 
 import SettingsLayout from "./pages/SettingsLayout";
 import SettingsLocation from "./pages/SettingsLocation";
@@ -315,6 +317,16 @@ const App: React.FC = () => {
                   </Protected>
                 }
               />
+              {/* Sep 2026, NEW: single-proposal full detail (protected) —
+                  see ProposalDetailPage.tsx. */}
+              <Route
+                path="/profile/proposals/:id"
+                element={
+                  <Protected>
+                    <ProposalDetailPage />
+                  </Protected>
+                }
+              />
 
               {/* Profile route redirects to Settings Profile */}
               <Route
@@ -350,6 +362,7 @@ const App: React.FC = () => {
                 <Route path="embed-analytics" element={<EmbedAnalyticsPage />} />
                 <Route path="live-questions" element={<AdminLiveQuestionsPage />} />
                 <Route path="ugq-queue" element={<AdminUGQQueuePage />} />
+                <Route path="rendition-review" element={<AdminRenditionReviewPage />} />
                 <Route path="proposers" element={<AdminProposerPage />} />
                 <Route
                   path="live-questions/:id"

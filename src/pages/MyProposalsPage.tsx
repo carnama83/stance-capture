@@ -15,7 +15,7 @@
 // state is never a dead end.
 
 import * as React from "react";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import { Lightbulb, Loader2, MessageSquare, Sparkles, ExternalLink } from "lucide-react";
@@ -75,6 +75,42 @@ function hostnameOf(url: string): string {
   try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; }
 }
 
+// Same static preview as ProposeQuestionModal's StanceScalePreview —
+// duplicated rather than shared, matching this codebase's existing
+// convention of not sharing small presentational pieces across route trees.
+// Matches QuestionStanceSlider's real visual language (gradient colors,
+// track height, thumb border/size) so this doesn't look like a different
+// component. Thumb centered at Neutral — no real position exists yet.
+function StanceScalePreview({ low, high }: { low: string | null; high: string | null }) {
+  if (!low && !high) return null;
+  return (
+    <div>
+      <p className="text-[10.5px] text-slate-500 mb-2">
+        Here&#x2019;s how the stance scale will appear to users:
+      </p>
+      <div className="relative py-1.5">
+        <div
+          className="absolute inset-x-0 top-1/2 -translate-y-1/2 rounded-full"
+          style={{
+            height: "8px",
+            background: "linear-gradient(to right, rgba(248,113,113,0.3), rgba(203,213,225,0.3), rgba(74,222,128,0.3))",
+          }}
+          aria-hidden
+        />
+        <div
+          className="absolute left-1/2 top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-slate-400 bg-white"
+          aria-hidden
+        />
+      </div>
+      <div className="flex items-start justify-between gap-2 text-[11px] text-slate-600">
+        <span className="max-w-[42%] leading-tight">{low ?? "Oppose"}</span>
+        <span className="text-slate-400 shrink-0">Neutral</span>
+        <span className="max-w-[42%] text-right leading-tight">{high ?? "Support"}</span>
+      </div>
+    </div>
+  );
+}
+
 async function fetchMyProposals(): Promise<Proposal[]> {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/get_my_proposals`, {
     method: "POST",
@@ -107,14 +143,17 @@ async function fetchMyReputation(): Promise<Reputation | null> {
 }
 
 const STATUS_STYLE: Record<string, { label: string; cls: string }> = {
-  proposed:  { label: "Under review", cls: "bg-amber-500 hover:bg-amber-500" },
-  screening: { label: "Under review", cls: "bg-amber-500 hover:bg-amber-500" },
-  in_review: { label: "Under review", cls: "bg-amber-500 hover:bg-amber-500" },
-  approved:  { label: "Approved",     cls: "bg-blue-600 hover:bg-blue-600" },
-  reframing: { label: "Preparing",    cls: "bg-blue-600 hover:bg-blue-600" },
-  published: { label: "Live",         cls: "bg-emerald-600 hover:bg-emerald-600" },
-  rejected:  { label: "Not published", cls: "bg-slate-400 hover:bg-slate-400" },
-  withdrawn: { label: "Withdrawn",    cls: "bg-slate-400 hover:bg-slate-400" },
+  proposed:           { label: "Under review",    cls: "bg-amber-500 hover:bg-amber-500" },
+  screening:          { label: "Under review",    cls: "bg-amber-500 hover:bg-amber-500" },
+  in_review:          { label: "Under review",    cls: "bg-amber-500 hover:bg-amber-500" },
+  // Sep 2026, NEW: video-only (ugq-screen's leading-framing gate) — was
+  // previously unhandled here, falling through to the raw status string.
+  resubmit_requested: { label: "Needs re-record", cls: "bg-orange-500 hover:bg-orange-500" },
+  approved:           { label: "Approved",        cls: "bg-blue-600 hover:bg-blue-600" },
+  reframing:          { label: "Preparing",       cls: "bg-blue-600 hover:bg-blue-600" },
+  published:          { label: "Live",            cls: "bg-emerald-600 hover:bg-emerald-600" },
+  rejected:           { label: "Not published",   cls: "bg-slate-400 hover:bg-slate-400" },
+  withdrawn:          { label: "Withdrawn",       cls: "bg-slate-400 hover:bg-slate-400" },
 };
 
 function tierLabel(tier: string) {
@@ -156,20 +195,18 @@ function InlinePublishCard({ proposal, onPublished }: { proposal: Proposal; onPu
     }
   }
 
+  // Sep 2026, NEW: every card in the list now navigates to
+  // /profile/proposals/:id on click (see the map() below) —
+  // stopPropagation here keeps the Publish button and supporting-link
+  // anchors from also triggering that navigation.
   return (
-    <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 space-y-2">
+    <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 space-y-2" onClick={(e) => e.stopPropagation()}>
       <div className="flex items-center gap-1.5 text-xs font-medium text-amber-700">
         <Sparkles className="h-3.5 w-3.5" />
         Ready to publish
       </div>
       <p className="text-sm text-slate-800 leading-snug">{preview.question}</p>
-      {(preview.slider_low_label || preview.slider_high_label) && (
-        <div className="flex items-center justify-between gap-2 text-[11px] text-slate-500">
-          <span className="truncate">{preview.slider_low_label ?? "Oppose"}</span>
-          <span className="text-slate-300 shrink-0">&#8596;</span>
-          <span className="truncate text-right">{preview.slider_high_label ?? "Support"}</span>
-        </div>
-      )}
+      <StanceScalePreview low={preview.slider_low_label} high={preview.slider_high_label} />
       {preview.context_summary && (
         <div className="pt-1.5 mt-0.5 border-t border-amber-200/70 space-y-1">
           <p className="text-[11px] font-medium text-amber-700">Background</p>
@@ -197,6 +234,7 @@ function InlinePublishCard({ proposal, onPublished }: { proposal: Proposal; onPu
 }
 
 export default function MyProposalsPage() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: proposals, isLoading, isError } = useQuery<Proposal[]>({
     queryKey: ["my-proposals"],
@@ -262,8 +300,23 @@ export default function MyProposalsPage() {
           {rows.map((p) => {
             const style = STATUS_STYLE[p.status] ?? { label: p.status, cls: "bg-slate-400" };
             const readyToPublish = p.status === "in_review" && !!p.preview_reframe;
-            const inner = (
-              <div className="rounded-lg border border-slate-200 bg-white p-3 hover:border-slate-300 transition-colors">
+            return (
+              // Sep 2026, NEW: every card now opens the full detail view
+              // (ProposalDetailPage) instead of only published rows linking
+              // straight to the live question — that link still works, it's
+              // just reached via the detail page's own "View live" button
+              // now. A plain onClick div (not <Link>) so InlinePublishCard's
+              // nested Publish button/anchors (see its own stopPropagation)
+              // don't end up inside an <a>, which nesting a real <Link>
+              // here would otherwise produce.
+              <div
+                key={p.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => navigate(`/profile/proposals/${p.id}`)}
+                onKeyDown={(e) => { if (e.key === "Enter") navigate(`/profile/proposals/${p.id}`); }}
+                className="rounded-lg border border-slate-200 bg-white p-3 hover:border-slate-300 transition-colors cursor-pointer"
+              >
                 <p className="text-sm text-slate-900 line-clamp-2">{p.raw_question}</p>
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
                   <Badge className={style.cls}>{style.label}</Badge>
@@ -290,19 +343,10 @@ export default function MyProposalsPage() {
                   </span>
                 </div>
 
-                {/* readyToPublish only applies to 'in_review' rows, which are
-                    never wrapped in the <Link> below (only 'published' rows
-                    are) — so the Publish button here never ends up nested
-                    inside an ancestor <a>, no click-swallowing to worry about. */}
                 {readyToPublish && (
                   <InlinePublishCard proposal={p} onPublished={refetchAfterPublish} />
                 )}
               </div>
-            );
-            return p.status === "published" && p.reframed_question_id ? (
-              <Link key={p.id} to={`/q/${p.reframed_question_id}`} className="block">{inner}</Link>
-            ) : (
-              <div key={p.id}>{inner}</div>
             );
           })}
         </div>

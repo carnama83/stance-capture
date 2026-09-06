@@ -14,6 +14,7 @@ interface PostStanceSharePromptProps {
   questionText: string;
   questionSummary?: string | null;
   onDismiss?: () => void;
+  languageCode?: string;
 }
 
 export function PostStanceSharePrompt({
@@ -21,6 +22,7 @@ export function PostStanceSharePrompt({
   questionText,
   questionSummary,
   onDismiss,
+  languageCode,
 }: PostStanceSharePromptProps) {
   const [visible, setVisible] = React.useState(false);
 
@@ -55,6 +57,7 @@ export function PostStanceSharePrompt({
             questionText={questionText}
             questionSummary={questionSummary}
             shareType="stance"
+            languageCode={languageCode}
           />
         </div>
       </div>
