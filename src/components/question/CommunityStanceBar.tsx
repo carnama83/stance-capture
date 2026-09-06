@@ -17,7 +17,7 @@
 
 import * as React from "react";
 import { RefreshCw } from "lucide-react";
-import { resolvePoleLabels, distinctPoleLabels } from "@/lib/poleLabels";
+import { resolvePoleLabels } from "@/lib/poleLabels";
 
 // ── Props ──────────────────────────────────────────────────────────────────────
 
@@ -138,7 +138,6 @@ export function CommunityStanceBar({
   // Negative pole (opposePct / red) → low label; positive pole (supportPct /
   // green) → high label.
   const { negFull, posFull } = resolvePoleLabels(lowLabel, highLabel);
-  const { negShort, posShort } = distinctPoleLabels(negFull, posFull);
 
   // Ghost marker position: map score -2..+2 to 0..100% across the bar.
   // Clamped to 4..96 (not the full 0..100) so an extreme (-2 or +2) stance's
@@ -171,19 +170,19 @@ export function CommunityStanceBar({
           role="img"
           aria-label="No stances recorded yet"
         />
-        <div className={`flex items-center gap-1.5 ${compact ? "text-[11px]" : "text-xs"} text-slate-400`}>
-          <span className="flex min-w-0 flex-1 items-center truncate" title={negFull}>
-            <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-slate-200 mr-1" />
-            <span className="truncate">{negShort} 0%</span>
-          </span>
-          <span className="flex shrink-0 items-center whitespace-nowrap">
-            <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-slate-200 mr-1" />
-            Neutral 0%
-          </span>
-          <span className="flex min-w-0 flex-1 items-center justify-end truncate" title={posFull}>
-            <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-slate-200 mr-1" />
-            <span className="truncate">{posShort} 0%</span>
-          </span>
+        <div className={`space-y-1 ${compact ? "text-[11px]" : "text-xs"} text-slate-400`}>
+          <div className="flex items-start gap-1.5">
+            <span className="mt-0.5 inline-block h-2 w-2 shrink-0 rounded-full bg-slate-200" />
+            <span className="break-words">{negFull} 0%</span>
+          </div>
+          <div className="flex items-start gap-1.5">
+            <span className="mt-0.5 inline-block h-2 w-2 shrink-0 rounded-full bg-slate-200" />
+            <span>Neutral 0%</span>
+          </div>
+          <div className="flex items-start gap-1.5">
+            <span className="mt-0.5 inline-block h-2 w-2 shrink-0 rounded-full bg-slate-200" />
+            <span className="break-words">{posFull} 0%</span>
+          </div>
         </div>
         <p className={`${compact ? "text-[11px]" : "text-xs"} text-slate-400`}>
           No stances recorded yet.
@@ -264,29 +263,30 @@ export function CommunityStanceBar({
         )}
       </div>
 
-      {/* Legend row. Sep 2026, FIXED: labels wrapped onto a second line
-          instead of truncating when a question's own pole labels ran long
-          (e.g. "Explore alternative…"), which then visually collided with
-          the ghost marker's "you" label above it. min-w-0 + truncate on the
-          outer two items lets them ellipsis cleanly instead of wrapping —
-          the full text is still available via the existing title attr. */}
-      <div
-        className={`flex items-center gap-1.5 ${
-          compact ? "text-[11px]" : "text-xs"
-        } text-slate-600`}
-      >
-        <span className="flex min-w-0 flex-1 items-center truncate" title={negFull}>
-          <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-red-400 mr-1" />
-          <span className="truncate">{negShort} {formatPct(opposePct)}</span>
-        </span>
-        <span className="flex shrink-0 items-center whitespace-nowrap">
-          <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-slate-300 mr-1" />
-          Neutral {formatPct(neutralPct)}
-        </span>
-        <span className="flex min-w-0 flex-1 items-center justify-end truncate" title={posFull}>
-          <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-emerald-400 mr-1" />
-          <span className="truncate">{posShort} {formatPct(supportPct)}</span>
-        </span>
+      {/* Legend. Sep 2026, FIXED (again): truncating to negShort/posShort +
+          ellipsis technically stopped the overlap, but for a question with
+          long custom pole labels it just replaced "overlapping" with
+          "permanently unreadable" — "Publisher's pri…" never becomes
+          readable no matter how long you look at it, which is exactly the
+          "not completely visible" complaint this was supposed to fix, not
+          a different way to satisfy it. Switched from a cramped 3-across
+          row to a vertical stack, one pole per line, using the FULL label
+          (negFull/posFull) with break-words instead of truncate — a narrow
+          sidebar has plenty of vertical room to spare, just not enough
+          horizontal room for three long labels side by side. */}
+      <div className={`space-y-1 ${compact ? "text-[11px]" : "text-xs"} text-slate-600`}>
+        <div className="flex items-start gap-1.5">
+          <span className="mt-0.5 inline-block h-2 w-2 shrink-0 rounded-full bg-red-400" />
+          <span className="break-words">{negFull} {formatPct(opposePct)}</span>
+        </div>
+        <div className="flex items-start gap-1.5">
+          <span className="mt-0.5 inline-block h-2 w-2 shrink-0 rounded-full bg-slate-300" />
+          <span>Neutral {formatPct(neutralPct)}</span>
+        </div>
+        <div className="flex items-start gap-1.5">
+          <span className="mt-0.5 inline-block h-2 w-2 shrink-0 rounded-full bg-emerald-400" />
+          <span className="break-words">{posFull} {formatPct(supportPct)}</span>
+        </div>
       </div>
 
       {/* Response count + optional avg score */}
