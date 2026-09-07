@@ -66,6 +66,10 @@
 // 'in_review' check below with a clear message — no separate guard needed
 // for that case. ("raw_plus_avatar" was dropped Sep 2026 — no TTS/avatar
 // synthesis backend exists.)
+//
+// Note: a prior session added video_recorded_anonymous / video_raw_
+// archival_path passthrough here for an anonymous-avatar video feature that
+// was later rolled back — removed, see ugq-publish.ts's header note.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -288,6 +292,12 @@ serve(async (req) => {
         question_native: typeof preview?.question_native === "string" ? preview.question_native : null,
         slider_low_label_native: typeof preview?.slider_low_label_native === "string" ? preview.slider_low_label_native : null,
         slider_high_label_native: typeof preview?.slider_high_label_native === "string" ? preview.slider_high_label_native : null,
+        // Sep 2026, NEW: see ugq-screen's PreviewReframe.context_summary_native
+        // comment — without this, the seeded rendition's context_summary
+        // stayed null forever (it's marked 'published' immediately, so the
+        // async translator never revisits it), and the "Background" section
+        // kept showing English to non-English viewers of that question.
+        context_summary_native: typeof preview?.context_summary_native === "string" ? preview.context_summary_native : null,
         // Epic X, NEW.
         ...(isVideoSubmission ? {
           video_recording_path: proposal.video_recording_path,
