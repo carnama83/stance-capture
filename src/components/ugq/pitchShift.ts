@@ -16,8 +16,9 @@ const PITCH_SHIFT_WORKLET_URL = "/audio-worklets/pitch-shift-processor.js";
 // < 1 lowers pitch. Fixed rather than user-configurable — the goal is
 // reliable disguise, not a voice-effects picker; a moderate, consistent
 // shift is enough to obscure a recognizable voice while staying
-// intelligible.
-const DEFAULT_PITCH_RATIO = 0.8;
+// intelligible. Matches the worklet's own declared default — kept in sync
+// manually since this is what actually gets applied (see below).
+const DEFAULT_PITCH_RATIO = 0.82;
 
 export type DistortedAudio = {
   audioContext: AudioContext;
