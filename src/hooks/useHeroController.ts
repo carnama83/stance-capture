@@ -646,6 +646,58 @@ export function useHeroController({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allQuestions]);
 
+  // ── Refresh already-selected content in place when allQuestions re-fetches
+  //    with the SAME question set but different text (Sep 2026, NEW) ──
+  //
+  // The init effect above only ever picks currentHeroQuestion/queuedQuestions
+  // ONCE per question — while status stays "hero_ready" (the normal steady
+  // state), nothing else ever looks at allQuestions again for that question,
+  // even though Index.tsx's queries key on languageCode and DO refetch fresh,
+  // correctly-localized rows the moment the header EN/Hindi toggle changes.
+  // Confirmed live: toggling language updated the toggle pill and every
+  // OTHER piece of UI that reads languageCode directly on every render (slider
+  // labels via buildStanceLabels, the AI stance tip), but the hero question's
+  // own headline/labels — sourced from this hook's frozen currentHeroQuestion
+  // snapshot — stayed in whatever language was active when hero_ready was
+  // first entered, until a full page reload reset the state machine back to
+  // hero_loading. This keeps currentHeroQuestion (and any matching queued
+  // question) in sync with allQuestions' latest content for the SAME
+  // question_id, without treating it as a "new question" — no transition
+  // animation, no touching usedQuestionIds/queue order/status.
+  React.useEffect(() => {
+    if (!currentHeroQuestion) return;
+    const freshCurrent = allQuestions.find((q) => q.question_id === currentHeroQuestion.question_id);
+    if (
+      freshCurrent &&
+      (freshCurrent.question_text !== currentHeroQuestion.question_text ||
+        freshCurrent.slider_low_label !== currentHeroQuestion.slider_low_label ||
+        freshCurrent.slider_high_label !== currentHeroQuestion.slider_high_label ||
+        freshCurrent.summary !== currentHeroQuestion.summary)
+    ) {
+      setCurrentHeroQuestion(freshCurrent);
+    }
+
+    setQueuedQuestions((prevQueue) => {
+      let changed = false;
+      const next = prevQueue.map((q) => {
+        const fresh = allQuestions.find((a) => a.question_id === q.question_id);
+        if (
+          fresh &&
+          (fresh.question_text !== q.question_text ||
+            fresh.slider_low_label !== q.slider_low_label ||
+            fresh.slider_high_label !== q.slider_high_label ||
+            fresh.summary !== q.summary)
+        ) {
+          changed = true;
+          return fresh;
+        }
+        return q;
+      });
+      return changed ? next : prevQueue;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allQuestions]);
+
   // ── submitHeroStance ──
 
   const submitHeroStance = React.useCallback(
