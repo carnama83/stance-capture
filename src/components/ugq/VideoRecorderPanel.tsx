@@ -26,9 +26,26 @@
 // this project requires the `apikey` header on every request in addition to
 // the user's Authorization bearer token; supabaseHeaders() is the only
 // place that's supposed to know that.
-
+//
+// Anonymity (NEW): a prior session tried disguising the video itself
+// (a rendered avatar + pitch-shifted voice) for proposers who are anonymous
+// (profiles.display_handle_mode === 'random_id'). That was rolled back — the
+// client-side voice-disguise pipeline never sounded acceptable. Replaced
+// with a much simpler rule: if the proposer is anonymous AT THE MOMENT they
+// hit "Submit question" below, the video itself is never uploaded or
+// published at all — only the transcribed, proposer-reviewed TEXT is
+// submitted, via the exact same ugq-submit path a typed or voice-recorded
+// question already uses (input_mode: "voice", reusing whatever storage path
+// ugq-transcribe-voice already returned for the audio track). The camera
+// recording is simply discarded once transcription is done. A proposer who
+// is NOT anonymous gets exactly the original behavior below: the raw video
+// is uploaded and published as-is. Resubmission (the framing-gate re-record
+// loop) only ever applies to that identified path too, since the framing
+// gate only runs for input_mode: "video" — an anonymous submission never
+// reaches it in the first place.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SUPABASE_URL, SUPABASE_ANON_KEY, getJwt, supabaseHeaders } from "@/lib/env";
+import { useDisplayIdentity } from "@/hooks/useDisplayIdentity";
 
 const MAX_DURATION_SECONDS = 120;
 
@@ -54,7 +71,9 @@ type Props = {
   // actually drives its existing video_resubmit_count) rather than creating
   // a second proposal for what's conceptually one question. Recording,
   // transcribing and reviewing all work identically either way — only the
-  // final submit target changes.
+  // final submit target changes. Only ever reachable via the identified
+  // path (see header note) — an anonymous submission never gets flagged for
+  // resubmit in the first place.
   resubmitProposalId?: string;
   onSubmitted: (result: {
     proposalId: string;
@@ -79,6 +98,8 @@ export function VideoRecorderPanel({ transcribeAudio, sourceUrl = null, location
   const [rawTranscript, setRawTranscript] = useState("");
   const [resubmitReason, setResubmitReason] = useState<string | null>(null);
 
+  const { identity } = useDisplayIdentity();
+
   const streamRef = useRef<MediaStream | null>(null);
   const videoRecorderRef = useRef<MediaRecorder | null>(null);
   const audioRecorderRef = useRef<MediaRecorder | null>(null);
@@ -87,6 +108,10 @@ export function VideoRecorderPanel({ transcribeAudio, sourceUrl = null, location
   const videoPreviewRef = useRef<HTMLVideoElement | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const videoBlobRef = useRef<Blob | null>(null);
+  // Set once transcription finishes — see header note. Non-null only when
+  // ugq-transcribe-voice actually stored the audio, same as the ordinary
+  // voice-input flow.
+  const voiceRecordingPathRef = useRef<string | null>(null);
 
   useEffect(() => {
     return () => {
@@ -153,7 +178,8 @@ export function VideoRecorderPanel({ transcribeAudio, sourceUrl = null, location
       videoBlobRef.current = videoBlob;
 
       try {
-        const { transcript } = await transcribeAudio(audioBlob);
+        const { transcript, recording_path } = await transcribeAudio(audioBlob);
+        voiceRecordingPathRef.current = recording_path ?? null;
         setRawTranscript(transcript);
         setEditedTranscript(transcript);
         setStage("review");
@@ -178,6 +204,35 @@ export function VideoRecorderPanel({ transcribeAudio, sourceUrl = null, location
     setError(null);
 
     try {
+      // Anonymity check happens right here, at the moment of submit — see
+      // header note. An anonymous proposer's video is never uploaded at
+      // all; only the reviewed transcript goes out, exactly like a plain
+      // voice submission.
+      if (identity?.isAnonymous) {
+        const submitResp = await fetch(`${SUPABASE_URL}/functions/v1/ugq-submit`, {
+          method: "POST",
+          headers: supabaseHeaders(jwt),
+          body: JSON.stringify({
+            raw_question: editedTranscript.trim(),
+            input_mode: "voice",
+            voice_recording_path: voiceRecordingPathRef.current,
+            source_url: sourceUrl?.trim() || null,
+            location_label: locationLabel?.trim() || null,
+          }),
+        });
+        const submitJson = await submitResp.json();
+        if (!submitResp.ok || !submitJson.ok) {
+          throw new Error(submitJson.message ?? "Submission failed");
+        }
+        onSubmitted({
+          proposalId: submitJson.proposal_id,
+          status: submitJson.status,
+          framingFlagReason: null,
+          derogatoryFlagReason: null,
+        });
+        return;
+      }
+
       // 1. Upload the raw video. multipart/form-data — do NOT send a
       //    Content-Type header here (the browser sets its own multipart
       //    boundary for FormData bodies); still needs apikey + Authorization
@@ -257,7 +312,7 @@ export function VideoRecorderPanel({ transcribeAudio, sourceUrl = null, location
       setError((e as Error).message || "Something went wrong. Please try again.");
       setStage("review");
     }
-  }, [editedTranscript, rawTranscript, elapsedSeconds, sourceUrl, locationLabel, resubmitProposalId, onSubmitted]);
+  }, [editedTranscript, rawTranscript, elapsedSeconds, sourceUrl, locationLabel, resubmitProposalId, onSubmitted, identity]);
 
   const reRecord = useCallback(() => {
     setStage("idle");
@@ -266,6 +321,7 @@ export function VideoRecorderPanel({ transcribeAudio, sourceUrl = null, location
     setRawTranscript("");
     setEditedTranscript("");
     videoBlobRef.current = null;
+    voiceRecordingPathRef.current = null;
   }, []);
 
   return (
@@ -278,6 +334,11 @@ export function VideoRecorderPanel({ transcribeAudio, sourceUrl = null, location
 
       {(stage === "idle" || stage === "recording") && (
         <div className="flex flex-col gap-3">
+          {identity?.isAnonymous && (
+            <div className="rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-600">
+              You're posting anonymously — your video won't be shown to anyone. We'll use it to write out your question as text, same as a voice recording.
+            </div>
+          )}
           <video
             ref={videoPreviewRef}
             muted
@@ -330,7 +391,9 @@ export function VideoRecorderPanel({ transcribeAudio, sourceUrl = null, location
             className="rounded-md border border-neutral-300 p-2 text-sm"
           />
           <p className="text-xs text-neutral-500">
-            This is what shows as your question text. Your original video and voice stay exactly as recorded either way.
+            {identity?.isAnonymous
+              ? "This is what shows as your question text. Your video is never published — only this text goes out, same as if you'd used voice input."
+              : "This is what shows as your question text. Your original video and voice stay exactly as recorded either way."}
           </p>
           <div className="flex gap-2">
             <button

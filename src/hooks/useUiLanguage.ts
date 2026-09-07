@@ -31,7 +31,7 @@ import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
 import { getSupabase } from "@/lib/supabaseClient";
-import { useLanguage } from "./useLanguage";
+import { useLanguage, UI_LANGUAGE_CHANGE_EVENT } from "./useLanguage";
 
 export const UI_LANGUAGE_STORAGE_KEY = "sc_ui_language";
 const DEFAULT_LANGUAGE = "en"; // mirrors useLanguage.ts's own DEFAULT_LANGUAGE
@@ -95,6 +95,14 @@ export function useUiLanguage(userId: string | null | undefined): UseUiLanguageR
         // Non-fatal — the choice still applies for the rest of this session
         // via React state, it just won't survive a reload.
       }
+      // Sep 2026, NEW — see useLanguage.ts's useReactiveStoredUiLanguage
+      // comment. The localStorage write above is invisible to every OTHER
+      // component's useLanguage() call (Index.tsx, QuestionDetailPage.tsx,
+      // ...) until they happen to re-render for some unrelated reason — this
+      // event is what actually wakes them up to re-read the new value now,
+      // instead of leaving question/feed content stuck on the old language
+      // until a hard reload.
+      window.dispatchEvent(new Event(UI_LANGUAGE_CHANGE_EVENT));
       if (userId && sb) {
         sb.from("profiles")
           .update({ preferred_language_code: code })

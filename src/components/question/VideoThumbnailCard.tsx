@@ -65,6 +65,22 @@ export function VideoThumbnailCard({ questionId, posterUrl, className }: Props) 
     );
   }
 
+  // The inner play-button dimmer (`absolute inset-0`) and error banner
+  // (`absolute bottom-1.5 ...`) both need a positioned ancestor, so this
+  // element always needs `position` set to something other than static.
+  // Previously "relative" was unconditionally appended after the caller's
+  // className — harmless when that className has no position utility of its
+  // own (the common case: plain "h-40 w-full" etc.), but SectionAQuestion's
+  // hero usage passes "absolute top-0 right-0 h-full w-3/5" to overlay this
+  // under the hero's text column, and Tailwind's generated stylesheet
+  // defines `.relative` AFTER `.absolute`, so the appended "relative" always
+  // won regardless of class order in the string — silently turning the
+  // button back into a normal in-flow element there, pushing the hero's
+  // headline/tags text down out of its intended overlay position instead of
+  // stacking under it. Only fall back to "relative" when the caller's own
+  // className doesn't already carry a position utility.
+  const hasOwnPosition = !!className && /\b(?:absolute|fixed|sticky|relative)\b/.test(className);
+
   return (
     <button
       type="button"
@@ -76,7 +92,7 @@ export function VideoThumbnailCard({ questionId, posterUrl, className }: Props) 
       aria-label="Play video"
       className={
         (className ?? "aspect-video w-full rounded-lg") +
-        " relative flex items-center justify-center overflow-hidden bg-slate-900 bg-cover bg-center disabled:opacity-80"
+        ` ${hasOwnPosition ? "" : "relative"} flex items-center justify-center overflow-hidden bg-slate-900 bg-cover bg-center disabled:opacity-80`
       }
       style={posterUrl ? { backgroundImage: `url(${posterUrl})` } : undefined}
     >

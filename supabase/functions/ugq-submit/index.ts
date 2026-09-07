@@ -1,9 +1,10 @@
 // supabase/functions/ugq-submit/index.ts
 // Epic UGQ — Build Step 2 of 8: Gate 1 entry point.
 //
-// Receives a user's question proposal from the browser, enforces tier-based
-// rate limits + cooldowns, inserts the proposal (status 'proposed'), then
-// invokes ugq-screen (Gate 1 AI pre-screen) to resolve it to a terminal state.
+// Receives a user's question proposal from the browser, enforces admin-imposed
+// rate limits (flagged / rate_limited_until), inserts the proposal (status
+// 'proposed'), then invokes ugq-screen (Gate 1 AI pre-screen) to resolve it
+// to a terminal state.
 //
 // Conventions mirrored from embed-submit/index.ts:
 //   - std `serve`, dual Supabase clients (service-role for writes, anon+JWT for identity)
@@ -51,9 +52,26 @@
 // Sep 2026, REMOVED: the per-submission cooldown (TIER_LIMITS[tier].cooldownMs,
 // e.g. 15 minutes for 'new' tier — "Please wait Ns before proposing again")
 // was removed at the user's explicit request. The rolling-24h daily cap
-// (TIER_LIMITS[tier].daily) and admin-imposed rate_limited_until are
-// unaffected — this only removed the fixed gap enforced between any two
-// consecutive proposals.
+// (TIER_LIMITS[tier].daily) and admin-imposed rate_limited_until were
+// unaffected by that change — this only removed the fixed gap enforced
+// between any two consecutive proposals.
+//
+// Sep 2026, REMOVED (later same week): the rolling-24h daily cap itself
+// (TIER_LIMITS[tier].daily — 3/10/25 for new/trusted/verified) is now also
+// gone, at the user's explicit request to make proposing unlimited.
+// admin-imposed rate_limited_until and the flagged check are untouched —
+// abuse response still exists, there's just no longer a blanket per-tier
+// count ceiling.
+//
+// Note: a prior session added a video_recorded_anonymous / video_raw_
+// archival_path snapshot here for an anonymous-avatar video feature. That
+// feature was rolled back (the client-side avatar/voice-disguise pipeline
+// was unreliable) in favor of a much simpler rule: a proposer who is
+// anonymous when they record a video question is now routed entirely
+// client-side to submit as input_mode "voice" instead — no video is ever
+// uploaded or attached, so nothing here needs to know about anonymity at
+// all. video_recording_path only ever arrives when the proposer chose to
+// show their identity, exactly like before that feature existed.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -62,14 +80,6 @@ const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
-
-// Tier → daily cap. Mirrors spec §11 (cooldownMs removed Sep 2026 — see
-// header note).
-const TIER_LIMITS: Record<string, { daily: number }> = {
-  new:      { daily: 3 },
-  trusted:  { daily: 10 },
-  verified: { daily: 25 },
 };
 
 function jsonError(status: number, code: string, message: string) {
@@ -156,29 +166,14 @@ serve(async (req) => {
       .upsert({ user_id: userId }, { onConflict: "user_id", ignoreDuplicates: true });
 
     const { data: rep } = await adminSb.from("user_proposal_reputation")
-      .select("tier, flagged, rate_limited_until")
+      .select("flagged, rate_limited_until")
       .eq("user_id", userId).maybeSingle();
 
-    const tier = rep?.tier ?? "new";
     if (rep?.flagged) {
       return jsonError(403, "PROPOSER_FLAGGED", "Your proposal privileges are currently restricted");
     }
     if (rep?.rate_limited_until && new Date(rep.rate_limited_until).getTime() > Date.now()) {
       return jsonError(429, "RATE_LIMITED", "You're temporarily limited from proposing. Try again later");
-    }
-
-    const limits = TIER_LIMITS[tier] ?? TIER_LIMITS.new;
-
-    // ── Daily limit (rolling 24h) (spec §11) ───────────────────────
-    // Sep 2026, REMOVED: the fixed per-submission cooldown that used to sit
-    // here (TIER_LIMITS[tier].cooldownMs, up to 15 min for 'new' tier) — see
-    // header note. Only the rolling daily cap remains.
-    const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const { count: dayCount } = await adminSb.from("user_question_proposals")
-      .select("id", { count: "exact", head: true })
-      .eq("user_id", userId).gte("created_at", since24h);
-    if ((dayCount ?? 0) >= limits.daily) {
-      return jsonError(429, "DAILY_LIMIT", `You've reached your daily limit of ${limits.daily} proposals`);
     }
 
     // ── Cheap exact-text dedup (spec §11 content hashing): block the same user
@@ -243,19 +238,24 @@ serve(async (req) => {
     let derogatoryFlagReason: string | null = null;
     try {
       const ctrl = new AbortController();
-      // 20s (was 12s, originally 9s): ugq-screen runs the Gate 1 screening
-      // call and the preview-reframe call CONCURRENTLY (Promise.allSettled),
-      // so total time is roughly the slower of the two rather than double —
-      // but the preview call now also runs web search (Aug 2026, CONTEXT
-      // feature: grounds the published text with real search results) which
-      // adds a few real seconds of its own on top of generation time. Extra
-      // headroom avoids aborting a request that's 90% of the way there.
+      // 32s (was 20s, before that 12s, originally 9s): production logs show
+      // the web-search-grounded preview call routinely takes 15-27s by
+      // itself (Claude's agentic search loop: initial call -> server runs
+      // the search -> results re-injected -> final generation), so 20s was
+      // aborting BEFORE ugq-screen actually finished in a large fraction of
+      // real submissions — confirmed via repeated "[ugq-submit] inline
+      // screen threw: The signal has been aborted" log lines immediately
+      // followed, seconds later, by ugq-screen's own success logs
+      // (preview_final_result/framing_final_result). Bumped to comfortably
+      // clear the observed worst case with margin, so most submissions now
+      // get their real resolved status back directly instead of falling
+      // through to the client's "still processing" poll fallback at all.
       // Aborting here does NOT stop ugq-screen's own execution (Deno Deploy
       // invocations run independently of the caller's fetch) — it only means
       // we return 'proposed' to the browser and the DB write (correct status
       // + preview, possibly already published) lands a moment after this
       // response, invisible to this request only.
-      const t = setTimeout(() => ctrl.abort(), 20000);
+      const t = setTimeout(() => ctrl.abort(), 32000);
       const screenResp = await fetch(`${SUPABASE_URL}/functions/v1/ugq-screen`, {
         method: "POST",
         signal: ctrl.signal,

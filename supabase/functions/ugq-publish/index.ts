@@ -31,6 +31,14 @@
 // alongside this file; ugq-confirm-publish was not in hand when this change
 // was written and needs the same three fields added to its own call here.
 //
+// Note: a prior session added video_recorded_anonymous / video_raw_
+// archival_path passthrough here for an anonymous-avatar video feature that
+// was later rolled back (the client-side voice-disguise pipeline was
+// unreliable). Removed — a proposer who records a video while anonymous now
+// never uploads a video at all (routed client-side to submit as input_mode
+// "voice" instead), so every video that reaches this function again belongs
+// to an identified proposer, exactly as before that feature existed.
+//
 // Sep 2026, NEW: `question` (the `reframed` text below) is the CANONICAL
 // text for this question — every other language is a rendition, never the
 // other way around. Previously that was an unenforced assumption: nothing
@@ -221,6 +229,16 @@ Deno.serve(async (req) => {
       ? body.slider_low_label_native.trim() : null;
     const sliderHighNative = typeof body.slider_high_label_native === "string" && body.slider_high_label_native.trim()
       ? body.slider_high_label_native.trim() : null;
+    // Sep 2026, NEW: same treatment as questionNative/slider*Native above,
+    // but for the "Background" section — was previously omitted entirely
+    // from this seed, leaving question_renditions.context_summary null on a
+    // rendition that's about to be marked 'published' (so the async
+    // generate-question-renditions translator, which DOES backfill
+    // context_summary, never gets a chance to since this row is no longer
+    // 'pending'). get_question_localized then fell back to the English
+    // questions.context_summary forever for that specific rendition.
+    const contextSummaryNative = typeof body.context_summary_native === "string" && body.context_summary_native.trim()
+      ? body.context_summary_native.trim() : null;
 
     const { error: insErr } = await adminSb.from("questions").insert({
       id: questionId,
@@ -281,6 +299,7 @@ Deno.serve(async (req) => {
             rendered_text: questionNative,
             slider_low_label: sliderLowNative,
             slider_high_label: sliderHighNative,
+            context_summary: contextSummaryNative,
             transform_status: "published",
             axis_equivalence_check: "pass",
             axis_equivalence_notes: "Reused directly from the proposer's own-language preview text, reviewed by " +
