@@ -39,6 +39,7 @@
 // placeholder value would risk a visible flash of English before the real
 // preference (e.g. Hindi) loads in.
 
+import * as React from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getSupabase } from "@/lib/supabaseClient";
@@ -49,12 +50,43 @@ const DEFAULT_LANGUAGE = "en";
 // since useUiLanguage.ts itself imports useLanguage from this file.
 const UI_LANGUAGE_STORAGE_KEY = "sc_ui_language";
 
+// Sep 2026, NEW — see the reactivity fix below. Exported so useUiLanguage.ts
+// (which already imports from this file — a safe, existing one-way
+// dependency) can dispatch it whenever the toggle changes the stored value.
+export const UI_LANGUAGE_CHANGE_EVENT = "sc-ui-language-changed";
+
 function readStoredUiLanguage(): string | null {
   try {
     return window.localStorage.getItem(UI_LANGUAGE_STORAGE_KEY);
   } catch {
     return null; // private browsing / storage disabled — just means no override
   }
+}
+
+// Sep 2026, NEW — see header note update. `readStoredUiLanguage()` used to
+// be called directly inline at render time: a plain, non-reactive
+// localStorage.getItem(). That's fine for a component's OWN first render,
+// but React has no way to know it needs to re-render THIS component just
+// because some other, unrelated component (the header toggle, via
+// useUiLanguage.setLanguageCode) wrote a new value to localStorage —
+// localStorage writes don't trigger re-renders on their own. Confirmed live:
+// clicking EN in the header correctly flipped the toggle's own pill
+// (AppTopBar re-renders itself, since useUiLanguage owns real React state),
+// but Index.tsx / QuestionDetailPage.tsx — which only ever call useLanguage(),
+// never useUiLanguage() directly — kept showing the previous language's
+// content until a hard reload, since nothing told them to re-run this hook.
+// This wraps the read in real state that updates on the shared change event
+// useUiLanguage now dispatches, so every consumer of useLanguage() re-renders
+// the moment the toggle (or any other setLanguageCode call) fires, not just
+// the one component that happens to own the click handler.
+function useReactiveStoredUiLanguage(): string | null {
+  const [stored, setStored] = React.useState<string | null>(readStoredUiLanguage);
+  React.useEffect(() => {
+    const onChange = () => setStored(readStoredUiLanguage());
+    window.addEventListener(UI_LANGUAGE_CHANGE_EVENT, onChange);
+    return () => window.removeEventListener(UI_LANGUAGE_CHANGE_EVENT, onChange);
+  }, []);
+  return stored;
 }
 
 async function fetchPreferredLanguage(userId: string): Promise<string | null> {
@@ -83,7 +115,7 @@ export interface UseLanguageResult {
 export function useLanguage(userId: string | null | undefined): UseLanguageResult {
   const [searchParams] = useSearchParams();
   const urlLang = searchParams.get("lang");
-  const storedLang = readStoredUiLanguage();
+  const storedLang = useReactiveStoredUiLanguage();
 
   // No point fetching a stored preference that's about to be overridden by
   // an explicit device choice or the URL, and nothing to fetch at all for an
