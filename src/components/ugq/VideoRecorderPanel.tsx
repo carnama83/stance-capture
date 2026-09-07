@@ -26,9 +26,31 @@
 // this project requires the `apikey` header on every request in addition to
 // the user's Authorization bearer token; supabaseHeaders() is the only
 // place that's supposed to know that.
+//
+// Anonymous-video feature (NEW): whether the proposer is currently in
+// profiles.display_handle_mode = 'random_id' is snapshotted ONCE, right
+// when recording starts (useDisplayIdentity + the `anonymousAtRecordStart`
+// ref below) — not re-checked mid-flow. That snapshot decides which capture
+// pipeline runs for THIS recording:
+//   - Identified (username mode): unchanged from before this feature —
+//     raw video is the public artifact, exactly as always.
+//   - Anonymous (random_id mode): a THIRD parallel pipeline renders the
+//     user's persistent avatar (avatarRenderer.ts) driven by a
+//     voice-disguised copy of the mic audio (pitchShift.ts), and records
+//     THAT as the public artifact instead. The original raw camera+mic
+//     recording is kept, but uploaded as a private archival-only copy
+//     (kind: "raw_archival" — see ugq-upload-video), never as the public
+//     path. The live preview shows the avatar, not the camera, during
+//     recording, so the proposer sees exactly what's about to be public.
+// See the anonymous-video plan for the full design and why ugq-video-url
+// itself needed no changes to support this.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SUPABASE_URL, SUPABASE_ANON_KEY, getJwt, supabaseHeaders } from "@/lib/env";
+import { useDisplayIdentity } from "@/hooks/useDisplayIdentity";
+import { AvatarRenderer } from "./avatarRenderer";
+import { createDistortedAudio, type DistortedAudio } from "./pitchShift";
+import type { AnonymousAvatarConfig } from "./avatarConfig";
 
 const MAX_DURATION_SECONDS = 120;
 
@@ -65,6 +87,13 @@ type Props = {
     // even when status is "in_review" (never forces a resubmit the way
     // framingFlagReason's "leading" verdict does).
     derogatoryFlagReason: string | null;
+    // Anonymous-video feature, NEW: an object URL for the exact public
+    // artifact that was just uploaded (avatar video if this recording was
+    // anonymous, raw video otherwise) — so the caller can show it back to
+    // the proposer for a final look before Publish (see VideoPublishChoice
+    // and the plan's "mandatory pre-publish confirmation"). The caller owns
+    // revoking this URL when done with it.
+    previewVideoUrl: string | null;
   }) => void;
   onCancel: () => void;
 };
@@ -78,20 +107,43 @@ export function VideoRecorderPanel({ transcribeAudio, sourceUrl = null, location
   const [editedTranscript, setEditedTranscript] = useState("");
   const [rawTranscript, setRawTranscript] = useState("");
   const [resubmitReason, setResubmitReason] = useState<string | null>(null);
+  const [recordingAnonymously, setRecordingAnonymously] = useState(false);
+
+  const { identity, ensureAvatarConfig } = useDisplayIdentity();
 
   const streamRef = useRef<MediaStream | null>(null);
-  const videoRecorderRef = useRef<MediaRecorder | null>(null);
+  // "raw" = the true camera+mic recording. Public artifact when identified;
+  // archival-only upload when anonymous (see header note).
+  const rawRecorderRef = useRef<MediaRecorder | null>(null);
+  const rawChunksRef = useRef<Blob[]>([]);
   const audioRecorderRef = useRef<MediaRecorder | null>(null);
-  const videoChunksRef = useRef<Blob[]>([]);
   const audioChunksRef = useRef<Blob[]>([]);
+  // Only populated when recording anonymously — the avatar+disguised-voice
+  // recording that becomes the public artifact instead of the raw one.
+  const avatarRecorderRef = useRef<MediaRecorder | null>(null);
+  const avatarChunksRef = useRef<Blob[]>([]);
+  const avatarRendererRef = useRef<AvatarRenderer | null>(null);
+  const distortedAudioRef = useRef<DistortedAudio | null>(null);
+  const avatarConfigRef = useRef<AnonymousAvatarConfig | null>(null);
+
   const videoPreviewRef = useRef<HTMLVideoElement | null>(null);
+  const canvasPreviewRef = useRef<HTMLCanvasElement | null>(null);
+  const mirrorRafRef = useRef<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const videoBlobRef = useRef<Blob | null>(null);
+  const rawBlobRef = useRef<Blob | null>(null);
+  const publicBlobRef = useRef<Blob | null>(null);
+  // Snapshotted once at record start — see header note. Never re-read
+  // mid-flow so a mode toggle elsewhere can't change which pipeline this
+  // specific recording uses partway through.
+  const anonymousAtRecordStartRef = useRef(false);
 
   useEffect(() => {
     return () => {
       streamRef.current?.getTracks().forEach((t) => t.stop());
       if (timerRef.current) clearInterval(timerRef.current);
+      if (mirrorRafRef.current !== null) cancelAnimationFrame(mirrorRafRef.current);
+      avatarRendererRef.current?.stop();
+      distortedAudioRef.current?.close();
     };
   }, []);
 
@@ -100,26 +152,69 @@ export function VideoRecorderPanel({ transcribeAudio, sourceUrl = null, location
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       streamRef.current = stream;
-      if (videoPreviewRef.current) {
-        videoPreviewRef.current.srcObject = stream;
-        await videoPreviewRef.current.play().catch(() => {});
-      }
 
-      videoChunksRef.current = [];
+      const isAnonymous = identity?.isAnonymous ?? true; // fail toward the more private path if identity hasn't loaded yet
+      anonymousAtRecordStartRef.current = isAnonymous;
+      setRecordingAnonymously(isAnonymous);
+
+      rawChunksRef.current = [];
       audioChunksRef.current = [];
+      avatarChunksRef.current = [];
 
-      const videoRecorder = new MediaRecorder(stream, { mimeType: "video/webm" });
-      videoRecorder.ondataavailable = (e) => { if (e.data.size > 0) videoChunksRef.current.push(e.data); };
-      videoRecorderRef.current = videoRecorder;
+      // Raw camera+mic recorder — always runs. Public artifact when
+      // identified; archival-only when anonymous.
+      const rawRecorder = new MediaRecorder(stream, { mimeType: "video/webm" });
+      rawRecorder.ondataavailable = (e) => { if (e.data.size > 0) rawChunksRef.current.push(e.data); };
+      rawRecorderRef.current = rawRecorder;
 
-      // Same stream, audio track only — two independent recorders on one
-      // getUserMedia() call, not a second recording.
+      // Same stream, audio track only — for transcription, always
+      // UNDISTORTED regardless of mode, so voice disguise never affects
+      // transcript accuracy.
       const audioOnlyStream = new MediaStream(stream.getAudioTracks());
       const audioRecorder = new MediaRecorder(audioOnlyStream, { mimeType: "audio/webm" });
       audioRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
       audioRecorderRef.current = audioRecorder;
 
-      videoRecorder.start();
+      if (isAnonymous) {
+        const config = await ensureAvatarConfig();
+        avatarConfigRef.current = config;
+
+        const distortedAudio = await createDistortedAudio(stream);
+        distortedAudioRef.current = distortedAudio;
+
+        const avatarRenderer = new AvatarRenderer(config);
+        avatarRenderer.attachAudioSource(distortedAudio.audioContext, distortedAudio.pitchShiftNode);
+        avatarRenderer.start();
+        avatarRendererRef.current = avatarRenderer;
+
+        if (canvasPreviewRef.current) {
+          const ctx2d = canvasPreviewRef.current.getContext("2d");
+          // Mirror the avatar canvas into the visible preview canvas each
+          // frame — keeps AvatarRenderer's own offscreen canvas as the
+          // single source of truth for both the live preview and the
+          // recorded stream.
+          const mirror = () => {
+            if (!canvasPreviewRef.current || !ctx2d) return;
+            ctx2d.drawImage(avatarRenderer.canvasElement, 0, 0, canvasPreviewRef.current.width, canvasPreviewRef.current.height);
+            mirrorRafRef.current = requestAnimationFrame(mirror);
+          };
+          mirror();
+        }
+
+        const avatarStream = new MediaStream([
+          ...avatarRenderer.captureStream(24).getVideoTracks(),
+          ...distortedAudio.destinationStream.getAudioTracks(),
+        ]);
+        const avatarRecorder = new MediaRecorder(avatarStream, { mimeType: "video/webm" });
+        avatarRecorder.ondataavailable = (e) => { if (e.data.size > 0) avatarChunksRef.current.push(e.data); };
+        avatarRecorderRef.current = avatarRecorder;
+        avatarRecorder.start();
+      } else if (videoPreviewRef.current) {
+        videoPreviewRef.current.srcObject = stream;
+        await videoPreviewRef.current.play().catch(() => {});
+      }
+
+      rawRecorder.start();
       audioRecorder.start();
       setStage("recording");
       setElapsedSeconds(0);
@@ -136,21 +231,32 @@ export function VideoRecorderPanel({ transcribeAudio, sourceUrl = null, location
       setError("Couldn't access your camera and microphone. Check permissions and try again.");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [identity, ensureAvatarConfig]);
 
   const stopRecording = useCallback(() => {
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
-    videoRecorderRef.current?.stop();
+    rawRecorderRef.current?.stop();
     audioRecorderRef.current?.stop();
+    avatarRecorderRef.current?.stop();
     streamRef.current?.getTracks().forEach((t) => t.stop());
+    avatarRendererRef.current?.stop();
+    if (mirrorRafRef.current !== null) { cancelAnimationFrame(mirrorRafRef.current); mirrorRafRef.current = null; }
     setStage("processing");
 
     // MediaRecorder's onstop fires after the last dataavailable event —
-    // give both recorders a tick to flush before reading the chunk arrays.
+    // give recorders a tick to flush before reading the chunk arrays.
     setTimeout(async () => {
-      const videoBlob = new Blob(videoChunksRef.current, { type: "video/webm" });
+      const rawBlob = new Blob(rawChunksRef.current, { type: "video/webm" });
       const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
-      videoBlobRef.current = videoBlob;
+      rawBlobRef.current = rawBlob;
+
+      if (anonymousAtRecordStartRef.current) {
+        publicBlobRef.current = new Blob(avatarChunksRef.current, { type: "video/webm" });
+        distortedAudioRef.current?.close();
+        distortedAudioRef.current = null;
+      } else {
+        publicBlobRef.current = rawBlob;
+      }
 
       try {
         const { transcript } = await transcribeAudio(audioBlob);
@@ -163,6 +269,23 @@ export function VideoRecorderPanel({ transcribeAudio, sourceUrl = null, location
       }
     }, 300);
   }, [transcribeAudio]);
+
+  const uploadVideo = useCallback(async (blob: Blob, jwt: string, kind: "public" | "raw_archival") => {
+    const form = new FormData();
+    form.append("video", blob, "recording.webm");
+    form.append("duration_seconds", String(elapsedSeconds));
+    form.append("kind", kind);
+    const uploadResp = await fetch(`${SUPABASE_URL}/functions/v1/ugq-upload-video`, {
+      method: "POST",
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${jwt}` },
+      body: form,
+    });
+    const uploadJson = await uploadResp.json();
+    if (!uploadResp.ok || !uploadJson.ok) {
+      throw new Error(uploadJson.message ?? "Video upload failed");
+    }
+    return uploadJson as { video_recording_path: string; video_duration_seconds: number | null };
+  }, [elapsedSeconds]);
 
   const submit = useCallback(async () => {
     if (editedTranscript.trim().length < 20) {
@@ -178,21 +301,22 @@ export function VideoRecorderPanel({ transcribeAudio, sourceUrl = null, location
     setError(null);
 
     try {
-      // 1. Upload the raw video. multipart/form-data — do NOT send a
-      //    Content-Type header here (the browser sets its own multipart
-      //    boundary for FormData bodies); still needs apikey + Authorization
-      //    like every other call to this project's Edge Functions gateway.
-      const form = new FormData();
-      form.append("video", videoBlobRef.current!, "recording.webm");
-      form.append("duration_seconds", String(elapsedSeconds));
-      const uploadResp = await fetch(`${SUPABASE_URL}/functions/v1/ugq-upload-video`, {
-        method: "POST",
-        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${jwt}` },
-        body: form,
-      });
-      const uploadJson = await uploadResp.json();
-      if (!uploadResp.ok || !uploadJson.ok) {
-        throw new Error(uploadJson.message ?? "Video upload failed");
+      // 1. Upload the public artifact — the avatar video when this
+      //    recording was anonymous, the raw video otherwise. multipart/
+      //    form-data — do NOT send a Content-Type header here (the browser
+      //    sets its own multipart boundary for FormData bodies); still
+      //    needs apikey + Authorization like every other call to this
+      //    project's Edge Functions gateway.
+      const publicUpload = await uploadVideo(publicBlobRef.current!, jwt, "public");
+
+      // Anonymous-video feature, NEW: also upload the true raw recording as
+      // a private, archival-only copy — never referenced by any
+      // public-facing playback path (see ugq-upload-video's "kind" field
+      // and admin-ugq-raw-video-url, the only reader).
+      let videoRawArchivalPath: string | null = null;
+      if (anonymousAtRecordStartRef.current && rawBlobRef.current) {
+        const archivalUpload = await uploadVideo(rawBlobRef.current, jwt, "raw_archival");
+        videoRawArchivalPath = archivalUpload.video_recording_path;
       }
 
       // 2. Submit — editedTranscript (proposer-reviewed) is raw_question;
@@ -208,9 +332,10 @@ export function VideoRecorderPanel({ transcribeAudio, sourceUrl = null, location
             body: JSON.stringify({
               proposal_id: resubmitProposalId,
               raw_question: editedTranscript.trim(),
-              video_recording_path: uploadJson.video_recording_path,
-              video_duration_seconds: uploadJson.video_duration_seconds,
+              video_recording_path: publicUpload.video_recording_path,
+              video_duration_seconds: publicUpload.video_duration_seconds,
               video_raw_transcript: rawTranscript.trim(),
+              video_raw_archival_path: videoRawArchivalPath,
             }),
           })
         : await fetch(`${SUPABASE_URL}/functions/v1/ugq-submit`, {
@@ -219,9 +344,10 @@ export function VideoRecorderPanel({ transcribeAudio, sourceUrl = null, location
             body: JSON.stringify({
               raw_question: editedTranscript.trim(),
               input_mode: "video",
-              video_recording_path: uploadJson.video_recording_path,
-              video_duration_seconds: uploadJson.video_duration_seconds,
+              video_recording_path: publicUpload.video_recording_path,
+              video_duration_seconds: publicUpload.video_duration_seconds,
               video_raw_transcript: rawTranscript.trim(),
+              video_raw_archival_path: videoRawArchivalPath,
               source_url: sourceUrl?.trim() || null,
               location_label: locationLabel?.trim() || null,
             }),
@@ -252,12 +378,13 @@ export function VideoRecorderPanel({ transcribeAudio, sourceUrl = null, location
         status: submitJson.status,
         framingFlagReason: submitJson.framing_flag_reason ?? null,
         derogatoryFlagReason: submitJson.derogatory_flag_reason ?? null,
+        previewVideoUrl: publicBlobRef.current ? URL.createObjectURL(publicBlobRef.current) : null,
       });
     } catch (e) {
       setError((e as Error).message || "Something went wrong. Please try again.");
       setStage("review");
     }
-  }, [editedTranscript, rawTranscript, elapsedSeconds, sourceUrl, locationLabel, resubmitProposalId, onSubmitted]);
+  }, [editedTranscript, rawTranscript, sourceUrl, locationLabel, resubmitProposalId, onSubmitted, uploadVideo]);
 
   const reRecord = useCallback(() => {
     setStage("idle");
@@ -265,7 +392,8 @@ export function VideoRecorderPanel({ transcribeAudio, sourceUrl = null, location
     setResubmitReason(null);
     setRawTranscript("");
     setEditedTranscript("");
-    videoBlobRef.current = null;
+    rawBlobRef.current = null;
+    publicBlobRef.current = null;
   }, []);
 
   return (
@@ -278,11 +406,24 @@ export function VideoRecorderPanel({ transcribeAudio, sourceUrl = null, location
 
       {(stage === "idle" || stage === "recording") && (
         <div className="flex flex-col gap-3">
+          {identity?.isAnonymous && (
+            <div className="rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-600">
+              Recording anonymously — your voice will be disguised and your avatar will speak in your place. Only you will ever see the raw footage; it's never shown to anyone else.
+            </div>
+          )}
           <video
             ref={videoPreviewRef}
             muted
             playsInline
+            hidden={!!identity?.isAnonymous}
             className="aspect-video w-full rounded-md bg-neutral-900 object-cover"
+          />
+          <canvas
+            ref={canvasPreviewRef}
+            width={480}
+            height={360}
+            hidden={!identity?.isAnonymous}
+            className="aspect-video w-full rounded-md bg-neutral-900"
           />
           {stage === "recording" && (
             <p className="text-sm text-neutral-600">
@@ -330,7 +471,9 @@ export function VideoRecorderPanel({ transcribeAudio, sourceUrl = null, location
             className="rounded-md border border-neutral-300 p-2 text-sm"
           />
           <p className="text-xs text-neutral-500">
-            This is what shows as your question text. Your original video and voice stay exactly as recorded either way.
+            {recordingAnonymously
+              ? "This is what shows as your question text. Your voice was disguised and your face was never shown — only your avatar will be published."
+              : "This is what shows as your question text. Your original video and voice stay exactly as recorded either way."}
           </p>
           <div className="flex gap-2">
             <button

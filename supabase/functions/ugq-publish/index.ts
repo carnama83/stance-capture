@@ -31,6 +31,13 @@
 // alongside this file; ugq-confirm-publish was not in hand when this change
 // was written and needs the same three fields added to its own call here.
 //
+// Anonymous-video feature (NEW): also carries video_recorded_anonymous and
+// video_raw_archival_path through from the proposal, same "caller passes it
+// in the request body" pattern as the three fields above — see
+// ugq-confirm-publish.ts, the only caller that matters for a user-confirmed
+// video publish (ugq-screen's auto-publish path doesn't apply to video
+// submissions today, per that file's status handling).
+//
 // Sep 2026, NEW: `question` (the `reframed` text below) is the CANONICAL
 // text for this question — every other language is a rendition, never the
 // other way around. Previously that was an unenforced assumption: nothing
@@ -206,6 +213,12 @@ Deno.serve(async (req) => {
     // exists, so it was never a real choice. Revisit if that infra is built.
     const videoPublishChoice = ["raw_only", "raw_plus_overlay"].includes(body.video_publish_choice)
       ? body.video_publish_choice as string : null;
+    // Anonymous-video feature, NEW: same defensive re-check pattern as
+    // videoRecordingPath just above — real validation already happened at
+    // capture/submit time, this just guards what gets written here.
+    const videoRecordedAnonymous = body.video_recorded_anonymous === true;
+    const videoRawArchivalPath = typeof body.video_raw_archival_path === "string" && body.video_raw_archival_path.trim()
+      ? body.video_raw_archival_path.trim().slice(0, 500) : null;
 
     // Sep 2026, NEW — see header note. Proposer's own-language text, already
     // reviewed by them in ugq-screen's preview; used below to seed the
@@ -262,6 +275,8 @@ Deno.serve(async (req) => {
         video_recording_path: videoRecordingPath,
         video_duration_seconds: videoDurationSeconds,
         video_publish_choice: videoPublishChoice,
+        video_recorded_anonymous: videoRecordedAnonymous,
+        video_raw_archival_path: videoRawArchivalPath,
       } : {}),
       // admin_reviewed_at/admin_reviewed_by stay NULL until an admin acts —
       // that's what makes an auto-published question show up in the parallel

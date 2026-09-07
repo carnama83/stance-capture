@@ -673,6 +673,13 @@ export function ProposeQuestionModal({
   // VideoPublishChoice as a recommendation, never blocks Publish.
   const [isVideoProposal, setIsVideoProposal] = React.useState(false);
   const [derogatoryFlagReason, setDerogatoryFlagReason] = React.useState<string | null>(null);
+  // Anonymous-video feature, NEW: object URL for the exact public artifact
+  // VideoRecorderPanel just uploaded (avatar video when recorded
+  // anonymously, raw video otherwise) — passed to VideoPublishChoice so the
+  // proposer can watch exactly what's about to go public before Publish is
+  // clickable (see the plan's "mandatory pre-publish confirmation"). Revoked
+  // whenever it's replaced or the proposer re-records.
+  const [videoPreviewUrl, setVideoPreviewUrl] = React.useState<string | null>(null);
 
   // Authority tagging (post-publish) state.
   const [suggestedAuthorities, setSuggestedAuthorities] = React.useState<Authority[]>([]);
@@ -972,10 +979,13 @@ export function ProposeQuestionModal({
     status: string;
     framingFlagReason: string | null;
     derogatoryFlagReason: string | null;
+    previewVideoUrl: string | null;
   }) {
     setIsVideoProposal(true);
     setProposalId(result.proposalId);
     setDerogatoryFlagReason(result.derogatoryFlagReason);
+    if (videoPreviewUrl) URL.revokeObjectURL(videoPreviewUrl);
+    setVideoPreviewUrl(result.previewVideoUrl);
     setPreviewReframe(null);
     setPollAttempts(0);
     setPollExhausted(false);
@@ -1009,6 +1019,8 @@ export function ProposeQuestionModal({
     setProposalId(null);
     setPreviewReframe(null);
     setDerogatoryFlagReason(null);
+    if (videoPreviewUrl) URL.revokeObjectURL(videoPreviewUrl);
+    setVideoPreviewUrl(null);
     setIsVideoProposal(false);
     setPollAttempts(0);
     setPollExhausted(false);
@@ -1415,6 +1427,7 @@ export function ProposeQuestionModal({
                 <VideoPublishChoice
                   proposalId={proposalId!}
                   derogatoryFlagReason={derogatoryFlagReason}
+                  previewVideoUrl={videoPreviewUrl}
                   onReRecord={handleVideoReRecord}
                   onPublished={handleVideoPublished}
                 />
