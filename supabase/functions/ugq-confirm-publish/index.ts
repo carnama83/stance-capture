@@ -288,6 +288,12 @@ serve(async (req) => {
         question_native: typeof preview?.question_native === "string" ? preview.question_native : null,
         slider_low_label_native: typeof preview?.slider_low_label_native === "string" ? preview.slider_low_label_native : null,
         slider_high_label_native: typeof preview?.slider_high_label_native === "string" ? preview.slider_high_label_native : null,
+        // Sep 2026, NEW: see ugq-screen's PreviewReframe.context_summary_native
+        // comment — without this, the seeded rendition's context_summary
+        // stayed null forever (it's marked 'published' immediately, so the
+        // async translator never revisits it), and the "Background" section
+        // kept showing English to non-English viewers of that question.
+        context_summary_native: typeof preview?.context_summary_native === "string" ? preview.context_summary_native : null,
         // Epic X, NEW.
         ...(isVideoSubmission ? {
           video_recording_path: proposal.video_recording_path,

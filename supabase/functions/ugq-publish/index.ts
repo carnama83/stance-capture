@@ -221,6 +221,16 @@ Deno.serve(async (req) => {
       ? body.slider_low_label_native.trim() : null;
     const sliderHighNative = typeof body.slider_high_label_native === "string" && body.slider_high_label_native.trim()
       ? body.slider_high_label_native.trim() : null;
+    // Sep 2026, NEW: same treatment as questionNative/slider*Native above,
+    // but for the "Background" section — was previously omitted entirely
+    // from this seed, leaving question_renditions.context_summary null on a
+    // rendition that's about to be marked 'published' (so the async
+    // generate-question-renditions translator, which DOES backfill
+    // context_summary, never gets a chance to since this row is no longer
+    // 'pending'). get_question_localized then fell back to the English
+    // questions.context_summary forever for that specific rendition.
+    const contextSummaryNative = typeof body.context_summary_native === "string" && body.context_summary_native.trim()
+      ? body.context_summary_native.trim() : null;
 
     const { error: insErr } = await adminSb.from("questions").insert({
       id: questionId,
@@ -281,6 +291,7 @@ Deno.serve(async (req) => {
             rendered_text: questionNative,
             slider_low_label: sliderLowNative,
             slider_high_label: sliderHighNative,
+            context_summary: contextSummaryNative,
             transform_status: "published",
             axis_equivalence_check: "pass",
             axis_equivalence_notes: "Reused directly from the proposer's own-language preview text, reviewed by " +

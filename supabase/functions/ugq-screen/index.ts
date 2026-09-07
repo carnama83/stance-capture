@@ -486,6 +486,17 @@ serve(async (req) => {
     question_native: string | null;
     slider_low_label_native: string | null;
     slider_high_label_native: string | null;
+    // Sep 2026, NEW: context_summary above is ALWAYS English (grounding text
+    // from web search, same as question/slider labels before the _native
+    // fields existed) — it had no native counterpart at all, so a non-English
+    // proposer's published question kept showing an English "Background"
+    // section forever (get_question_localized falls back to q.context_summary
+    // when the rendition's own context_summary is null, and the native-seed
+    // shortcut in ugq-publish marks the rendition 'published' immediately,
+    // so the async generate-question-renditions translator — which DOES
+    // handle context_summary — never gets a chance to backfill it). Same
+    // null-unless-non-English convention as the other _native fields.
+    context_summary_native: string | null;
   };
 
   // Shared parse tail for any LLM call that's supposed to return a
@@ -525,6 +536,8 @@ serve(async (req) => {
           ? parsed.slider_low_label_native.trim() : null,
         slider_high_label_native: detectedLanguage !== "en" && typeof parsed.slider_high_label_native === "string" && parsed.slider_high_label_native.trim()
           ? parsed.slider_high_label_native.trim() : null,
+        context_summary_native: detectedLanguage !== "en" && typeof parsed.context_summary_native === "string" && parsed.context_summary_native.trim()
+          ? parsed.context_summary_native.trim() : null,
       };
     } catch (parseErr) {
       // Full raw_text logged (not truncated) — a parse failure here means we
@@ -561,7 +574,11 @@ serve(async (req) => {
     "NOT English, ALSO return \"question_native\"/\"slider_low_label_native\"/\"slider_high_label_native\": the " +
     "SAME question and slider labels, but natively phrased the way a fluent speaker of that language would " +
     "actually write it — not a stiff word-for-word back-translation — following the exact same structure/tone " +
-    "rules above. If the detected language IS English, leave all three _native fields null. ";
+    "rules above. If the detected language IS English, leave all three _native fields null. Separately, if " +
+    "\"context_summary\" is non-null AND the detected language is not English, ALSO return " +
+    "\"context_summary_native\": the same background text, natively phrased (not a stiff back-translation) — this " +
+    "is the only version of the background a non-English proposer's audience will ever see, so it must stand on " +
+    "its own, not read as a translation. Leave it null whenever context_summary is null or the language is English. ";
 
   async function generatePreviewOnce(raw: string, withWebSearch: boolean): Promise<PreviewReframe | null> {
     if (!SCREEN_API_KEY) return null;
@@ -586,7 +603,9 @@ serve(async (req) => {
         "\"one short sentence\",\"detected_language\":\"ISO 639-1 code of the INPUT text's language, e.g. en, hi\"," +
         "\"question_native\":\"same question natively phrased in detected_language, or null if detected_language " +
         "is en\",\"slider_low_label_native\":\"... or null if detected_language is en\"," +
-        "\"slider_high_label_native\":\"... or null if detected_language is en\"}. " +
+        "\"slider_high_label_native\":\"... or null if detected_language is en\"," +
+        "\"context_summary_native\":\"context_summary natively phrased in detected_language, or null if " +
+        "context_summary is null or detected_language is en\"}. " +
         "If the raw text has no usable civic topic at all, return {\"question\":null,\"slider_low_label\":null," +
         "\"slider_high_label\":null,\"context_summary\":null,\"supporting_links\":[],\"quality_notes\":\"no usable topic\"}."
       : "You write a QUICK, ROUGH preview of how a user's raw civic-question proposal might read once turned into a " +
@@ -605,7 +624,8 @@ serve(async (req) => {
         "sentence\",\"detected_language\":\"ISO 639-1 code of the INPUT text's language, e.g. en, hi\"," +
         "\"question_native\":\"same question natively phrased in detected_language, or null if detected_language " +
         "is en\",\"slider_low_label_native\":\"... or null if detected_language is en\"," +
-        "\"slider_high_label_native\":\"... or null if detected_language is en\"}. " +
+        "\"slider_high_label_native\":\"... or null if detected_language is en\"," +
+        "\"context_summary_native\":null}. " +
         "If the raw text has no usable civic topic at all, return {\"question\":null,\"slider_low_label\":null," +
         "\"slider_high_label\":null,\"context_summary\":null,\"supporting_links\":[],\"quality_notes\":\"no usable topic\"}.";
 
@@ -701,7 +721,9 @@ serve(async (req) => {
         "\"quality_notes\":\"one short sentence\",\"detected_language\":\"ISO 639-1 code of the ORIGINAL raw " +
         "proposal's language, e.g. en, hi\",\"question_native\":\"same question natively phrased in " +
         "detected_language, or null if detected_language is en\",\"slider_low_label_native\":\"... or null if " +
-        "detected_language is en\",\"slider_high_label_native\":\"... or null if detected_language is en\"}."
+        "detected_language is en\",\"slider_high_label_native\":\"... or null if detected_language is en\"," +
+        "\"context_summary_native\":\"context_summary natively phrased in detected_language, or null if " +
+        "context_summary is null or detected_language is en\"}."
       : "You are REVISING an existing draft preview of a civic stance question based on new context the proposer " +
         "just added — you are NOT starting over, and you do NOT have web search on this pass. You'll be shown the " +
         "CURRENT draft below: keep everything in it that's still accurate and relevant, and weave in the " +
@@ -727,7 +749,9 @@ serve(async (req) => {
         "\"quality_notes\":\"one short sentence\",\"detected_language\":\"ISO 639-1 code of the ORIGINAL raw " +
         "proposal's language, e.g. en, hi\",\"question_native\":\"same question natively phrased in " +
         "detected_language, or null if detected_language is en\",\"slider_low_label_native\":\"... or null if " +
-        "detected_language is en\",\"slider_high_label_native\":\"... or null if detected_language is en\"}.";
+        "detected_language is en\",\"slider_high_label_native\":\"... or null if detected_language is en\"," +
+        "\"context_summary_native\":\"context_summary natively phrased in detected_language, or null if " +
+        "context_summary is null or detected_language is en\"}.";
 
     const refineUsr =
       `Original raw proposal (for reference only — the current draft below is the actual starting point):\n"${raw}"\n\n` +
@@ -1006,6 +1030,7 @@ serve(async (req) => {
               slider_low_label: typeof existingPreviewRaw.slider_low_label === "string" ? existingPreviewRaw.slider_low_label : null,
               slider_high_label: typeof existingPreviewRaw.slider_high_label === "string" ? existingPreviewRaw.slider_high_label : null,
               context_summary: typeof existingPreviewRaw.context_summary === "string" ? existingPreviewRaw.context_summary : null,
+              context_summary_native: typeof existingPreviewRaw.context_summary_native === "string" ? existingPreviewRaw.context_summary_native : null,
               supporting_links: Array.isArray(existingPreviewRaw.supporting_links)
                 ? existingPreviewRaw.supporting_links.filter((u): u is string => typeof u === "string")
                 : [],
@@ -1463,6 +1488,14 @@ serve(async (req) => {
             question_native: previewReframe.question_native,
             slider_low_label_native: previewReframe.slider_low_label_native,
             slider_high_label_native: previewReframe.slider_high_label_native,
+            // Sep 2026, NEW: see PreviewReframe's context_summary_native
+            // comment — without this, ugq-publish's native-rendition seed
+            // left context_summary null on the rendition, and
+            // get_question_localized fell back to the English
+            // questions.context_summary forever (that rendition is marked
+            // 'published' immediately, so the async translator never
+            // revisits it to backfill).
+            context_summary_native: previewReframe.context_summary_native,
             // Epic X, NEW: only meaningful when isVideoSubmission — undefined
             // fields are simply omitted from the JSON body for text/voice.
             ...(isVideoSubmission ? {
