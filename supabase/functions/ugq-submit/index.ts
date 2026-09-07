@@ -257,19 +257,24 @@ serve(async (req) => {
     let derogatoryFlagReason: string | null = null;
     try {
       const ctrl = new AbortController();
-      // 20s (was 12s, originally 9s): ugq-screen runs the Gate 1 screening
-      // call and the preview-reframe call CONCURRENTLY (Promise.allSettled),
-      // so total time is roughly the slower of the two rather than double —
-      // but the preview call now also runs web search (Aug 2026, CONTEXT
-      // feature: grounds the published text with real search results) which
-      // adds a few real seconds of its own on top of generation time. Extra
-      // headroom avoids aborting a request that's 90% of the way there.
+      // 32s (was 20s, before that 12s, originally 9s): production logs show
+      // the web-search-grounded preview call routinely takes 15-27s by
+      // itself (Claude's agentic search loop: initial call -> server runs
+      // the search -> results re-injected -> final generation), so 20s was
+      // aborting BEFORE ugq-screen actually finished in a large fraction of
+      // real submissions — confirmed via repeated "[ugq-submit] inline
+      // screen threw: The signal has been aborted" log lines immediately
+      // followed, seconds later, by ugq-screen's own success logs
+      // (preview_final_result/framing_final_result). Bumped to comfortably
+      // clear the observed worst case with margin, so most submissions now
+      // get their real resolved status back directly instead of falling
+      // through to the client's "still processing" poll fallback at all.
       // Aborting here does NOT stop ugq-screen's own execution (Deno Deploy
       // invocations run independently of the caller's fetch) — it only means
       // we return 'proposed' to the browser and the DB write (correct status
       // + preview, possibly already published) lands a moment after this
       // response, invisible to this request only.
-      const t = setTimeout(() => ctrl.abort(), 20000);
+      const t = setTimeout(() => ctrl.abort(), 32000);
       const screenResp = await fetch(`${SUPABASE_URL}/functions/v1/ugq-screen`, {
         method: "POST",
         signal: ctrl.signal,

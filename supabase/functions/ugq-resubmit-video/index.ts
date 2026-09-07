@@ -140,7 +140,10 @@ serve(async (req) => {
     let derogatoryFlagReason: string | null = null;
     try {
       const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), 20000);
+      // 32s — see ugq-submit's identical timeout for why (the web-search
+      // preview call routinely takes 15-27s by itself; 20s was aborting
+      // before ugq-screen actually finished).
+      const t = setTimeout(() => ctrl.abort(), 32000);
       const screenResp = await fetch(`${SUPABASE_URL}/functions/v1/ugq-screen`, {
         method: "POST",
         signal: ctrl.signal,

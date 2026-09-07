@@ -873,8 +873,8 @@ serve(async (req) => {
   // ugq-confirm-publish now reuses this cached result at publish time
   // instead of re-fetching from scratch. Best-effort and additive: adds up
   // to ~IMAGE_FETCH_TIMEOUT_MS (6s) to this function's total runtime, which
-  // ugq-submit's existing ~20s wait + up-to-30s poll window already
-  // absorbs comfortably — never blocks the preview itself from returning.
+  // ugq-submit's ~32s wait + up-to-60s client poll window already absorbs
+  // comfortably — never blocks the preview itself from returning.
   async function attachCoverImage(preview: PreviewReframe, proposalSourceUrl: string | null): Promise<PreviewReframe> {
     const candidates = [
       ...(proposalSourceUrl ? [proposalSourceUrl] : []),
@@ -1132,29 +1132,38 @@ serve(async (req) => {
     // Sep 2026, NEW: detect the proposer's language and get a literal
     // English query for matching BEFORE fetching duplicate candidates — see
     // detectAndTranslateForSearch's header comment for the bug this closes.
-    const langDetect = await detectAndTranslateForSearch(raw);
+    //
+    // Perf, NEW: this LLM call, the parent-topics RPC, and the reputation
+    // lookup are mutually independent — only search_questions below actually
+    // needs langDetect's result — so they now run CONCURRENTLY instead of
+    // one after another (previously each fully serial). Takes the topic and
+    // reputation queries' latency off the critical path entirely; the only
+    // thing still waiting on langDetect specifically is search_questions,
+    // since it needs the translated english_query.
+    const [langDetect, parentTopicsResult, repResult] = await Promise.all([
+      detectAndTranslateForSearch(raw),
+      adminSb.rpc("get_parent_topics_for_classification"),
+      adminSb.from("user_proposal_reputation")
+        .select("score, tier, total_published, total_rejected")
+        .eq("user_id", proposerId).maybeSingle(),
+    ]);
+    // Same RPC classify-parent-topics uses for topic_drafts — reused here so
+    // UGQ proposals are classified against the exact same approved-topic pool.
+    const parentTopics = (parentTopicsResult.data ?? []) as { id: string; title: string }[];
+    // Proposer tier (for fast-track + final routing).
+    const rep = repResult.data;
+    const tier = rep?.tier ?? "new";
 
     // ── Retrieve live-question candidates for duplicate adjudication ────────────
     // Pass ALL params explicitly: this codebase's PostgREST setup can fail to
-    // resolve RPCs when defaulted params are omitted.
+    // resolve RPCs when defaulted params are omitted. Depends on langDetect's
+    // english_query, so this one still has to wait for it specifically.
     const { data: candidates } = await adminSb.rpc("search_questions", {
       p_query: langDetect.english_query, p_user_id: null, p_limit: 8, p_offset: 0,
     });
     const candList = (candidates ?? []).map((c: { question_id: string; question: string }) => ({
       id: c.question_id, question: c.question,
     }));
-
-    // ── Retrieve candidate parent topics for topic matching ─────────────────────
-    // Same RPC classify-parent-topics uses for topic_drafts — reused here so UGQ
-    // proposals are classified against the exact same approved-topic pool.
-    const { data: parentTopicsRaw } = await adminSb.rpc("get_parent_topics_for_classification");
-    const parentTopics = (parentTopicsRaw ?? []) as { id: string; title: string }[];
-
-    // Proposer tier (for fast-track + final routing).
-    const { data: rep } = await adminSb.from("user_proposal_reputation")
-      .select("score, tier, total_published, total_rejected")
-      .eq("user_id", proposerId).maybeSingle();
-    const tier = rep?.tier ?? "new";
 
     // ── Gate 1 LLM pass ─────────────────────────────────────────────────────────
     let screen = {

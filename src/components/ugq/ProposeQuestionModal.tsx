@@ -734,7 +734,11 @@ export function ProposeQuestionModal({
   // (uqp_select_own_or_admin) already lets a proposer read their own row, so
   // no new endpoint is needed for this.
   const POLL_INTERVAL_MS = 3000;
-  const POLL_MAX_ATTEMPTS = 10; // 10 * 3s = 30s of polling on top of ugq-submit's own ~20s wait
+  // 20 * 3s = 60s of polling on top of ugq-submit's own ~32s wait (both
+  // bumped together — production logs showed the web-search-grounded
+  // preview call routinely taking 15-27s by itself, which the previous
+  // 20s+30s combined budget could fall short of).
+  const POLL_MAX_ATTEMPTS = 20;
 
   React.useEffect(() => {
     if (phase !== "review" || previewReframe || !proposalId || pollExhausted || awaitingVerification) return;
@@ -798,6 +802,19 @@ export function ProposeQuestionModal({
       clearInterval(timer);
     };
   }, [phase, previewReframe, proposalId, pollExhausted, awaitingVerification]);
+
+  // Anonymous-video feature session, NEW: re-arms the poll effect above for
+  // another full cycle — the effect's own guard (`!pollExhausted`) means
+  // simply resetting these two flags is enough to restart it. Backs the
+  // "Check again" button shown once polling has given up once already
+  // (see the pollExhausted footer below) — screening keeps running
+  // server-side regardless of whether anything here is polling for it, so
+  // this never re-triggers work, it just looks again for a result that may
+  // have landed since the last attempt.
+  const handleCheckAgain = React.useCallback(() => {
+    setPollAttempts(0);
+    setPollExhausted(false);
+  }, []);
 
   // Sep 2026, NEW: for voice/video proposals only, upgrades ugq-screen's
   // fast/unverified preview to the real Stage A/B/C fact-checked one — see
@@ -1440,6 +1457,16 @@ export function ProposeQuestionModal({
                 <Button variant="ghost" onClick={close} disabled={phase === "publishing" || refining}>
                   {preview ? t("ugq.notNow") : t("ugq.done")}
                 </Button>
+                {/* Anonymous-video feature session, NEW: polling giving up once
+                    isn't the end — screening keeps running server-side
+                    regardless, so a manual re-check often finds it resolved
+                    a few seconds later rather than sending the proposer away
+                    to check "My Proposals" separately. */}
+                {!preview && pollExhausted ? (
+                  <Button variant="outline" onClick={handleCheckAgain}>
+                    {t("ugq.checkAgain")}
+                  </Button>
+                ) : null}
                 {preview ? (
                   <Button onClick={handlePublish} disabled={phase === "publishing" || refining}>
                     {phase === "publishing" ? (
