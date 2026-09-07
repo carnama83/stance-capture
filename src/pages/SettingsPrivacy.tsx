@@ -13,19 +13,8 @@ import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Shield, Eye, MessageSquare, User, Share2, MessageCircleOff, Smile } from "lucide-react";
+import { Loader2, Shield, Eye, MessageSquare, User, Share2, MessageCircleOff } from "lucide-react";
 import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_PROJECT_REF, getJwt } from "@/lib/env";
-import { AvatarRenderer } from "@/components/ugq/avatarRenderer";
-import {
-  type AnonymousAvatarConfig,
-  type HairStyle,
-  SKIN_TONES,
-  HAIR_COLORS,
-  HAIR_STYLES,
-  TOP_COLORS,
-  randomAvatarConfig,
-  parseAvatarConfig,
-} from "@/components/ugq/avatarConfig";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -136,194 +125,6 @@ function useSaveWhatsAppOptOut() {
       });
     }
   };
-}
-
-// ── Anonymous avatar (anonymous-video feature, NEW) ─────────────────────────────
-// Reads/writes profiles.anonymous_avatar_config directly, NOT through the
-// get_my_privacy_settings/update_my_privacy_settings RPC above — that RPC
-// backs display_mode/stance_visibility/etc., a separate, newer settings
-// surface this app hasn't wired into video (or anywhere else) yet. The
-// video feature deliberately keys off the LEGACY profiles.display_handle_mode
-// field instead (same field AppTopBar/ProposerBadge/comments already read),
-// so the avatar config that pairs with it lives on the same `profiles` row,
-// read/written the same plain way.
-
-function useAnonymousAvatarConfig() {
-  return useQuery<AnonymousAvatarConfig | null>({
-    queryKey: ["anonymous-avatar-config"],
-    staleTime: 60_000,
-    queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return null;
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("anonymous_avatar_config")
-        .eq("user_id", user.id)
-        .maybeSingle();
-      if (error) throw error;
-      return parseAvatarConfig(data?.anonymous_avatar_config);
-    },
-  });
-}
-
-function useSaveAnonymousAvatarConfig() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (config: AnonymousAvatarConfig) => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not signed in");
-      const { error } = await supabase
-        .from("profiles")
-        .update({ anonymous_avatar_config: config })
-        .eq("user_id", user.id);
-      if (error) throw error;
-      return config;
-    },
-    onSuccess: (config) => {
-      queryClient.setQueryData(["anonymous-avatar-config"], config);
-    },
-  });
-}
-
-// Renders AvatarRenderer's own offscreen canvas into a small visible
-// preview canvas each frame — same mirroring approach VideoRecorderPanel
-// uses for its live recording preview, kept in sync here purely so this
-// settings page doesn't need a second avatar-drawing implementation.
-function AvatarPreviewCanvas({ config }: { config: AnonymousAvatarConfig }) {
-  const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
-
-  React.useEffect(() => {
-    const renderer = new AvatarRenderer(config);
-    renderer.start();
-    let raf: number;
-    const mirror = () => {
-      const el = canvasRef.current;
-      if (el) {
-        const ctx = el.getContext("2d");
-        ctx?.drawImage(renderer.canvasElement, 0, 0, el.width, el.height);
-      }
-      raf = requestAnimationFrame(mirror);
-    };
-    mirror();
-    return () => {
-      renderer.stop();
-      cancelAnimationFrame(raf);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [config.skinTone, config.hairColor, config.hairStyle, config.topColor]);
-
-  return <canvas ref={canvasRef} width={160} height={120} className="rounded-md bg-slate-100" />;
-}
-
-function ColorSwatchPicker({
-  options,
-  value,
-  onChange,
-  label,
-}: {
-  options: string[];
-  value: string;
-  onChange: (v: string) => void;
-  label: string;
-}) {
-  return (
-    <div>
-      <p className="text-xs font-medium text-slate-600 mb-1">{label}</p>
-      <div className="flex flex-wrap gap-2">
-        {options.map((c) => (
-          <button
-            key={c}
-            type="button"
-            onClick={() => onChange(c)}
-            aria-label={`${label}: ${c}`}
-            className={
-              "h-7 w-7 rounded-full border-2 " +
-              (value === c ? "border-slate-900" : "border-transparent")
-            }
-            style={{ backgroundColor: c }}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function AnonymousAvatarSection() {
-  const { data: savedConfig, isLoading } = useAnonymousAvatarConfig();
-  const { mutate: save, isPending } = useSaveAnonymousAvatarConfig();
-  const { toast } = useToast();
-  const [local, setLocal] = React.useState<AnonymousAvatarConfig | null>(null);
-
-  React.useEffect(() => {
-    if (!isLoading && !local) setLocal(savedConfig ?? randomAvatarConfig());
-  }, [isLoading, savedConfig]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  if (isLoading || !local) {
-    return (
-      <div className="flex items-center gap-2 py-4 text-slate-400">
-        <Loader2 className="h-4 w-4 animate-spin" />
-        <span className="text-sm">Loading your avatar…</span>
-      </div>
-    );
-  }
-
-  const update = (patch: Partial<AnonymousAvatarConfig>) =>
-    setLocal((prev) => (prev ? { ...prev, ...patch } : prev));
-
-  const handleSave = () => {
-    save(local, {
-      onSuccess: () => toast({ title: "Avatar saved." }),
-      onError: () => toast({ title: "Failed to save. Please try again.", variant: "destructive" }),
-    });
-  };
-
-  return (
-    <SectionCard
-      icon={Smile}
-      title="Anonymous avatar"
-      description="What stands in for your face and voice on videos you record while anonymous."
-    >
-      <div className="flex items-start gap-4">
-        <AvatarPreviewCanvas config={local} />
-        <div className="flex-1 space-y-3">
-          <ColorSwatchPicker label="Skin tone" options={SKIN_TONES} value={local.skinTone} onChange={(v) => update({ skinTone: v })} />
-          <ColorSwatchPicker label="Hair color" options={HAIR_COLORS} value={local.hairColor} onChange={(v) => update({ hairColor: v })} />
-          <div>
-            <p className="text-xs font-medium text-slate-600 mb-1">Hair style</p>
-            <div className="flex flex-wrap gap-2">
-              {HAIR_STYLES.map((style: HairStyle) => (
-                <button
-                  key={style}
-                  type="button"
-                  onClick={() => update({ hairStyle: style })}
-                  className={
-                    "rounded-md border px-2.5 py-1 text-xs capitalize " +
-                    (local.hairStyle === style ? "border-slate-900 bg-slate-50" : "border-slate-200")
-                  }
-                >
-                  {style}
-                </button>
-              ))}
-            </div>
-          </div>
-          <ColorSwatchPicker label="Top color" options={TOP_COLORS} value={local.topColor} onChange={(v) => update({ topColor: v })} />
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={isPending}
-            className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
-          >
-            {isPending ? "Saving…" : "Save avatar"}
-          </button>
-        </div>
-      </div>
-      <p className="text-[11px] text-slate-400 pt-1">
-        Used only on videos you record while anonymous, in place of your real face and voice.
-        Changing it only affects videos you record after this — a video you already recorded
-        keeps whatever avatar it was made with.
-      </p>
-    </SectionCard>
-  );
 }
 
 // ── UI primitives ──────────────────────────────────────────────────────────────
@@ -478,9 +279,6 @@ export default function SettingsPrivacy() {
           This also controls how your name appears in comment threads.
         </p>
       </SectionCard>
-
-      {/* Anonymous-video feature, NEW */}
-      <AnonymousAvatarSection />
 
       {/* L1b: Stance visibility */}
       <SectionCard

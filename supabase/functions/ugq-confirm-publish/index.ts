@@ -67,11 +67,9 @@
 // for that case. ("raw_plus_avatar" was dropped Sep 2026 — no TTS/avatar
 // synthesis backend exists.)
 //
-// Anonymous-video feature (NEW): also reads video_recorded_anonymous and
-// video_raw_archival_path off the proposal and passes them through to
-// ugq-publish unchanged — these were snapshotted once already, at
-// capture/submit time (see ugq-submit.ts / ugq-resubmit-video.ts), so this
-// endpoint's only job is to carry them along, not to recompute anything.
+// Note: a prior session added video_recorded_anonymous / video_raw_
+// archival_path passthrough here for an anonymous-avatar video feature that
+// was later rolled back — removed, see ugq-publish.ts's header note.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -167,7 +165,7 @@ serve(async (req) => {
     const adminSb = createClient(SUPABASE_URL, SERVICE_KEY);
 
     const { data: proposal } = await adminSb.from("user_question_proposals")
-      .select("id, user_id, status, preview_reframe, auto_topic_id, reframed_question_id, source_url, input_mode, video_recording_path, video_duration_seconds, video_recorded_anonymous, video_raw_archival_path")
+      .select("id, user_id, status, preview_reframe, auto_topic_id, reframed_question_id, source_url, input_mode, video_recording_path, video_duration_seconds")
       .eq("id", proposalId).maybeSingle();
     if (!proposal) return json(404, { ok: false, error: "NOT_FOUND" });
     if (proposal.user_id !== user.id) return json(403, { ok: false, error: "FORBIDDEN", message: "You can only publish your own proposals." });
@@ -305,8 +303,6 @@ serve(async (req) => {
           video_recording_path: proposal.video_recording_path,
           video_duration_seconds: proposal.video_duration_seconds,
           video_publish_choice: videoPublishChoice,
-          video_recorded_anonymous: proposal.video_recorded_anonymous === true,
-          video_raw_archival_path: proposal.video_raw_archival_path ?? null,
         } : {}),
       }),
     });

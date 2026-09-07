@@ -26,18 +26,12 @@
 // it's actually a video proposal currently awaiting a resubmit — this
 // endpoint refuses to touch a proposal in any other status.
 //
-// Anonymous-video feature (NEW): a resubmission is a brand-new RECORDING,
-// so it independently re-snapshots the caller's CURRENT display_handle_mode
-// into video_recorded_anonymous — it does NOT inherit whatever the original
-// submission snapshotted. This matches the product rule "a video reflects
-// whatever mode you were in when THAT clip was recorded" for the resubmit
-// path too: if the proposer switched from random_id to username between
-// their first attempt and this resubmission, the resubmitted clip is
-// treated as an identified recording, not an anonymous one, and vice versa.
-// video_raw_archival_path is accepted from the client (set only when the
-// resubmission was itself recorded anonymously — see VideoRecorderPanel.tsx)
-// and overwrites whatever the row had before, same "in place" treatment as
-// every other video field here.
+// Note: since a proposer only ever reaches "resubmit_requested" via the
+// video framing gate (ugq-screen's checkVideoFraming), and that gate only
+// ever runs for input_mode='video' submissions — which, per the rollback
+// of the anonymous-avatar feature, only exist for proposers who chose to
+// show their identity — this endpoint is implicitly identified-only again,
+// exactly as it was originally.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -78,11 +72,6 @@ serve(async (req) => {
     const videoRawTranscript = typeof body.video_raw_transcript === "string" ? body.video_raw_transcript.trim() : "";
     const videoDurationSeconds = Number.isFinite(body.video_duration_seconds)
       ? Math.max(0, Math.min(600, Math.round(body.video_duration_seconds))) : null;
-    // Anonymous-video feature, NEW: set only when this resubmission's
-    // recording was itself captured while the proposer was anonymous — see
-    // VideoRecorderPanel.tsx. Absent/null for an identified resubmission.
-    const videoRawArchivalPath = typeof body.video_raw_archival_path === "string" && body.video_raw_archival_path.trim()
-      ? body.video_raw_archival_path.trim().slice(0, 500) : null;
 
     if (!proposalId || !rawQuestion || !videoRecordingPath || !videoRawTranscript) {
       return json(400, { ok: false, error: "MISSING_FIELDS" });
@@ -110,13 +99,6 @@ serve(async (req) => {
       });
     }
 
-    // Anonymous-video feature, NEW: re-snapshot the CALLER'S CURRENT
-    // display_handle_mode — independent of whatever the original submission
-    // snapshotted. See header note.
-    const { data: profile } = await adminSb.from("profiles")
-      .select("display_handle_mode").eq("user_id", user.id).maybeSingle();
-    const videoRecordedAnonymous = profile?.display_handle_mode === "random_id";
-
     // Overwrite the video fields IN PLACE with the new recording, and reset
     // status to 'proposed' so ugq-screen's fresh-screen flow (which
     // requires status='proposed' — see its precondition check) runs again
@@ -126,8 +108,6 @@ serve(async (req) => {
       video_recording_path: videoRecordingPath,
       video_duration_seconds: videoDurationSeconds,
       video_raw_transcript: videoRawTranscript,
-      video_recorded_anonymous: videoRecordedAnonymous,
-      video_raw_archival_path: videoRawArchivalPath,
       status: "proposed",
     }).eq("id", proposalId);
 

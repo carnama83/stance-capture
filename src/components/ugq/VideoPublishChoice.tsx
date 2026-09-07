@@ -12,13 +12,6 @@
 // before publish is even possible), a derogatory-language flag is shown as
 // a recommendation with a Re-record shortcut, but Publish stays directly
 // clickable underneath it — the proposer decides.
-//
-// Anonymous-video feature (NEW): previewVideoUrl plays back the ACTUAL
-// public artifact (avatar video if this was recorded anonymously, raw video
-// otherwise) right above the publish choice, so the proposer watches
-// exactly what's about to go public before Publish is ever clicked — the
-// plan's "mandatory pre-publish confirmation." Optional/nullable so an
-// older caller that hasn't wired it through yet still renders correctly.
 
 import { useState } from "react";
 import { SUPABASE_URL, getJwt, supabaseHeaders } from "@/lib/env";
@@ -59,7 +52,6 @@ const OPTIONS: { value: PublishChoice; label: string; description: string }[] = 
 export function VideoPublishChoice({
   proposalId,
   derogatoryFlagReason = null,
-  previewVideoUrl = null,
   onReRecord,
   onPublished,
 }: {
@@ -69,8 +61,6 @@ export function VideoPublishChoice({
   // recommendation, not a block. Null/undefined (the default) renders
   // nothing extra, so callers that don't fetch this field yet are unaffected.
   derogatoryFlagReason?: string | null;
-  // Anonymous-video feature, NEW — see header note.
-  previewVideoUrl?: string | null;
   // Only required when derogatoryFlagReason is present, to route "Re-record"
   // back to VideoRecorderPanel — optional otherwise so existing callers
   // don't need to wire a no-op.
@@ -108,20 +98,6 @@ export function VideoPublishChoice({
 
   return (
     <div className="flex flex-col gap-3">
-      {/* Anonymous-video feature, NEW: the actual public artifact, watchable
-          before Publish is ever reached — see header note. */}
-      {previewVideoUrl && (
-        <div className="flex flex-col gap-1.5">
-          <p className="text-sm font-medium text-neutral-900">This is exactly what will be published</p>
-          <video
-            src={previewVideoUrl}
-            controls
-            playsInline
-            className="aspect-video w-full rounded-lg bg-slate-900"
-          />
-        </div>
-      )}
-
       {/* Sep 2026, NEW: informational recommendation only — Publish below
           stays fully clickable either way, this just offers a shortcut back
           to re-recording if the proposer wants to act on it. */}

@@ -18,17 +18,13 @@
 // clients (anon+JWT for identity, service-role for the actual storage
 // write), jsonError(status, code, message) shape.
 //
-// Anonymous-video feature (NEW): accepts an optional `kind` field —
-// "public" (default) writes to the existing ugq-video-recordings bucket,
-// exactly as before. "raw_archival" writes to a SEPARATE, structurally
-// distinct private bucket (ugq-video-recordings-raw) used ONLY for the true,
-// unmasked recording of a video that was captured while the proposer was
-// anonymous — see VideoRecorderPanel.tsx and the anonymous-video migration.
-// The client uploads twice in that case (once per artifact); this function
-// stays agnostic about WHY a given upload is public vs. archival, it just
-// routes the bytes to the right bucket. No public-facing function ever
-// reads from the archival bucket — see admin-ugq-raw-video-url, the only
-// reader, gated to moderation/admin use.
+// Note: a prior session added an optional "kind" field here (public vs.
+// raw_archival, writing to a second bucket) for an anonymous-avatar video
+// feature that was later rolled back. Removed — this function is back to
+// doing exactly one thing: upload whatever video it's given to the one
+// public bucket. A proposer who records while anonymous no longer uploads
+// a video at all (routed client-side to submit as input_mode "voice"
+// instead), so every call here belongs to an identified proposer.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -46,11 +42,6 @@ const corsHeaders = {
 const MAX_VIDEO_BYTES = 75 * 1024 * 1024; // 75MB
 const MAX_DURATION_SECONDS = 120;
 const ALLOWED_CONTENT_TYPES = ["video/webm", "video/mp4"];
-
-const BUCKET_BY_KIND: Record<string, string> = {
-  public: "ugq-video-recordings",
-  raw_archival: "ugq-video-recordings-raw",
-};
 
 function jsonError(status: number, code: string, message: string) {
   return new Response(JSON.stringify({ ok: false, error: code, message }), {
@@ -80,8 +71,7 @@ serve(async (req) => {
     if (!user) return jsonError(401, "UNAUTHORIZED", "Sign in to upload a video");
 
     // ── Parse multipart form ─────────────────────────────────────
-    // Expects: video (File/Blob), duration_seconds (string, optional),
-    // kind (string, optional — "public" default or "raw_archival").
+    // Expects: video (File/Blob), duration_seconds (string, optional).
     const form = await req.formData().catch(() => null);
     if (!form) return jsonError(400, "INVALID_FORM", "Expected multipart/form-data");
 
@@ -94,12 +84,6 @@ serve(async (req) => {
     }
     if (file.size > MAX_VIDEO_BYTES) {
       return jsonError(400, "FILE_TOO_LARGE", `Video must be under ${Math.floor(MAX_VIDEO_BYTES / 1024 / 1024)}MB`);
-    }
-
-    const kindRaw = typeof form.get("kind") === "string" ? String(form.get("kind")) : "public";
-    const bucket = BUCKET_BY_KIND[kindRaw];
-    if (!bucket) {
-      return jsonError(400, "INVALID_KIND", `kind must be one of: ${Object.keys(BUCKET_BY_KIND).join(", ")}`);
     }
 
     const durationRaw = form.get("duration_seconds");
@@ -115,7 +99,7 @@ serve(async (req) => {
 
     const adminSb = createClient(SUPABASE_URL, SERVICE_KEY);
     const { error: uploadErr } = await adminSb.storage
-      .from(bucket)
+      .from("ugq-video-recordings")
       .upload(path, file, { contentType: file.type, upsert: false });
     if (uploadErr) {
       return jsonError(500, "UPLOAD_FAILED", uploadErr.message);

@@ -63,16 +63,15 @@
 // abuse response still exists, there's just no longer a blanket per-tier
 // count ceiling.
 //
-// Anonymous-video feature (NEW): for a video submission, snapshots the
-// caller's CURRENT profiles.display_handle_mode into
-// video_recorded_anonymous at the moment of insert — a PERMANENT record of
-// "was this proposer anonymous when THIS clip was recorded." Deliberately
-// never re-evaluated later: switching display_handle_mode afterward must
-// not change what a previously-recorded video shows (see
-// VideoRecorderPanel.tsx and the anonymous-video migration for the full
-// design). video_raw_archival_path rides along too, set only when the
-// client recorded anonymously (points at the true, unmasked clip in the
-// separate ugq-video-recordings-raw bucket — never the public path).
+// Note: a prior session added a video_recorded_anonymous / video_raw_
+// archival_path snapshot here for an anonymous-avatar video feature. That
+// feature was rolled back (the client-side avatar/voice-disguise pipeline
+// was unreliable) in favor of a much simpler rule: a proposer who is
+// anonymous when they record a video question is now routed entirely
+// client-side to submit as input_mode "voice" instead — no video is ever
+// uploaded or attached, so nothing here needs to know about anonymity at
+// all. video_recording_path only ever arrives when the proposer chose to
+// show their identity, exactly like before that feature existed.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -158,25 +157,9 @@ serve(async (req) => {
     if (inputMode === "video" && (!videoRecordingPath || !videoRawTranscript)) {
       return jsonError(400, "MISSING_VIDEO_FIELDS", "video_recording_path and video_raw_transcript are required for video submissions");
     }
-    // Anonymous-video feature, NEW: set only when this video was recorded
-    // while the proposer was anonymous — see VideoRecorderPanel.tsx. Points
-    // at the true, unmasked clip in the separate ugq-video-recordings-raw
-    // bucket; ignored for non-video submissions.
-    const videoRawArchivalPath = inputMode === "video" && typeof body.video_raw_archival_path === "string" && body.video_raw_archival_path.trim()
-      ? body.video_raw_archival_path.trim().slice(0, 500)
-      : null;
 
     // Service-role client for all writes (bypasses RLS).
     const adminSb = createClient(SUPABASE_URL, SERVICE_KEY);
-
-    // Anonymous-video feature, NEW: permanent snapshot — see header note.
-    // Read once here, at insert time, and never revisited for this row.
-    let videoRecordedAnonymous = false;
-    if (inputMode === "video") {
-      const { data: profile } = await adminSb.from("profiles")
-        .select("display_handle_mode").eq("user_id", userId).maybeSingle();
-      videoRecordedAnonymous = profile?.display_handle_mode === "random_id";
-    }
 
     // ── Reputation row (ensure exists), then gate on flag / rate-limit ─────────
     await adminSb.from("user_proposal_reputation")
@@ -223,8 +206,6 @@ serve(async (req) => {
         video_recording_path: videoRecordingPath,
         video_duration_seconds: videoDurationSeconds,
         video_raw_transcript: videoRawTranscript,
-        video_recorded_anonymous: videoRecordedAnonymous,
-        video_raw_archival_path: videoRawArchivalPath,
       })
       .select("id")
       .single();
