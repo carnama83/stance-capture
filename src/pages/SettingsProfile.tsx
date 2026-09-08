@@ -385,9 +385,12 @@ function WhatsAppPhoneSection({ sb, uid }: WhatsAppPhoneSectionProps) {
         p_otp:                otp,
       });
       if (error) {
+        const msg = error.message.toLowerCase();
         throw new Error(
-          error.message.toLowerCase().includes("invalid")
+          msg.includes("invalid")
             ? "Incorrect or expired code. Please try again."
+            : msg.includes("duplicate key") || msg.includes("verified_phone_hash")
+            ? "This WhatsApp number is already linked to another account."
             : error.message
         );
       }

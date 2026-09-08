@@ -1146,6 +1146,14 @@ export default function Signup() {
             // every other field above — see that function for the
             // is_active_for_ui re-check it does before writing this.
             preferred_language_code: preferredLanguageCode,
+            // FIX (2026-09-09): geoOverride was tracked client-side but never
+            // sent here, so bootstrap_user_after_login() had no way to know
+            // whether the submitted country was IP-detected or the user's own
+            // override — it hardcoded override=false/source='bootstrap' for
+            // every signup, silently breaking the BR-A14 audit trail (found
+            // live-testing QA-A31). Threading it through here the same way
+            // every other onboarding field already travels.
+            location_override: geoOverride,
           },
         },
       });
