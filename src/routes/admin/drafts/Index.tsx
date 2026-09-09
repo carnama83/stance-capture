@@ -1092,6 +1092,8 @@ export default function TopicDraftsPage() {
     setBulkApproving(true);
     const now = new Date().toISOString();
     const chunkSize = 10; // ✅ safe batching (per your earlier alignment)
+    const { data: userData } = await supabase.auth.getUser();
+    const approvedBy = userData.user?.id ?? null;
 
     let updated = 0;
     try {
@@ -1099,7 +1101,7 @@ export default function TopicDraftsPage() {
         const chunk = eligible.slice(i, i + chunkSize);
         const { error } = await supabase
           .from("topic_drafts")
-          .update({ status: "approved", approved_at: now, rejected_at: null })
+          .update({ status: "approved", approved_at: now, approved_by: approvedBy, rejected_at: null })
           .in("id", chunk);
 
         if (error) throw error;
@@ -1720,6 +1722,8 @@ function StatusButtons({
     if (status === "approved") {
       patch.approved_at = now;
       patch.rejected_at = null;
+      const { data: userData } = await supabase.auth.getUser();
+      patch.approved_by = userData.user?.id ?? null;
     } else if (status === "rejected") {
       patch.rejected_at = now;
     }
