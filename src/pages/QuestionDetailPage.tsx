@@ -22,6 +22,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getSupabase } from "../lib/supabaseClient";
 import { QuestionStanceSlider } from "@/components/question/QuestionStanceSlider";
 import { QuestionPhaseBadge } from "@/components/question/QuestionPhaseBadge";
+import { ElectionDisclosure } from "@/components/question/ElectionDisclosure";
 import { ProposerBadge } from "@/components/ugq/ProposerBadge";
 import { ManifestoProvenance } from "@/components/question/ManifestoProvenance";
 import { useToast } from "@/components/ui/use-toast";
@@ -1501,6 +1502,9 @@ export default function QuestionDetailPage() {
 
             {/* Epic UGQ: attribution for community-proposed questions */}
             <ProposerBadge questionId={question.id} source={question.source} />
+
+            {/* C-11: election chrome + Section 126B disclosure (Epic EL fields) */}
+            <ElectionDisclosure questionId={question.id} />
 
             {/* Phase badge */}
             {question.phase && question.phase !== "initial" && (
