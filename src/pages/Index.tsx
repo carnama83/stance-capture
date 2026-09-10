@@ -44,6 +44,8 @@ import { QuestionStanceSlider } from "@/components/question/QuestionStanceSlider
 import { recordWebStance } from "@/lib/webStance";
 import { HomeOptInPrompt } from "@/components/HomeOptInPrompt";
 import { QuestionCoverImage } from "@/components/question/QuestionCoverImage";
+import { ElectionCardChrome } from "@/components/question/ElectionCardChrome";
+import { useElectionMeta, type ElectionMeta } from "@/hooks/useElectionMeta";
 import { VideoThumbnailCard } from "@/components/question/VideoThumbnailCard";
 import { StanceDistributionBar } from "@/components/question/StanceDistributionBar";
 import { useGlobalAndCountryIds } from "@/hooks/useLocationIds";
@@ -1674,6 +1676,7 @@ function SliderHint({ answered }: { answered: boolean }) {
 
 function FeaturedQuestionCard({
   q,
+  electionMeta,
   isAuthed,
   onSubmit,
   onLoginRedirect,
@@ -1693,6 +1696,7 @@ function FeaturedQuestionCard({
   featuredStats?: QuestionStats | null;
   submittingQuestionId?: string | null;
   cardStats?: Map<string, QuestionStats>;
+  electionMeta?: ElectionMeta;
   languageCode?: string;
 }) {
   const { t } = useTranslation();
@@ -1740,6 +1744,11 @@ function FeaturedQuestionCard({
         >
           {q.question_text}
         </Link>
+
+        {/* C-11: election chrome for feed cards (the V5 homepage does not use
+            QuestionCard, so ElectionQuestionCard never renders here). Returns
+            null for non-election questions. */}
+        <ElectionCardChrome meta={electionMeta} />
 
         {q.summary && (
           <p className="mt-3 line-clamp-3 text-sm leading-relaxed" style={{ color: C.body }}>
@@ -1849,6 +1858,7 @@ function FeaturedQuestionCard({
 
 function FeaturedQuestionCardAnon({
   q,
+  electionMeta,
   onLoginRedirect,
   onStage,
   onOpen,
@@ -1858,6 +1868,7 @@ function FeaturedQuestionCardAnon({
   onLoginRedirect: () => void;
   onStage?: (questionId: string, value: number) => void;
   onOpen: (id: string) => void;
+  electionMeta?: ElectionMeta;
   languageCode?: string;
 }) {
   const { t } = useTranslation();
@@ -1879,6 +1890,11 @@ function FeaturedQuestionCardAnon({
         >
           {q.question}
         </Link>
+
+        {/* C-11: election chrome for feed cards (the V5 homepage does not use
+            QuestionCard, so ElectionQuestionCard never renders here). Returns
+            null for non-election questions. */}
+        <ElectionCardChrome meta={electionMeta} />
 
         {q.summary && (
           <p className="mt-3 line-clamp-3 text-sm leading-relaxed" style={{ color: C.body }}>
@@ -1936,6 +1952,7 @@ function FeaturedQuestionCardAnon({
 
 function GridQuestionCard({
   q,
+  electionMeta,
   isAuthed,
   onSubmit,
   onLoginRedirect,
@@ -1953,6 +1970,7 @@ function GridQuestionCard({
   onOpen: (id: string) => void;
   submittingQuestionId?: string | null;
   cardStats?: Map<string, QuestionStats>;
+  electionMeta?: ElectionMeta;
   languageCode?: string;
 }) {
   const { t } = useTranslation();
@@ -2014,6 +2032,11 @@ function GridQuestionCard({
         >
           {q.question_text}
         </Link>
+
+        {/* C-11: election chrome for feed cards (the V5 homepage does not use
+            QuestionCard, so ElectionQuestionCard never renders here). Returns
+            null for non-election questions. */}
+        <ElectionCardChrome meta={electionMeta} />
 
         {q.topic_title && (
           <p className="mt-1.5 text-xs" style={{ color: C.meta }}>{q.topic_title}</p>
@@ -2089,6 +2112,7 @@ function GridQuestionCard({
 
 function GridQuestionCardAnon({
   q,
+  electionMeta,
   onLoginRedirect,
   onStage,
   onOpen,
@@ -2098,6 +2122,7 @@ function GridQuestionCardAnon({
   onLoginRedirect: () => void;
   onStage?: (questionId: string, value: number) => void;
   onOpen: (id: string) => void;
+  electionMeta?: ElectionMeta;
   languageCode?: string;
 }) {
   const { t } = useTranslation();
@@ -2132,6 +2157,11 @@ function GridQuestionCardAnon({
         >
           {q.question}
         </Link>
+
+        {/* C-11: election chrome for feed cards (the V5 homepage does not use
+            QuestionCard, so ElectionQuestionCard never renders here). Returns
+            null for non-election questions. */}
+        <ElectionCardChrome meta={electionMeta} />
 
         {q.summary && (
           <p className="mt-1.5 line-clamp-2 text-xs" style={{ color: C.meta }}>{q.summary}</p>
@@ -3105,6 +3135,16 @@ export default function IndexPage() {
     null;
   const gridAnonQs = anonQuestions.filter((q) => q !== featuredAnonQ);
 
+  // C-11: one batched lookup of election_* columns for every card currently on
+  // screen. get_trending_questions_homepage() does not return them and the V5
+  // cards bypass QuestionCard, so without this the feed shows no election chrome.
+  const electionMeta = useElectionMeta([
+    featuredQ?.question_id,
+    ...gridQs.map((q) => q.question_id),
+    featuredAnonQ?.id,
+    ...gridAnonQs.map((q) => q.id),
+  ]);
+
   // ── Stats preload for hero + featured slots ──
   const heroStatsQuery = useQuery({
     enabled: !!sb && !!userId && !!heroQ?.question_id,
@@ -3595,6 +3635,7 @@ export default function IndexPage() {
                     {isAuthed
                       ? featuredQ && (
                           <FeaturedQuestionCard
+                            electionMeta={electionMeta.get(featuredQ.question_id)}
                             q={featuredQ}
                             isAuthed={true}
                             onSubmit={submitStance}
@@ -3609,6 +3650,7 @@ export default function IndexPage() {
                         )
                       : featuredAnonQ && (
                           <FeaturedQuestionCardAnon
+                            electionMeta={electionMeta.get(featuredAnonQ.id)}
                             q={featuredAnonQ}
                             onLoginRedirect={loginRedirect}
                             onStage={stageStance}
@@ -3622,6 +3664,7 @@ export default function IndexPage() {
                           <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
                             {gridQs.map((q) => (
                               <GridQuestionCard
+                                electionMeta={electionMeta.get(q.question_id)}
                                 key={q.question_id}
                                 q={q}
                                 isAuthed={true}
@@ -3640,6 +3683,7 @@ export default function IndexPage() {
                           <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
                             {gridAnonQs.map((q) => (
                               <GridQuestionCardAnon
+                                electionMeta={electionMeta.get(q.id)}
                                 key={q.id}
                                 q={q}
                                 onLoginRedirect={loginRedirect}
