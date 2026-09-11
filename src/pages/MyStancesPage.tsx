@@ -105,14 +105,45 @@ async function fetchMyStances(userId: string): Promise<MyStanceRow[]> {
     return rows.map((r) => ({ stance_id: r.id, question_id: r.question_id, score: r.score, created_at: r.created_at, updated_at: r.updated_at, question: null }));
   }
 
+  // E-02: resolve question details from the questions table, not the live-feed view.
+  // That view INNER JOINs topics and filters on question_visibility_rules, so any
+  // stance on an archived-visibility question resolved to null and the card rendered
+  // "[Question unavailable]". Personal history must show every question the user
+  // answered — the same reasoning BR-E05 already applies to get_my_stance_export().
+  // Two-step batch (questions, then topics) mirrors the StanceEvolutionTimeline fix
+  // rather than a brittle nested join.
   const { data: questions, error: questionError } = await sb
-    .from("v_live_questions")
-    .select("id, question, summary, tags, location_label, published_at, status, phase, topic_title, slider_low_label, slider_high_label")
+    .from("questions")
+    .select("id, question, summary, tags, location_label, published_at, status, phase, topic_id, slider_low_label, slider_high_label")
     .in("id", questionIds);
 
   const questionMap = new Map<string, LiveQuestion>();
   if (!questionError) {
-    (questions ?? []).forEach((q) => questionMap.set((q as LiveQuestion).id, q as LiveQuestion));
+    const qs = (questions ?? []) as any[];
+
+    // Step 2: batch-fetch topic titles for the unique topic_ids.
+    const topicIds = Array.from(new Set(qs.map((q) => q.topic_id).filter(Boolean)));
+    const topicTitles = new Map<string, string>();
+    if (topicIds.length) {
+      const { data: topics } = await sb.from("topics").select("id, title").in("id", topicIds);
+      (topics ?? []).forEach((t: any) => topicTitles.set(t.id, t.title));
+    }
+
+    qs.forEach((q) => {
+      questionMap.set(q.id, {
+        id: q.id,
+        question: q.question,
+        summary: q.summary,
+        tags: q.tags,
+        location_label: q.location_label,
+        published_at: q.published_at,
+        status: q.status,
+        phase: q.phase,
+        topic_title: q.topic_id ? topicTitles.get(q.topic_id) ?? null : null,
+        slider_low_label: q.slider_low_label,
+        slider_high_label: q.slider_high_label,
+      } as LiveQuestion);
+    });
   }
 
   return rows.map((r) => ({
@@ -500,6 +531,12 @@ export default function MyStancesPage() {
                 userId={userId}
                 onClose={() => setDrawerTopic(null)}
               />
+            )}
+
+            {/* E-01: filters excluded every stance — §6.1 requires this message.
+                Previously the list was simply suppressed, leaving a blank page. */}
+            {!isLoading && !isError && totalCount > 0 && visibleCount === 0 && (
+              <p className="text-xs text-slate-500">No stances match your filters.</p>
             )}
 
             {/* Stance list */}
