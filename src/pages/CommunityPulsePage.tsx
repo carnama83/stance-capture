@@ -827,7 +827,7 @@ function CompareRegionsSection({ regionOptions }: CompareRegionsSectionProps) {
 // Page
 // ---------------------------------------------------------------------------
 
-export default function CommunityPulsePage() {
+export default function CommunityPulsePage({ userKey = "anon" }: { userKey?: string } = {}) {
   const [regionScope, setRegionScope] = React.useState<RegionScope>("global");
   const [regionKey, setRegionKey] = React.useState("global");
   const [trendDays, setTrendDays] = React.useState(30);
@@ -841,7 +841,7 @@ export default function CommunityPulsePage() {
     state_label: string | null;
     country_label: string | null;
   } | null>({
-    queryKey: ["user-region-pulse"],
+    queryKey: ["user-region-pulse", userKey],
     staleTime: 10 * 60_000,
     queryFn: async () => {
       const sb = getSupabase();
@@ -867,6 +867,24 @@ export default function CommunityPulsePage() {
     ...(userRegion?.county_label  ? [{ value: "county"  as RegionScope, label: userRegion.county_label,  key: userRegion.county_label  }] : []),
     ...(userRegion?.city_label    ? [{ value: "city"    as RegionScope, label: userRegion.city_label,    key: userRegion.city_label    }] : []),
   ];
+
+  // F-05: pre-select the user's finest available scope once their region loads.
+  // US-F03 and F-FR-02 require this; previously regionScope stayed on 'global'
+  // for every user because nothing ever set it except the dropdown handler.
+  // Guarded by a ref so a late-arriving query never overrides a manual choice.
+  const hasChosenRegionRef = React.useRef(false);
+  React.useEffect(() => {
+    if (hasChosenRegionRef.current || !userRegion) return;
+    const finest =
+      userRegion.city_label    ? { scope: "city"    as RegionScope, key: userRegion.city_label    } :
+      userRegion.county_label  ? { scope: "county"  as RegionScope, key: userRegion.county_label  } :
+      userRegion.state_label   ? { scope: "state"   as RegionScope, key: userRegion.state_label   } :
+      userRegion.country_label ? { scope: "country" as RegionScope, key: userRegion.country_label } :
+      null;
+    if (!finest) return;
+    setRegionScope(finest.scope);
+    setRegionKey(finest.key);
+  }, [userRegion]);
 
   // Fetch pulse data to populate question selector for F3
   const { data: pulseData } = useQuery<PulseRow[]>({
@@ -906,6 +924,7 @@ export default function CommunityPulsePage() {
               onChange={(e) => {
                 const scope = e.target.value as RegionScope;
                 const opt = regionOptions.find((o) => o.value === scope);
+                hasChosenRegionRef.current = true; // F-05: respect manual choice
                 setRegionScope(scope);
                 setRegionKey(opt?.key ?? "global");
               }}
