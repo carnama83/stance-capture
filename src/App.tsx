@@ -108,6 +108,7 @@ import SettingsNotifications from "./pages/SettingsNotifications";
 import SettingsPrivacy from "./pages/SettingsPrivacy";
 import SettingsAccount from "./pages/SettingsAccount";
 import CommunityPulsePage from "./pages/CommunityPulsePage";
+import { getSupabase } from "@/lib/supabaseClient";
 
 // Forces CommunityPulsePage to fully remount when the authenticated user changes.
 // This prevents stale per-user data (region options, question selections, cached
@@ -115,7 +116,12 @@ import CommunityPulsePage from "./pages/CommunityPulsePage";
 function UserKeyedPulsePage() {
   const [userKey, setUserKey] = React.useState<string>("init");
   React.useEffect(() => {
-    const sb = (window as any).sb ?? (() => { try { const { getSupabase } = require("@/lib/supabaseClient"); return getSupabase(); } catch { return null; } })();
+    // F-07: previously this read (window as any).sb, which App only assigns under
+    // import.meta.env.DEV, falling back to require() - unavailable in an ESM browser
+    // bundle. In every deployed build sb resolved to null and the effect bailed, so
+    // userKey stayed "init" forever and this component never remounted on auth
+    // change. Use the same client accessor the rest of the app imports.
+    const sb = getSupabase();
     if (!sb) return;
     const { data: { subscription } } = sb.auth.onAuthStateChange((_: any, session: any) => {
       const uid = session?.user?.id ?? "anon";
