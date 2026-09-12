@@ -127,7 +127,11 @@ function UserKeyedPulsePage() {
     });
     return () => subscription.unsubscribe();
   }, []);
-  return <CommunityPulsePage key={userKey} />;
+  // F-06: userKey is passed as a prop as well as a React key, so the region
+  // query can be cached per user. A changing key remounts the component but does
+  // NOT evict React Query app-level cache, which is how the previous user's
+  // region options survived sign-out.
+  return <CommunityPulsePage key={userKey} userKey={userKey} />;
 }
 
 import RouteDebug from "./components/RouteDebug";
