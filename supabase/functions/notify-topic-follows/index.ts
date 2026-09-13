@@ -21,10 +21,21 @@
 // 400 22P02 (confirmed live). Replaced with an explicit two-step lookup: resolve the topic's
 // question ids, then filter on those literals.
 //
-// Passes:
-//   1. Followed topics surge    (Epic Q Phase 5)
-//   2. Answered-not-followed    (Epic Q Phase 5)
-//   3. Topic re-ignition        (Epic S2) — was dormant, now surging
+// I-01 (Sep 2026, Epic I QA pass) — THIS FUNCTION WAS ENTIRELY DEAD. The surge pass asked
+// PostgREST to embed notification_preferences inside a user_topic_follows query:
+//   select=user_id,notification_preferences!inner(topic_follow_enabled)
+// There is no foreign key between those two tables - each merely references auth.users - and
+// PostgREST resolves embeds through FKs, so every call returned 400 PGRST200 ("Could not find
+// a relationship ... in the schema cache"). db.from() throws on a non-OK response and the whole
+// handler sits in one try/catch, so the job returned HTTP 500 and delivered NOTHING. It only
+// looked healthy because it returns early with ok:true whenever no topic is surging.
+// Fixed by resolving followers and their preferences in two steps - the same shape the
+// answered-not-followed and re-ignition passes below already used.
+//
+// I-05 (same pass): defaulting is now consistent across all three passes in this file - a user
+// with NO notification_preferences row counts as ENABLED, matching the column default (true)
+// and the behaviour of notify-reminders / notify-new-local-topics. The old !inner embed would
+// have silently EXCLUDED such users.
 //
 // M-I05: notification_topic_prefs checked before every send.
 //   Muted rows are bulk-fetched per pass and stored in a Set<"userId:topicId">
@@ -158,6 +169,18 @@ async function tryLogEvent(db, eventType, eventKey, payload) {
     return false;
   }
 }
+/** I-10: undo a dedup key when the delivery it guarded failed, so the send is retried
+ *  on the next run instead of being silently lost forever. Best-effort. */
+async function unlogEvent(db, eventType, eventKey) {
+  try {
+    await fetch(`${db.url}/rest/v1/notification_event_log?event_type=eq.${encodeURIComponent(eventType)}&event_key=eq.${encodeURIComponent(eventKey)}`, {
+      method: "DELETE",
+      headers: db._headers()
+    });
+  } catch (e) {
+    console.error("unlogEvent error", e);
+  }
+}
 async function insertNotification(db, row) {
   await db.insert("user_notifications", [
     {
@@ -173,6 +196,22 @@ async function insertNotification(db, row) {
     }
   ]);
 }
+/** I-09/I-10: deliver one notification with per-user isolation. A single bad row (e.g. a
+ *  user_id that exists in public.users but not auth.users, which raises FK 23503) must not
+ *  abort the whole run, and must not leave its dedup key behind. Returns true if delivered. */
+async function deliver(db, eventType, eventKey, row, traceId, func) {
+  try {
+    await insertNotification(db, row);
+    return true;
+  } catch (e) {
+    log(func, "warn", "delivery_failed", {
+      user_id: row.user_id,
+      error: String(e?.message ?? e)
+    }, traceId);
+    await unlogEvent(db, eventType, eventKey);
+    return false;
+  }
+}
 // ---------------------------------------------------------------------------
 // ISO week helpers (for dedupe keys)
 // ---------------------------------------------------------------------------
@@ -183,18 +222,6 @@ async function insertNotification(db, row) {
   const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
   const week = Math.ceil(((date.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
   return `${date.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
-}
-/** Returns Monday of the current ISO week as "YYYY-MM-DD" */ function weekStart(d = new Date()) {
-  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-  const day = date.getUTCDay() || 7;
-  date.setUTCDate(date.getUTCDate() - (day - 1));
-  return date.toISOString().slice(0, 10);
-}
-/** Returns Sunday of the current ISO week as "YYYY-MM-DD" */ function weekEnd(d = new Date()) {
-  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-  const day = date.getUTCDay() || 7;
-  date.setUTCDate(date.getUTCDate() + (7 - day));
-  return date.toISOString().slice(0, 10);
 }
 /** H-06: PostgREST cannot take a subquery in a filter - resolve the ids first. */ async function questionIdsForTopic(db, topicId) {
   const rows = await db.from("questions", `select=id&topic_id=eq.${topicId}`);
@@ -217,6 +244,28 @@ async function insertNotification(db, row) {
   return [
     ...new Set(out)
   ].filter(Boolean);
+}
+// ---------------------------------------------------------------------------
+// I-01/I-05: topic_follow_enabled per user, resolved WITHOUT a PostgREST embed.
+// Chunked at 100 ids to stay inside PostgREST URL limits (the old inline in.() lists
+// for the answered/re-ignition passes were unchunked and could overflow on a busy topic).
+// A user with NO row is reported as `true` — the column default — so all three passes
+// in this file agree with each other and with the other notification jobs.
+// ---------------------------------------------------------------------------
+async function buildTopicFollowPrefs(db, userIds) {
+  const enabled = new Map();
+  if (userIds.length === 0) return enabled;
+  for(let i = 0; i < userIds.length; i += 100){
+    const chunk = userIds.slice(i, i + 100);
+    const rows = await db.from("notification_preferences", `select=user_id,topic_follow_enabled&user_id=in.(${chunk.join(",")})`);
+    for (const r of rows){
+      enabled.set(r.user_id, r.topic_follow_enabled !== false);
+    }
+  }
+  return enabled;
+}
+/** Missing row = enabled (see I-05 note above). */ function followEnabled(prefs, userId) {
+  return prefs.has(userId) ? prefs.get(userId) : true;
 }
 // ---------------------------------------------------------------------------
 // M-I05: Bulk-fetch muted topic prefs for a set of (user_id, topic_id) pairs.
@@ -281,29 +330,33 @@ Deno.serve(async (req)=>{
     // 3. For each surging topic, notify followers
     let notified = 0;
     let skipped = 0;
+    let failed = 0;
     for (const trend of trends){
       const topicTitle = topicTitles[trend.topic_id] ?? "A topic you follow";
-      // Find followers with topic_follow_enabled
-      const followers = await db.from("user_topic_follows", [
-        `select=user_id,notification_preferences!inner(topic_follow_enabled)`,
+      // I-01: resolve followers, then their preferences — NOT via a PostgREST embed.
+      const followerRows = await db.from("user_topic_follows", [
+        `select=user_id`,
         `topic_id=eq.${trend.topic_id}`
       ].join("&"));
+      const followerUserIds = [
+        ...new Set(followerRows.map((f)=>f.user_id).filter(Boolean))
+      ];
+      const followerPrefs = await buildTopicFollowPrefs(db, followerUserIds);
       // M-I05: Bulk-fetch muted prefs for this topic's followers
-      const followerUserIds = followers.map((f)=>f.user_id).filter(Boolean);
       const mutedFollowers = await buildMutedSet(db, followerUserIds, [
         trend.topic_id
       ]);
-      for (const f of followers){
-        if (!f.notification_preferences?.topic_follow_enabled) {
+      for (const uid of followerUserIds){
+        if (!followEnabled(followerPrefs, uid)) {
           skipped++;
           continue;
         }
         // M-I05: skip if user has muted this specific topic
-        if (isMutedForTopic(mutedFollowers, f.user_id, trend.topic_id)) {
+        if (isMutedForTopic(mutedFollowers, uid, trend.topic_id)) {
           skipped++;
           continue;
         }
-        const eventKey = `topic_follow:${f.user_id}:${trend.topic_id}:surge:${week}`;
+        const eventKey = `topic_follow:${uid}:${trend.topic_id}:surge:${week}`;
         const isNew = await tryLogEvent(db, "topic_follow", eventKey, {
           topic_id: trend.topic_id,
           delta: trend.delta_24h_per_hour,
@@ -313,8 +366,8 @@ Deno.serve(async (req)=>{
           skipped++;
           continue;
         }
-        await insertNotification(db, {
-          user_id: f.user_id,
+        const ok = await deliver(db, "topic_follow", eventKey, {
+          user_id: uid,
           notification_type: "topic_follow",
           title: `${topicTitle} is surging this week.`,
           body: null,
@@ -327,8 +380,9 @@ Deno.serve(async (req)=>{
             regionScope: "global",
             regionKey: "Global"
           }
-        });
-        notified++;
+        }, traceId, FUNC);
+        if (ok) notified++;
+        else failed++;
       }
       // Phase 5: Notify users who answered questions in this topic
       // but haven't explicitly followed it — different copy, same type
@@ -338,18 +392,13 @@ Deno.serve(async (req)=>{
       const answeredIds = await answeredUserIds(db, topicQuestionIds, new Date(Date.now() - 60 * 86400_000).toISOString());
       const nonFollowerIds = answeredIds.filter((uid)=>!followerIds.has(uid));
       if (nonFollowerIds.length > 0) {
-        const nonFollowerPrefs = await db.from("notification_preferences", `select=user_id,topic_follow_enabled&user_id=in.(${nonFollowerIds.join(",")})`);
-        const prefMap = Object.fromEntries(nonFollowerPrefs.map((p)=>[
-            p.user_id,
-            p.topic_follow_enabled
-          ]));
+        const nonFollowerPrefs = await buildTopicFollowPrefs(db, nonFollowerIds);
         // M-I05: Bulk-fetch muted prefs for answered-not-followed users
         const mutedAnswered = await buildMutedSet(db, nonFollowerIds, [
           trend.topic_id
         ]);
         for (const uid of nonFollowerIds){
-          const enabled = prefMap[uid] !== false;
-          if (!enabled) {
+          if (!followEnabled(nonFollowerPrefs, uid)) {
             skipped++;
             continue;
           }
@@ -368,7 +417,7 @@ Deno.serve(async (req)=>{
             skipped++;
             continue;
           }
-          await insertNotification(db, {
+          const ok = await deliver(db, "topic_follow", eventKey, {
             user_id: uid,
             notification_type: "topic_follow",
             title: "A topic you've weighed in on is gaining attention.",
@@ -382,8 +431,9 @@ Deno.serve(async (req)=>{
               regionScope: "global",
               regionKey: "Global"
             }
-          });
-          notified++;
+          }, traceId, FUNC);
+          if (ok) notified++;
+          else failed++;
         }
       }
     }
@@ -398,17 +448,13 @@ Deno.serve(async (req)=>{
       const topicQuestionIds = await questionIdsForTopic(db, trend.topic_id);
       const uniqueUserIds = await answeredUserIds(db, topicQuestionIds, new Date(Date.now() - 90 * 86400_000).toISOString());
       if (uniqueUserIds.length === 0) continue;
-      const prefRows = await db.from("notification_preferences", `select=user_id,topic_follow_enabled&user_id=in.(${uniqueUserIds.join(",")})`);
-      const prefMap = Object.fromEntries(prefRows.map((p)=>[
-          p.user_id,
-          p.topic_follow_enabled
-        ]));
+      const prefs = await buildTopicFollowPrefs(db, uniqueUserIds);
       // M-I05: Bulk-fetch muted prefs for re-ignition users
       const mutedReignition = await buildMutedSet(db, uniqueUserIds, [
         trend.topic_id
       ]);
       for (const uid of uniqueUserIds){
-        if (prefMap[uid] === false) {
+        if (!followEnabled(prefs, uid)) {
           skipped++;
           continue;
         }
@@ -427,7 +473,7 @@ Deno.serve(async (req)=>{
           skipped++;
           continue;
         }
-        await insertNotification(db, {
+        const ok = await deliver(db, "topic_follow", eventKey, {
           user_id: uid,
           notification_type: "topic_follow",
           title: `${topicTitle} is active again.`,
@@ -440,19 +486,22 @@ Deno.serve(async (req)=>{
             regionScope: "global",
             regionKey: "Global"
           }
-        });
-        notified++;
+        }, traceId, FUNC);
+        if (ok) notified++;
+        else failed++;
       }
     }
     log(FUNC, "info", "done", {
       notified,
       skipped,
+      failed,
       topics: trends.length
     }, traceId);
     return Response.json({
       ok: true,
       notified,
-      skipped
+      skipped,
+      failed
     });
   } catch (err) {
     log(FUNC, "error", "fatal", {
