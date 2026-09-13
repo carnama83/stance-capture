@@ -67,7 +67,15 @@ entrypoint = "./functions/detect-election-anomalies/index.ts"
 
 [functions.notify-election-updates]
 enabled = true
-verify_jwt = false
+# Sep 2026 (H-13): MUST stay true. This endpoint writes user_notifications rows for
+# arbitrary users, and its in-body guard used to fail OPEN - `if (cronSecret && ...)`
+# short-circuits to false whenever CRON_SECRET is unset, admitting everyone. With
+# verify_jwt=false there was no platform gate behind that. The guard is now fail-closed
+# on all three paths, but this flag is the second layer AND the thing that makes the
+# service_role-JWT path safe at all: that path reads claims without verifying the
+# signature, which is only sound because the platform validates the credential first.
+# Leaving this false here would silently revert the fix on the next CLI deploy.
+verify_jwt = true
 entrypoint = "./functions/notify-election-updates/index.ts"
 
 [functions.ugq-screen]
