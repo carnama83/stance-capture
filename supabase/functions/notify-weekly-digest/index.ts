@@ -10,6 +10,27 @@
 // pg_cron sends Vault's modern sb_secret_ key and UAT has NO JWT-format service key at all);
 // Path B accepts a service_role JWT (Prod's shape), trustworthy ONLY because verify_jwt:true
 // means the platform verified the signature - do NOT set verify_jwt to false.
+//
+// Epic I QA pass (Sep 2026) fixed four defects in this file:
+//
+// I-03 (P1) — digest_frequency was NEVER read. The eligibility query filtered on
+//   weekly_digest_enabled only, so a user who set frequency to 'off' in SettingsNotifications
+//   still received digests; the preference was silently inert. Now 'off' is excluded at the
+//   query, and 'daily' actually means daily (previously the weekday gate forced weekly
+//   behaviour on every user regardless of their setting).
+//
+// I-07 (P2) — an empty digest burned the whole week. tryLogEvent() ran BEFORE the content was
+//   built, so a user whose digest had no content was skipped for delivery but still had the
+//   dedup key written, locking them out for the rest of the week. Dedup now rests on the
+//   weekly_digests UNIQUE (user_id, week_start, week_end) + ignore-duplicates, which is only
+//   reached once the digest is known to have content. The event log is written afterwards as
+//   an observability record, not as the gate.
+//
+// I-08 (P2) — quiet hours were not honoured here (only notify-reminders and
+//   notify-new-local-topics checked them). inapp_enabled was not honoured either.
+//
+// I-09/I-10 — per-user isolation: one failed insert no longer aborts the run, and a failed
+//   delivery no longer leaves a dedup key behind.
 // =============================================================================
 // Helpers
 // =============================================================================
@@ -82,13 +103,14 @@ function authCheck(req) {
     return deny();
   }
 }
-async function tryLogEvent(db, eventType, eventKey, payload) {
+/** Observability record only — NOT the dedup gate (see I-07). Best-effort. */
+async function logEvent(db, eventType, eventKey, payload) {
   try {
-    const res = await fetch(`${db.url}/rest/v1/notification_event_log`, {
+    await fetch(`${db.url}/rest/v1/notification_event_log`, {
       method: "POST",
       headers: {
         ...db._headers(),
-        Prefer: "resolution=ignore-duplicates,return=representation"
+        Prefer: "resolution=ignore-duplicates"
       },
       body: JSON.stringify([
         {
@@ -98,16 +120,8 @@ async function tryLogEvent(db, eventType, eventKey, payload) {
         }
       ])
     });
-    if (!res.ok) {
-      const text = await res.text();
-      if (res.status === 409 || text === "[]" || text === "") return false;
-      throw new Error(`event_log ${res.status}: ${text}`);
-    }
-    const data = await res.json();
-    return Array.isArray(data) ? data.length > 0 : true;
   } catch (e) {
-    console.error("tryLogEvent error", e);
-    return false;
+    console.error("logEvent error", e);
   }
 }
 async function insertNotification(db, row) {
@@ -136,6 +150,24 @@ function weekEnd(d = new Date()) {
   const day = date.getUTCDay() || 7;
   date.setUTCDate(date.getUTCDate() + (7 - day));
   return date.toISOString().slice(0, 10);
+}
+// I-08: same quiet-hours helpers notify-reminders uses, so behaviour is identical across jobs.
+function localHour(timezone) {
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      hour: "numeric",
+      hour12: false
+    }).formatToParts(new Date());
+    return parseInt(parts.find((p)=>p.type === "hour")?.value ?? "0") % 24;
+  } catch  {
+    return new Date().getUTCHours();
+  }
+}
+function isQuietHours(hour, start, end) {
+  if (start == null || end == null) return false;
+  if (start <= end) return hour >= start && hour < end;
+  return hour >= start || hour < end;
 }
 // =============================================================================
 // Job logic
@@ -174,9 +206,11 @@ function localDayAndHour(timezone) {
     };
   }
 }
+// I-03: 'daily' ignores the weekday gate; 'weekly' still requires the chosen weekday.
+// 'off' never reaches here — it is excluded by the eligibility query.
 function isInDigestWindow(pref) {
   const { day, hour } = localDayAndHour(pref.timezone);
-  if (day !== pref.digest_day_of_week) return false;
+  if ((pref.digest_frequency ?? "weekly") !== "daily" && day !== pref.digest_day_of_week) return false;
   const nowMinutes = hour * 60 + new Date().getMinutes();
   const targetMinutes = pref.digest_hour_local * 60;
   return Math.abs(nowMinutes - targetMinutes) <= WINDOW_MINUTES;
@@ -192,9 +226,13 @@ Deno.serve(async (req)=>{
     const db = makeAdminClient();
     const wStart = weekStart();
     const wEnd = weekEnd();
-    // 1. Users with weekly digest enabled
-    const prefs = await db.from("notification_preferences", "select=user_id,weekly_digest_enabled,digest_day_of_week,digest_hour_local,timezone&weekly_digest_enabled=eq.true");
-    const eligible = prefs.filter(isInDigestWindow);
+    // 1. Users with digests enabled AND a frequency that is not 'off' (I-03).
+    const prefs = await db.from("notification_preferences", "select=user_id,weekly_digest_enabled,digest_frequency,digest_day_of_week,digest_hour_local,timezone,inapp_enabled,quiet_hours_start,quiet_hours_end&weekly_digest_enabled=eq.true&digest_frequency=neq.off");
+    const eligible = prefs.filter((p)=>{
+      if (p.inapp_enabled === false) return false; // I-08
+      if (isQuietHours(localHour(p.timezone), p.quiet_hours_start, p.quiet_hours_end)) return false; // I-08
+      return isInDigestWindow(p);
+    });
     log(FUNC, "info", "eligible", {
       total: prefs.length,
       eligible: eligible.length
@@ -253,15 +291,8 @@ Deno.serve(async (req)=>{
       ]));
     let generated = 0;
     let skipped = 0;
+    let failed = 0;
     for (const pref of eligible){
-      const isNew = await tryLogEvent(db, "weekly_digest", `weekly_digest:${pref.user_id}:${wStart}`, {
-        user_id: pref.user_id,
-        week_start: wStart
-      });
-      if (!isNew) {
-        skipped++;
-        continue;
-      }
       // Build followed_topic_updates
       const followedTopicUpdates = follows.filter((f)=>f.user_id === pref.user_id && surgingIds.has(f.topic_id)).slice(0, MAX_SECTION_ITEMS).map((f)=>({
           topic_id: f.topic_id,
@@ -283,7 +314,8 @@ Deno.serve(async (req)=>{
           href: `/q/${s.question_id}`
         };
       });
-      // Skip empty digests
+      // I-07: skip empty digests BEFORE anything is persisted, so the user stays eligible
+      // later in the week once content appears.
       if (!followedTopicUpdates.length && !answeredQuestionShifts.length) {
         skipped++;
         continue;
@@ -294,59 +326,101 @@ Deno.serve(async (req)=>{
         recommended_questions: [],
         alignment_note: null
       };
-      // Insert weekly_digests row
-      const digestRes = await fetch(`${db.url}/rest/v1/weekly_digests`, {
-        method: "POST",
-        headers: {
-          ...db._headers(),
-          Prefer: "resolution=ignore-duplicates,return=representation"
-        },
-        body: JSON.stringify([
-          {
+      // I-07: weekly_digests UNIQUE (user_id, week_start, week_end) + ignore-duplicates IS the
+      // dedup gate. An empty representation array means a digest already exists for this week.
+      let digestRows;
+      try {
+        // I-07: on_conflict names the unique constraint - resolution=ignore-duplicates
+        // otherwise only guards the PRIMARY KEY, which is a fresh uuid on every insert.
+        const digestRes = await fetch(`${db.url}/rest/v1/weekly_digests?on_conflict=user_id,week_start,week_end`, {
+          method: "POST",
+          headers: {
+            ...db._headers(),
+            Prefer: "resolution=ignore-duplicates,return=representation"
+          },
+          body: JSON.stringify([
+            {
+              user_id: pref.user_id,
+              week_start: wStart,
+              week_end: wEnd,
+              summary,
+              delivered_in_app_at: new Date().toISOString()
+            }
+          ])
+        });
+        if (digestRes.status === 409) {
+          // Already delivered this week - idempotent skip, not a failure.
+          skipped++;
+          continue;
+        }
+        if (!digestRes.ok) {
+          log(FUNC, "warn", "digest_insert_failed", {
             user_id: pref.user_id,
-            week_start: wStart,
-            week_end: wEnd,
-            summary,
-            delivered_in_app_at: new Date().toISOString()
-          }
-        ])
-      });
-      if (!digestRes.ok) {
-        log(FUNC, "warn", "digest_insert_failed", {
+            status: digestRes.status,
+            body: (await digestRes.text()).slice(0, 300)
+          }, traceId);
+          failed++;
+          continue;
+        }
+        digestRows = await digestRes.json();
+      } catch (e) {
+        log(FUNC, "warn", "digest_insert_threw", {
           user_id: pref.user_id,
-          status: digestRes.status
+          error: String(e?.message ?? e)
         }, traceId);
+        failed++;
         continue;
       }
-      const digestRows = await digestRes.json();
+      if (!Array.isArray(digestRows) || digestRows.length === 0) {
+        // Already delivered this week.
+        skipped++;
+        continue;
+      }
       const digestId = digestRows[0]?.id ?? null;
       const nT = followedTopicUpdates.length;
       const nQ = answeredQuestionShifts.length;
       const parts = [];
       if (nT) parts.push(`${nT} followed topic${nT > 1 ? "s" : ""} moved`);
       if (nQ) parts.push(`${nQ} answered question${nQ > 1 ? "s" : ""} shifted`);
-      await insertNotification(db, {
+      // I-09/I-10: per-user isolation — a bad row must not abort the whole run.
+      try {
+        await insertNotification(db, {
+          user_id: pref.user_id,
+          notification_type: "weekly_digest",
+          title: "Your weekly Stance Capture digest is ready.",
+          body: `This week: ${parts.join(", ")}.`,
+          digest_id: digestId,
+          metadata: {
+            digestId,
+            weekStart: wStart,
+            weekEnd: wEnd
+          }
+        });
+      } catch (e) {
+        log(FUNC, "warn", "notification_insert_failed", {
+          user_id: pref.user_id,
+          error: String(e?.message ?? e)
+        }, traceId);
+        failed++;
+        continue;
+      }
+      await logEvent(db, "weekly_digest", `weekly_digest:${pref.user_id}:${wStart}`, {
         user_id: pref.user_id,
-        notification_type: "weekly_digest",
-        title: "Your weekly Stance Capture digest is ready.",
-        body: `This week: ${parts.join(", ")}.`,
-        digest_id: digestId,
-        metadata: {
-          digestId,
-          weekStart: wStart,
-          weekEnd: wEnd
-        }
+        week_start: wStart,
+        digest_id: digestId
       });
       generated++;
     }
     log(FUNC, "info", "done", {
       generated,
-      skipped
+      skipped,
+      failed
     }, traceId);
     return Response.json({
       ok: true,
       generated,
-      skipped
+      skipped,
+      failed
     });
   } catch (err) {
     log(FUNC, "error", "fatal", {
