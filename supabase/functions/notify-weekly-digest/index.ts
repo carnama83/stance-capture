@@ -330,7 +330,9 @@ Deno.serve(async (req)=>{
       // dedup gate. An empty representation array means a digest already exists for this week.
       let digestRows;
       try {
-        const digestRes = await fetch(`${db.url}/rest/v1/weekly_digests`, {
+        // I-07: on_conflict names the unique constraint - resolution=ignore-duplicates
+        // otherwise only guards the PRIMARY KEY, which is a fresh uuid on every insert.
+        const digestRes = await fetch(`${db.url}/rest/v1/weekly_digests?on_conflict=user_id,week_start,week_end`, {
           method: "POST",
           headers: {
             ...db._headers(),
@@ -346,6 +348,11 @@ Deno.serve(async (req)=>{
             }
           ])
         });
+        if (digestRes.status === 409) {
+          // Already delivered this week - idempotent skip, not a failure.
+          skipped++;
+          continue;
+        }
         if (!digestRes.ok) {
           log(FUNC, "warn", "digest_insert_failed", {
             user_id: pref.user_id,
