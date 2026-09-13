@@ -88,7 +88,10 @@ entrypoint = "./functions/whatsapp-send-flow/index.ts"
 
 [functions.whatsapp-broadcast-dispatch]
 enabled = true
-verify_jwt = false
+# Sep 2026 (W-01): MUST stay true. This endpoint sends WhatsApp messages and had no
+# authorization check of its own, so verify_jwt=false left it publicly invokable by anyone.
+# pg_cron sends a service_role JWT and the function now verifies the service_role claim.
+verify_jwt = true
 entrypoint = "./functions/whatsapp-broadcast-dispatch/index.ts"
 
 [functions.enrich-images]
