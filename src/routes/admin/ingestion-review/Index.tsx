@@ -207,29 +207,55 @@ function useReviewMutation() {
       const sb = getSupabase();
       if (!sb) throw new Error("Supabase not available");
 
+      // J-06: PostgREST returns success with ZERO rows affected when RLS denies an
+      // UPDATE, and supabase-js reports no error — so checking `error` alone let a
+      // write that never happened render "accepted and promoted ✓". Select the row
+      // back and assert we actually touched it.
+      const setStatus = async (status: "accepted" | "rejected") => {
+        const { data, error } = await sb
+          .from("ingested_stances")
+          .update({ status, reviewed_at: new Date().toISOString() })
+          .eq("id", id)
+          .select("id");
+        if (error) throw error;
+        if (!data || data.length === 0) {
+          throw new Error(
+            `Not permitted: the ${status === "accepted" ? "accept" : "reject"} did not update any row. ` +
+              `This usually means the ingested_stances row-level security policy blocked the write.`,
+          );
+        }
+      };
+
       if (action === "accept") {
         // Mark accepted first, then promote
-        const { error: updateErr } = await sb
-          .from("ingested_stances")
-          .update({ status: "accepted", reviewed_at: new Date().toISOString() })
-          .eq("id", id);
-        if (updateErr) throw updateErr;
+        await setStatus("accepted");
 
-        const { error: promoteErr } = await sb
+        const { data: promoted, error: promoteErr } = await sb
           .rpc("promote_ingested_stance", { p_ingested_stance_id: id });
         if (promoteErr) throw promoteErr;
-      } else {
-        const { error } = await sb
-          .from("ingested_stances")
-          .update({ status: "rejected", reviewed_at: new Date().toISOString() })
-          .eq("id", id);
-        if (error) throw error;
+        // The RPC returns false for a conflict with an existing native stance, and
+        // for a row with no attributed user — neither is an error, but neither is a
+        // promotion, so don't claim one.
+        return { promoted: promoted === true };
       }
+
+      await setStatus("rejected");
+      return { promoted: false };
     },
-    onSuccess: (_, { action }) => {
+    onSuccess: (result, { action }) => {
       qc.invalidateQueries({ queryKey: ["admin-ingestion-review"] });
       qc.invalidateQueries({ queryKey: ["admin-ingestion-stats"] });
-      toast({ title: action === "accept" ? "Stance accepted and promoted ✓" : "Stance rejected" });
+      if (action === "reject") {
+        toast({ title: "Stance rejected" });
+      } else if (result?.promoted) {
+        toast({ title: "Stance accepted and promoted ✓" });
+      } else {
+        toast({
+          title: "Stance accepted, not promoted",
+          description:
+            "The row was accepted but promote_ingested_stance() declined it — usually a conflict with an existing native stance, or no attributed user.",
+        });
+      }
     },
     onError: (e: any) => {
       toast({ title: "Action failed", description: e.message, variant: "destructive" });

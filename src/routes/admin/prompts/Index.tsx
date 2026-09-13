@@ -348,40 +348,30 @@ export default function AdminPromptsPage() {
     setIsSaving(true);
 
     try {
-      if (editTarget?.id) {
-        // Update existing
-        const { error } = await sb
-          .from("ai_prompts")
-          .update({
-            label:                form.label,
-            description:          form.description,
-            system_prompt:        form.system_prompt,
-            user_prompt_template: form.user_prompt_template,
-            model:                form.model,
-            temperature:          form.temperature,
-            max_tokens:           form.max_tokens,
-            notes:                form.notes,
-            updated_at:           new Date().toISOString(),
-          })
-          .eq("id", editTarget.id);
+      // J-12: every save appends a new version. Editing used to UPDATE the selected
+      // row in place, which silently rewrote whatever the pipeline was running and
+      // left no history — contradicting BR-J07 ("version history preserved").
+      // Prompt rows are now append-only from this form.
+      const existing = prompts.filter((p) => p.prompt_key === form.prompt_key);
+      const nextVersion = existing.length > 0 ? Math.max(...existing.map((p) => p.version)) + 1 : 1;
 
-        if (error) throw error;
-        toast({ title: "Prompt updated" });
-      } else {
-        // Insert new
-        // Calculate next version for this key
-        const existing = prompts.filter((p) => p.prompt_key === form.prompt_key);
-        const nextVersion = existing.length > 0 ? Math.max(...existing.map((p) => p.version)) + 1 : 1;
+      // Never carry the source row's id/version/is_active into the new version.
+      const { id: _id, version: _version, is_active: _isActive, created_at: _createdAt, ...fields } = form as any;
 
-        const { error } = await sb.from("ai_prompts").insert({
-          ...form,
-          version:   nextVersion,
-          is_active: false,
-        });
+      const { error } = await sb.from("ai_prompts").insert({
+        ...fields,
+        version:   nextVersion,
+        is_active: false,
+      });
 
-        if (error) throw error;
-        toast({ title: "Prompt saved", description: "Set it as active when ready to use." });
-      }
+      if (error) throw error;
+      toast({
+        title: `Saved as v${nextVersion}`,
+        description:
+          editTarget?.id
+            ? "Edits create a new version — the previous one is untouched. Activate it when ready."
+            : "Set it as active when ready to use.",
+      });
 
       setEditTarget(null);
       await load();
@@ -466,8 +456,13 @@ export default function AdminPromptsPage() {
       {/* Editor */}
       {editTarget !== null && (
         <div className="rounded-xl border border-slate-200 bg-white p-5">
-          <p className="text-sm font-medium text-slate-900 mb-4">
-            {editTarget.id ? "Edit prompt" : "New prompt"}
+          <p className="text-sm font-medium text-slate-900 mb-1">
+            {editTarget.id ? "Edit prompt — saves as a new version" : "New prompt"}
+          </p>
+          <p className="text-xs text-slate-500 mb-4">
+            {editTarget.id
+              ? "Prompt versions are append-only. Saving creates the next version for this key and leaves the current one active until you activate the new one."
+              : "Saved inactive. Activate it when you are ready for the pipeline to use it."}
           </p>
           <PromptForm
             initial={editTarget}
