@@ -261,6 +261,44 @@ async function processElection(electionId, projectUrl, serviceRoleKey) {
   };
 }
 // ── Main handler ──────────────────────────────────────────────────────────────
+// H-18: fail-closed authorization shared by the admin.cron_* invoked endpoints.
+// Three accepted credentials, because this project legitimately uses more than one:
+//   Path A - exact match against this project's own SUPABASE_SERVICE_ROLE_KEY. Covers the
+//            modern opaque sb_secret_ key, which carries no claims. Verified live on Prod:
+//            a bare Bearer <sb_secret_...> returns 200, so the Edge env key and Vault's
+//            service_role_key are the same value.
+//   Path B - a service_role JWT, project ref pinned. Prod's private.get_secret returns a
+//            219-char legacy JWT and several jobs still send that shape.
+//   Path C - x-cron-secret exact match. This is what admin.cron_* actually sends today,
+//            so removing it would break live scheduled jobs.
+// EVERY path requires its env var to be present and non-empty, so a missing secret denies
+// rather than admits. Path B parses claims WITHOUT verifying the signature, which is only
+// sound because the platform validates the credential first - so these functions must be
+// deployed with verify_jwt: true. Do not set it back to false.
+function isAuthorizedCaller(req, cronSecret, serviceRoleKey) {
+  const xcron = req.headers.get("x-cron-secret") ?? "";
+  if (cronSecret && xcron && xcron === cronSecret) return true;
+
+  const auth = req.headers.get("authorization") ?? "";
+  const m = /^Bearer\s+(.+)$/i.exec(auth.trim());
+  if (!m) return false;
+  const token = m[1];
+
+  if (serviceRoleKey && token === serviceRoleKey) return true;
+
+  try {
+    const seg = token.split(".")[1];
+    if (!seg) return false;
+    const norm = seg.replace(/-/g, "+").replace(/_/g, "/");
+    const claims = JSON.parse(atob(norm + "=".repeat((4 - norm.length % 4) % 4)));
+    if (claims?.role !== "service_role") return false;
+    const expectedRef = (Deno.env.get("SUPABASE_URL") ?? "").match(/https:\/\/([a-z0-9]+)\.supabase\.co/)?.[1];
+    if (expectedRef && claims?.ref && claims.ref !== expectedRef) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
 Deno.serve(async (req)=>{
   if (req.method !== "POST") {
     return new Response(JSON.stringify({
@@ -276,8 +314,10 @@ Deno.serve(async (req)=>{
   const cronSecret = Deno.env.get("CRON_SECRET") ?? "";
   const serviceRoleKey = Deno.env.get("SERVICE_ROLE_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
   const projectUrl = (Deno.env.get("PROJECT_URL") ?? Deno.env.get("SUPABASE_URL") ?? "").replace(/\/+$/, "");
-  const incoming = req.headers.get("x-cron-secret") ?? req.headers.get("authorization")?.replace("Bearer ", "") ?? "";
-  if (cronSecret && incoming !== cronSecret && incoming !== serviceRoleKey) {
+  // H-18 (Sep 2026): the previous gate short-circuited to false whenever CRON_SECRET
+  // was unset, admitting EVERY caller. Identical defect to H-13 on
+  // notify-election-updates. Now fails CLOSED - see isAuthorizedCaller() above.
+  if (!isAuthorizedCaller(req, cronSecret, serviceRoleKey)) {
     return new Response(JSON.stringify({
       ok: false,
       error: "Unauthorized"
