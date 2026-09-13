@@ -129,11 +129,65 @@ function checkForbidden(question) {
 function countWords(text) {
   return text.trim().split(/\s+/).length;
 }
+// H-15 (Sep 2026): this used to be a single JSON.parse over the WHOLE response
+// after stripping ``` fences, so it required the model to emit nothing but JSON.
+// The system prompt does ask for exactly that ("return ONLY valid JSON"), but a
+// model is free to reason out loud first, and claude-sonnet-4-6 does: an observed
+// UAT response carried ~2.6KB of preamble before a perfectly well-formed object
+// that scored 8/10 and would have been accepted. The draft was written off as
+// "Failed to parse LLM response as valid JSON" and reset, so the pipeline
+// discarded good work and would have done so on every retry.
+//
+// Now tries three strategies in order of strictness. The last balanced object is
+// preferred over the first because a preamble often contains illustrative or
+// partial JSON, while the real answer comes last.
+function extractJsonCandidates(raw) {
+  const out = [];
+  const trimmed = raw.trim();
+  out.push(trimmed);
+
+  // 1. fenced block(s) - capture the CONTENT, rather than deleting the fence
+  //    markers globally (the old approach also mangled any ``` inside a string).
+  for (const m of trimmed.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)) {
+    if (m[1]) out.push(m[1].trim());
+  }
+
+  // 2. balanced-brace scan; collect every complete top-level {...} span.
+  let depth = 0, start = -1, inStr = false, esc = false;
+  for (let i = 0; i < trimmed.length; i++) {
+    const ch = trimmed[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (ch === "\\") esc = true;
+      else if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') { inStr = true; continue; }
+    if (ch === "{") { if (depth === 0) start = i; depth++; }
+    else if (ch === "}") {
+      depth--;
+      if (depth === 0 && start !== -1) { out.push(trimmed.slice(start, i + 1)); start = -1; }
+    }
+  }
+  // last-first: the real answer trails any illustrative JSON in the preamble.
+  return out.reverse();
+}
 function parseReframeResult(raw) {
+  if (typeof raw !== "string" || !raw.trim()) return null;
+  let parsed = null;
+  for (const candidate of extractJsonCandidates(raw)) {
+    try {
+      const obj = JSON.parse(candidate);
+      if (obj && typeof obj === "object" && typeof obj.question === "string" && obj.question.trim()) {
+        parsed = obj;
+        break;
+      }
+    } catch {
+      // try the next candidate
+    }
+  }
+  if (!parsed) return null;
   try {
-    const clean = raw.replace(/```json|```/g, "").trim();
-    const parsed = JSON.parse(clean);
-    if (!parsed.question || typeof parsed.question !== "string") return null;
     return {
       question: parsed.question.trim(),
       framing_style: parsed.framing_style?.trim() ?? "value_tradeoff",
@@ -156,7 +210,14 @@ async function callLLM(provider, modelName, systemPrompt, userPrompt, apiKey) {
     });
     const message = await client.messages.create({
       model: modelName,
-      max_tokens: 1024,
+      // H-15: raised from 1024. The JSON payload itself is only ~250 tokens, but
+      // the model may reason in prose before emitting it - an observed UAT
+      // response was 3.6KB and only just fitted under the old cap. A truncated
+      // response loses the closing brace, which reads downstream as "Failed to
+      // parse LLM response as valid JSON" - i.e. exactly the defect the parser
+      // fix above addresses, reintroduced by a different route. Headroom here is
+      // much cheaper than a silently discarded draft.
+      max_tokens: 2048,
       temperature: 0.7,
       system: systemPrompt,
       messages: [
