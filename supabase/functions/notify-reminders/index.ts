@@ -127,6 +127,35 @@ async function tryLogEvent(db, eventType, eventKey, payload) {
     return false;
   }
 }
+// I-09/I-10 (Epic I QA pass, Sep 2026). This job used to abort the ENTIRE run on a single
+// bad row: user_location_settings.user_id references public.users while user_notifications
+// .user_id references auth.users, those tables have diverged, and the resulting FK 23503
+// threw straight out of db.insert(). Every user after the offending row silently got
+// nothing. Worse, tryLogEvent() had already written the dedup key, so the lost notification
+// was never retried. Delivery is now isolated per user and releases its key on failure.
+async function unlogEvent(db, eventType, eventKey) {
+  try {
+    await fetch(`${db.url}/rest/v1/notification_event_log?event_type=eq.${encodeURIComponent(eventType)}&event_key=eq.${encodeURIComponent(eventKey)}`, {
+      method: "DELETE",
+      headers: db._headers()
+    });
+  } catch (e) {
+    console.error("unlogEvent error", e);
+  }
+}
+async function deliver(db, eventType, eventKey, row, traceId, func) {
+  try {
+    await insertNotification(db, row);
+    return true;
+  } catch (e) {
+    log(func, "warn", "delivery_failed", {
+      user_id: row.user_id,
+      error: String(e?.message ?? e)
+    }, traceId);
+    await unlogEvent(db, eventType, eventKey);
+    return false;
+  }
+}
 async function insertNotification(db, row) {
   await db.insert("user_notifications", [
     {
@@ -239,6 +268,7 @@ Deno.serve(async (req)=>{
     }
     let notified = 0;
     let skipped = 0;
+    let failed = 0;
     for (const stance of stances){
       if (!stance.user_id) {
         skipped++;
@@ -282,7 +312,7 @@ Deno.serve(async (req)=>{
       }
       const qText = questionText[stance.question_id] ?? "";
       const title = qText ? `New developments on: ${qText.slice(0, 60)}${qText.length > 60 ? "…" : ""}` : "A question you answered has new developments.";
-      await insertNotification(db, {
+      const delivered = await deliver(db, "reminder", eventKey, {
         user_id: stance.user_id,
         notification_type: "reminder",
         title,
@@ -294,17 +324,20 @@ Deno.serve(async (req)=>{
           contextUpdateId: contextUpdate.id,
           phase: contextUpdate.new_phase
         }
-      });
-      notified++;
+      }, traceId, FUNC);
+      if (delivered) notified++;
+      else failed++;
     }
     log(FUNC, "info", "done", {
       notified,
-      skipped
+      skipped,
+      failed
     }, traceId);
     return Response.json({
       ok: true,
       notified,
-      skipped
+      skipped,
+      failed
     });
   } catch (err) {
     log(FUNC, "error", "fatal", {
