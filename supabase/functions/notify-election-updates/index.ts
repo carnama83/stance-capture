@@ -27,38 +27,60 @@ function sbHeaders(key) {
   };
 }
 // ---------------------------------------------------------------------------
-// W-01 / H-04b (Sep 2026): this function was deployed with verify_jwt=false AND
-// a guard that FAILED OPEN:
+// H-13 (Sep 2026). The previous gate was:
 //
-//     if (cronSecret && incoming !== cronSecret && incoming !== serviceRoleKey) 401
+//   const incoming = req.headers.get("x-cron-secret")
+//                 ?? req.headers.get("authorization")?.replace("Bearer ","") ?? "";
+//   if (cronSecret && incoming !== cronSecret && incoming !== serviceRoleKey) 401
 //
-// The leading `cronSecret &&` means that whenever CRON_SECRET was unset the whole
-// condition short-circuits to false and EVERY caller is admitted — with no platform
-// gate behind it, since verify_jwt was false. This endpoint writes user_notifications
-// rows for arbitrary users, so an open door here is a spam/notification-injection
-// vector. It is the same defect shape already fixed on whatsapp-broadcast-dispatch.
+// The leading `cronSecret &&` makes the whole condition short-circuit to false
+// whenever CRON_SECRET is unset, admitting EVERY caller - and this function was
+// deployed with verify_jwt:false, so there was no platform gate behind it. It
+// writes user_notifications rows for arbitrary users. Same shape as W-01 on
+// whatsapp-broadcast-dispatch.
 //
-// Replaced with the PORTABLE service_role check used across this project:
-//   Path A — exact match against this project's own SUPABASE_SERVICE_ROLE_KEY
-//            (covers the modern opaque sb_secret_... key, which carries no claims).
-//   Path B — a service_role JWT (legacy shape, still used by Prod's pg_cron).
-// Safe only because this is now deployed with verify_jwt=true, so the platform has
-// already validated the signature before the body runs. Do NOT set verify_jwt back
-// to false: unsigned claims are forgeable and Path B would become a hole.
+// Rewritten to fail CLOSED on every path. Three accepted credentials, because
+// Prod legitimately uses more than one:
+//   Path A - exact match against this project's own SUPABASE_SERVICE_ROLE_KEY.
+//            Covers the modern opaque sb_secret_ key, which carries no claims.
+//            VERIFIED live on Prod: a bare Bearer <sb_secret_...> returns 200,
+//            so the Edge env key and Vault's service_role_key are the same value.
+//   Path B - a service_role JWT. Prod's private.get_secret('service_role_key')
+//            is a 219-char legacy JWT and several cron jobs still send it.
+//            VERIFIED live on Prod: returns 200.
+//   Path C - x-cron-secret exact match. This is what
+//            admin.cron_notify_election_updates() actually sends today, so it is
+//            retained deliberately: removing it would break a live 6-hourly job.
 //
-// Fails CLOSED on everything else — including a missing env var.
+// Every path requires its env var to be present and non-empty, so a missing
+// secret denies rather than admits.
+//
+// Deployed with verify_jwt: TRUE. Do not set it back to false - Path B parses
+// claims without verifying the signature, which is only safe because the
+// platform has already validated the credential before this body runs.
 // ---------------------------------------------------------------------------
 function authCheck(req) {
   const deny = ()=>new Response(JSON.stringify({ ok: false, error: "Unauthorized" }), {
     status: 401,
     headers: { "content-type": "application/json" }
   });
+
+  const envKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SERVICE_ROLE_KEY") ?? "";
+  const cronSecret = Deno.env.get("CRON_SECRET") ?? "";
+
+  // Path C - x-cron-secret, fail-closed (requires the env var to exist).
+  const xcron = req.headers.get("x-cron-secret") ?? "";
+  if (cronSecret && xcron && xcron === cronSecret) return null;
+
   const auth = req.headers.get("authorization") ?? "";
   const m = /^Bearer\s+(.+)$/i.exec(auth.trim());
   if (!m) return deny();
   const token = m[1];
-  const envKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SERVICE_ROLE_KEY") ?? "";
+
+  // Path A - exact match against this project's own service role key.
   if (envKey && token === envKey) return null;
+
+  // Path B - service_role JWT, with the project ref pinned.
   try {
     const seg = token.split(".")[1];
     if (!seg) return deny();
@@ -84,6 +106,7 @@ Deno.serve(async (req)=>{
   }
   const authErr = authCheck(req);
   if (authErr) return authErr;
+
   const serviceRoleKey = Deno.env.get("SERVICE_ROLE_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
   const projectUrl = (Deno.env.get("PROJECT_URL") ?? Deno.env.get("SUPABASE_URL") ?? "").replace(/\/+$/, "");
   if (!serviceRoleKey || !projectUrl) {
@@ -168,8 +191,8 @@ Deno.serve(async (req)=>{
         continue;
       }
     }
-    // H-05: never let a null user_id reach the insert — PostgREST rejects the
-    // whole batch, losing every good row alongside the bad one.
+    // H-05: a null user_id would make PostgREST reject the whole batch,
+    // losing every good row alongside the bad one.
     const notifications = profiles.filter((p)=>Boolean(p.user_id)).map((p)=>({
         user_id: p.user_id,
         notification_type: "election_update",
