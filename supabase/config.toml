@@ -57,12 +57,20 @@ entrypoint = "./functions/record-stance-reveal-switch/index.ts"
 
 [functions.aggregate-election-stances]
 enabled = true
-verify_jwt = false
+# Sep 2026 (H-18): MUST stay true. Its in-body guard used to fail OPEN, and with
+# verify_jwt=false there was no platform gate behind it. The guard is now fail-closed,
+# but this flag is what makes its service_role-JWT path sound at all: that path reads
+# claims without verifying the signature, which is only safe because the platform
+# validates the credential first. Invoked by admin.cron_aggregate_election_stances()
+# every 30 minutes, which sends a service_role bearer plus x-cron-secret.
+verify_jwt = true
 entrypoint = "./functions/aggregate-election-stances/index.ts"
 
 [functions.detect-election-anomalies]
 enabled = true
-verify_jwt = false
+# Sep 2026 (H-18): MUST stay true - same reasoning as aggregate-election-stances above.
+# Invoked by admin.cron_detect_election_anomalies() hourly.
+verify_jwt = true
 entrypoint = "./functions/detect-election-anomalies/index.ts"
 
 [functions.notify-election-updates]
