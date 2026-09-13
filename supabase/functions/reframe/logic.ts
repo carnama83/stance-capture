@@ -203,8 +203,16 @@ export async function run(ctx) {
   const BATCH = Number(Deno.env.get("REFRAME_BATCH") ?? 5);
   const rawProvider = (Deno.env.get("REFRAME_MODEL_PROVIDER") ?? "openai").toLowerCase().trim();
   const provider = rawProvider === "anthropic" ? "anthropic" : "openai";
-  const defaultModel = provider === "anthropic" ? "claude-sonnet-4-20250514" : "gpt-4o-mini";
-  const modelName = (Deno.env.get("REFRAME_MODEL_NAME") ?? defaultModel).trim();
+  // H-11 (Sep 2026): this default used to be "claude-sonnet-4-20250514", a retired
+  // model id, so EVERY reframe attempt 404'd with not_found_error. It hid well for
+  // two reasons: the handler returns HTTP 200 and emitPerf records ok:true whatever
+  // result.failed says, and the llm_failed branch resets the draft to status='draft',
+  // so the row silently re-queued and no error state ever accumulated anywhere.
+  // Aligned with the model the rest of this codebase already uses (ugq-screen,
+  // ugq-confirm-publish, ugq-transcribe-voice).
+  const defaultModel = provider === "anthropic" ? "claude-sonnet-4-6" : "gpt-4o-mini";
+  const envModelName = Deno.env.get("REFRAME_MODEL_NAME");
+  const modelName = (envModelName ?? defaultModel).trim();
   const apiKey = provider === "anthropic" ? ANTHROPIC_KEY : OPENAI_API_KEY;
   if (!SUPABASE_URL || !SERVICE_ROLE) {
     log("error", "missing_env", {
@@ -237,7 +245,12 @@ export async function run(ctx) {
   }
   log("info", "provider_config", {
     provider,
-    modelName
+    modelName,
+    // H-11: says whether modelName came from the env override or the code default,
+    // so the next model failure can be diagnosed without guessing which is in play.
+    // Edge secrets cannot be read back, and that ambiguity is what made H-11 hard
+    // to pin down in the first place.
+    modelSource: envModelName ? "env:REFRAME_MODEL_NAME" : "code_default"
   });
   const supabaseAdmin = createClient(SUPABASE_URL, SERVICE_ROLE, {
     auth: {
