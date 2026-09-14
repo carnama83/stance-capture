@@ -220,16 +220,48 @@ function useResolveJob() {
   });
 }
 
+// J-FR-34: re-invoke the stage behind a failed job. The RPC refuses job types that
+// need arguments it does not carry (and the retired generate stage), so surface that
+// refusal rather than reporting a retry that never happened.
+function useRetryJob() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: async ({ jobId }: { jobId: string }) => {
+      const sb = getSupabase();
+      if (!sb) throw new Error("Supabase not available");
+      const { data, error } = await sb.rpc("retry_pipeline_job", { p_job_id: jobId });
+      if (error) throw error;
+      const res = (data ?? {}) as { ok?: boolean; error?: string; dispatched_to?: string };
+      if (!res.ok) throw new Error(res.error ?? "Retry was refused");
+      return res;
+    },
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ["pipeline-runs"] });
+      toast({
+        title: `Re-invoked ${res.dispatched_to}`,
+        description: "Dispatched asynchronously — watch for a new run to appear.",
+      });
+    },
+    onError: (e: any) =>
+      toast({ title: "Retry failed", description: e.message, variant: "destructive" }),
+  });
+}
+
 // ── Job detail row ────────────────────────────────────────────────────────────
 
 function JobDetailRow({
   job,
   onResolve,
   isResolving,
+  onRetry,
+  isRetrying,
 }: {
   job: PipelineJob;
   onResolve: (note: string) => void;
   isResolving: boolean;
+  onRetry: () => void;
+  isRetrying: boolean;
 }) {
   const [showResolve, setShowResolve] = React.useState(false);
   const [note, setNote] = React.useState("");
@@ -268,13 +300,25 @@ function JobDetailRow({
       {job.status === "failed" && !job.resolved && (
         <div>
           {!showResolve ? (
-            <button
-              type="button"
-              className="text-[10px] text-slate-400 hover:text-slate-600 underline"
-              onClick={() => setShowResolve(true)}
-            >
-              Mark resolved
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                className="text-[10px] text-slate-400 hover:text-slate-600 underline"
+                onClick={() => setShowResolve(true)}
+              >
+                Mark resolved
+              </button>
+              {/* J-FR-34: Resolve is annotation only. Retry actually re-invokes the stage. */}
+              <button
+                type="button"
+                className="text-[10px] text-blue-500 hover:text-blue-700 underline disabled:opacity-50"
+                onClick={() => onRetry()}
+                disabled={isRetrying}
+                title="Re-invoke the Edge Function behind this stage"
+              >
+                {isRetrying ? "Retrying…" : "Retry stage"}
+              </button>
+            </div>
           ) : (
             <div className="flex items-center gap-2 mt-1">
               <input
@@ -316,6 +360,7 @@ function JobDetailRow({
 function RunRow({ run }: { run: PipelineRun }) {
   const [expanded, setExpanded] = React.useState(false);
   const { mutate: resolve, isPending: isResolving, variables: resolvingVars } = useResolveJob();
+  const { mutate: retry, isPending: isRetrying, variables: retryingVars } = useRetryJob();
 
   return (
     <div className={`border rounded-lg bg-white overflow-hidden ${run.has_unresolved_failure ? "border-red-200" : "border-slate-200"}`}>
@@ -375,6 +420,8 @@ function RunRow({ run }: { run: PipelineRun }) {
               job={job}
               onResolve={(note) => resolve({ jobId: job.id, note })}
               isResolving={isResolving && (resolvingVars as any)?.jobId === job.id}
+              onRetry={() => retry({ jobId: job.id })}
+              isRetrying={isRetrying && (retryingVars as any)?.jobId === job.id}
             />
           ))}
         </div>

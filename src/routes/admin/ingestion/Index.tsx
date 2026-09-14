@@ -38,12 +38,22 @@ export default function AdminIngestionPage() {
   const [dateTo, setDateTo] = React.useState("");
 
   // Pipeline run state
+  // J-08: this page used to send an empty body, which admin-run-pipeline reads as
+  // mode='ingest_only' — so the full chain was unreachable from the UI while the
+  // button claimed to run it. The mode is now explicit.
+  const [pipelineMode, setPipelineMode] = React.useState<"ingest_only" | "full">(
+    "ingest_only",
+  );
   const [pipelineLoading, setPipelineLoading] = React.useState(false);
   const [pipelineResult, setPipelineResult] = React.useState<{
     ok: boolean;
+    mode?: string;
     duration_ms?: number;
     error?: string | null;
     result?: unknown;
+    worker_ok?: boolean;
+    worker_status?: number;
+    worker_body?: unknown;
   } | null>(null);
 
   const loadSources = React.useCallback(async () => {
@@ -97,7 +107,7 @@ export default function AdminIngestionPage() {
       const { data, error } = await supabase.functions.invoke(
         "admin-run-pipeline",
         {
-          body: {}, // no payload needed
+          body: { mode: pipelineMode },
         }
       );
 
@@ -110,9 +120,13 @@ export default function AdminIngestionPage() {
         setPipelineResult(
           (data as {
             ok: boolean;
+            mode?: string;
             duration_ms?: number;
             error?: string | null;
             result?: unknown;
+            worker_ok?: boolean;
+            worker_status?: number;
+            worker_body?: unknown;
           }) ?? {
             ok: false,
             error: "Unknown response from admin-run-pipeline",
@@ -128,7 +142,7 @@ export default function AdminIngestionPage() {
     } finally {
       setPipelineLoading(false);
     }
-  }, [supabase]);
+  }, [supabase, pipelineMode]);
 
   const pipelineStatusColor =
     pipelineResult == null
@@ -143,18 +157,38 @@ export default function AdminIngestionPage() {
         <div className="space-y-1">
           <CardTitle>Ingestion Queue</CardTitle>
           <p className="text-xs text-muted-foreground">
-            Inspect queued ingest jobs. Use &quot;Run pipeline&quot; to trigger
-            ingest → cluster → generate via <code>run_ingestion_pipeline()</code>.
+            Inspect queued ingest jobs.{" "}
+            <strong>Ingest only</strong> enqueues the enabled sources and drains the
+            queue via <code>ingest-worker</code>.{" "}
+            <strong>Full pipeline</strong> runs <code>run_ingestion_pipeline()</code>{" "}
+            — ingest → cluster. (The generate stage was retired in Sep 2026; question
+            drafting now runs through <code>create-topic-drafts</code>.)
           </p>
         </div>
         <div className="flex flex-col gap-2 md:flex-row md:items-center">
-          {/* Run pipeline button */}
+          {/* Run pipeline: mode is explicit — see J-08 */}
           <div className="flex items-center gap-2">
+            <select
+              aria-label="Pipeline mode"
+              className="h-9 rounded-md border border-input bg-background px-2 text-xs"
+              value={pipelineMode}
+              onChange={(e) =>
+                setPipelineMode(e.target.value as "ingest_only" | "full")
+              }
+              disabled={pipelineLoading}
+            >
+              <option value="ingest_only">Ingest only</option>
+              <option value="full">Full pipeline (ingest → cluster)</option>
+            </select>
             <Button onClick={handleRunPipeline} disabled={pipelineLoading}>
               {pipelineLoading && (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               )}
-              {pipelineLoading ? "Running pipeline..." : "Run pipeline now"}
+              {pipelineLoading
+                ? "Running..."
+                : pipelineMode === "full"
+                  ? "Run full pipeline"
+                  : "Run ingest now"}
             </Button>
           </div>
 
@@ -176,16 +210,27 @@ export default function AdminIngestionPage() {
           <div className="mb-4 text-xs">
             <span className={pipelineStatusColor}>
               {pipelineResult.ok
-                ? `Pipeline succeeded in ${
-                    pipelineResult.duration_ms ?? "?"
-                  } ms`
+                ? `${
+                    pipelineResult.mode === "full" ? "Full pipeline" : "Ingest"
+                  } succeeded in ${pipelineResult.duration_ms ?? "?"} ms${
+                    pipelineResult.worker_status !== undefined
+                      ? ` — ingest-worker HTTP ${pipelineResult.worker_status}`
+                      : ""
+                  }`
                 : `Pipeline error: ${
                     pipelineResult.error ?? "Unknown error"
                   }`}
             </span>
-            {pipelineResult.result && (
+            {/* admin-run-pipeline returns worker_body for ingest_only and nothing
+                for full; show whichever is actually present rather than a
+                stage breakdown it never sends. */}
+            {(pipelineResult.result ?? pipelineResult.worker_body) != null && (
               <pre className="mt-2 max-h-40 overflow-auto rounded bg-muted p-2 text-[11px]">
-                {JSON.stringify(pipelineResult.result, null, 2)}
+                {JSON.stringify(
+                  pipelineResult.result ?? pipelineResult.worker_body,
+                  null,
+                  2,
+                )}
               </pre>
             )}
           </div>
