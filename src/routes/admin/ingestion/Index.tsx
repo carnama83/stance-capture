@@ -34,6 +34,7 @@ export default function AdminIngestionPage() {
   const [lang, setLang] = React.useState<string>("");
   const [sourceId, setSourceId] = React.useState<string>("all");
   const [sources, setSources] = React.useState<any[]>([]);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
   const [dateFrom, setDateFrom] = React.useState("");
   const [dateTo, setDateTo] = React.useState("");
 
@@ -64,6 +65,35 @@ export default function AdminIngestionPage() {
     setSources(data ?? []);
   }, [supabase]);
 
+  // J-20: gate the first query on the auth session actually having attached.
+  //
+  // AuthReadyGate resolves on INITIAL_SESSION *or* a 2.5s safety timeout, so
+  // "auth ready" does not guarantee a session exists yet. Firing load() straight
+  // from mount therefore sent the first ingestion_queue query out unauthenticated
+  // right after sign-in; RLS returned nothing and the page rendered "No results"
+  // as though the queue were empty. Waiting for the first auth event fixes it —
+  // supabase-js emits INITIAL_SESSION from its localStorage cache on subscribe,
+  // so this costs no network round-trip and no SDK mutex wait.
+  const [authResolved, setAuthResolved] = React.useState(false);
+
+  React.useEffect(() => {
+    let mounted = true;
+    const { data: sub } = supabase.auth.onAuthStateChange(() => {
+      if (mounted) setAuthResolved(true);
+    });
+    // Hard fallback, mirroring AuthReadyGate: never block the page forever if
+    // the SDK stalls. A genuinely signed-out admin still gets a real query and
+    // the route guard handles the redirect.
+    const timeout = setTimeout(() => {
+      if (mounted) setAuthResolved(true);
+    }, 2500);
+    return () => {
+      mounted = false;
+      clearTimeout(timeout);
+      sub?.subscription?.unsubscribe?.();
+    };
+  }, [supabase]);
+
   const load = React.useCallback(async () => {
     let q = supabase
       .from("ingestion_queue")
@@ -82,20 +112,28 @@ export default function AdminIngestionPage() {
 
     const { data, error, count: c } = await q;
     if (!error) {
+      setLoadError(null);
       setRows(data ?? []);
       setCount(c ?? undefined);
     } else {
+      // J-20: surface the failure instead of falling through to "No results",
+      // which read as an empty queue rather than a failed query.
       console.error("Failed to load ingestion_queue:", error);
+      setLoadError(error.message ?? "Failed to load ingestion_queue.");
+      setRows([]);
+      setCount(undefined);
     }
   }, [supabase, status, lang, sourceId, dateFrom, dateTo, page]);
 
   React.useEffect(() => {
+    if (!authResolved) return;
     loadSources();
-  }, [loadSources]);
+  }, [authResolved, loadSources]);
 
   React.useEffect(() => {
+    if (!authResolved) return;
     load();
-  }, [load]);
+  }, [authResolved, load]);
 
   const totalPages = count ? Math.max(1, Math.ceil(count / pageSize)) : 1;
 
@@ -351,7 +389,15 @@ export default function AdminIngestionPage() {
           {rows.map((r) => (
             <IngestionRow key={r.id} row={r} />
           ))}
-          {!rows.length && (
+          {!rows.length && !authResolved && (
+            <div className="p-6 text-sm text-muted-foreground">Loading…</div>
+          )}
+          {!rows.length && authResolved && loadError && (
+            <div className="p-6 text-sm text-red-600">
+              Could not load the ingestion queue: {loadError}
+            </div>
+          )}
+          {!rows.length && authResolved && !loadError && (
             <div className="p-6 text-sm text-muted-foreground">
               No results.
             </div>
