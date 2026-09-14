@@ -952,6 +952,46 @@ export default function AdminSourcesIndex() {
     }
   }
 
+  // J-FR-33: non-destructive endpoint probe. Unlike Run, this writes nothing —
+  // no ingestion_queue row, no change to success_count / failure_count / last_status.
+  async function onTest(row: SourceRow) {
+    const requestId = makeRequestId("test");
+    setBusyId(row.id);
+    setErr(null);
+    try {
+      // Awaited directly rather than through withTimeout(): the RPC already caps
+      // itself (12s curl timeout inside, 30s statement_timeout on the function),
+      // and this file's withTimeout() helper is not typed for PostgrestBuilder.
+      const { data, error } = await supabase.rpc("test_source_connection", {
+        p_source_id: row.id,
+      });
+      if (error) throw error;
+
+      const res = (data ?? {}) as {
+        ok?: boolean;
+        status?: number;
+        latency_ms?: number;
+        content_type?: string | null;
+        error?: string;
+      };
+
+      alert(
+        res.ok
+          ? `✅ "${row.name}" reachable\n\nHTTP ${res.status} in ${res.latency_ms} ms` +
+              (res.content_type ? `\nContent-Type: ${res.content_type}` : "") +
+              `\n\nNothing was written — this is a probe, not an ingest.`
+          : `❌ "${row.name}" failed\n\n${
+              res.error ?? `HTTP ${res.status ?? "?"}`
+            }${res.latency_ms != null ? `\nAfter ${res.latency_ms} ms` : ""}`,
+      );
+    } catch (e: any) {
+      debugError(`[${requestId}] failed`, e);
+      alert(`Test failed: ${errorMessage(e)}`);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function onRun(row: SourceRow) {
     const requestId = makeRequestId("runOne");
     debugLog(`[${requestId}] start`, row);
@@ -1336,7 +1376,15 @@ export default function AdminSourcesIndex() {
                       </button>
                       <button
                         disabled={busyId === r.id || runningAll}
+                        onClick={() => onTest(r)}
+                        title="Probe the endpoint only — writes nothing to the queue or health counters"
+                      >
+                        Test
+                      </button>
+                      <button
+                        disabled={busyId === r.id || runningAll}
                         onClick={() => onRun(r)}
+                        title="Real ingest — writes to ingestion_queue and moves the health counters"
                       >
                         Run
                       </button>
