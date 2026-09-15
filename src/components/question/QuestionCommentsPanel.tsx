@@ -332,15 +332,25 @@ function buildCommentTree(rows: QuestionCommentRow[]): CommentNode[] {
   return roots;
 }
 
-// Resolves the display name using fresh profile data from list_question_comments()
-// JOIN. Fresh profile_username/profile_random_id takes precedence over the
-// denormalised user_display stored at write time (spec note 17).
+// Resolves the display name for a comment.
+//
+// Epic L defect L-04 (Sep 2026): this used to prefer the FRESH profile data from the
+// list_question_comments() JOIN over the denormalised user_display captured at write
+// time. That meant a user who commented anonymously and later switched to username mode
+// had their ENTIRE comment history retroactively re-attributed to them — a silent
+// privacy disclosure, and the opposite of the documented behaviour (US-L03: "existing
+// comments retain the display handle stored at write time").
+//
+// user_display is the privacy contract agreed at the moment the comment was posted, so
+// it now wins. The profile fields remain as a fallback for legacy rows that have no
+// user_display, which preserves the previous behaviour for those.
 function resolveDisplayName(node: QuestionCommentRow): string {
+  if (node.user_display) return node.user_display;
   if (node.profile_display_handle_mode === "username" && node.profile_username) {
     return node.profile_username;
   }
   if (node.profile_random_id) return node.profile_random_id;
-  return node.user_display ?? "Someone";
+  return "Someone";
 }
 
 function getInitials(name: string | null | undefined): string {

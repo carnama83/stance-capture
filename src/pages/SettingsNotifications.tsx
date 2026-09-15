@@ -103,11 +103,14 @@ function useFollowedTopics() {
     staleTime: 5 * 60_000,
     queryFn: async () => {
       const sb = getSupabase();
-      if (!sb) return [];
-      const { data } = await sb
+      if (!sb) throw new Error("Supabase client not available");
+      // L-08: this used to drop `error`, so a failed query rendered as "you haven't
+      // followed any topics yet" — indistinguishable from the genuine empty state.
+      const { data, error } = await sb
         .from("user_topic_follows")
         .select("topic_id, topics(id, title)")
         .order("followed_at", { ascending: false });
+      if (error) throw error;
       return (data ?? []).map((r: any) => ({
         topic_id:    r.topic_id,
         topic_title: r.topics?.title ?? r.topic_id,
@@ -122,11 +125,14 @@ function useMutedTopics() {
     staleTime: 5 * 60_000,
     queryFn: async () => {
       const sb = getSupabase();
-      if (!sb) return {};
-      const { data } = await sb
+      if (!sb) throw new Error("Supabase client not available");
+      // L-08: same swallowed-error shape as useFollowedTopics — a failure here silently
+      // showed every topic as unmuted.
+      const { data, error } = await sb
         .from("notification_topic_prefs")
         .select("topic_id")
         .eq("muted", true);
+      if (error) throw error;
       const map: MutedMap = {};
       for (const r of data ?? []) map[(r as any).topic_id] = true;
       return map;
@@ -162,13 +168,29 @@ function useSetTopicMute() {
 }
 
 function TopicNotificationsSection() {
-  const { data: topics, isLoading } = useFollowedTopics();
-  const { data: mutedMap = {} }     = useMutedTopics();
+  const { data: topics, isLoading, isError, refetch } = useFollowedTopics();
+  const { data: mutedMap = {}, isError: mutedError } = useMutedTopics();
   const { mutate: setMute, isPending } = useSetTopicMute();
 
   if (isLoading) return (
     <div className="flex items-center gap-2 py-3 text-xs text-slate-400">
       <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading followed topics…
+    </div>
+  );
+
+  // L-08: a failed load must not masquerade as "no followed topics".
+  if (isError || mutedError) return (
+    <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
+      <p className="text-xs text-amber-800">
+        Couldn’t load your topic notification settings.{" "}
+        <button
+          type="button"
+          onClick={() => refetch()}
+          className="underline font-medium hover:text-amber-900"
+        >
+          Try again
+        </button>
+      </p>
     </div>
   );
 
@@ -345,7 +367,11 @@ export default function SettingsNotifications() {
         </div>
       </SectionCard>
 
-      {weeklyDigest && (
+      {/* L-09: this whole block used to be gated on `weeklyDigest`, which meant the
+          Frequency selector — whose options include "Daily" and "Off" — was unreachable
+          unless Weekly digest was already on. The frequency control cannot live inside
+          one of its own options, so the section now always renders. */}
+      {(
         <SectionCard title="Digest schedule" description="Choose when your digest is delivered.">
           <div className="grid sm:grid-cols-2 gap-4">
             <SelectField label="Frequency" value={digestFrequency}
