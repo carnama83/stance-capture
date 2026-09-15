@@ -3,17 +3,36 @@
 // Route: /settings/privacy
 // Covers:
 //   L1a: Display identity (anonymous random ID vs username)
-//   L1b: Stance visibility (aggregate only vs public)
 //   L1c: Comment visibility (follows display mode vs always anonymous)
-//   L1d: Profile visibility (private vs public)
 //   W5:  Social stance ingestion opt-out
 //   AA5: WhatsApp Flow message opt-out
+//
+// RETIRED (Epic L defect L-03, Sep 2026) — product decision:
+//   L1b: Stance visibility (aggregate_only vs public)
+//   L1d: Profile visibility (private vs public)
+// Both settings were collected here but governed NOTHING: the product has no
+// public profile surface at all — no /u/:username route, and src/pages/Profile.tsx
+// is orphaned and self-only. Repo-wide, user_privacy is read by exactly one
+// consumer (the x-reply-ingestion Edge Function) and only for allow_social_ingestion.
+// So the UI was telling users "Other users can view your profile page" and "your
+// individual stance is visible to other users" when neither was true in either
+// direction — a promise with no mechanism behind it.
+//
+// The columns user_privacy.stance_visibility and .profile_visibility are DELIBERATELY
+// LEFT IN PLACE, still defaulting to the conservative values (aggregate_only / private).
+// Nothing is destroyed, no migration is needed, and if a public profile is built later
+// the settings can be reinstated here — but enforcement must then live server-side in
+// the RPC/RLS layer, never in this component, or the data leaks over the API anyway.
+// update_my_privacy_settings still accepts both params; this page now always sends null
+// for them.
 
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Shield, Eye, MessageSquare, User, Share2, MessageCircleOff } from "lucide-react";
+// Shield / Eye were the icons for the retired Stance visibility and Profile page
+// sections (L-03) and are no longer used.
+import { Loader2, MessageSquare, User, Share2, MessageCircleOff } from "lucide-react";
 import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_PROJECT_REF, getJwt, supabaseHeaders } from "@/lib/env";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -322,33 +341,7 @@ export default function SettingsPrivacy() {
         </p>
       </SectionCard>
 
-      {/* L1b: Stance visibility */}
-      <SectionCard
-        icon={Shield}
-        title="Stance visibility"
-        description="Whether others can see your individual stance on questions."
-      >
-        <RadioGroup
-          name="stance-visibility"
-          value={local.stance_visibility}
-          onChange={(v) => handleChange({ stance_visibility: v })}
-          disabled={isPending}
-          options={[
-            {
-              value: "aggregate_only",
-              label: "Aggregate only (recommended)",
-              description:
-                "Your stance contributes to community statistics but cannot be viewed individually by anyone.",
-            },
-            {
-              value: "public",
-              label: "Public",
-              description:
-                "Your individual stance on each question is visible to other users alongside your display identity.",
-            },
-          ]}
-        />
-      </SectionCard>
+      {/* L1b: Stance visibility — RETIRED, see the L-03 note above. */}
 
       {/* L1c: Comment visibility */}
       <SectionCard
@@ -378,33 +371,7 @@ export default function SettingsPrivacy() {
         />
       </SectionCard>
 
-      {/* L1d: Profile visibility */}
-      <SectionCard
-        icon={Eye}
-        title="Profile page"
-        description="Whether your profile page is accessible to other users."
-      >
-        <RadioGroup
-          name="profile-visibility"
-          value={local.profile_visibility}
-          onChange={(v) => handleChange({ profile_visibility: v })}
-          disabled={isPending}
-          options={[
-            {
-              value: "private",
-              label: "Private (recommended)",
-              description:
-                "Your profile page is not accessible. Only you can see your own profile.",
-            },
-            {
-              value: "public",
-              label: "Public",
-              description:
-                "Other users can view your profile page, including your display identity and public activity.",
-            },
-          ]}
-        />
-      </SectionCard>
+      {/* L1d: Profile visibility — RETIRED, see the L-03 note above. */}
 
       {/* W5: Social stance ingestion */}
       <SectionCard
