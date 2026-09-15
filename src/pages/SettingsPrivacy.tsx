@@ -14,7 +14,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Shield, Eye, MessageSquare, User, Share2, MessageCircleOff } from "lucide-react";
-import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_PROJECT_REF, getJwt } from "@/lib/env";
+import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_PROJECT_REF, getJwt, supabaseHeaders } from "@/lib/env";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -36,10 +36,32 @@ function usePrivacySettings() {
     queryFn: async () => {
       const { data, error } = await supabase.rpc("get_my_privacy_settings");
       if (error) throw error;
+
+      // Epic L defect L-06 (Sep 2026): whatsapp_flow_enabled lives on profiles, NOT on
+      // user_privacy, so get_my_privacy_settings() (which returns the user_privacy
+      // rowtype) can never supply it. It used to be hardcoded to true ahead of the
+      // spread, which therefore could not override it — so the toggle rendered
+      // "Enabled" on every load even for a user who had opted out. Read it from its
+      // actual home instead.
+      let whatsappEnabled = true;
+      const { data: auth } = await supabase.auth.getUser();
+      if (auth?.user) {
+        const { data: prof, error: profErr } = await supabase
+          .from("profiles")
+          .select("whatsapp_flow_enabled")
+          .eq("user_id", auth.user.id)
+          .maybeSingle();
+        if (profErr) throw profErr;
+        if (prof?.whatsapp_flow_enabled != null) {
+          whatsappEnabled = Boolean(prof.whatsapp_flow_enabled);
+        }
+      }
+
       return {
         allow_social_ingestion: true,
-        whatsapp_flow_enabled:  true,
         ...(data as PrivacySettings),
+        // Must come AFTER the spread — the RPC row has no such column.
+        whatsapp_flow_enabled: whatsappEnabled,
       };
     },
   });
@@ -57,10 +79,14 @@ function useSavePrivacy() {
         p_allow_social_ingestion: patch.allow_social_ingestion ?? null,
       });
       if (error) throw error;
+      // L-06: the RPC returns the user_privacy row, which carries no whatsapp_flow_enabled.
+      // Hardcoding it to true here reset the toggle in the cache after every unrelated
+      // privacy save. Carry the currently-known value forward instead.
+      const prev = queryClient.getQueryData<PrivacySettings>(["privacy-settings"]);
       return {
         allow_social_ingestion: true,
-        whatsapp_flow_enabled:  true,
         ...(data as PrivacySettings),
+        whatsapp_flow_enabled: prev?.whatsapp_flow_enabled ?? true,
       };
     },
     onSuccess: (updated) => {
@@ -90,33 +116,37 @@ function useSaveWhatsAppOptOut() {
 
       if (profileError) throw profileError;
 
-      // 2. If opting out, write to whatsapp_optouts via Edge Function
-      //    If opting in, update whatsapp_optouts.is_active = false
-      if (!enabled) {
-        // Call webhook function to process opt-out
-        // We simulate a STOP message by calling the opt-out endpoint directly
-        await fetch(
-          `${SUPABASE_URL}/functions/v1/whatsapp-manage-optout`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "opt_out" }),
-          }
-        );
-      } else {
-        await fetch(
-          `${SUPABASE_URL}/functions/v1/whatsapp-manage-optout`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "opt_in" }),
-          }
+      // 2. Maintain whatsapp_optouts via the Edge Function.
+      //
+      // Epic L defect L-02 (Sep 2026): this call used to send only a Content-Type header.
+      // whatsapp-manage-optout is deployed with verify_jwt=true, so the Supabase platform
+      // gateway rejected it with 401 UNAUTHORIZED_NO_AUTH_HEADER before the function body
+      // ever ran. Worse, the response was never inspected and the surrounding catch only
+      // fires on network errors, so the user was shown a success toast every time while
+      // whatsapp_optouts was never updated — the opt-out was left half-applied (the
+      // profiles flag flipped, the opt-out record did not).
+      const res = await fetch(
+        `${SUPABASE_URL}/functions/v1/whatsapp-manage-optout`,
+        {
+          method: "POST",
+          headers: supabaseHeaders(getJwt()),
+          body: JSON.stringify({ action: enabled ? "opt_in" : "opt_out" }),
+        }
+      );
+      if (!res.ok) {
+        const detail = await res.text().catch(() => "");
+        throw new Error(
+          `whatsapp-manage-optout failed (${res.status})${detail ? `: ${detail.slice(0, 200)}` : ""}`
         );
       }
 
       queryClient.invalidateQueries({ queryKey: ["privacy-settings"] });
       toast({ title: enabled ? "WhatsApp messages re-enabled." : "WhatsApp messages disabled." });
     } catch (err: any) {
+      // L-02: this path was previously unreachable for a failed Edge Function call,
+      // because the response status was never checked. Log the reason so a gateway
+      // rejection is diagnosable rather than silent.
+      console.error("SettingsPrivacy: WhatsApp opt-out update failed", err);
       // Revert optimistic update on error
       onOptimisticUpdate(!enabled);
       toast({
