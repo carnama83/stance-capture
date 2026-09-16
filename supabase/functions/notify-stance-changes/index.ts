@@ -23,6 +23,15 @@
 //
 // I-09/I-10 - per-user isolation: one bad insert no longer aborts the run, and a failed
 //   delivery releases its dedup key instead of losing the notification forever.
+//
+// L-05 (Epic L QA pass, Sep 2026) - THIS JOB IGNORED PER-TOPIC MUTING ENTIRELY, while the
+//   SettingsNotifications UI promised in two separate places that muting a topic stops
+//   "stance shift" alerts for it. notify-topic-follows and notify-new-local-topics had
+//   honoured notification_topic_prefs since M-I05; this one never did, so a user who muted
+//   a topic still received stance_change notifications for every question inside it.
+//   Harder here than in the other two jobs because these notifications are QUESTION-scoped
+//   and carry no topic_id - the topic has to be resolved through questions.topic_id first.
+//   Applied to all three passes below (community shift, regional shift, region divergence).
 // ── Inlined helpers ──────────────────────────────────────────────────────────
 function log(func, level, msg, extra = {}, traceId) {
   console.log(JSON.stringify({
@@ -236,6 +245,30 @@ async function insertNotification(db, row) {
   date.setUTCDate(date.getUTCDate() + (7 - day));
   return date.toISOString().slice(0, 10);
 }
+// ---------------------------------------------------------------------------
+// L-05: Bulk-fetch muted topic prefs for a set of users and topics.
+// Returns a Set of "userId:topicId" strings for O(1) mute-checks inside the hot loops.
+// Chunked at 100 user ids to stay within PostgREST URL limits. Same shape as the
+// buildMutedSet() in notify-topic-follows / notify-new-local-topics.
+// ---------------------------------------------------------------------------
+async function buildMutedSet(db, userIds, topicIds) {
+  const muted = new Set();
+  if (userIds.length === 0 || topicIds.length === 0) return muted;
+  const topicFilter = `topic_id=in.(${topicIds.join(",")})`;
+  for(let i = 0; i < userIds.length; i += 100){
+    const chunk = userIds.slice(i, i + 100);
+    const rows = await db.from("notification_topic_prefs", `select=user_id,topic_id&muted=eq.true&user_id=in.(${chunk.join(",")})&${topicFilter}`);
+    for (const r of rows){
+      muted.add(`${r.user_id}:${r.topic_id}`);
+    }
+  }
+  return muted;
+}
+/** L-05: true when the user has muted the topic that owns this question. */ function isMutedForQuestion(mutedSet, questionTopic, userId, questionId) {
+  const tid = questionTopic[questionId];
+  if (!tid) return false;
+  return mutedSet.has(`${userId}:${tid}`);
+}
 // ── Function body ────────────────────────────────────────────────────────────
 const FUNC = "notify-stance-changes";
 const DELTA_THRESHOLD = parseFloat(Deno.env.get("STANCE_DELTA_THRESHOLD") ?? "0.75");
@@ -288,11 +321,14 @@ Deno.serve(async (req)=>{
     if (questionIds.length > 0) {
       for(let i = 0; i < questionIds.length; i += 100){
         const chunk = questionIds.slice(i, i + 100);
-        const rows = await db.from("questions", `select=id,question&id=in.(${chunk.join(",")})`);
+        const rows = await db.from("questions", `select=id,question,topic_id&id=in.(${chunk.join(",")})`);
         questions = questions.concat(rows);
       }
     }
     const questionText = Object.fromEntries(questions.map((q)=>[ q.id, q.question ]));
+    // L-05: question -> owning topic, so per-topic muting can be applied to these
+    // question-scoped notifications.
+    const questionTopic = Object.fromEntries(questions.map((q)=>[ q.id, q.topic_id ]).filter((e)=>e[1]));
     let regionalStats = [];
     if (questionIds.length > 0) {
       for(let i = 0; i < questionIds.length; i += 100){
@@ -320,6 +356,11 @@ Deno.serve(async (req)=>{
       }
     }
     const userRegionMap = Object.fromEntries(userRegions.map((r)=>[ r.user_id, r ]));
+    // L-05: one bulk fetch of every (user, topic) mute pair in play for this run.
+    const mutedTopicIds = [
+      ...new Set(Object.values(questionTopic))
+    ].filter(Boolean);
+    const mutedSet = await buildMutedSet(db, allUserIds, mutedTopicIds);
     let notified = 0;
     let skipped = 0;
     let failed = 0;
@@ -332,6 +373,11 @@ Deno.serve(async (req)=>{
       let userNotifyCount = 0;
       for (const stance of userStances){
         if (userNotifyCount >= MAX_PER_USER) break;
+        // L-05: respect per-topic muting for this question's owning topic.
+        if (isMutedForQuestion(mutedSet, questionTopic, userId, stance.question_id)) {
+          skipped++;
+          continue;
+        }
         const stat = statsByQuestion[stance.question_id];
         if (!stat || stat.avg_score == null) continue;
         const delta = Math.abs(stat.avg_score - stance.score);
@@ -381,6 +427,11 @@ Deno.serve(async (req)=>{
         if (regionLabel) {
           for (const stance of userStances){
             if (userNotifyCount >= MAX_PER_USER) break;
+            // L-05: respect per-topic muting.
+            if (isMutedForQuestion(mutedSet, questionTopic, userId, stance.question_id)) {
+              skipped++;
+              continue;
+            }
             const regionalRows = regionalByQuestion.get(stance.question_id) ?? [];
             const regionalStat = regionalRows.find((r)=>r.region_label === regionLabel);
             if (!regionalStat || regionalStat.avg_score == null) continue;
@@ -433,6 +484,11 @@ Deno.serve(async (req)=>{
         if (regionLabel) {
           for (const stance of userStances){
             if (userNotifyCount >= MAX_PER_USER) break;
+            // L-05: respect per-topic muting.
+            if (isMutedForQuestion(mutedSet, questionTopic, userId, stance.question_id)) {
+              skipped++;
+              continue;
+            }
             const globalStat = statsByQuestion[stance.question_id];
             if (!globalStat || globalStat.avg_score == null) continue;
             const regionalRows = regionalByQuestion.get(stance.question_id) ?? [];

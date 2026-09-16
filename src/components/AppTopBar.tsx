@@ -228,8 +228,27 @@ export default function AppTopBar({
       navigate("/settings/profile");
       return;
     }
-    await sb.from("profiles").update({ display_handle_mode: newMode }).eq("user_id", userId);
+
+    // Epic L defect L-07 (Sep 2026): this used to write profiles.display_handle_mode
+    // directly, while SettingsPrivacy wrote user_privacy.display_mode — two competing
+    // controls for one concept, with no synchronisation in either direction, so the two
+    // stores drifted apart and whichever control the user touched last silently won.
+    // Both now go through update_my_privacy_settings(), which writes BOTH stores in one
+    // transaction (and refuses to select username mode when no username is set).
+    const { error } = await sb.rpc("update_my_privacy_settings", {
+      p_display_mode:           newMode === "username" ? "username" : "anonymous",
+      p_stance_visibility:      null,
+      p_comment_visibility:     null,
+      p_profile_visibility:     null,
+      p_allow_social_ingestion: null,
+    });
+    if (error) {
+      console.error("AppTopBar: failed to change display mode", error);
+      return;
+    }
+
     queryClient.invalidateQueries({ queryKey: ["profile", userId] });
+    queryClient.invalidateQueries({ queryKey: ["privacy-settings"] });
     // Invalidate comment queries so display names refresh on the current QDP
     queryClient.invalidateQueries({ queryKey: ["question-comments-roots"] });
     queryClient.invalidateQueries({ queryKey: ["question-comments-replies"] });
