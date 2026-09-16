@@ -317,6 +317,27 @@ function ModerationPanel({ row, topics, onDone }: { row: QueueRow; topics: Topic
 
   return (
     <div className="rounded-md border border-slate-200 p-3 space-y-3">
+      {/* Sep 2026 (defect UGQ-D2, second half): ugq-screen has a
+          stuck-preview-retry branch for a proposal that cleared Gate 1 but
+          ended up with no preview_reframe, and ugq-moderate's rescreen now
+          lets that case through. Neither mattered while this panel rendered
+          the Re-screen button ONLY for status='proposed' — the same gate the
+          backend used to have, so the recovery path was still unreachable by
+          a human. Shown only when the row is genuinely stuck, so it does not
+          clutter the normal in_review panel. */}
+      {row.status === "in_review" && !row.preview_reframe && (
+        <div className="rounded-md border border-amber-300 bg-amber-50 p-3">
+          <Button size="sm" variant="outline" disabled={!!busy}
+            onClick={() => run({ proposal_id: row.id, action: "rescreen" }, "rescreen")}>
+            {busy === "rescreen" ? "Screening…" : "Re-screen (Gate 1)"}
+          </Button>
+          <p className="mt-2 text-xs text-amber-800">
+            This proposal cleared Gate 1 but has no preview, so the proposer has nothing to
+            review or publish. Re-screening regenerates just the preview — it does not re-run
+            Gate 1 or change the topic.
+          </p>
+        </div>
+      )}
       {row.auto_topic_id && row.auto_topic_id === topicId && (
         row.auto_topic_status === "pending" ? (
           <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5">
