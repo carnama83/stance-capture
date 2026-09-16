@@ -18,15 +18,22 @@
 // proposal's video_recording_path lives on user_question_proposals, not
 // questions, until it's actually published).
 //
-// Anonymous-video feature (NEW): pulled into this repo unchanged. This
-// function does NOT need to know whether a given video was recorded
-// anonymously — video_recording_path already points at whichever artifact
-// (raw clip, or the rendered avatar clip) is meant to be public, decided
-// once at capture/publish time (see ugq-submit / ugq-publish). The true raw
-// recording for an anonymous submission lives at video_raw_archival_path in
-// a SEPARATE, structurally distinct private bucket (ugq-video-recordings-raw)
-// that this function never reads from — see admin-ugq-raw-video-url for the
-// only path that can ever sign a URL into that bucket.
+// Sep 2026, FIXED (defect UGQ-D4): "published video question" now actually
+// means published. This endpoint used to check only content_type='video'
+// and the presence of a path, never questions.status — so an admin
+// take-down (ugq-moderate action 'unpublish', which sets status='archived'
+// plus archived_at/archive_reason) removed the question from every feed and
+// from search, but left the raw clip fully playable to anyone still holding
+// the question id. That is precisely the content most likely to need
+// removing: the raw video is the one thing a neutral overlay cannot undo.
+// A moderation take-down has to reach the artifact, not just the listing.
+//
+// Only status is checked, deliberately NOT state: 'dormant'/'new' are
+// normal lifecycle states for a live question that still renders at
+// /q/{id}, so filtering on state would break playback for perfectly
+// legitimate questions. status='active' vs 'archived' is the take-down
+// axis, and it is the same filter get_for_you_feed and
+// get_trending_questions_homepage use.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -69,13 +76,21 @@ serve(async (req) => {
 
     const adminSb = createClient(SUPABASE_URL, SERVICE_KEY);
     const { data: question } = await adminSb.from("questions")
-      .select("content_type, video_recording_path")
+      .select("content_type, video_recording_path, status")
       .eq("id", questionId).maybeSingle();
 
-    // Not found, not a video question, or (shouldn't happen for a real
-    // content_type='video' row, but defensive) missing its path — same 404
-    // either way, no need to distinguish for the caller.
-    if (!question || question.content_type !== "video" || !question.video_recording_path) {
+    // Not found, not a video question, archived by an admin take-down, or
+    // (shouldn't happen for a real content_type='video' row, but defensive)
+    // missing its path — same 404 either way. Deliberately NOT distinguished
+    // for the caller: telling an anonymous requester "this one exists but was
+    // taken down" is strictly more information than they need, and the
+    // take-down reason is moderator-only.
+    if (
+      !question ||
+      question.content_type !== "video" ||
+      !question.video_recording_path ||
+      question.status !== "active"
+    ) {
       return json(404, { ok: false, error: "NOT_FOUND", message: "No video found for this question." });
     }
 

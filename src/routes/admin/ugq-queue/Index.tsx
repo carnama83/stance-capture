@@ -76,14 +76,22 @@ type QueueRow = {
   pending_authority_domain: string | null;
 };
 
+// Sep 2026 (defect UGQ-D6): 'resubmit_requested' and 'withdrawn' were missing
+// here while both are real uqp_status_check values. admin_ugq_queue filters on
+// whatever p_status it is handed, so the rows existed and were queryable — they
+// just had no tab, which meant a proposal bounced back for a re-record was
+// visible only by scanning "All". Kept in the lifecycle order a proposal
+// actually moves through, with the terminal states last.
 const STATUS_TABS: { value: string; label: string }[] = [
   { value: "proposed", label: "New" },
   { value: "in_review", label: "In review" },
+  { value: "resubmit_requested", label: "Re-record requested" },
   { value: "approved", label: "Approved" },
   { value: "reframing", label: "Reframing" },
   { value: "reframed", label: "Reframed" },
   { value: "published", label: "Published" },
   { value: "rejected", label: "Rejected" },
+  { value: "withdrawn", label: "Withdrawn" },
   { value: "all", label: "All" },
 ];
 

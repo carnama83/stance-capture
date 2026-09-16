@@ -14,7 +14,7 @@ import * as React from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Bell, TrendingUp, BookOpen, MapPin, Globe,
-  RefreshCcw, Newspaper, AlertCircle, Lightbulb,
+  RefreshCcw, Newspaper, AlertCircle, Lightbulb, Video,
 } from "lucide-react";
 import { type UserNotification, type NotificationType } from "@/hooks/notificationTypes";
 import { cn } from "@/lib/utils";
@@ -52,6 +52,14 @@ function NotificationIcon({
       return <RefreshCcw className="h-4 w-4 text-emerald-500 shrink-0" />;
     case "new_local_topic":
       return <Newspaper className="h-4 w-4 text-sky-500 shrink-0" />;
+    // Epic UGQ defect D1: this type reached the notification centre for the
+    // first time once user_notifications_type_chk was widened to accept it —
+    // before that every insert was rejected by the CHECK and silently dropped,
+    // so a proposer asked to re-record was never told outside the submit flow.
+    // Given its own icon deliberately: it is the one UGQ notification that
+    // requires the proposer to act, not just read.
+    case "ugq_resubmit_requested":
+      return <Video className="h-4 w-4 text-orange-500 shrink-0" />;
     case "ugq_submitted":
     case "ugq_published":
     case "ugq_rejected":

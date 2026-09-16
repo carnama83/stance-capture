@@ -92,6 +92,22 @@ verify_jwt = false
 [functions.ugq-publish]
 verify_jwt = false
 
+[functions.ugq-moderate]
+# Sep 2026: MUST stay false, and was MISSING from this file entirely while the
+# deployed function ran with verify_jwt=false - so the next CLI deploy would have
+# silently flipped it to true. It does its own authorization two ways: an admin_users
+# lookup for admin actions, and an x-cron-secret check for the narrow system path
+# (action=approve only) that ugq-verify-preview uses. That system call sends NO
+# Authorization header at all, so a platform-level JWT gate would reject it outright.
+verify_jwt = false
+
+[functions.ugq-video-url]
+# Sep 2026: MUST stay false, and was likewise MISSING from this file. Public and
+# unauthenticated by design - anonymous visitors play raw clips on published video
+# questions. It takes only question_id (never a storage path), resolves the path
+# server-side, and since defect UGQ-D4 also requires questions.status = active.
+verify_jwt = false
+
 [functions.whatsapp-flow-webhook]
 enabled = true
 verify_jwt = false
