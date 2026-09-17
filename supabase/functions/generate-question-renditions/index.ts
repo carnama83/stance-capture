@@ -200,11 +200,34 @@ async function callClaude(
     );
   }
 
-  try {
-    return JSON.parse(textBlock.text);
-  } catch {
-    throw new Error(`Failed to parse JSON from model output: ${textBlock.text.slice(0, 300)}`);
+  // Models routinely wrap JSON in a markdown fence even when told not to, and
+  // a bare JSON.parse treats that as a hard failure -- the rendition throws, is
+  // retried, and throws again for the same reason. Surfaced by a QA fault
+  // injection whose reply came back fenced; the parse error was indistinguishable
+  // from a genuinely malformed response.
+  const raw = String(textBlock.text ?? "").trim();
+  const unfenced = raw
+    .replace(/^```(?:json)?s*/i, "")
+    .replace(/s*```$/, "")
+    .trim();
+
+  for (const candidate of [unfenced, raw]) {
+    try {
+      return JSON.parse(candidate);
+    } catch { /* fall through to the next shape */ }
   }
+
+  // Last resort: the outermost {...} in the reply. Covers a model that prefixes
+  // prose before the object.
+  const first = unfenced.indexOf("{");
+  const last = unfenced.lastIndexOf("}");
+  if (first >= 0 && last > first) {
+    try {
+      return JSON.parse(unfenced.slice(first, last + 1));
+    } catch { /* genuinely unparseable */ }
+  }
+
+  throw new Error(`Failed to parse JSON from model output: ${raw.slice(0, 300)}`);
 }
 
 interface OriginalRow {
