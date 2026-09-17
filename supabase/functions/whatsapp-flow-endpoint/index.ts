@@ -21,6 +21,10 @@
 //   - AES-128-GCM encrypt of the response with the SAME key + FLIPPED iv
 //   - response returned as base64 text/plain (NOT json)
 //
+// F2 / UGQ-ML-C03: the session also carries the RENDITION that was sent, so the
+// stance recorded here is attributed to the wording the recipient actually read
+// rather than to whatever is published when they happen to reply.
+//
 // Correlation: flow_token (set per-send by whatsapp-send-flow) is looked up in
 // whatsapp_flow_sessions to recover question_id + phone_hash + broadcast_id +
 // inbound forward chain — Meta never sends the wa_id to a Flow endpoint.
@@ -211,7 +215,7 @@ serve(async (req) => {
   if (flowToken) {
     const { data } = await supabase
       .from("whatsapp_flow_sessions")
-      .select("flow_token, question_id, phone_hash, broadcast_id, forward_chain_id, expires_at")
+      .select("flow_token, question_id, phone_hash, broadcast_id, forward_chain_id, expires_at, rendition_id")
       .eq("flow_token", flowToken)
       .maybeSingle();
     session = data;
@@ -233,13 +237,29 @@ serve(async (req) => {
         { status: 200, headers: { "Content-Type": "text/plain" } },
       );
     }
-    const { data: q } = await supabase
+    // F2 / UGQ-ML-C03: re-serve the wording this recipient was actually SENT.
+    // Reading questions.question here would show them the English on BACK even
+    // though their card arrived in another language -- and worse, would show
+    // current wording after a correction, so the screen and the recorded
+    // provenance would disagree.
+    let renditionRow: any = null;
+    if (session.rendition_id) {
+      const { data } = await supabase
+        .from("question_renditions")
+        .select("rendered_text, slider_low_label, slider_high_label, context_summary")
+        .eq("id", session.rendition_id)
+        .maybeSingle();
+      renditionRow = data;
+    }
+    // Sessions created before C03 have no bound rendition; fall back to the
+    // question so an in-flight card from before this shipped still works.
+    const { data: q } = renditionRow ? { data: null } : await supabase
       .from("questions")
       .select("question, summary, context_summary, slider_low_label, slider_high_label")
       .eq("id", session.question_id)
       .maybeSingle();
-    const qText = (q?.question ?? "").slice(0, 300);
-    const qSummary = (q?.context_summary || q?.summary || "").slice(0, 150);
+    const qText = (renditionRow?.rendered_text ?? q?.question ?? "").slice(0, 300);
+    const qSummary = (renditionRow?.context_summary || q?.context_summary || q?.summary || "").slice(0, 150);
     return new Response(
       await encryptResponse({
         version: FLOW_DATA_API_VERSION,
@@ -247,7 +267,10 @@ serve(async (req) => {
         data: {
           question_text: qText,
           question_summary: qSummary,
-          stance_options: buildStanceOptions(q?.slider_low_label, q?.slider_high_label),
+          stance_options: buildStanceOptions(
+            renditionRow?.slider_low_label ?? q?.slider_low_label,
+            renditionRow?.slider_high_label ?? q?.slider_high_label,
+          ),
         },
       }, aesKey, iv),
       { status: 200, headers: { "Content-Type": "text/plain" } },
@@ -316,15 +339,21 @@ serve(async (req) => {
         id: outboundChainId, question_id: questionId, root_phone_hash: session.phone_hash, depth: 0,
       });
 
-      // F2 (Sep 2026): a response with no wording provenance is a response we
-      // cannot later say anything about, so WhatsApp is not exempt. The flow
-      // carries no language today, so this resolves to the English rendition
-      // and falls back to the source-language original. Binding the rendition
-      // at BROADCAST time (ML-C03) is the stronger form and is still pending.
-      const { data: waRenditionId } = await supabase.rpc("resolve_response_rendition", {
-        p_question_id: questionId,
-        p_language_code: "en",
-      });
+      // F2 / UGQ-ML-C03: attribute the stance to the rendition bound when the
+      // card was SENT. Re-resolving here would attribute the answer to whatever
+      // wording is current at reply time, so a correction made in between would
+      // make it look as though this recipient had seen the corrected text.
+      //
+      // The fallback covers only sessions created before C03 shipped, where no
+      // rendition was captured and the best available answer is the current one.
+      let waRenditionId: string | null = session.rendition_id ?? null;
+      if (!waRenditionId) {
+        const { data: resolved } = await supabase.rpc("resolve_response_rendition", {
+          p_question_id: questionId,
+          p_language_code: "en",
+        });
+        waRenditionId = resolved ?? null;
+      }
       if (!waRenditionId) {
         console.error("[whatsapp-flow] no published wording for question", questionId);
       } else {
