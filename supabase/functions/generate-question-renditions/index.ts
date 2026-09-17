@@ -24,6 +24,14 @@
 // the stance axis (question + slider labels), not supplementary background
 // text, so a context_summary translation quirk never flips transform_status.
 //
+// Sep 2026, FIX (UGQ-D7): the Anthropic system prompt is now run through
+// fillTemplate like the user prompt already was. It previously went out RAW,
+// so {{target_language_name}} — which question_essence_transform references
+// ONLY in its system prompt — reached the model unsubstituted and the
+// translator was never told which language to produce. Both prompts are now
+// asserted fully substituted before the call, so this class of failure is
+// loud (rendition retried, error surfaced) instead of silent nonsense.
+//
 // Auth: x-cron-secret header must match CRON_SECRET.
 // Env required: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, CRON_SECRET,
 //               ANTHROPIC_API_KEY, ANTHROPIC_VERSION (optional, defaults below)
@@ -108,7 +116,32 @@ function fillTemplate(template: string, vars: Record<string, string>): string {
   return out;
 }
 
-async function callClaude(prompt: AiPromptRow, filledUserPrompt: string): Promise<any> {
+function requireFullySubstituted(label: string, text: string): string {
+  const leftover = text.match(/\{\{\w+\}\}/g);
+  if (leftover) {
+    throw new Error(
+      `${label} still contains unsubstituted variables: ${[...new Set(leftover)].join(", ")}`,
+    );
+  }
+  return text;
+}
+
+// UGQ-D7 (Sep 2026): system_prompt used to be sent RAW while only
+// user_prompt_template went through fillTemplate. Both prompt rows reference
+// {{target_language_name}} in their SYSTEM prompt, and question_essence_transform
+// does not reference it in its user template at all — so the translator was never
+// told which language to translate into and echoed the English back. Every
+// prompt part now goes through fillTemplate and is asserted fully substituted.
+async function callClaude(
+  prompt: AiPromptRow,
+  filledUserPrompt: string,
+  vars: Record<string, string>,
+): Promise<any> {
+  const filledSystemPrompt = requireFullySubstituted(
+    "system_prompt",
+    fillTemplate(prompt.system_prompt, vars),
+  );
+  requireFullySubstituted("user_prompt", filledUserPrompt);
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -124,7 +157,7 @@ async function callClaude(prompt: AiPromptRow, filledUserPrompt: string): Promis
       // parameter outright ("temperature is deprecated for this model"),
       // confirmed against the real API, not just out-of-range. Sending it
       // at all fails every call regardless of value.
-      system: prompt.system_prompt,
+      system: filledSystemPrompt,
       messages: [{ role: "user", content: filledUserPrompt }],
     }),
   });
@@ -169,20 +202,21 @@ async function processRendition(
 
   // 1. Essence-preserving transform (Sep 2026: now also translates
   //    context_summary, when present, in this same call — see header note).
-  const transformUserPrompt = fillTemplate(transformPrompt.user_prompt_template, {
+  const transformVars = {
     target_language_name: targetLanguageName,
     canonical_text: question.question,
     slider_low_label: question.slider_low_label ?? "Strongly oppose",
     slider_high_label: question.slider_high_label ?? "Strongly support",
     context_summary: question.context_summary ?? "",
-  });
-  const transformResult = await callClaude(transformPrompt, transformUserPrompt);
+  };
+  const transformUserPrompt = fillTemplate(transformPrompt.user_prompt_template, transformVars);
+  const transformResult = await callClaude(transformPrompt, transformUserPrompt, transformVars);
 
   // 2. Axis equivalence check — independent pass over the transform's own output,
   //    not the same call grading itself. Scoped to the stance axis only
   //    (question + slider labels) — context_summary is supplementary
   //    background, not part of what this check verifies.
-  const equivalenceUserPrompt = fillTemplate(equivalencePrompt.user_prompt_template, {
+  const equivalenceVars = {
     target_language_name: targetLanguageName,
     canonical_text: question.question,
     slider_low_label: question.slider_low_label ?? "Strongly oppose",
@@ -190,8 +224,9 @@ async function processRendition(
     rendered_text: transformResult.rendered_text,
     rendered_slider_low: transformResult.slider_low_label ?? "",
     rendered_slider_high: transformResult.slider_high_label ?? "",
-  });
-  const equivalenceResult = await callClaude(equivalencePrompt, equivalenceUserPrompt);
+  };
+  const equivalenceUserPrompt = fillTemplate(equivalencePrompt.user_prompt_template, equivalenceVars);
+  const equivalenceResult = await callClaude(equivalencePrompt, equivalenceUserPrompt, equivalenceVars);
 
   // 3. Final status
   //    - community_proposer: pass auto-publishes (proposer sees it immediately,
