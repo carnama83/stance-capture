@@ -42,6 +42,12 @@
 // repair loop (max 3) that feeds the checker's own explanation back in as a
 // correction target, instead of flagging on the first miss.
 //
+// Sep 2026, UGQ-O5: generation failures are now logged and persisted
+// (failure_count / last_error) instead of existing only in an HTTP response
+// body the cron discards, and admin_claim_rendition_jobs stops claiming a row
+// after 5 consecutive failures. Before this a permanently failing rendition
+// retried every minute forever, silently.
+//
 // Auth: x-cron-secret header must match CRON_SECRET.
 // Env required: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, CRON_SECRET,
 //               ANTHROPIC_API_KEY, ANTHROPIC_VERSION (optional, defaults below)
@@ -59,6 +65,8 @@ interface RenditionRow {
   question_id: string;
   language_code: string;
   generation_reason: string | null;
+  // UGQ-O5: returned by both claim RPCs (they select *), used to bound retries.
+  failure_count: number | null;
 }
 
 interface QuestionRow {
@@ -346,6 +354,11 @@ async function processRendition(
 
   if (shouldPublish) await publishRendition(rendition.id);
 
+  // Reset on success: the cap counts CONSECUTIVE failures, not lifetime ones.
+  if ((rendition.failure_count ?? 0) > 0) {
+    await updateRendition(rendition.id, { failure_count: 0, last_error: null }).catch(() => {});
+  }
+
   return shouldPublish ? "published" : (passed ? "transformed" : "flagged");
 }
 
@@ -405,10 +418,31 @@ Deno.serve(async (req: Request) => {
       succeeded++;
       if (singleRenditionId) singleResultStatus = finalStatus;
     } catch (err) {
-      errors.push(`${rendition.id}: ${err}`);
-      // Clear claimed_at so it's retried next sweep rather than stuck for
-      // the full 10-minute stale window. No retry cap yet — see note below.
-      await updateRendition(rendition.id, { claimed_at: null }).catch(() => {});
+      const message = err instanceof Error ? err.message : String(err);
+      errors.push(`${rendition.id}: ${message}`);
+
+      // UGQ-O5: log it. Previously the only record of a failure was the HTTP
+      // response body, which admin.cron_generate_renditions discards -- so a
+      // rendition could fail every minute forever and leave no trace anywhere
+      // an operator would look.
+      console.error(JSON.stringify({
+        event: "rendition_generation_failed",
+        rendition_id: rendition.id,
+        question_id: rendition.question_id,
+        language_code: rendition.language_code,
+        error: message.slice(0, 1000),
+      }));
+
+      // Persist the reason and count the attempt. admin_claim_rendition_jobs
+      // stops claiming at 5, so a permanently broken row is flagged for a
+      // human instead of burning an Anthropic call every sweep. Clearing
+      // claimed_at still lets a transient failure retry on the next sweep
+      // rather than waiting out the 10-minute stale window.
+      await updateRendition(rendition.id, {
+        claimed_at: null,
+        failure_count: (rendition.failure_count ?? 0) + 1,
+        last_error: message.slice(0, 2000),
+      }).catch(() => {});
     }
   }
 
