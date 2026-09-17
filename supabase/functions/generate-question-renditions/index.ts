@@ -32,6 +32,16 @@
 // asserted fully substituted before the call, so this class of failure is
 // loud (rendition retried, error surfaced) instead of silent nonsense.
 //
+// Sep 2026, F2: the transform source is now the question's ORIGINAL rendition
+// (the proposer-approved wording) rather than questions.question, so a
+// non-English question's other renditions are no longer derived from an
+// unverified English translation. Publishing goes through
+// publish_rendition_version() so supersede+publish stays atomic and the
+// publish gate is enforced once -- setting transform_status='published' no
+// longer makes anything live. A failed equivalence check now drives a bounded
+// repair loop (max 3) that feeds the checker's own explanation back in as a
+// correction target, instead of flagging on the first miss.
+//
 // Auth: x-cron-secret header must match CRON_SECRET.
 // Env required: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, CRON_SECRET,
 //               ANTHROPIC_API_KEY, ANTHROPIC_VERSION (optional, defaults below)
@@ -178,6 +188,47 @@ async function callClaude(
   }
 }
 
+interface OriginalRow {
+  id: string;
+  language_code: string;
+  rendered_text: string;
+  slider_low_label: string | null;
+  slider_high_label: string | null;
+  context_summary: string | null;
+}
+
+// F2: the proposer-approved source wording, which is what a rendition must
+// preserve. Previously every transform read questions.question -- i.e. the
+// ENGLISH -- so a Hindi-origin question's Marathi rendition was derived from
+// a translation nobody had verified.
+async function fetchOriginal(questionId: string): Promise<OriginalRow> {
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/question_renditions?question_id=eq.${questionId}` +
+    `&rendition_type=eq.original&lifecycle_status=eq.published` +
+    `&select=id,language_code,rendered_text,slider_low_label,slider_high_label,context_summary&limit=1`,
+    { headers: restHeaders() },
+  );
+  if (!res.ok) throw new Error(`Failed to fetch original for ${questionId}: ${res.status}`);
+  const rows = await res.json();
+  if (!rows.length) throw new Error(`Question ${questionId} has no published original rendition`);
+  return rows[0];
+}
+
+// Publishing goes through the RPC so supersede+publish stays atomic and the
+// publish gate is enforced in one place. Setting transform_status to
+// 'published' directly no longer makes anything live.
+async function publishRendition(renditionId: string) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/publish_rendition_version`, {
+    method: "POST",
+    headers: restHeaders(),
+    body: JSON.stringify({ p_rendition_id: renditionId }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`publish_rendition_version failed for ${renditionId}: ${res.status} ${text.slice(0, 300)}`);
+  }
+}
+
 async function updateRendition(id: string, patch: Record<string, unknown>) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/question_renditions?id=eq.${id}`, {
     method: "PATCH",
@@ -190,73 +241,112 @@ async function updateRendition(id: string, patch: Record<string, unknown>) {
   }
 }
 
+// Maximum regeneration attempts before a human is asked to look. The proposal
+// is never rejected for this: a valid native-language question must not be
+// blamed for the system failing to represent it.
+const MAX_REPAIR_ATTEMPTS = 3;
+
 async function processRendition(
   rendition: RenditionRow,
   transformPrompt: AiPromptRow,
   equivalencePrompt: AiPromptRow,
 ) {
-  const [question, targetLanguageName] = await Promise.all([
+  const [question, original, targetLanguageName] = await Promise.all([
     fetchQuestion(rendition.question_id),
+    fetchOriginal(rendition.question_id),
     fetchLanguageName(rendition.language_code),
   ]);
 
-  // 1. Essence-preserving transform (Sep 2026: now also translates
-  //    context_summary, when present, in this same call — see header note).
-  const transformVars = {
-    target_language_name: targetLanguageName,
-    canonical_text: question.question,
-    slider_low_label: question.slider_low_label ?? "Strongly oppose",
-    slider_high_label: question.slider_high_label ?? "Strongly support",
-    context_summary: question.context_summary ?? "",
-  };
-  const transformUserPrompt = fillTemplate(transformPrompt.user_prompt_template, transformVars);
-  const transformResult = await callClaude(transformPrompt, transformUserPrompt, transformVars);
-
-  // 2. Axis equivalence check — independent pass over the transform's own output,
-  //    not the same call grading itself. Scoped to the stance axis only
-  //    (question + slider labels) — context_summary is supplementary
-  //    background, not part of what this check verifies.
-  const equivalenceVars = {
-    target_language_name: targetLanguageName,
-    canonical_text: question.question,
-    slider_low_label: question.slider_low_label ?? "Strongly oppose",
-    slider_high_label: question.slider_high_label ?? "Strongly support",
-    rendered_text: transformResult.rendered_text,
-    rendered_slider_low: transformResult.slider_low_label ?? "",
-    rendered_slider_high: transformResult.slider_high_label ?? "",
-  };
-  const equivalenceUserPrompt = fillTemplate(equivalencePrompt.user_prompt_template, equivalenceVars);
-  const equivalenceResult = await callClaude(equivalencePrompt, equivalenceUserPrompt, equivalenceVars);
-
-  // 3. Final status
-  //    - community_proposer: pass auto-publishes (proposer sees it immediately,
-  //      matching English's own instant-publish path); anything else flags for review
-  //    - editorial_pipeline / anything else: never auto-publishes — always lands
-  //      in the admin review queue, 'transformed' if clean or 'flagged' if not
-  let finalStatus: string;
-  if (rendition.generation_reason === "community_proposer") {
-    finalStatus = equivalenceResult.result === "pass" ? "published" : "flagged";
-  } else {
-    finalStatus = equivalenceResult.result === "pass" ? "transformed" : "flagged";
+  // A rendition in the source's own language would be a round trip through a
+  // model back to words the proposer already approved -- the one outcome this
+  // design exists to prevent.
+  if (rendition.language_code === original.language_code) {
+    throw new Error(
+      `Rendition ${rendition.id} targets ${rendition.language_code}, which is the ` +
+      `question's source language; the original is authoritative and is never regenerated`,
+    );
   }
+
+  const sourceLanguageName = await fetchLanguageName(original.language_code);
+
+  const lowLabel  = original.slider_low_label  ?? question.slider_low_label  ?? "Strongly oppose";
+  const highLabel = original.slider_high_label ?? question.slider_high_label ?? "Strongly support";
+
+  let transformResult: any = null;
+  let equivalenceResult: any = null;
+  let attempts = 0;
+  let lastFailureNote: string | null = null;
+
+  // Bounded repair loop. Each retry carries the checker's own explanation back
+  // in as a correction target -- a blind retry of a non-deterministic call is
+  // not a repair strategy, it is a coin flip.
+  while (attempts < MAX_REPAIR_ATTEMPTS) {
+    attempts++;
+
+    const transformVars = {
+      target_language_name: targetLanguageName,
+      source_language_name: sourceLanguageName,
+      canonical_text: original.rendered_text,
+      slider_low_label: lowLabel,
+      slider_high_label: highLabel,
+      context_summary: original.context_summary ?? question.context_summary ?? "",
+    };
+    let transformUserPrompt = fillTemplate(transformPrompt.user_prompt_template, transformVars);
+    if (lastFailureNote) {
+      transformUserPrompt +=
+        "\n\nThe previous attempt was REJECTED by an independent equivalence check " +
+        "for this reason:\n" + lastFailureNote + "\n" +
+        "Produce a new rendition that fixes precisely that problem while keeping " +
+        "the stance axis identical to the source.";
+    }
+    transformResult = await callClaude(transformPrompt, transformUserPrompt, transformVars);
+
+    // Independent pass over the transform's own output -- not the same call
+    // grading itself. Scoped to the stance axis (question + slider labels);
+    // context_summary is supplementary background and never flips the verdict.
+    const equivalenceVars = {
+      target_language_name: targetLanguageName,
+      source_language_name: sourceLanguageName,
+      canonical_text: original.rendered_text,
+      slider_low_label: lowLabel,
+      slider_high_label: highLabel,
+      rendered_text: transformResult.rendered_text,
+      rendered_slider_low: transformResult.slider_low_label ?? "",
+      rendered_slider_high: transformResult.slider_high_label ?? "",
+    };
+    const equivalenceUserPrompt = fillTemplate(equivalencePrompt.user_prompt_template, equivalenceVars);
+    equivalenceResult = await callClaude(equivalencePrompt, equivalenceUserPrompt, equivalenceVars);
+
+    if (equivalenceResult.result === "pass") break;
+    lastFailureNote = equivalenceResult.notes ?? "No explanation returned by the checker.";
+  }
+
+  const passed = equivalenceResult?.result === "pass";
+
+  // community_proposer: a pass goes live immediately, matching the source
+  // language's own instant-publish path. Everything else lands in the admin
+  // queue. Neither path may bypass the publish gate.
+  const shouldPublish = passed && rendition.generation_reason === "community_proposer";
 
   await updateRendition(rendition.id, {
     rendered_text: transformResult.rendered_text,
     slider_low_label: transformResult.slider_low_label ?? null,
     slider_high_label: transformResult.slider_high_label ?? null,
-    // Sep 2026, NEW: empty string from the model (no source context_summary,
-    // or a genuine empty translation) is stored as null, matching
-    // questions.context_summary's own null-when-absent convention.
     context_summary: typeof transformResult.rendered_context_summary === "string" && transformResult.rendered_context_summary.trim()
       ? transformResult.rendered_context_summary.trim()
       : null,
-    transform_status: finalStatus,
+    transform_status: passed ? "transformed" : "flagged",
     transform_model: transformPrompt.model,
     axis_equivalence_check: equivalenceResult.result,
-    axis_equivalence_notes: equivalenceResult.notes ?? null,
+    axis_equivalence_notes: attempts > 1
+      ? "[" + attempts + " attempts] " + (equivalenceResult.notes ?? "")
+      : (equivalenceResult.notes ?? null),
+    derived_from_rendition_id: original.id,
   });
 
-  return finalStatus;
+  if (shouldPublish) await publishRendition(rendition.id);
+
+  return shouldPublish ? "published" : (passed ? "transformed" : "flagged");
 }
 
 Deno.serve(async (req: Request) => {
