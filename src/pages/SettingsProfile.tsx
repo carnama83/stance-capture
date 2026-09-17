@@ -572,6 +572,7 @@ export default function SettingsProfile() {
     avatar_path: "" as string | null,
     show_age: false,
     preferred_language_code: "en",
+    show_unavailable_language: false,
   });
 
   interface LanguageOption {
@@ -655,13 +656,14 @@ export default function SettingsProfile() {
         const avatar_path          = (data as any)?.avatar_path ?? null;
         const show_age             = (data as any)?.show_age ?? false;
         const preferred_language_code = (data as any)?.preferred_language_code ?? "en";
+        const show_unavailable_language = (data as any)?.show_unavailable_language ?? false;
         const rid                  = data?.random_id || "";
         const dob_encrypted        = data?.dob_encrypted;
 
         setUid(sessionUserId);
         setRandomId(rid);
         setDobSet(!!dob_encrypted);
-        setForm({ username, display_handle_mode: mode, bio, avatar_url, avatar_path, show_age, preferred_language_code });
+        setForm({ username, display_handle_mode: mode, bio, avatar_url, avatar_path, show_age, preferred_language_code, show_unavailable_language });
         setInitialUsername(username);
         setHandle(mode === "username" ? (username || rid) : rid);
       } catch (e: any) {
@@ -716,6 +718,36 @@ export default function SettingsProfile() {
       queryClient.invalidateQueries({ queryKey: ["preferred-language", uid] });
     } catch (e: any) {
       setMsg(e.message || "Could not update language");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // ── Opt in to seeing questions with no verified rendition in your language ──
+  // Design F2: English is no longer a silent fallback. A question with no
+  // verified rendition in your language is simply absent, because showing it in
+  // another language would mean your answer joins the same stance pool as
+  // people who answered wording you never saw. A multilingual reader can widen
+  // their own feed; nobody has it widened for them.
+  async function setShowUnavailable(next: boolean) {
+    setMsg(null);
+    if (!sb) return setMsg("Supabase is OFF (check env).");
+    if (!uid) return setMsg("Session not ready. Please wait a moment and try again.");
+    try {
+      setBusy(true);
+      const { error } = await sb
+        .from("profiles")
+        .update({ show_unavailable_language: next })
+        .eq("user_id", uid);
+      if (error) throw error;
+      setForm(f => ({ ...f, show_unavailable_language: next }));
+      setMsg(next ? "Showing questions not yet in your language." : "Showing only questions available in your language.");
+      // Same cache key the feed reads its language preference under; without
+      // this the feed keeps serving the previous eligibility until an unrelated
+      // navigation refetches.
+      queryClient.invalidateQueries({ queryKey: ["preferred-language", uid] });
+    } catch (e: any) {
+      setMsg(e.message || "Could not update that preference");
     } finally {
       setBusy(false);
     }
@@ -940,8 +972,9 @@ export default function SettingsProfile() {
       <div className="rounded border p-3 space-y-2">
         <div className="text-sm font-medium">Language</div>
         <div className="text-xs text-slate-500">
-          Choose which language questions display in, where a translation exists.
-          Falls back to English for anything not yet available in your chosen language.
+          Choose which language questions display in. You will only see questions whose
+          wording has been verified to ask the same thing in that language — everyone
+          answering a question answers the same question, whichever language they read it in.
         </div>
         {activeLanguages.length === 0 ? (
           <div className="text-xs text-slate-400 italic">No additional languages available yet.</div>
@@ -965,6 +998,21 @@ export default function SettingsProfile() {
             ))}
           </div>
         )}
+        <label className="flex items-start gap-2 pt-1 cursor-pointer">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={form.show_unavailable_language}
+            onChange={e => setShowUnavailable(e.target.checked)}
+            disabled={busy}
+          />
+          <span className="text-xs text-slate-600">
+            Also show questions not yet available in my language
+            <span className="block text-slate-400">
+              They appear in their original language. Off by default.
+            </span>
+          </span>
+        </label>
       </div>
 
       {/* M-A06: DOB — set if unset, greyed out if already set */}
