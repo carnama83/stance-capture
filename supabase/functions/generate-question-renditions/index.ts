@@ -187,7 +187,18 @@ async function callClaude(
 
   const data = await res.json();
   const textBlock = data.content?.find((b: any) => b.type === "text");
-  if (!textBlock) throw new Error("No text content in Anthropic response");
+  if (!textBlock) {
+    // UGQ-O5: "No text content in Anthropic response" on its own was a dead end.
+    // The usual cause is the token budget being consumed before any text block
+    // is emitted, so say so: stop_reason distinguishes that from a genuinely
+    // empty reply, and the block types show what the budget went on.
+    throw new Error(
+      "No text content in Anthropic response " +
+      `(stop_reason=${data.stop_reason ?? "unknown"}, ` +
+      `blocks=[${(data.content ?? []).map((b: any) => b.type).join(",") || "none"}], ` +
+      `max_tokens=${prompt.max_tokens}, usage=${JSON.stringify(data.usage ?? {})})`,
+    );
+  }
 
   try {
     return JSON.parse(textBlock.text);
