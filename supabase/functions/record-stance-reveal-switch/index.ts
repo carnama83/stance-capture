@@ -147,6 +147,22 @@ Deno.serve(async (req)=>{
     "Prefer": "return=representation"
   };
   const switchedAfterReveal = final_stance !== original_stance_before_reveal;
+  // F2 (Sep 2026): this is a merge-duplicates POST, so it rewrites the whole
+  // row -- omitting rendition_id would blank the provenance of a stance that
+  // already had it. Resolve it explicitly rather than relying on the upsert
+  // to preserve a column it is not sending.
+  const rendRes = await fetch(
+    `${projectUrl}/rest/v1/rpc/resolve_response_rendition`,
+    { method: "POST", headers: srHeaders,
+      body: JSON.stringify({ p_question_id: question_id, p_language_code: "en" }) });
+  const renditionId = rendRes.ok ? await rendRes.json().catch(() => null) : null;
+  if (!renditionId) {
+    log("error", "no published wording to attribute stance to", { question_id, userId });
+    return new Response(JSON.stringify({
+      ok: false,
+      error: "This question is not currently answerable."
+    }), { status: 409, headers: { "content-type": "application/json" } });
+  }
   // Upsert question_stances with Switch Mechanic fields
   // Uses service role to bypass RLS for the atomic write
   const upsertRes = await fetch(`${projectUrl}/rest/v1/question_stances`, {
@@ -160,6 +176,7 @@ Deno.serve(async (req)=>{
       question_id,
       score: final_stance,
       source: "native",
+      rendition_id: renditionId,
       original_stance_before_reveal,
       switched_after_reveal: switchedAfterReveal,
       reveal_timing_ms: typeof reveal_timing_ms === "number" ? Math.round(reveal_timing_ms) : null,

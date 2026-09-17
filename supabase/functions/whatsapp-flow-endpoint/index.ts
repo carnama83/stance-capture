@@ -316,15 +316,29 @@ serve(async (req) => {
         id: outboundChainId, question_id: questionId, root_phone_hash: session.phone_hash, depth: 0,
       });
 
-      // Upsert the stance (dedup per phone_hash + question via session correlation)
-      await supabase.from("question_stances").upsert({
-        question_id: questionId,
-        user_id: userId,
-        whatsapp_phone_hash: session.phone_hash,
-        score: stanceValue,
-        source: "whatsapp_flow",
-        forward_chain_id: forwardChainId,
-      }, { onConflict: "whatsapp_phone_hash,question_id" });
+      // F2 (Sep 2026): a response with no wording provenance is a response we
+      // cannot later say anything about, so WhatsApp is not exempt. The flow
+      // carries no language today, so this resolves to the English rendition
+      // and falls back to the source-language original. Binding the rendition
+      // at BROADCAST time (ML-C03) is the stronger form and is still pending.
+      const { data: waRenditionId } = await supabase.rpc("resolve_response_rendition", {
+        p_question_id: questionId,
+        p_language_code: "en",
+      });
+      if (!waRenditionId) {
+        console.error("[whatsapp-flow] no published wording for question", questionId);
+      } else {
+        // Upsert the stance (dedup per phone_hash + question via session correlation)
+        await supabase.from("question_stances").upsert({
+          question_id: questionId,
+          user_id: userId,
+          whatsapp_phone_hash: session.phone_hash,
+          score: stanceValue,
+          source: "whatsapp_flow",
+          rendition_id: waRenditionId,
+          forward_chain_id: forwardChainId,
+        }, { onConflict: "whatsapp_phone_hash,question_id" });
+      }
 
       // AA7 — open a short session so a later "YES" subscribes to this question
       await supabase.from("whatsapp_active_sessions").upsert({
