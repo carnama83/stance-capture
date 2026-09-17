@@ -301,13 +301,24 @@ Deno.serve(async (req) => {
             slider_high_label: sliderHighNative,
             context_summary: contextSummaryNative,
             transform_status: "published",
-            axis_equivalence_check: "pass",
+            // F2 FIX: lifecycle_status is what actually makes a rendition live
+            // now. This block set transform_status alone, so since f2_01 the
+            // row stayed DRAFT and the proposer did NOT see their own language
+            // immediately -- the exact promise this code exists to keep.
+            lifecycle_status: "published",
+            published_at: new Date().toISOString(),
+            // "pass" would claim a verification that never happened. The
+            // proposer reviewed and approved this exact wording in the preview,
+            // which is precisely what human_approved means: a person vouched
+            // for it, as distinct from a model checking it.
+            axis_equivalence_check: "human_approved",
             axis_equivalence_notes: "Reused directly from the proposer's own-language preview text, reviewed by " +
               "them before publish — not independently re-verified by the transform/equivalence pipeline.",
           })
           .eq("question_id", questionId)
           .eq("language_code", detectedLanguage)
-          .eq("transform_status", "pending");
+          .eq("transform_status", "pending")
+          .eq("lifecycle_status", "draft");
         if (renditionErr) {
           console.error(JSON.stringify({ tag: "ugq-publish.native_rendition_update_failed", message: renditionErr.message }));
         }
