@@ -570,7 +570,7 @@ export default function SettingsProfile() {
   // the event that wakes other components, updates the profile AND invalidates
   // the cache. This page used to do only the profile half itself, which is why
   // the control silently did nothing — see setLanguage below.
-  const { setLanguageCode: setUiLanguageCode } = useUiLanguage(uid);
+  const { languageCode: effectiveLanguageCode, setLanguageCode: setUiLanguageCode } = useUiLanguage(uid);
 
   const [form, setForm] = React.useState({
     username: "",
@@ -713,7 +713,14 @@ export default function SettingsProfile() {
     setMsg(null);
     if (!sb) return setMsg("Supabase is OFF (check env).");
     if (!uid) return setMsg("Session not ready. Please wait a moment and try again.");
-    if (code === form.preferred_language_code) return;
+    // Skip ONLY when the profile and the language actually on screen already
+    // agree. Comparing against the profile alone made this control inert in
+    // precisely the state it exists to repair: profile says Hindi, a stale
+    // device override forces English, so the page reads English with a tick
+    // beside हिन्दी — and clicking हिन्दी was a no-op, because by the profile
+    // it was already selected. Verified on Dev before the fix: the click
+    // produced no write and no message at all.
+    if (code === form.preferred_language_code && code === effectiveLanguageCode) return;
     try {
       setBusy(true);
       // FIX: this used to update profiles.preferred_language_code directly and
@@ -1002,15 +1009,15 @@ export default function SettingsProfile() {
                 key={lang.language_code}
                 type="button"
                 className={`border rounded px-3 py-1 transition-colors ${
-                  form.preferred_language_code === lang.language_code
+                  effectiveLanguageCode === lang.language_code
                     ? "bg-slate-900 text-white border-slate-900"
                     : "border-slate-300 hover:border-slate-400"
                 }`}
                 onClick={() => setLanguage(lang.language_code)}
                 disabled={busy}
-                aria-pressed={form.preferred_language_code === lang.language_code}
+                aria-pressed={effectiveLanguageCode === lang.language_code}
               >
-                {lang.display_name_native} {form.preferred_language_code === lang.language_code ? "✓" : ""}
+                {lang.display_name_native} {effectiveLanguageCode === lang.language_code ? "✓" : ""}
               </button>
             ))}
           </div>

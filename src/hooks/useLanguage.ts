@@ -85,7 +85,13 @@ export const UI_LANGUAGE_CHANGE_EVENT = "sc-ui-language-changed";
 //                        language from exactly the Hindi speakers this is meant
 //                        to serve.
 //   no flag, "en"     -> ignore. Indistinguishable from never having chosen.
-function readStoredUiLanguage(): string | null {
+// Exported (Sep 2026) so useUiLanguage can apply the SAME rule. It used to keep
+// its own unguarded copy, and the moment this one gained the flag check the two
+// disagreed: on a browser carrying the stale "en", question CONTENT correctly
+// fell through to the profile (Hindi) while the UI CHROME still honoured the
+// stale value and stayed English — one page, two languages. A duplicated rule is
+// only safe while it never changes, and this one just did.
+export function readStoredUiLanguage(): string | null {
   try {
     const value = window.localStorage.getItem(UI_LANGUAGE_STORAGE_KEY);
     if (!value) return null;

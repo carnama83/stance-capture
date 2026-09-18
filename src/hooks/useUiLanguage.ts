@@ -31,7 +31,7 @@ import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
 import { getSupabase } from "@/lib/supabaseClient";
-import { useLanguage, UI_LANGUAGE_CHANGE_EVENT } from "./useLanguage";
+import { useLanguage, readStoredUiLanguage, UI_LANGUAGE_CHANGE_EVENT } from "./useLanguage";
 
 export const UI_LANGUAGE_STORAGE_KEY = "sc_ui_language";
 
@@ -46,13 +46,6 @@ export const UI_LANGUAGE_STORAGE_KEY = "sc_ui_language";
 export const UI_LANGUAGE_EXPLICIT_KEY = "sc_ui_language_explicit";
 const DEFAULT_LANGUAGE = "en"; // mirrors useLanguage.ts's own DEFAULT_LANGUAGE
 
-function readStoredUiLanguage(): string | null {
-  try {
-    return window.localStorage.getItem(UI_LANGUAGE_STORAGE_KEY);
-  } catch {
-    return null; // private browsing / storage disabled — just means no override, not an error
-  }
-}
 
 export interface UseUiLanguageResult {
   languageCode: string;
