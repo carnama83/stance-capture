@@ -2,7 +2,8 @@
 //
 // Resolves the language a question/feed should render in, for both signed-in
 // and anonymous visitors. Precedence:
-//   1. localStorage sc_ui_language (Sep 2026, NEW) — an explicit past choice
+//   1. localStorage sc_ui_language, but ONLY when sc_ui_language_explicit="1"
+//      marks it as a deliberate past choice (see readStoredUiLanguage) —
 //      on THIS device via the header language toggle (see useUiLanguage.ts,
 //      which owns writing this key). Deliberately wins over ?lang= too: a
 //      visitor who has ever toggled the header is treated as having stated a
@@ -49,15 +50,48 @@ const DEFAULT_LANGUAGE = "en";
 // kept as an independent literal (not imported) to avoid a circular import,
 // since useUiLanguage.ts itself imports useLanguage from this file.
 const UI_LANGUAGE_STORAGE_KEY = "sc_ui_language";
+// Must match UI_LANGUAGE_EXPLICIT_KEY in useUiLanguage.ts — same independent
+// literal convention as above, for the same circular-import reason.
+const UI_LANGUAGE_EXPLICIT_KEY = "sc_ui_language_explicit";
 
 // Sep 2026, NEW — see the reactivity fix below. Exported so useUiLanguage.ts
 // (which already imports from this file — a safe, existing one-way
 // dependency) can dispatch it whenever the toggle changes the stored value.
 export const UI_LANGUAGE_CHANGE_EVENT = "sc-ui-language-changed";
 
+// Sep 2026, FIXED: this returned the stored value unconditionally, so a stale
+// sc_ui_language="en" — left behind by one click on the header toggle back when
+// it rendered for everyone — outranked the user's actual profile preference
+// forever. Two hooks then disagreed about the same value: this one treated it as
+// an explicit standing choice, while useShouldShowLanguageToggle deliberately
+// treated it as meaningless for exactly the same reason it is meaningless here.
+//
+// Observed consequence: an account whose profile said Hindi kept seeing English
+// through hard reloads, the Settings language control appeared to do nothing,
+// and the header toggle that could have overwritten the stale value is hidden
+// outside India — leaving no reachable way to change language at all.
+//
+// Three cases, and the middle one is the migration that matters:
+//
+//   flag set          -> honour the value, whatever it is. Keyed on the FLAG and
+//                        not on "value differs from default", because a stored
+//                        "en" from a real click is a genuine preference and must
+//                        still beat a profile that says otherwise.
+//   no flag, non-"en" -> honour it. Written before the flag existed, but nobody
+//                        ever ended up with "hi" by accident — the stale-value
+//                        problem is specific to the DEFAULT, which the old
+//                        unconditional toggle wrote on a single click of an
+//                        already-active button. Dropping these would strip the
+//                        language from exactly the Hindi speakers this is meant
+//                        to serve.
+//   no flag, "en"     -> ignore. Indistinguishable from never having chosen.
 function readStoredUiLanguage(): string | null {
   try {
-    return window.localStorage.getItem(UI_LANGUAGE_STORAGE_KEY);
+    const value = window.localStorage.getItem(UI_LANGUAGE_STORAGE_KEY);
+    if (!value) return null;
+    const explicit = window.localStorage.getItem(UI_LANGUAGE_EXPLICIT_KEY) === "1";
+    if (!explicit && value === DEFAULT_LANGUAGE) return null;
+    return value;
   } catch {
     return null; // private browsing / storage disabled — just means no override
   }

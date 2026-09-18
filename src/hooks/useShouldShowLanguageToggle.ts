@@ -35,7 +35,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { getSupabase } from "@/lib/supabaseClient";
 import { useIPLocation } from "./useIPLocation";
-import { UI_LANGUAGE_STORAGE_KEY } from "./useUiLanguage";
+import { UI_LANGUAGE_EXPLICIT_KEY, UI_LANGUAGE_STORAGE_KEY } from "./useUiLanguage";
 
 // Sep 2026, FIXED: only a stored value of "hi" counts as an override — NOT
 // "any stored value at all". The toggle showed unconditionally to everyone
@@ -48,9 +48,23 @@ import { UI_LANGUAGE_STORAGE_KEY } from "./useUiLanguage";
 // it's meant to gate (confirmed live: a USA-profile, USA-IP admin account
 // still saw the toggle solely because it had "en" saved from an old click).
 // Only an actual past choice of Hindi should override geography.
-function hasChosenHindiBefore(): boolean {
+// Sep 2026, GENERALISED: this tested for a stored value of exactly "hi", which
+// was the right call while the only signal available was the value itself — but
+// it breaks the moment a third language ships (a deliberate Marathi choice would
+// not count), and it can never honour a deliberate choice of English. Now keyed
+// on the explicit-choice flag, which is what the comment above always meant by
+// "has EVER actually chosen a language". Behaviour for existing browsers is
+// unchanged: they carry a value but no flag, so geography still decides.
+// Same three cases as readStoredUiLanguage in useLanguage.ts, deliberately kept
+// in step: a flagged choice counts whatever it names; an unflagged non-English
+// value counts (written before the flag existed, and never arrived by accident);
+// an unflagged "en" does not.
+function hasChosenLanguageBefore(): boolean {
   try {
-    return window.localStorage.getItem(UI_LANGUAGE_STORAGE_KEY) === "hi";
+    const value = window.localStorage.getItem(UI_LANGUAGE_STORAGE_KEY);
+    if (!value) return false;
+    if (window.localStorage.getItem(UI_LANGUAGE_EXPLICIT_KEY) === "1") return true;
+    return value !== "en";
   } catch {
     return false; // private browsing / storage disabled — just means no override
   }
@@ -74,7 +88,7 @@ async function fetchProfileCountryCode(userId: string): Promise<string | null> {
 }
 
 export function useShouldShowLanguageToggle(userId: string | null | undefined): boolean {
-  const hasStoredOverride = hasChosenHindiBefore();
+  const hasStoredOverride = hasChosenLanguageBefore();
 
   const {
     data: profileCountryCode,

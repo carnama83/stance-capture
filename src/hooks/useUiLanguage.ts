@@ -34,6 +34,16 @@ import { getSupabase } from "@/lib/supabaseClient";
 import { useLanguage, UI_LANGUAGE_CHANGE_EVENT } from "./useLanguage";
 
 export const UI_LANGUAGE_STORAGE_KEY = "sc_ui_language";
+
+// Sep 2026, NEW: records THAT a deliberate choice was made, separately from
+// WHICH language was chosen. The value alone cannot carry that signal: the
+// header toggle used to render unconditionally, so a large number of browsers
+// have sc_ui_language="en" saved from a single click on an already-active
+// button, which is indistinguishable from never having chosen at all. Anything
+// written before this key existed is therefore treated as "no explicit choice",
+// while a new choice counts regardless of which language it names — including
+// English, which a stored-value heuristic could never honour.
+export const UI_LANGUAGE_EXPLICIT_KEY = "sc_ui_language_explicit";
 const DEFAULT_LANGUAGE = "en"; // mirrors useLanguage.ts's own DEFAULT_LANGUAGE
 
 function readStoredUiLanguage(): string | null {
@@ -91,6 +101,9 @@ export function useUiLanguage(userId: string | null | undefined): UseUiLanguageR
       setLanguageCodeState(code);
       try {
         window.localStorage.setItem(UI_LANGUAGE_STORAGE_KEY, code);
+        // Marks this as a real choice by a real person, which is what
+        // useLanguage and useShouldShowLanguageToggle now key off.
+        window.localStorage.setItem(UI_LANGUAGE_EXPLICIT_KEY, "1");
       } catch {
         // Non-fatal — the choice still applies for the rest of this session
         // via React state, it just won't survive a reload.
