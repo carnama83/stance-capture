@@ -81,6 +81,24 @@ export function useUiLanguage(userId: string | null | undefined): UseUiLanguageR
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profileLanguageCode, profileLoading]);
 
+  // Sep 2026, NEW: every mounted instance of this hook converges on the same
+  // value. The state above is per-instance, so once a SECOND component called
+  // this hook (SettingsProfile, so its control could see the language actually
+  // on screen rather than only the profile row), the two could hold different
+  // languages indefinitely: the one that handled the click moved, the other did
+  // not, and each drives i18n.changeLanguage and <html lang> from its own copy.
+  // The visible symptom was the header pill still reading EN over a page
+  // rendering Hindi. useLanguage already listens to this same event for exactly
+  // this reason; the hook that OWNS the value was the one not listening to it.
+  React.useEffect(() => {
+    const onChange = () => {
+      const next = readStoredUiLanguage();
+      if (next) setLanguageCodeState(next); // same value => React bails out
+    };
+    window.addEventListener(UI_LANGUAGE_CHANGE_EVENT, onChange);
+    return () => window.removeEventListener(UI_LANGUAGE_CHANGE_EVENT, onChange);
+  }, []);
+
   // Keeps i18next's active language, and <html lang>, in sync with whatever
   // languageCode above resolved to — the single place either now gets set,
   // replacing the effect AppTopBar used to run directly against useLanguage.
