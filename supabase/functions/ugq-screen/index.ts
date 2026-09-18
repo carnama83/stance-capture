@@ -193,7 +193,7 @@ function extractJsonObject(s: string): string | null {
 //    each other, hence the duplication — same convention already used for
 //    small pieces elsewhere in this codebase. NOT mirrored to Supabase
 //    Storage — stores the direct external URL, same accepted pattern
-//    news_items.image_url already uses as a fallback. ─────────────────────
+//    news_items.image_url already uses as a fallback. ─────────────────────────
 
 const IMAGE_FETCH_TIMEOUT_MS = 6000;
 const IMAGE_MAX_HTML_BYTES = 50_000;
@@ -442,7 +442,7 @@ serve(async (req) => {
     return data?.choices?.[0]?.message?.content ?? "";
   }
 
-  // ── Preview generation (Aug 2026, extracted) ──────────────────────────────
+  // ── Preview generation (Aug 2026, extracted) ─────────────────────────
   // Was inline in the main flow; pulled out so it can be: (a) tried once WITH
   // web search, (b) retried once WITHOUT search if that fails, and (c) reused
   // by the stuck-proposal recovery branch below.
@@ -649,7 +649,7 @@ serve(async (req) => {
     return parsePreviewJson(rawContent, label);
   }
 
-  // ── Continuity-aware refine generation (Aug 2026, NEW) ──────────────────
+  // ── Continuity-aware refine generation (Aug 2026, NEW) ───────────────
   // FIXES A REAL BUG: the first version of the refine feature called
   // generatePreviewOnce(raw + additional_context, ...) — i.e. regenerated
   // from scratch with a fresh, independent web search. Because search
@@ -773,7 +773,7 @@ serve(async (req) => {
     return parsePreviewJson(rawContent, label);
   }
 
-  // ── Video framing gate (Epic X, NEW) ────────────────────────────────────
+  // ── Video framing gate (Epic X, NEW) ─────────────────────────────
   // Judges video_raw_transcript — the unedited transcript of the raw audio
   // track — for leading framing. Deliberately separate from Gate 1 screening
   // above: safety_flag judges hate speech/doxxing/incitement, this judges a
@@ -861,7 +861,7 @@ serve(async (req) => {
     }
   }
 
-  // ── Cover image (Aug 2026, NEW) ─────────────────────────────────────────
+  // ── Cover image (Aug 2026, NEW) ─────────────────────────────
   // Ports the og:image/twitter:image scrape that used to run ONLY inside
   // ugq-confirm-publish, AFTER the user clicked Publish — the "Here's how
   // this looks" modal never showed an image even when one was available,
@@ -967,7 +967,7 @@ serve(async (req) => {
     const proposalSourceUrl = typeof proposal.source_url === "string" && proposal.source_url.trim()
       ? proposal.source_url.trim() : null;
 
-    // ── USER-INITIATED REFINE (Aug 2026, NEW) ────────────────────────────────
+    // ── USER-INITIATED REFINE (Aug 2026, NEW) ─────────────────────
     // Lets a proposer, while still reviewing their own not-yet-published
     // preview (the "Here's how this looks" modal), add extra context — "it
     // happened in March", "this is about UP specifically" — and get a fresh
@@ -1088,7 +1088,7 @@ serve(async (req) => {
       });
     }
 
-    // ── STUCK-PROPOSAL PREVIEW RETRY (Aug 2026) ─────────────────────────────
+    // ── STUCK-PROPOSAL PREVIEW RETRY (Aug 2026) ────────────────────
     // Recovers a proposal stuck at 'in_review' with a real ai_screen_result
     // but no preview_reframe (the admin queue's "Re-screen" button used to
     // silently no-op on these — the old guard only allowed reprocessing
@@ -1165,7 +1165,7 @@ serve(async (req) => {
       id: c.question_id, question: c.question,
     }));
 
-    // ── Gate 1 LLM pass ─────────────────────────────────────────────────────────
+    // ── Gate 1 LLM pass ────────────────────────────────────────
     let screen = {
       is_valid_question: true,
       is_duplicate: false,
@@ -1348,7 +1348,7 @@ serve(async (req) => {
       parentTopics.some((t) => t.id === screen.topic_match_id)
       ? screen.topic_match_id : null;
 
-    // ── Resolve auto_topic_id ────────────────────────────────────────────────
+    // ── Resolve auto_topic_id ──────────────────────────────────
     // 1. Confident match against an existing approved topic → use it directly.
     // 2. No match, but the model proposed a new category name → check for an
     //    existing topic with that exact title first (avoids near-duplicate
@@ -1422,7 +1422,7 @@ serve(async (req) => {
       }));
     }
 
-    // ── Decide terminal status + reputation delta ──────────────────────────────
+    // ── Decide terminal status + reputation delta ────────────────────────
     let status = "in_review";
     let rejection_reason: string | null = null;
     let duplicate_of_question_id: string | null = null;
@@ -1456,7 +1456,7 @@ serve(async (req) => {
       status = "in_review";
     }
 
-    // ── AUTO-PUBLISH (Aug 2026, NEW) ─────────────────────────────────────
+    // ── AUTO-PUBLISH (Aug 2026, NEW) ──────────────────────────
     // Fires whenever the proposal cleared every rejection gate above (status
     // is still the baseline "in_review") AND we have everything ugq-publish
     // needs: a topic and usable preview text. Publishes the EXACT text shown
@@ -1571,7 +1571,7 @@ serve(async (req) => {
       } : {}),
     }).eq("id", proposalId);
 
-    // ── Reputation update (read-modify-write, service role) ────────────────────
+    // ── Reputation update (read-modify-write, service role) ────────────
     // NOTE: the +10 publish reward is applied inside ugq-publish itself when
     // published=true, not here — avoid double-awarding.
     if (repDelta !== 0 || rejectedInc !== 0) {
@@ -1585,8 +1585,31 @@ serve(async (req) => {
 
     // TODO(step 8): emit proposer notification for terminal states
     // (rejected → in-app; published handled by ugq-publish itself).
+    //
+    // Sep 2026, FIXED (defect UGQ-D1): these two inserts used to be fired and
+    // forgotten — the supabase-js result was never inspected, so a rejected
+    // write produced no error, no log and no notification. That is exactly
+    // what happened to every "ugq_resubmit_requested" row: the value was
+    // missing from user_notifications_type_chk, the INSERT failed the CHECK
+    // on every single attempt, and the proposer was never told to re-record.
+    // The constraint is now widened, but the silent-failure shape was the
+    // real bug — a notification write that can fail without anyone finding
+    // out will just hide the next one too. notify() logs loudly and never
+    // throws: a lost notification must not roll back a completed screening.
+    async function notify(row: Record<string, unknown>) {
+      const { error } = await adminSb.from("user_notifications").insert(row);
+      if (error) {
+        console.error(JSON.stringify({
+          tag: "ugq-screen.notification_insert_failed",
+          proposal_id: proposalId,
+          notification_type: row.notification_type,
+          message: error.message,
+        }));
+      }
+    }
+
     if (status === "rejected") {
-      await adminSb.from("user_notifications").insert({
+      await notify({
         user_id: proposerId,
         notification_type: "ugq_rejected",
         title: "Your question wasn't published",
@@ -1598,7 +1621,7 @@ serve(async (req) => {
       // for the proposer's immediate in-flow re-record prompt — this
       // notification is the same message for anyone who navigates away
       // before re-recording.
-      await adminSb.from("user_notifications").insert({
+      await notify({
         user_id: proposerId,
         notification_type: "ugq_resubmit_requested",
         title: "Please re-record your question",

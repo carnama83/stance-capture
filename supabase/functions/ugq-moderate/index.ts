@@ -139,7 +139,7 @@ function tierForScore(score: number, currentTier: string): string {
   return score >= 21 ? "trusted" : "new";
 }
 
-// ── LLM call ───────────────────────────────────────────────────────────
+// ── LLM call ──────────────────────────────────────────────────────────────
 async function callReframeLLM(
   provider: string, modelName: string, systemPrompt: string, userPrompt: string,
   apiKey: string, webSearch: boolean, maxSearches: number, temperature: number,
@@ -305,7 +305,7 @@ Deno.serve(async (req) => {
     console.log(`[ugq-moderate] action="${action}" proposal=${proposalId} admin=${adminId ?? "(system)"}`);
 
     const { data: proposal } = await adminSb.from("user_question_proposals")
-      .select("id, user_id, raw_question, admin_edited_question, suggested_topic_id, location_label, status, reframe_result, reframed_question_id")
+      .select("id, user_id, raw_question, admin_edited_question, suggested_topic_id, location_label, status, reframe_result, reframed_question_id, preview_reframe, ai_screen_result")
       .eq("id", proposalId).maybeSingle();
     if (!proposal) return json(404, { ok: false, error: "NOT_FOUND" });
 
@@ -314,11 +314,34 @@ Deno.serve(async (req) => {
     const curTier = rep?.tier ?? "new";
 
     if (action === "rescreen") {
-      if (proposal.status !== "proposed") {
+      // Sep 2026, FIXED (defect UGQ-D2): this guard used to reject anything
+      // that was not status='proposed'. ugq-screen had since grown a
+      // stuck-preview-retry branch specifically for proposals sitting at
+      // 'in_review' with a real ai_screen_result but no preview_reframe —
+      // and its header comment claims the admin queue's "Re-screen (Gate 1)"
+      // button recovers them. It never could: the button calls THIS action,
+      // and this guard short-circuited before ugq-screen was ever invoked,
+      // so that branch was dead code from the day it was written. The only
+      // other caller, ugq-refine-preview, cannot reach it either (it
+      // requires >= 5 characters of additional_context, which routes to the
+      // refine branch instead).
+      //
+      // Now a stuck proposal falls through and ugq-screen's own precondition
+      // check decides what to do — no duplicated notion of "stuck" on this
+      // side, and a genuinely resolved proposal (approved/reframing/
+      // reframed/published/rejected/withdrawn) is still short-circuited here
+      // exactly as before.
+      const isStuckPreview = proposal.status === "in_review" &&
+        !proposal.preview_reframe && !!proposal.ai_screen_result;
+
+      if (proposal.status !== "proposed" && !isStuckPreview) {
         return json(200, {
           ok: true, skipped: true, status: proposal.status,
           message: `Already resolved (status: ${proposal.status}); nothing to re-screen.`,
         });
+      }
+      if (isStuckPreview) {
+        console.log(`[ugq-moderate] rescreen: ${proposalId} is in_review with no preview — routing to ugq-screen's stuck-preview retry`);
       }
       const ctrl = new AbortController();
       const t = setTimeout(() => ctrl.abort(), 45000);
@@ -461,7 +484,7 @@ Deno.serve(async (req) => {
       return json(200, { ok: true, question_id: questionId, archived: true });
     }
 
-    // ── NEW (Aug 2026): confirm/reject a proposer-tagged authority ───────────
+    // ── NEW (Aug 2026): confirm/reject a proposer-tagged authority ─────────────
     // Mirrors the pending_authority_suggestions pattern for the news pipeline:
     // nothing the PROPOSER does writes to the real, publicly-read
     // question_authority_map directly. This is the admin gate that actually

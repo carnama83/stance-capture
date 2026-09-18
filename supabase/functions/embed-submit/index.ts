@@ -117,11 +117,26 @@ serve(async (req)=>{
       if (score < -2 || score > 2 || !Number.isInteger(score)) {
         return jsonError(400, "INVALID_STANCE", "stance_value must be an integer between -2 and 2");
       }
+      // F2 (Sep 2026): every response records the exact wording it was shown.
+      // The embed widget carries no language context, so this resolves to the
+      // question's English rendition and falls back to its source-language
+      // original -- which is what the widget actually renders today.
+      const { data: embedRenditionId, error: embedRendErr } =
+        await adminSb.rpc("resolve_response_rendition", {
+          p_question_id: question_id,
+          p_language_code: "en"
+        });
+      if (embedRendErr || !embedRenditionId) {
+        console.error("[embed-submit] no rendition to attribute stance to:", embedRendErr);
+        return jsonError(409, "NO_PUBLISHED_WORDING",
+          "This question is not currently answerable.");
+      }
       const { error: stanceErr } = await adminSb.from("question_stances").upsert({
         user_id: user.id,
         question_id,
         score,
         source: "embed",
+        rendition_id: embedRenditionId,
         campaign_id: campaign_id ?? null,
         updated_at: now.toISOString()
       }, {

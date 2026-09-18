@@ -6,12 +6,36 @@
 // Enums
 // ---------------------------------------------------------------------------
 
+// Sep 2026: kept in lockstep with the user_notifications_type_chk CHECK
+// constraint in Postgres — that constraint is the real source of truth, and
+// this union previously listed only the five Epic I values while the table
+// had grown thirteen more. NotificationListItem was already switching on
+// 'ugq_*' values that were not in this union; nothing flagged it because the
+// build is `vite build` with no tsc step. Adding a value here is safe (no
+// exhaustive switch or `never` assertion narrows on this type); omitting one
+// silently mistypes rows that really do come back from the API.
 export type NotificationType =
   | 'stance_change'
   | 'weekly_digest'
   | 'topic_follow'
   | 'reminder'
-  | 'new_local_topic';
+  | 'new_local_topic'
+  | 'election_update'
+  | 'ugq_submitted'
+  | 'ugq_published'
+  | 'ugq_rejected'
+  | 'ugq_milestone'
+  | 'ugq_flagged'
+  | 'ugq_unflagged'
+  // Epic UGQ defect D1: emitted by ugq-screen when the video leading-framing
+  // gate sends a proposal back for a re-record.
+  | 'ugq_resubmit_requested'
+  | 'campaign_approved'
+  | 'campaign_rejected'
+  | 'campaign_budget_alert'
+  | 'campaign_sync_failed'
+  | 'campaign_completed'
+  | 'accountability_update';
 
 export type DigestFrequency = 'daily' | 'weekly' | 'off';
 

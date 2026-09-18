@@ -35,6 +35,7 @@
 import * as React from "react";
 import { getSupabase } from "../lib/supabaseClient";
 import { useQueryClient } from "@tanstack/react-query";
+import { useUiLanguage } from "../hooks/useUiLanguage";
 import UsernameField from "../components/UsernameField";
 import AvatarUploader from "../components/AvatarUploader";
 import { DobField } from "../components/DobField";
@@ -564,6 +565,13 @@ export default function SettingsProfile() {
   // M-A06
   const [dobSet, setDobSet]         = React.useState(false);
 
+  // useUiLanguage.setLanguageCode is documented as "the one place that both
+  // persists the choice": it writes the sc_ui_language device override, fires
+  // the event that wakes other components, updates the profile AND invalidates
+  // the cache. This page used to do only the profile half itself, which is why
+  // the control silently did nothing — see setLanguage below.
+  const { languageCode: effectiveLanguageCode, setLanguageCode: setUiLanguageCode } = useUiLanguage(uid);
+
   const [form, setForm] = React.useState({
     username: "",
     display_handle_mode: "random_id" as DisplayHandleMode,
@@ -572,6 +580,7 @@ export default function SettingsProfile() {
     avatar_path: "" as string | null,
     show_age: false,
     preferred_language_code: "en",
+    show_unavailable_language: false,
   });
 
   interface LanguageOption {
@@ -655,13 +664,14 @@ export default function SettingsProfile() {
         const avatar_path          = (data as any)?.avatar_path ?? null;
         const show_age             = (data as any)?.show_age ?? false;
         const preferred_language_code = (data as any)?.preferred_language_code ?? "en";
+        const show_unavailable_language = (data as any)?.show_unavailable_language ?? false;
         const rid                  = data?.random_id || "";
         const dob_encrypted        = data?.dob_encrypted;
 
         setUid(sessionUserId);
         setRandomId(rid);
         setDobSet(!!dob_encrypted);
-        setForm({ username, display_handle_mode: mode, bio, avatar_url, avatar_path, show_age, preferred_language_code });
+        setForm({ username, display_handle_mode: mode, bio, avatar_url, avatar_path, show_age, preferred_language_code, show_unavailable_language });
         setInitialUsername(username);
         setHandle(mode === "username" ? (username || rid) : rid);
       } catch (e: any) {
@@ -703,11 +713,27 @@ export default function SettingsProfile() {
     setMsg(null);
     if (!sb) return setMsg("Supabase is OFF (check env).");
     if (!uid) return setMsg("Session not ready. Please wait a moment and try again.");
-    if (code === form.preferred_language_code) return;
+    // Skip ONLY when the profile and the language actually on screen already
+    // agree. Comparing against the profile alone made this control inert in
+    // precisely the state it exists to repair: profile says Hindi, a stale
+    // device override forces English, so the page reads English with a tick
+    // beside हिन्दी — and clicking हिन्दी was a no-op, because by the profile
+    // it was already selected. Verified on Dev before the fix: the click
+    // produced no write and no message at all.
+    if (code === form.preferred_language_code && code === effectiveLanguageCode) return;
     try {
       setBusy(true);
-      const { error } = await sb.from("profiles").update({ preferred_language_code: code }).eq("user_id", uid);
-      if (error) throw error;
+      // FIX: this used to update profiles.preferred_language_code directly and
+      // nothing else, so it had NO EFFECT whenever localStorage sc_ui_language
+      // was set — useLanguage treats that device override as precedence #1,
+      // ahead of the profile. Any browser that ever clicked the old,
+      // unconditional header toggle carries sc_ui_language="en" permanently, and
+      // the toggle that could clear it is now hidden outside India
+      // (useShouldShowLanguageToggle), so for those accounts the Language control
+      // here could never take effect. Delegating to the hook writes the override,
+      // the profile, the wake-up event and the cache invalidation in one place,
+      // which is exactly what it exists for.
+      setUiLanguageCode(code);
       setForm(f => ({ ...f, preferred_language_code: code }));
       setMsg("Language updated.");
       // Must match useLanguage's own queryKey (["preferred-language", userId])
@@ -716,6 +742,36 @@ export default function SettingsProfile() {
       queryClient.invalidateQueries({ queryKey: ["preferred-language", uid] });
     } catch (e: any) {
       setMsg(e.message || "Could not update language");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // ── Opt in to seeing questions with no verified rendition in your language ──
+  // Design F2: English is no longer a silent fallback. A question with no
+  // verified rendition in your language is simply absent, because showing it in
+  // another language would mean your answer joins the same stance pool as
+  // people who answered wording you never saw. A multilingual reader can widen
+  // their own feed; nobody has it widened for them.
+  async function setShowUnavailable(next: boolean) {
+    setMsg(null);
+    if (!sb) return setMsg("Supabase is OFF (check env).");
+    if (!uid) return setMsg("Session not ready. Please wait a moment and try again.");
+    try {
+      setBusy(true);
+      const { error } = await sb
+        .from("profiles")
+        .update({ show_unavailable_language: next })
+        .eq("user_id", uid);
+      if (error) throw error;
+      setForm(f => ({ ...f, show_unavailable_language: next }));
+      setMsg(next ? "Showing questions not yet in your language." : "Showing only questions available in your language.");
+      // Same cache key the feed reads its language preference under; without
+      // this the feed keeps serving the previous eligibility until an unrelated
+      // navigation refetches.
+      queryClient.invalidateQueries({ queryKey: ["preferred-language", uid] });
+    } catch (e: any) {
+      setMsg(e.message || "Could not update that preference");
     } finally {
       setBusy(false);
     }
@@ -940,8 +996,9 @@ export default function SettingsProfile() {
       <div className="rounded border p-3 space-y-2">
         <div className="text-sm font-medium">Language</div>
         <div className="text-xs text-slate-500">
-          Choose which language questions display in, where a translation exists.
-          Falls back to English for anything not yet available in your chosen language.
+          Choose which language questions display in. You will only see questions whose
+          wording has been verified to ask the same thing in that language — everyone
+          answering a question answers the same question, whichever language they read it in.
         </div>
         {activeLanguages.length === 0 ? (
           <div className="text-xs text-slate-400 italic">No additional languages available yet.</div>
@@ -952,19 +1009,34 @@ export default function SettingsProfile() {
                 key={lang.language_code}
                 type="button"
                 className={`border rounded px-3 py-1 transition-colors ${
-                  form.preferred_language_code === lang.language_code
+                  effectiveLanguageCode === lang.language_code
                     ? "bg-slate-900 text-white border-slate-900"
                     : "border-slate-300 hover:border-slate-400"
                 }`}
                 onClick={() => setLanguage(lang.language_code)}
                 disabled={busy}
-                aria-pressed={form.preferred_language_code === lang.language_code}
+                aria-pressed={effectiveLanguageCode === lang.language_code}
               >
-                {lang.display_name_native} {form.preferred_language_code === lang.language_code ? "✓" : ""}
+                {lang.display_name_native} {effectiveLanguageCode === lang.language_code ? "✓" : ""}
               </button>
             ))}
           </div>
         )}
+        <label className="flex items-start gap-2 pt-1 cursor-pointer">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={form.show_unavailable_language}
+            onChange={e => setShowUnavailable(e.target.checked)}
+            disabled={busy}
+          />
+          <span className="text-xs text-slate-600">
+            Also show questions not yet available in my language
+            <span className="block text-slate-400">
+              They appear in their original language. Off by default.
+            </span>
+          </span>
+        </label>
       </div>
 
       {/* M-A06: DOB — set if unset, greyed out if already set */}

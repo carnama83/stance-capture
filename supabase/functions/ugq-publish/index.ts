@@ -39,32 +39,35 @@
 // "voice" instead), so every video that reaches this function again belongs
 // to an identified proposer, exactly as before that feature existed.
 //
-// Sep 2026, NEW: `question` (the `reframed` text below) is the CANONICAL
-// text for this question — every other language is a rendition, never the
-// other way around. Previously that was an unenforced assumption: nothing
-// verified `reframed` was actually English before writing it as canonical,
-// and questions.canonical_language was never set (silently fell back to its
-// 'en' column default regardless of the real text). Two changes close that
-// gap: (1) canonical_language is now set explicitly here, asserting what's
-// actually true rather than defaulting into it; (2) a guardrail rejects the
-// publish outright if `reframed` contains Devanagari script — defense in
-// depth against a prompt/model regression upstream (ugq-screen's preview
-// prompt is what's actually supposed to guarantee English now — see its
-// LANGUAGE_HANDLING_INSTRUCTIONS), not the primary mechanism. Applies to
-// EVERY caller (ugq-moderate's admin path included) since canonical-English
-// is a platform invariant, not something specific to the auto-publish path.
+// Sep 2026: `question` (the `reframed` text below) must be ENGLISH. Under F2
+// it is the denormalised mirror of the question's English semantic rendition —
+// NOT "the real question", which is the proposer's own wording (see the F2
+// note below). A guardrail rejects the publish if `reframed` contains
+// non-English script: defence in depth against a prompt/model regression
+// upstream (ugq-screen's preview prompt is what is actually supposed to
+// guarantee English — see its LANGUAGE_HANDLING_INSTRUCTIONS). It refuses the
+// PUBLISH only and leaves the proposal untouched for an admin to resolve; it
+// never rejects the proposer's question, which would blame them for a fault
+// in our own English generation. Applies to EVERY caller (ugq-moderate's admin
+// path included), since an English mirror that is not English breaks the 28
+// database functions and 39 src files that read this column.
 //
-// Also NEW: callers may optionally pass detected_language/question_native/
-// slider_*_label_native (ugq-screen's preview now generates these when the
-// proposer wrote in a non-English language — see PreviewReframe there).
-// When present, this endpoint seeds that proposer-reviewed native text
-// directly into the pending question_renditions stub that
-// stub_question_renditions() creates on insert below, marking it published
-// immediately — instead of leaving it 'pending' for the separate
-// generate-question-renditions pipeline to translate from scratch (which
-// can silently no-op on some inputs — a different, separately-tracked bug).
-// This guarantees the proposer sees their own submission in their own
-// language right away, rather than "still being prepared."
+// Sep 2026, F2 (§3 R15 rewritten): canonical_language now records the
+// question's SOURCE language rather than asserting English. questions.question
+// remains the English mirror and the non-English-script guardrail still
+// protects it; what changed is that a non-English proposal now makes the
+// proposer's own reviewed wording the question's ORIGINAL rendition (via
+// adopt_proposer_source_wording), with the English left pending so it is
+// generated FROM that source and verified rather than grandfathered in.
+//
+// Callers may optionally pass detected_language/question_native/
+// slider_*_label_native/context_summary_native (ugq-screen's preview generates
+// these when the proposer wrote in a non-English language — see PreviewReframe
+// there). When present, that proposer-reviewed native text becomes the
+// question's ORIGINAL rendition, published outright, so the proposer sees
+// their own submission in their own language immediately rather than "still
+// being prepared" — and so no other language is ever derived from an
+// unverified English translation of it.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.2";
 
@@ -253,12 +256,27 @@ Deno.serve(async (req) => {
       supporting_links: supportingLinks,
       cover_image_url: coverImageUrl,
       auto_published: autoPublished,
-      // Sep 2026, NEW — see header note. `reframed` is guaranteed English by
-      // this point (the guardrail above already rejected anything else), so
-      // this is now a real assertion rather than an accidental column
-      // default — stub_question_renditions() reads this to decide which
-      // rendition languages to stub.
-      canonical_language: "en",
+      // `reframed` is guaranteed English by this point (the guardrail above
+      // already rejected anything else), so questions.question is always the
+      // English mirror.
+      //
+      // F2 (§3 R15 rewritten): this column records the question's SOURCE
+      // language, not "the canonical language is English".
+      // stub_question_renditions() reads it to decide which language the
+      // question's ORIGINAL rendition is created in, so hardcoding 'en' made a
+      // non-English proposer's own words a mere translation -- and any third
+      // language would then have been derived from an unverified English
+      // translation, the single point of semantic failure invariant 4 exists
+      // to close.
+      //
+      // questions.question stays the ENGLISH mirror either way, and the
+      // non-English-script guardrail above still protects it. Only claimed
+      // when we actually have the proposer's native text to adopt as the
+      // original; without it we would be tagging English text with a
+      // non-English language code.
+      canonical_language: (detectedLanguage && detectedLanguage !== "en" && questionNative)
+        ? detectedLanguage
+        : "en",
       // Epic X, NEW: content_type only overridden to 'video' when a video
       // path is actually present — an admin-fact-checked publish of a
       // proposal that happened to start as a video capture but has no
@@ -284,35 +302,41 @@ Deno.serve(async (req) => {
       return json(500, { ok: false, error: "INSERT_FAILED", message: insErr.message });
     }
 
-    // Sep 2026, NEW — see header note. Best-effort: stub_question_renditions()
-    // (an AFTER INSERT trigger on questions, fired synchronously as part of
-    // the insert above) has already created a 'pending' question_renditions
-    // row for this language by the time we get here, so this is an UPDATE,
-    // never an insert. Any failure here just leaves that stub 'pending' for
-    // the normal generate-question-renditions cron sweep to pick up later —
-    // same fail-open posture as ugq-confirm-publish's authority-suggestion
-    // and rendition-generation steps; never blocks or fails the publish.
+    // Best-effort, and fail-open like ugq-confirm-publish's authority and
+    // rendition steps: never blocks or fails the publish. If this does not
+    // run, the question is still live and answerable — its original just
+    // carries the English mirror text instead of the proposer's own words,
+    // which an admin can correct through the rendition review queue.
     if (detectedLanguage && detectedLanguage !== "en" && questionNative) {
       try {
-        const { error: renditionErr } = await adminSb.from("question_renditions")
-          .update({
-            rendered_text: questionNative,
-            slider_low_label: sliderLowNative,
-            slider_high_label: sliderHighNative,
-            context_summary: contextSummaryNative,
-            transform_status: "published",
-            axis_equivalence_check: "pass",
-            axis_equivalence_notes: "Reused directly from the proposer's own-language preview text, reviewed by " +
-              "them before publish — not independently re-verified by the transform/equivalence pipeline.",
-          })
-          .eq("question_id", questionId)
-          .eq("language_code", detectedLanguage)
-          .eq("transform_status", "pending");
-        if (renditionErr) {
-          console.error(JSON.stringify({ tag: "ugq-publish.native_rendition_update_failed", message: renditionErr.message }));
+        // F2: make the proposer's own reviewed wording the question's ORIGINAL.
+        // stub_question_renditions() has already created an original in the
+        // right LANGUAGE but carrying the English mirror text (it only has
+        // questions.question to work from); this swaps in the real source
+        // wording server-side, in one transaction.
+        //
+        // The English rendition is deliberately left PENDING rather than
+        // seeded from the reframe: generate-question-renditions then produces
+        // it FROM the proposer's own words and puts it through the equivalence
+        // check, which is invariant 4 actually happening instead of an
+        // unverified English being grandfathered in because it arrived first.
+        // The question is therefore absent from the English feed until that
+        // check passes -- by design. The proposer still sees their own
+        // language immediately, because the original above is published
+        // outright and needs no verification: it IS the source.
+        const { error: adoptErr } = await adminSb.rpc("adopt_proposer_source_wording", {
+          p_question_id: questionId,
+          p_source_language: detectedLanguage,
+          p_text: questionNative,
+          p_slider_low: sliderLowNative,
+          p_slider_high: sliderHighNative,
+          p_context_summary: contextSummaryNative,
+        });
+        if (adoptErr) {
+          console.error(JSON.stringify({ tag: "ugq-publish.adopt_source_wording_failed", message: adoptErr.message }));
         }
       } catch (e) {
-        console.error(JSON.stringify({ tag: "ugq-publish.native_rendition_exception", message: (e as Error).message }));
+        console.error(JSON.stringify({ tag: "ugq-publish.adopt_source_wording_exception", message: (e as Error).message }));
       }
     }
 
