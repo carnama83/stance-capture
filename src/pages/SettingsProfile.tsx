@@ -35,6 +35,7 @@
 import * as React from "react";
 import { getSupabase } from "../lib/supabaseClient";
 import { useQueryClient } from "@tanstack/react-query";
+import { useUiLanguage } from "../hooks/useUiLanguage";
 import UsernameField from "../components/UsernameField";
 import AvatarUploader from "../components/AvatarUploader";
 import { DobField } from "../components/DobField";
@@ -564,6 +565,13 @@ export default function SettingsProfile() {
   // M-A06
   const [dobSet, setDobSet]         = React.useState(false);
 
+  // useUiLanguage.setLanguageCode is documented as "the one place that both
+  // persists the choice": it writes the sc_ui_language device override, fires
+  // the event that wakes other components, updates the profile AND invalidates
+  // the cache. This page used to do only the profile half itself, which is why
+  // the control silently did nothing — see setLanguage below.
+  const { setLanguageCode: setUiLanguageCode } = useUiLanguage(uid);
+
   const [form, setForm] = React.useState({
     username: "",
     display_handle_mode: "random_id" as DisplayHandleMode,
@@ -708,8 +716,17 @@ export default function SettingsProfile() {
     if (code === form.preferred_language_code) return;
     try {
       setBusy(true);
-      const { error } = await sb.from("profiles").update({ preferred_language_code: code }).eq("user_id", uid);
-      if (error) throw error;
+      // FIX: this used to update profiles.preferred_language_code directly and
+      // nothing else, so it had NO EFFECT whenever localStorage sc_ui_language
+      // was set — useLanguage treats that device override as precedence #1,
+      // ahead of the profile. Any browser that ever clicked the old,
+      // unconditional header toggle carries sc_ui_language="en" permanently, and
+      // the toggle that could clear it is now hidden outside India
+      // (useShouldShowLanguageToggle), so for those accounts the Language control
+      // here could never take effect. Delegating to the hook writes the override,
+      // the profile, the wake-up event and the cache invalidation in one place,
+      // which is exactly what it exists for.
+      setUiLanguageCode(code);
       setForm(f => ({ ...f, preferred_language_code: code }));
       setMsg("Language updated.");
       // Must match useLanguage's own queryKey (["preferred-language", userId])
