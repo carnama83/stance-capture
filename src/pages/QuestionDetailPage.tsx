@@ -1193,7 +1193,11 @@ export default function QuestionDetailPage() {
       // live distribution. (Anonymous visitors can't "clear" a stance.)
       if (!jwt) {
         if (score === null) return null;
-        const { my_ref } = await recordWebStance(questionId, score);
+        const { my_ref } = await recordWebStance(
+          questionId,
+          score,
+          (question?.rendition_id as string | null) ?? null,
+        );
         webRefRef.current = my_ref;
         console.log("[qdp:mutation] anonymous web stance recorded", { qid: debugQid, score, my_ref });
         return score;

@@ -3414,7 +3414,12 @@ export default function IndexPage() {
   const stageStance = React.useCallback(
     async (questionId: string, value: number) => {
       try {
-        await recordWebStance(questionId, value, ipGeoRef.current);
+        await recordWebStance(
+          questionId,
+          value,
+          renditionByQuestionId.get(questionId) ?? null,
+          ipGeoRef.current,
+        );
         setStagedQuestions((prev) => {
           const next = new Set(prev);
           next.add(questionId);
@@ -3432,7 +3437,11 @@ export default function IndexPage() {
         toast.error("Couldn't save your answer — check your connection and try again.");
       }
     },
-    []
+    // renditionByQuestionId must be listed: it is a memo that is empty on first
+    // render and fills once the feeds resolve. With the previous empty dep array
+    // this callback would have closed over the empty map permanently and staged
+    // every anonymous stance with a null rendition.
+    [renditionByQuestionId]
   );
 
   // ── Impression recording ──
