@@ -74,6 +74,11 @@ type LiveQuestion = {
   context_version?: number | null;
   slider_low_label?: string | null;
   slider_high_label?: string | null;
+  // PR 2a: the exact question_renditions row get_question_localized rendered
+  // the question text and slider labels above from. Sent verbatim to
+  // set_question_stance so the recorded measurement names the wording this
+  // respondent actually read, rather than whatever is published at submit time.
+  rendition_id?: string | null;
   source?: string | null;
   source_meta?: unknown;
   // Sep 2026, FIXED: get_question_localized never returned these, so a
@@ -243,6 +248,13 @@ async function setMyStance(
   jwt: string,
   supabaseUrl: string,
   anonKey: string,
+  // PR 2a: the exact rendition whose wording is on screen right now. Sent
+  // verbatim; the server validates it and refuses to resolve one of its own.
+  // Nullable only so that clearing a stance (score === null) still works — the
+  // RPC handles the delete before it looks at provenance. A non-null score with
+  // a null rendition is rejected server-side with RENDITION_REQUIRED rather
+  // than being attributed to whatever happens to be published.
+  renditionId: string | null,
 ) {
   const attempt = ++_saveAttempt;
   const t0 = performance.now();
@@ -260,7 +272,11 @@ async function setMyStance(
       "Authorization": `Bearer ${jwt}`,
       "Prefer": "return=representation",
     },
-    body: JSON.stringify({ p_question_id: questionId, p_score: score }),
+    body: JSON.stringify({
+      p_question_id: questionId,
+      p_score: score,
+      p_rendition_id: renditionId,
+    }),
   }).then(async (res) => {
     const elapsed = Math.round(performance.now() - t0);
     const body = await res.json().catch(() => null);
@@ -1184,7 +1200,14 @@ export default function QuestionDetailPage() {
       }
 
       console.log("[qdp:mutation] start", { qid: debugQid, requestedScore: score, queryMyStanceBefore: queryClient.getQueryData(["my-stance", questionId]) });
-      const result = await setMyStance(questionId, score, jwt, supabaseUrl, supabaseAnonKey);
+      const result = await setMyStance(
+        questionId,
+        score,
+        jwt,
+        supabaseUrl,
+        supabaseAnonKey,
+        (question?.rendition_id as string | null) ?? null,
+      );
       console.log("[qdp:mutation] result", { qid: debugQid, requestedScore: score, returnedScore: result });
       return result;
     },

@@ -3246,6 +3246,44 @@ export default function IndexPage() {
 
   const [submittingQuestionId, setSubmittingQuestionId] = React.useState<string | null>(null);
 
+  // PR 2a — question_id → the rendition that produced the wording on screen.
+  //
+  // submitStance is handed to cards as an (questionId, value) callback, so the
+  // rendition cannot ride along as an argument without changing every card's
+  // prop signature. Instead it is recovered from the same feed queries that
+  // rendered those cards: each localized RPC now returns the rendition_id for
+  // the row it produced.
+  //
+  // Feeds cannot disagree here. wording_for() is deterministic for a given
+  // (question, language), and every feed on this page is fetched with the same
+  // active language, so a question appearing in two feeds carries the same id
+  // in both. Row shapes differ (the trending RPCs key on question_id, the
+  // latest feed on id), hence the defensive read of both.
+  const renditionByQuestionId = React.useMemo(() => {
+    const map = new Map<string, string>();
+    const absorb = (rows: unknown) => {
+      if (!Array.isArray(rows)) return;
+      for (const row of rows as Array<Record<string, unknown>>) {
+        const qid = (row?.question_id ?? row?.id) as string | undefined;
+        const rid = row?.rendition_id as string | undefined;
+        if (qid && rid && !map.has(qid)) map.set(qid, rid);
+      }
+    };
+    const absorbPages = (q: { data?: { pages?: unknown[] } } | undefined) =>
+      q?.data?.pages?.forEach(absorb);
+
+    absorbPages(trendingQuestionsNationalQuery as any);
+    absorbPages(trendingQuestionsGlobalQuery as any);
+    absorbPages(anonTrendingQuery as any);
+    absorb((fallbackFeedQuery as any)?.data);
+    return map;
+  }, [
+    trendingQuestionsNationalQuery.data,
+    trendingQuestionsGlobalQuery.data,
+    anonTrendingQuery.data,
+    fallbackFeedQuery.data,
+  ]);
+
   const submitStance = React.useCallback(
     async (questionId: string, value: number) => {
       if (!sb) {
@@ -3281,7 +3319,16 @@ export default function IndexPage() {
             "apikey": anonKey,
             "Authorization": `Bearer ${jwt}`,
           },
-          body: JSON.stringify({ p_question_id: questionId, p_score: value }),
+          body: JSON.stringify({
+            p_question_id: questionId,
+            p_score: value,
+            // Recovered from the feed row that rendered this card. If it is
+            // missing the server rejects with RENDITION_REQUIRED rather than
+            // attributing the answer to whatever is published now — a loud
+            // failure is correct here, since the alternative is a fabricated
+            // measurement.
+            p_rendition_id: renditionByQuestionId.get(questionId) ?? null,
+          }),
         });
       } finally {
         setSubmittingQuestionId(null);
@@ -3345,7 +3392,7 @@ export default function IndexPage() {
         }
       }).catch(() => { /* silent — ack is non-critical */ });
     },
-    [sb, session, userId, qc, navigate, regionLabel, fetchDistribution, fetchCardStats]
+    [sb, session, userId, qc, navigate, regionLabel, fetchDistribution, fetchCardStats, renditionByQuestionId]
   );
 
   const redirectToLogin = React.useCallback(
