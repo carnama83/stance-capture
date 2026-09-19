@@ -60,7 +60,7 @@ serve(async (req)=>{
     });
   }
   try {
-    const { phone_number, question_id, question_text, question_summary, broadcast_id, verification_mode, forward_chain_id, test_draft } = await req.json();
+    const { phone_number, question_id, question_text, question_summary, broadcast_id, verification_mode, forward_chain_id, test_draft, language_code } = await req.json();
     // ── Input validation ────────────────────────────────────────────────────
     if (!phone_number) {
       return new Response(JSON.stringify({
@@ -237,17 +237,44 @@ serve(async (req)=>{
         }
       });
     }
-    const truncatedText = question_text.length > 300 ? question_text.substring(0, 297) + "..." : question_text;
-    const truncatedSummary = question_summary && question_summary.length > 150 ? question_summary.substring(0, 147) + "..." : question_summary ?? "";
+    // ── F2 / UGQ-ML-C03: send a RENDITION, and record which one ──────────────
+    // The card used to carry whatever question_text the caller passed in, with
+    // slider labels read straight off questions -- i.e. always the English. Under
+    // F2 the wording that goes out has to be a published rendition, and the same
+    // row has to be recorded on the session, so the response can be attributed to
+    // the words the recipient actually read rather than to whatever is current
+    // when they reply.
+    const { data: wording, error: wordingErr } = await supabase
+      .rpc("wording_to_send", {
+        p_question_id: question_id,
+        p_language_code: typeof language_code === "string" && language_code ? language_code : "en",
+      });
+    const sendRendition = Array.isArray(wording) ? wording[0] : wording;
 
-    // ── Option B: build the 5 stance options from the question's context poles ──
-    const { data: qRow } = await supabase
-      .from("questions")
-      .select("slider_low_label, slider_high_label")
-      .eq("id", question_id)
-      .maybeSingle();
-    const lowLabel = (qRow?.slider_low_label || "Not delivered").slice(0, 30);
-    const highLabel = (qRow?.slider_high_label || "Fully delivered").slice(0, 30);
+    // No published wording means the question is not answerable in any language
+    // right now. Sending it anyway would collect responses against text with no
+    // provenance -- exactly what this design forbids.
+    if (wordingErr || !sendRendition?.rendition_id) {
+      console.error("[whatsapp-send-flow] no publishable wording", { question_id, wordingErr });
+      return new Response(JSON.stringify({
+        sent: false,
+        reason: "no_published_wording",
+      }), { status: 409, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } });
+    }
+
+    // question_text from the caller is now only a fallback for a rendition with
+    // no text, which the publish gate should already make impossible.
+    const outboundText = sendRendition.rendered_text || question_text;
+    const outboundSummary = sendRendition.context_summary || question_summary || "";
+
+    const truncatedText = outboundText.length > 300 ? outboundText.substring(0, 297) + "..." : outboundText;
+    const truncatedSummary = outboundSummary.length > 150 ? outboundSummary.substring(0, 147) + "..." : outboundSummary;
+
+    // Poles come from the SAME rendition as the question text. Taking the text
+    // from a Hindi rendition and the labels from the English question would put
+    // a two-language card in front of the recipient.
+    const lowLabel = (sendRendition.slider_low_label || "Not delivered").slice(0, 30);
+    const highLabel = (sendRendition.slider_high_label || "Fully delivered").slice(0, 30);
     const stanceOptions = [
       { id: "2", title: highLabel },
       { id: "1", title: "Mostly yes" },
@@ -265,6 +292,8 @@ serve(async (req)=>{
       phone_hash: phoneHash,
       broadcast_id: broadcast_id ?? null,
       forward_chain_id: forward_chain_id ?? null,
+      // UGQ-ML-C03: the wording that went out, captured at send time.
+      rendition_id: sendRendition.rendition_id,
     });
 
     // Two send modes:

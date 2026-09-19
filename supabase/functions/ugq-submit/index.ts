@@ -121,7 +121,11 @@ serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const rawQuestion = typeof body.raw_question === "string" ? body.raw_question.trim() : "";
     if (rawQuestion.length < 20 || rawQuestion.length > 1000) {
-      return jsonError(400, "INVALID_QUESTION", "Question must be between 20 and 500 characters");
+      // Sep 2026, FIXED (defect UGQ-D5): the message said 500 while the check
+      // above — and the uqp_raw_question_len CHECK constraint behind it — have
+      // both been 20-1000 since the limit was widened. A proposer who hit this
+      // was told to cut a question that was actually within bounds.
+      return jsonError(400, "INVALID_QUESTION", "Question must be between 20 and 1000 characters");
     }
     const sourceUrl = typeof body.source_url === "string" ? body.source_url.slice(0, 2048) : null;
     const sourceDescription = typeof body.source_description === "string" ? body.source_description.slice(0, 1000) : null;

@@ -31,18 +31,21 @@ import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
 import { getSupabase } from "@/lib/supabaseClient";
-import { useLanguage, UI_LANGUAGE_CHANGE_EVENT } from "./useLanguage";
+import { useLanguage, readStoredUiLanguage, UI_LANGUAGE_CHANGE_EVENT } from "./useLanguage";
 
 export const UI_LANGUAGE_STORAGE_KEY = "sc_ui_language";
+
+// Sep 2026, NEW: records THAT a deliberate choice was made, separately from
+// WHICH language was chosen. The value alone cannot carry that signal: the
+// header toggle used to render unconditionally, so a large number of browsers
+// have sc_ui_language="en" saved from a single click on an already-active
+// button, which is indistinguishable from never having chosen at all. Anything
+// written before this key existed is therefore treated as "no explicit choice",
+// while a new choice counts regardless of which language it names — including
+// English, which a stored-value heuristic could never honour.
+export const UI_LANGUAGE_EXPLICIT_KEY = "sc_ui_language_explicit";
 const DEFAULT_LANGUAGE = "en"; // mirrors useLanguage.ts's own DEFAULT_LANGUAGE
 
-function readStoredUiLanguage(): string | null {
-  try {
-    return window.localStorage.getItem(UI_LANGUAGE_STORAGE_KEY);
-  } catch {
-    return null; // private browsing / storage disabled — just means no override, not an error
-  }
-}
 
 export interface UseUiLanguageResult {
   languageCode: string;
@@ -78,6 +81,24 @@ export function useUiLanguage(userId: string | null | undefined): UseUiLanguageR
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profileLanguageCode, profileLoading]);
 
+  // Sep 2026, NEW: every mounted instance of this hook converges on the same
+  // value. The state above is per-instance, so once a SECOND component called
+  // this hook (SettingsProfile, so its control could see the language actually
+  // on screen rather than only the profile row), the two could hold different
+  // languages indefinitely: the one that handled the click moved, the other did
+  // not, and each drives i18n.changeLanguage and <html lang> from its own copy.
+  // The visible symptom was the header pill still reading EN over a page
+  // rendering Hindi. useLanguage already listens to this same event for exactly
+  // this reason; the hook that OWNS the value was the one not listening to it.
+  React.useEffect(() => {
+    const onChange = () => {
+      const next = readStoredUiLanguage();
+      if (next) setLanguageCodeState(next); // same value => React bails out
+    };
+    window.addEventListener(UI_LANGUAGE_CHANGE_EVENT, onChange);
+    return () => window.removeEventListener(UI_LANGUAGE_CHANGE_EVENT, onChange);
+  }, []);
+
   // Keeps i18next's active language, and <html lang>, in sync with whatever
   // languageCode above resolved to — the single place either now gets set,
   // replacing the effect AppTopBar used to run directly against useLanguage.
@@ -91,6 +112,9 @@ export function useUiLanguage(userId: string | null | undefined): UseUiLanguageR
       setLanguageCodeState(code);
       try {
         window.localStorage.setItem(UI_LANGUAGE_STORAGE_KEY, code);
+        // Marks this as a real choice by a real person, which is what
+        // useLanguage and useShouldShowLanguageToggle now key off.
+        window.localStorage.setItem(UI_LANGUAGE_EXPLICIT_KEY, "1");
       } catch {
         // Non-fatal — the choice still applies for the rest of this session
         // via React state, it just won't survive a reload.

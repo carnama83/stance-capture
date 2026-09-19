@@ -24,6 +24,30 @@
 // the stance axis (question + slider labels), not supplementary background
 // text, so a context_summary translation quirk never flips transform_status.
 //
+// Sep 2026, FIX (UGQ-D7): the Anthropic system prompt is now run through
+// fillTemplate like the user prompt already was. It previously went out RAW,
+// so {{target_language_name}} — which question_essence_transform references
+// ONLY in its system prompt — reached the model unsubstituted and the
+// translator was never told which language to produce. Both prompts are now
+// asserted fully substituted before the call, so this class of failure is
+// loud (rendition retried, error surfaced) instead of silent nonsense.
+//
+// Sep 2026, F2: the transform source is now the question's ORIGINAL rendition
+// (the proposer-approved wording) rather than questions.question, so a
+// non-English question's other renditions are no longer derived from an
+// unverified English translation. Publishing goes through
+// publish_rendition_version() so supersede+publish stays atomic and the
+// publish gate is enforced once -- setting transform_status='published' no
+// longer makes anything live. A failed equivalence check now drives a bounded
+// repair loop (max 3) that feeds the checker's own explanation back in as a
+// correction target, instead of flagging on the first miss.
+//
+// Sep 2026, UGQ-O5: generation failures are now logged and persisted
+// (failure_count / last_error) instead of existing only in an HTTP response
+// body the cron discards, and admin_claim_rendition_jobs stops claiming a row
+// after 5 consecutive failures. Before this a permanently failing rendition
+// retried every minute forever, silently.
+//
 // Auth: x-cron-secret header must match CRON_SECRET.
 // Env required: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, CRON_SECRET,
 //               ANTHROPIC_API_KEY, ANTHROPIC_VERSION (optional, defaults below)
@@ -41,6 +65,8 @@ interface RenditionRow {
   question_id: string;
   language_code: string;
   generation_reason: string | null;
+  // UGQ-O5: returned by both claim RPCs (they select *), used to bound retries.
+  failure_count: number | null;
 }
 
 interface QuestionRow {
@@ -108,7 +134,32 @@ function fillTemplate(template: string, vars: Record<string, string>): string {
   return out;
 }
 
-async function callClaude(prompt: AiPromptRow, filledUserPrompt: string): Promise<any> {
+function requireFullySubstituted(label: string, text: string): string {
+  const leftover = text.match(/\{\{\w+\}\}/g);
+  if (leftover) {
+    throw new Error(
+      `${label} still contains unsubstituted variables: ${[...new Set(leftover)].join(", ")}`,
+    );
+  }
+  return text;
+}
+
+// UGQ-D7 (Sep 2026): system_prompt used to be sent RAW while only
+// user_prompt_template went through fillTemplate. Both prompt rows reference
+// {{target_language_name}} in their SYSTEM prompt, and question_essence_transform
+// does not reference it in its user template at all — so the translator was never
+// told which language to translate into and echoed the English back. Every
+// prompt part now goes through fillTemplate and is asserted fully substituted.
+async function callClaude(
+  prompt: AiPromptRow,
+  filledUserPrompt: string,
+  vars: Record<string, string>,
+): Promise<any> {
+  const filledSystemPrompt = requireFullySubstituted(
+    "system_prompt",
+    fillTemplate(prompt.system_prompt, vars),
+  );
+  requireFullySubstituted("user_prompt", filledUserPrompt);
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -124,7 +175,7 @@ async function callClaude(prompt: AiPromptRow, filledUserPrompt: string): Promis
       // parameter outright ("temperature is deprecated for this model"),
       // confirmed against the real API, not just out-of-range. Sending it
       // at all fails every call regardless of value.
-      system: prompt.system_prompt,
+      system: filledSystemPrompt,
       messages: [{ role: "user", content: filledUserPrompt }],
     }),
   });
@@ -136,12 +187,87 @@ async function callClaude(prompt: AiPromptRow, filledUserPrompt: string): Promis
 
   const data = await res.json();
   const textBlock = data.content?.find((b: any) => b.type === "text");
-  if (!textBlock) throw new Error("No text content in Anthropic response");
+  if (!textBlock) {
+    // UGQ-O5: "No text content in Anthropic response" on its own was a dead end.
+    // The usual cause is the token budget being consumed before any text block
+    // is emitted, so say so: stop_reason distinguishes that from a genuinely
+    // empty reply, and the block types show what the budget went on.
+    throw new Error(
+      "No text content in Anthropic response " +
+      `(stop_reason=${data.stop_reason ?? "unknown"}, ` +
+      `blocks=[${(data.content ?? []).map((b: any) => b.type).join(",") || "none"}], ` +
+      `max_tokens=${prompt.max_tokens}, usage=${JSON.stringify(data.usage ?? {})})`,
+    );
+  }
 
-  try {
-    return JSON.parse(textBlock.text);
-  } catch {
-    throw new Error(`Failed to parse JSON from model output: ${textBlock.text.slice(0, 300)}`);
+  // Models routinely wrap JSON in a markdown fence even when told not to, and
+  // a bare JSON.parse treats that as a hard failure -- the rendition throws, is
+  // retried, and throws again for the same reason. Surfaced by a QA fault
+  // injection whose reply came back fenced; the parse error was indistinguishable
+  // from a genuinely malformed response.
+  const raw = String(textBlock.text ?? "").trim();
+  const unfenced = raw
+    .replace(/^```(?:json)?s*/i, "")
+    .replace(/s*```$/, "")
+    .trim();
+
+  for (const candidate of [unfenced, raw]) {
+    try {
+      return JSON.parse(candidate);
+    } catch { /* fall through to the next shape */ }
+  }
+
+  // Last resort: the outermost {...} in the reply. Covers a model that prefixes
+  // prose before the object.
+  const first = unfenced.indexOf("{");
+  const last = unfenced.lastIndexOf("}");
+  if (first >= 0 && last > first) {
+    try {
+      return JSON.parse(unfenced.slice(first, last + 1));
+    } catch { /* genuinely unparseable */ }
+  }
+
+  throw new Error(`Failed to parse JSON from model output: ${raw.slice(0, 300)}`);
+}
+
+interface OriginalRow {
+  id: string;
+  language_code: string;
+  rendered_text: string;
+  slider_low_label: string | null;
+  slider_high_label: string | null;
+  context_summary: string | null;
+}
+
+// F2: the proposer-approved source wording, which is what a rendition must
+// preserve. Previously every transform read questions.question -- i.e. the
+// ENGLISH -- so a Hindi-origin question's Marathi rendition was derived from
+// a translation nobody had verified.
+async function fetchOriginal(questionId: string): Promise<OriginalRow> {
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/question_renditions?question_id=eq.${questionId}` +
+    `&rendition_type=eq.original&lifecycle_status=eq.published` +
+    `&select=id,language_code,rendered_text,slider_low_label,slider_high_label,context_summary&limit=1`,
+    { headers: restHeaders() },
+  );
+  if (!res.ok) throw new Error(`Failed to fetch original for ${questionId}: ${res.status}`);
+  const rows = await res.json();
+  if (!rows.length) throw new Error(`Question ${questionId} has no published original rendition`);
+  return rows[0];
+}
+
+// Publishing goes through the RPC so supersede+publish stays atomic and the
+// publish gate is enforced in one place. Setting transform_status to
+// 'published' directly no longer makes anything live.
+async function publishRendition(renditionId: string) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/publish_rendition_version`, {
+    method: "POST",
+    headers: restHeaders(),
+    body: JSON.stringify({ p_rendition_id: renditionId }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`publish_rendition_version failed for ${renditionId}: ${res.status} ${text.slice(0, 300)}`);
   }
 }
 
@@ -157,71 +283,117 @@ async function updateRendition(id: string, patch: Record<string, unknown>) {
   }
 }
 
+// Maximum regeneration attempts before a human is asked to look. The proposal
+// is never rejected for this: a valid native-language question must not be
+// blamed for the system failing to represent it.
+const MAX_REPAIR_ATTEMPTS = 3;
+
 async function processRendition(
   rendition: RenditionRow,
   transformPrompt: AiPromptRow,
   equivalencePrompt: AiPromptRow,
 ) {
-  const [question, targetLanguageName] = await Promise.all([
+  const [question, original, targetLanguageName] = await Promise.all([
     fetchQuestion(rendition.question_id),
+    fetchOriginal(rendition.question_id),
     fetchLanguageName(rendition.language_code),
   ]);
 
-  // 1. Essence-preserving transform (Sep 2026: now also translates
-  //    context_summary, when present, in this same call — see header note).
-  const transformUserPrompt = fillTemplate(transformPrompt.user_prompt_template, {
-    target_language_name: targetLanguageName,
-    canonical_text: question.question,
-    slider_low_label: question.slider_low_label ?? "Strongly oppose",
-    slider_high_label: question.slider_high_label ?? "Strongly support",
-    context_summary: question.context_summary ?? "",
-  });
-  const transformResult = await callClaude(transformPrompt, transformUserPrompt);
-
-  // 2. Axis equivalence check — independent pass over the transform's own output,
-  //    not the same call grading itself. Scoped to the stance axis only
-  //    (question + slider labels) — context_summary is supplementary
-  //    background, not part of what this check verifies.
-  const equivalenceUserPrompt = fillTemplate(equivalencePrompt.user_prompt_template, {
-    target_language_name: targetLanguageName,
-    canonical_text: question.question,
-    slider_low_label: question.slider_low_label ?? "Strongly oppose",
-    slider_high_label: question.slider_high_label ?? "Strongly support",
-    rendered_text: transformResult.rendered_text,
-    rendered_slider_low: transformResult.slider_low_label ?? "",
-    rendered_slider_high: transformResult.slider_high_label ?? "",
-  });
-  const equivalenceResult = await callClaude(equivalencePrompt, equivalenceUserPrompt);
-
-  // 3. Final status
-  //    - community_proposer: pass auto-publishes (proposer sees it immediately,
-  //      matching English's own instant-publish path); anything else flags for review
-  //    - editorial_pipeline / anything else: never auto-publishes — always lands
-  //      in the admin review queue, 'transformed' if clean or 'flagged' if not
-  let finalStatus: string;
-  if (rendition.generation_reason === "community_proposer") {
-    finalStatus = equivalenceResult.result === "pass" ? "published" : "flagged";
-  } else {
-    finalStatus = equivalenceResult.result === "pass" ? "transformed" : "flagged";
+  // A rendition in the source's own language would be a round trip through a
+  // model back to words the proposer already approved -- the one outcome this
+  // design exists to prevent.
+  if (rendition.language_code === original.language_code) {
+    throw new Error(
+      `Rendition ${rendition.id} targets ${rendition.language_code}, which is the ` +
+      `question's source language; the original is authoritative and is never regenerated`,
+    );
   }
+
+  const sourceLanguageName = await fetchLanguageName(original.language_code);
+
+  const lowLabel  = original.slider_low_label  ?? question.slider_low_label  ?? "Strongly oppose";
+  const highLabel = original.slider_high_label ?? question.slider_high_label ?? "Strongly support";
+
+  let transformResult: any = null;
+  let equivalenceResult: any = null;
+  let attempts = 0;
+  let lastFailureNote: string | null = null;
+
+  // Bounded repair loop. Each retry carries the checker's own explanation back
+  // in as a correction target -- a blind retry of a non-deterministic call is
+  // not a repair strategy, it is a coin flip.
+  while (attempts < MAX_REPAIR_ATTEMPTS) {
+    attempts++;
+
+    const transformVars = {
+      target_language_name: targetLanguageName,
+      source_language_name: sourceLanguageName,
+      canonical_text: original.rendered_text,
+      slider_low_label: lowLabel,
+      slider_high_label: highLabel,
+      context_summary: original.context_summary ?? question.context_summary ?? "",
+    };
+    let transformUserPrompt = fillTemplate(transformPrompt.user_prompt_template, transformVars);
+    if (lastFailureNote) {
+      transformUserPrompt +=
+        "\n\nThe previous attempt was REJECTED by an independent equivalence check " +
+        "for this reason:\n" + lastFailureNote + "\n" +
+        "Produce a new rendition that fixes precisely that problem while keeping " +
+        "the stance axis identical to the source.";
+    }
+    transformResult = await callClaude(transformPrompt, transformUserPrompt, transformVars);
+
+    // Independent pass over the transform's own output -- not the same call
+    // grading itself. Scoped to the stance axis (question + slider labels);
+    // context_summary is supplementary background and never flips the verdict.
+    const equivalenceVars = {
+      target_language_name: targetLanguageName,
+      source_language_name: sourceLanguageName,
+      canonical_text: original.rendered_text,
+      slider_low_label: lowLabel,
+      slider_high_label: highLabel,
+      rendered_text: transformResult.rendered_text,
+      rendered_slider_low: transformResult.slider_low_label ?? "",
+      rendered_slider_high: transformResult.slider_high_label ?? "",
+    };
+    const equivalenceUserPrompt = fillTemplate(equivalencePrompt.user_prompt_template, equivalenceVars);
+    equivalenceResult = await callClaude(equivalencePrompt, equivalenceUserPrompt, equivalenceVars);
+
+    if (equivalenceResult.result === "pass") break;
+    lastFailureNote = equivalenceResult.notes ?? "No explanation returned by the checker.";
+  }
+
+  const passed = equivalenceResult?.result === "pass";
+
+  // community_proposer: a pass goes live immediately, matching the source
+  // language's own instant-publish path. Everything else lands in the admin
+  // queue. Neither path may bypass the publish gate.
+  const shouldPublish = passed && rendition.generation_reason === "community_proposer";
 
   await updateRendition(rendition.id, {
     rendered_text: transformResult.rendered_text,
     slider_low_label: transformResult.slider_low_label ?? null,
     slider_high_label: transformResult.slider_high_label ?? null,
-    // Sep 2026, NEW: empty string from the model (no source context_summary,
-    // or a genuine empty translation) is stored as null, matching
-    // questions.context_summary's own null-when-absent convention.
     context_summary: typeof transformResult.rendered_context_summary === "string" && transformResult.rendered_context_summary.trim()
       ? transformResult.rendered_context_summary.trim()
       : null,
-    transform_status: finalStatus,
+    transform_status: passed ? "transformed" : "flagged",
     transform_model: transformPrompt.model,
     axis_equivalence_check: equivalenceResult.result,
-    axis_equivalence_notes: equivalenceResult.notes ?? null,
+    axis_equivalence_notes: attempts > 1
+      ? "[" + attempts + " attempts] " + (equivalenceResult.notes ?? "")
+      : (equivalenceResult.notes ?? null),
+    derived_from_rendition_id: original.id,
   });
 
-  return finalStatus;
+  if (shouldPublish) await publishRendition(rendition.id);
+
+  // Reset on success: the cap counts CONSECUTIVE failures, not lifetime ones.
+  if ((rendition.failure_count ?? 0) > 0) {
+    await updateRendition(rendition.id, { failure_count: 0, last_error: null }).catch(() => {});
+  }
+
+  return shouldPublish ? "published" : (passed ? "transformed" : "flagged");
 }
 
 Deno.serve(async (req: Request) => {
@@ -280,10 +452,31 @@ Deno.serve(async (req: Request) => {
       succeeded++;
       if (singleRenditionId) singleResultStatus = finalStatus;
     } catch (err) {
-      errors.push(`${rendition.id}: ${err}`);
-      // Clear claimed_at so it's retried next sweep rather than stuck for
-      // the full 10-minute stale window. No retry cap yet — see note below.
-      await updateRendition(rendition.id, { claimed_at: null }).catch(() => {});
+      const message = err instanceof Error ? err.message : String(err);
+      errors.push(`${rendition.id}: ${message}`);
+
+      // UGQ-O5: log it. Previously the only record of a failure was the HTTP
+      // response body, which admin.cron_generate_renditions discards -- so a
+      // rendition could fail every minute forever and leave no trace anywhere
+      // an operator would look.
+      console.error(JSON.stringify({
+        event: "rendition_generation_failed",
+        rendition_id: rendition.id,
+        question_id: rendition.question_id,
+        language_code: rendition.language_code,
+        error: message.slice(0, 1000),
+      }));
+
+      // Persist the reason and count the attempt. admin_claim_rendition_jobs
+      // stops claiming at 5, so a permanently broken row is flagged for a
+      // human instead of burning an Anthropic call every sweep. Clearing
+      // claimed_at still lets a transient failure retry on the next sweep
+      // rather than waiting out the 10-minute stale window.
+      await updateRendition(rendition.id, {
+        claimed_at: null,
+        failure_count: (rendition.failure_count ?? 0) + 1,
+        last_error: message.slice(0, 2000),
+      }).catch(() => {});
     }
   }
 

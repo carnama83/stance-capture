@@ -76,14 +76,22 @@ type QueueRow = {
   pending_authority_domain: string | null;
 };
 
+// Sep 2026 (defect UGQ-D6): 'resubmit_requested' and 'withdrawn' were missing
+// here while both are real uqp_status_check values. admin_ugq_queue filters on
+// whatever p_status it is handed, so the rows existed and were queryable — they
+// just had no tab, which meant a proposal bounced back for a re-record was
+// visible only by scanning "All". Kept in the lifecycle order a proposal
+// actually moves through, with the terminal states last.
 const STATUS_TABS: { value: string; label: string }[] = [
   { value: "proposed", label: "New" },
   { value: "in_review", label: "In review" },
+  { value: "resubmit_requested", label: "Re-record requested" },
   { value: "approved", label: "Approved" },
   { value: "reframing", label: "Reframing" },
   { value: "reframed", label: "Reframed" },
   { value: "published", label: "Published" },
   { value: "rejected", label: "Rejected" },
+  { value: "withdrawn", label: "Withdrawn" },
   { value: "all", label: "All" },
 ];
 
@@ -309,6 +317,27 @@ function ModerationPanel({ row, topics, onDone }: { row: QueueRow; topics: Topic
 
   return (
     <div className="rounded-md border border-slate-200 p-3 space-y-3">
+      {/* Sep 2026 (defect UGQ-D2, second half): ugq-screen has a
+          stuck-preview-retry branch for a proposal that cleared Gate 1 but
+          ended up with no preview_reframe, and ugq-moderate's rescreen now
+          lets that case through. Neither mattered while this panel rendered
+          the Re-screen button ONLY for status='proposed' — the same gate the
+          backend used to have, so the recovery path was still unreachable by
+          a human. Shown only when the row is genuinely stuck, so it does not
+          clutter the normal in_review panel. */}
+      {row.status === "in_review" && !row.preview_reframe && (
+        <div className="rounded-md border border-amber-300 bg-amber-50 p-3">
+          <Button size="sm" variant="outline" disabled={!!busy}
+            onClick={() => run({ proposal_id: row.id, action: "rescreen" }, "rescreen")}>
+            {busy === "rescreen" ? "Screening…" : "Re-screen (Gate 1)"}
+          </Button>
+          <p className="mt-2 text-xs text-amber-800">
+            This proposal cleared Gate 1 but has no preview, so the proposer has nothing to
+            review or publish. Re-screening regenerates just the preview — it does not re-run
+            Gate 1 or change the topic.
+          </p>
+        </div>
+      )}
       {row.auto_topic_id && row.auto_topic_id === topicId && (
         row.auto_topic_status === "pending" ? (
           <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5">
