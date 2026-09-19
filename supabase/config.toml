@@ -122,6 +122,22 @@ verify_jwt = false
 [functions.ugq-publish]
 verify_jwt = false
 
+[functions.ugq-moderate]
+# Sep 2026 (F2 promotion): MUST stay false. ugq-verify-preview and ugq-screen call
+# this endpoint server-to-server with x-cron-secret ONLY -- runtime-injected
+# Authorization/apikey headers are rejected at the gateway on these projects (the
+# v3 fix, 2026-07-06). Letting the CLI default this back to true silently breaks
+# the whole voice/video fact-check path, which fails OPEN, so nobody is told.
+verify_jwt = false
+
+[functions.ugq-video-url]
+# Sep 2026 (F2 promotion): MUST stay false. Deliberately public and
+# unauthenticated -- this app supports anonymous browsing and a published video
+# question is public content. It takes only question_id and looks the storage
+# path up server-side, so there is nothing to probe. true here would break
+# playback for every signed-out viewer.
+verify_jwt = false
+
 [functions.whatsapp-flow-webhook]
 enabled = true
 verify_jwt = false
