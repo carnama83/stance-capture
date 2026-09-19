@@ -1382,7 +1382,19 @@ function YouVsSociety({
                 {fingerprint.summaryTags.slice(0, 2).join(", ").toLowerCase()}
               </p>
               <p className="mt-1.5 text-sm leading-relaxed" style={{ color: C.body }}>
-                {t("home.drawnFromAnswers", { answered, topics: topicsAnswered })}
+                {/*
+                  `count` is what selects the plural form. The key exists only
+                  as drawnFromAnswers_one / _other, so without it i18next looks
+                  up the bare "home.drawnFromAnswers", finds nothing in hi OR
+                  en, and renders the raw key into the DOM. This was visible in
+                  English too — it was never a Hindi gap. `answered` is kept
+                  alongside because the message interpolates it by name.
+                */}
+                {t("home.drawnFromAnswers", {
+                  count: answered,
+                  answered,
+                  topics: topicsAnswered,
+                })}
               </p>
             </>
           ) : (

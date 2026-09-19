@@ -1,0 +1,175 @@
+// PR 1.8 — the Hindi-mode DOM scan.
+//
+// This is the PRIMARY regression instrument for localization, not the key
+// parity check. Parity compares two JSON files and was green throughout the
+// entire drawnFromAnswers bug, where a raw i18n key rendered into the page in
+// BOTH languages because the call site omitted `count` and neither plural
+// variant resolved. Only looking at what actually reached the DOM finds that.
+//
+// It also replaces grepping source for JSX string literals, which rots as soon
+// as components move and cannot see text assembled at runtime.
+//
+// Two independent assertions:
+//
+//   1. Latin-script leakage, Hindi mode only, Class-4 content exempt.
+//   2. Raw i18n keys, BOTH languages, NOTHING exempt. A key like
+//      "home.drawnFromAnswers" in the DOM is always a bug.
+//
+// Requires a running app: `npm run dev`, or set PLAYWRIGHT_BASE_URL.
+
+import { test, expect, type Page } from "@playwright/test";
+
+/**
+ * Never translated (content Class 5). Keep this list SHORT and specific.
+ *
+ * Every addition weakens the test, so the bar is "this is a proper noun that a
+ * Hindi page would legitimately render in Latin script" — not "this string is
+ * currently failing and I want green". In particular the English-language
+ * indicator chip must NOT be added: it renders as अंग्रेज़ी में in Hindi mode
+ * (PR 1.9), and allowlisting "English" here would hand-wave a real leak.
+ */
+const PROPER_NOUN_ALLOWLIST = [
+  "Stance Capture",
+  "Reuters",
+  "BBC",
+  "CNN",
+  "The Hindu",
+  "OpenAI",
+  "Microsoft",
+  "US",
+  "S&P",
+  "OPT",
+  "PPI",
+  "F-1",
+];
+
+/** Routes to scan. HashRouter, so language rides in the hash query string. */
+const ROUTES: Array<{ name: string; path: string }> = [
+  { name: "homepage", path: "/#/" },
+  { name: "trending", path: "/#/trending" },
+  { name: "my-stances", path: "/#/my-stances" },
+];
+
+type Finding = { text: string; tag: string; path: string };
+
+async function collectFindings(page: Page): Promise<{
+  latin: Finding[];
+  rawKeys: Finding[];
+  pendingCount: number;
+}> {
+  return page.evaluate((allowlist: string[]) => {
+    const isSuspiciousLatin = (text: string): boolean => {
+      const t = text.trim();
+      if (!t || t.length < 3) return false;
+      if (allowlist.some((n) => t.includes(n))) return false;
+      // Pure numbers, dates, percentages and punctuation are script-neutral.
+      if (/^[\d\s.,:%+\-–—/()]+$/.test(t)) return false;
+      const latin = (t.match(/[A-Za-z]/g) || []).length;
+      const deva = (t.match(/[ऀ-ॿ]/g) || []).length;
+      return latin > deva;
+    };
+
+    // "a.b" or "a.b.c" with no spaces — the shape of an unresolved i18n key.
+    const isRawI18nKey = (text: string): boolean =>
+      /^[a-z][a-zA-Z0-9]*(\.[a-zA-Z0-9]+)+$/.test(text.trim());
+
+    const describe = (el: Element | null): string => {
+      const parts: string[] = [];
+      let cur = el;
+      let hops = 0;
+      while (cur && hops < 4) {
+        const id = cur.id ? `#${cur.id}` : "";
+        const cls =
+          typeof cur.className === "string" && cur.className
+            ? `.${cur.className.trim().split(/\s+/).slice(0, 2).join(".")}`
+            : "";
+        parts.unshift(`${cur.tagName.toLowerCase()}${id}${cls}`);
+        cur = cur.parentElement;
+        hops++;
+      }
+      return parts.join(" > ");
+    };
+
+    const latin: Array<{ text: string; tag: string; path: string }> = [];
+    const rawKeys: Array<{ text: string; tag: string; path: string }> = [];
+
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    let node: Node | null;
+    while ((node = walker.nextNode())) {
+      const text = (node.textContent ?? "").trim();
+      if (!text) continue;
+
+      const parent = node.parentElement;
+      if (!parent) continue;
+
+      // Skip anything not actually rendered.
+      const style = window.getComputedStyle(parent);
+      if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0") continue;
+      if (parent.closest("script, style, noscript, template")) continue;
+
+      const entry = { text, tag: parent.tagName.toLowerCase(), path: describe(parent) };
+
+      // Raw keys are checked everywhere, with no exemptions at all.
+      if (isRawI18nKey(text)) rawKeys.push(entry);
+
+      // Class-4 derived content is not localized until PR 3. The attribute must
+      // sit on the Class-4 container itself, never a section or page wrapper —
+      // otherwise it hides unrelated English chrome from this test.
+      if (parent.closest("[data-i18n-pending]")) continue;
+
+      if (isSuspiciousLatin(text)) latin.push(entry);
+    }
+
+    return {
+      latin,
+      rawKeys,
+      pendingCount: document.querySelectorAll("[data-i18n-pending]").length,
+    };
+  }, PROPER_NOUN_ALLOWLIST);
+}
+
+async function settle(page: Page, path: string, lang: string) {
+  const sep = path.includes("?") ? "&" : "?";
+  await page.goto(`${path}${sep}lang=${lang}`);
+  await page.waitForLoadState("networkidle").catch(() => {});
+  // Feeds resolve after first paint; give the localized RPCs a beat to land.
+  await page.waitForTimeout(1500);
+}
+
+const fmt = (f: Finding[]) =>
+  f.map((x) => `  • ${JSON.stringify(x.text.slice(0, 80))}\n      at ${x.path}`).join("\n");
+
+for (const route of ROUTES) {
+  test(`[hi] no Latin-script chrome leaks on ${route.name}`, async ({ page }) => {
+    await settle(page, route.path, "hi");
+    const { latin } = await collectFindings(page);
+    expect(
+      latin,
+      `Untranslated Latin-script text in Hindi mode on ${route.name}:\n${fmt(latin)}\n\n` +
+        `Fix by adding an i18n key, or — only for Class-4 derived content — by ` +
+        `putting data-i18n-pending="<what>" on that content's own container.`
+    ).toEqual([]);
+  });
+
+  for (const lang of ["en", "hi"]) {
+    test(`[${lang}] no raw i18n keys in the DOM on ${route.name}`, async ({ page }) => {
+      await settle(page, route.path, lang);
+      const { rawKeys } = await collectFindings(page);
+      expect(
+        rawKeys,
+        `Unresolved i18n key rendered on ${route.name} (${lang}):\n${fmt(rawKeys)}\n\n` +
+          `A dotted lowercase string in the DOM means t() resolved nothing. ` +
+          `Check for a dynamically built key, or a plural key called without \`count\`.`
+      ).toEqual([]);
+    });
+  }
+}
+
+// PR 3 flips this on: every data-i18n-pending exemption must be gone once
+// derived content is localized. Kept here, skipped, so the check lives with the
+// scan it belongs to rather than being rediscovered later.
+test.skip("PR 3: no data-i18n-pending exemptions remain", async ({ page }) => {
+  await settle(page, ROUTES[0].path, "hi");
+  const { pendingCount } = await collectFindings(page);
+  expect(pendingCount).toBe(0);
+});
