@@ -269,7 +269,22 @@ async function finalize(sb: any, session: any, navigate: any, setStatus: (s: str
         session.access_token
       );
       if (commit.error) {
-        console.warn("[OAuthCallback] commit_staged_stances_for_device_by_user failed (non-fatal):", commit.error);
+        // Not user-fatal: staged rows stay uncommitted and replay on the next
+        // attempt, so nothing is destroyed. But a failure here means stances the
+        // person recorded before signing in are not counted yet, and until PR 0
+        // there was no signal at all that it had happened — the 23502 raised by
+        // the un-migrated commit path was swallowed by a console.warn nobody
+        // reads. The commit path now RAISEs a WARNING into the Supabase logs;
+        // this is the client-side half of that.
+        //
+        // TODO: route to a real telemetry sink once one exists. The repo has no
+        // error-reporting transport today (src/lib/errors.ts is a user-message
+        // mapper, not a reporter), so a greppable console.error is the honest
+        // ceiling rather than inventing a transport here.
+        console.error(
+          "[OAuthCallback][stance-commit-failed] staged stances were not committed for this device:",
+          commit.error
+        );
       }
     }
   }
