@@ -48,6 +48,24 @@ begin
   if v_def is null then
     raise exception 'pr3_02: get_societal_pulse_homepage not found';
   end if;
+
+  -- CRLF NORMALISATION. Added when this reached Prod, where it failed.
+  --
+  -- Prod's stored body uses \r\n; Dev's and UAT's use \n. The single-line
+  -- anchors below still matched there, because they carry no newline -- but the
+  -- three-line `narrative` anchor is joined with chr(10) and could never match
+  -- a \r\n body. The result was the WORST kind of near-miss: two of three
+  -- anchors applied, and only the partial-application guard at the bottom
+  -- caught it and refused. Without that guard Prod would have gained the
+  -- declarations and the flags but never emitted `state`, and the client would
+  -- have silently fallen back to English sentences on Prod alone.
+  --
+  -- Every \r in the body was verified to be part of a \r\n pair (257 pairs, 0
+  -- lone CRs), so stripping them is a line-ending change and nothing else. The
+  -- re-executed function ends up with \n endings, which is also what Dev and
+  -- UAT already have.
+  v_def := replace(v_def, chr(13) || chr(10), chr(10));
+
   v_before := v_def;
 
   -- 1. declare the two flags

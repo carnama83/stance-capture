@@ -46,7 +46,21 @@ from (values
   ('Immigration & Border Control — Global',               'hi', 'आप्रवासन और सीमा नियंत्रण — वैश्विक'),
   ('Infrastructure & Public Services — United States',    'hi', 'बुनियादी ढाँचा और सार्वजनिक सेवाएँ — संयुक्त राज्य अमेरिका'),
   ('Infrastructure Development — India',                  'hi', 'बुनियादी ढाँचा विकास — भारत'),
-  ('Settlement Policies and Agricultural Impact — Israel','hi', 'बस्ती नीतियाँ और कृषि प्रभाव — इज़राइल')
+  ('Settlement Policies and Agricultural Impact — Israel','hi', 'बस्ती नीतियाँ और कृषि प्रभाव — इज़राइल'),
+
+  -- Prod's own topics, added when this reached Prod. Its six share no title
+  -- with Dev or UAT, which is the third independent confirmation that ids were
+  -- never going to carry across environments.
+  --
+  -- "Infrastructure" is rendered बुनियादी ढाँचा throughout rather than the more
+  -- formal अवसंरचना, matching the UAT rows above. Both are standard; mixing them
+  -- inside one label set would read as carelessness.
+  ('Infrastructure Safety',                               'hi', 'बुनियादी ढाँचा सुरक्षा'),
+  ('Infrastructure Safety Accountability',                'hi', 'बुनियादी ढाँचा सुरक्षा जवाबदेही'),
+  ('Public Safety Infrastructure',                        'hi', 'सार्वजनिक सुरक्षा का बुनियादी ढाँचा'),
+  ('Urban Development & Infrastructure — City',           'hi', 'शहरी विकास और बुनियादी ढाँचा — शहर'),
+  ('Digital Infrastructure — United States',              'hi', 'डिजिटल बुनियादी ढाँचा — संयुक्त राज्य अमेरिका'),
+  ('Rural Broadband Expansion Policy',                    'hi', 'ग्रामीण ब्रॉडबैंड विस्तार नीति')
 ) as v(title, language_code, display_name)
 join public.topics t
   on lower(btrim(t.title)) = lower(btrim(v.title))
