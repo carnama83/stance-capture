@@ -209,12 +209,14 @@ for (const route of ROUTES) {
   }
 }
 
-// PR 3 flips this on: every data-i18n-pending exemption must be gone once
-// derived content is localized. Kept here, skipped, so the check lives with the
-// scan it belongs to rather than being rediscovered later.
-test.skip("PR 3: no data-i18n-pending exemptions remain", async ({ page }) => {
+// PR 3.1 — ENABLED. Every Class-4 exemption is gone, because the only content
+// holding one (the societal-pulse narrative) turned out to be deterministic
+// template selection rather than generated prose: the server now sends a state
+// and the client renders it from an i18n template. This asserts none creeps
+// back in.
+test("PR 3: no data-i18n-pending exemptions remain", async ({ page }) => {
   await settle(page, ROUTES[0].path, "hi");
-  const { pendingCount } = await collectFindings(page, lang);
+  const { pendingCount } = await collectFindings(page, "hi");
   expect(pendingCount).toBe(0);
 });
 

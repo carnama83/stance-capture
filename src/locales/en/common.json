@@ -514,5 +514,23 @@
   "language": {
     "shownIn": "In {{language}}",
     "shownInTitle": "This question has not been translated into your language yet, so it is shown in {{language}}."
+  },
+  "pulse": {
+    "fallbackT1": "key topics",
+    "fallbackT2": "public discussion",
+    "STABLE_s1": "Most major topics are showing limited directional change right now, including {{t1}} and {{t2}}.",
+    "STABLE_s2": "Stance signals look relatively steady, with few rapid shifts over the last 24 hours.",
+    "REAWAKENING_s1": "Conversation is reactivating around {{t1}} and {{t2}}, with renewed stance activity after a quieter period.",
+    "REAWAKENING_s2": "Early signals suggest engagement is returning, and positions are still forming.",
+    "REAWAKENING_s2t3": "Early signals suggest engagement is returning, and positions are still forming — especially on {{t3}}.",
+    "POLARIZING_s1": "Stance signals are diverging most sharply on {{t1}} and {{t2}}, with regional alignment beginning to split.",
+    "POLARIZING_s2": "Engagement remains strong, and polarization cues are becoming more visible.",
+    "POLARIZING_s2t3": "Engagement remains strong, and polarization cues are becoming more visible — particularly around {{t3}}.",
+    "ACCELERATING_s1": "Multiple topics are shifting at once — led by {{t1}} and {{t2}} — with noticeable stance movement over the past 48 hours.",
+    "ACCELERATING_s2": "Momentum is broad rather than isolated, with rapid re-evaluation across several topics.",
+    "ACCELERATING_s2t3": "Momentum is broad rather than isolated, and {{t3}} is also seeing rapid re-evaluation.",
+    "FOCUSED_s1": "Movement is concentrated around {{t1}} and {{t2}}, where stance intensity is changing faster than most other topics.",
+    "FOCUSED_s2": "Outside of those, signals look steadier.",
+    "FOCUSED_s2t3": "Outside of those, signals look steadier — though {{t3}} is beginning to pick up."
   }
 }

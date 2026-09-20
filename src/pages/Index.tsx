@@ -213,8 +213,23 @@ type SocietalPulseOutput = {
   state: "STABLE" | "REAWAKENING" | "POLARIZING" | "ACCELERATING" | "FOCUSED";
   narrative: {
     title: string;
+    /** Retained English. Rendered only if the RPC predates PR 3. */
     sentence_1: string;
     sentence_2: string | null;
+    /**
+     * PR 3.1 — the pulse narrative is deterministic template selection, not
+     * generated prose, so the server sends the STATE and the client renders
+     * the sentence from an i18n template. No fact sets, no claim checker.
+     */
+    state?: "STABLE" | "REAWAKENING" | "POLARIZING" | "ACCELERATING" | "FOCUSED";
+    params?: {
+      t1: string | null;
+      t2: string | null;
+      t3: string | null;
+      /** True when no topic qualified and the server substituted a placeholder. */
+      t1_missing?: boolean;
+      t2_missing?: boolean;
+    };
   };
   chips: Array<{
     topic_id: string;
@@ -1000,6 +1015,39 @@ function TheRoomRightNow({
   // Class 3 lookup: topic labels localize where they render, falling back to
   // the canonical English title so an untranslated topic never hides a chip.
   const { topicLabel } = useTopicLabels(i18n.language);
+
+  // PR 3.1 — render the pulse narrative from i18n templates keyed on the
+  // server-supplied state.
+  //
+  // The interpolated topic names are Class 3 metadata: chips arrive ordered by
+  // the same movement_score that selects t1/t2/t3, so the first three chips
+  // give the topic_ids needed to localize them. When the server had no
+  // qualifying topic it substitutes an English placeholder and flags it, so
+  // the placeholder is replaced with a localized one rather than shown.
+  //
+  // Falls back to the server sentences for an RPC predating PR 3, which keeps
+  // a non-atomic deploy readable instead of blank.
+  const pulseSentences = React.useMemo(() => {
+    const n = pulse?.narrative;
+    if (!n) return { s1: "", s2: "" as string | null };
+    if (!n.state || !n.params) return { s1: n.sentence_1, s2: n.sentence_2 };
+
+    const chipName = (i: number, raw: string | null, missing?: boolean) => {
+      if (missing) return i === 0 ? t("pulse.fallbackT1") : t("pulse.fallbackT2");
+      const chip = pulse?.chips?.[i];
+      return chip ? topicLabel(chip.topic_id, chip.title) : (raw ?? "");
+    };
+
+    const t1 = chipName(0, n.params.t1, n.params.t1_missing);
+    const t2 = chipName(1, n.params.t2, n.params.t2_missing);
+    const t3 = n.params.t3 ? chipName(2, n.params.t3) : null;
+
+    const s1 = t(`pulse.${n.state}_s1`, { t1, t2 });
+    const s2 = t3
+      ? t(`pulse.${n.state}_s2t3`, { t3 })
+      : t(`pulse.${n.state}_s2`);
+    return { s1, s2 };
+  }, [pulse, t, topicLabel]);
   const iconGlyph = (icon: SocietalPulseOutput["chips"][number]["icon"]) => {
     switch (icon) {
       case "reawakening": return "↺";
@@ -1021,25 +1069,15 @@ function TheRoomRightNow({
           {pulse?.narrative || (pulse?.chips?.length ?? 0) > 0 ? (
             <>
               {pulse?.narrative && (
-                <p
-                  className="text-sm leading-relaxed"
-                  style={{ color: C.ink }}
-                  /* Content Class 4 — AI-written commentary derived from the
-                     societal-pulse fact set. Not localized until PR 3, which
-                     generates EN and HI as siblings from one fact set rather
-                     than translating one into the other.
-
-                     The attribute sits on THIS paragraph and not on the
-                     surrounding RoomCard on purpose: the card also holds the
-                     title, the blurb and the topic chips, and exempting the
-                     wrapper would hide that untranslated Class-1 and Class-3
-                     text from the Hindi DOM scan. PR 3 asserts zero of these
-                     remain. */
-                  data-i18n-pending="pulse-narrative"
-                >
-                  {pulse.narrative.sentence_1}
-                  {pulse.narrative.sentence_2 && (
-                    <span style={{ color: C.body }}> {pulse.narrative.sentence_2}</span>
+                /* PR 3.1 — localized. The data-i18n-pending exemption that
+                   used to sit here is GONE: the narrative is deterministic
+                   template selection, so the server sends a state and the
+                   client renders the sentence from an i18n template. There is
+                   no generated prose to hold back for a claim checker. */
+                <p className="text-sm leading-relaxed" style={{ color: C.ink }}>
+                  {pulseSentences.s1}
+                  {pulseSentences.s2 && (
+                    <span style={{ color: C.body }}> {pulseSentences.s2}</span>
                   )}
                 </p>
               )}

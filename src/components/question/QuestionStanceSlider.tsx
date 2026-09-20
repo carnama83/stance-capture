@@ -175,6 +175,7 @@ function useDebouncedAiStanceTip(
         );
         return {
           tip: null as string | null,
+          languageCode: null as string | null,
           source: "fallback" as const,
           reason: "invoke_error" as const,
         };
@@ -185,6 +186,12 @@ function useDebouncedAiStanceTip(
         raw && typeof raw.tip === "string" ? (raw.tip as string).trim() : null;
       const source =
         raw && raw.source === "ai" ? ("ai" as const) : ("fallback" as const);
+      // PR 3 — the language the model actually answered in. ai-stance-tip is
+      // told which language to use, but a model instruction is a request and
+      // not a guarantee, so the response reports what it did and the caller
+      // checks rather than assuming.
+      const responseLanguage =
+        raw && typeof raw.language_code === "string" ? (raw.language_code as string) : null;
       const reason = raw?.reason ?? null;
 
       console.info("[QuestionStanceSlider] ai-stance-tip result", {
@@ -194,7 +201,7 @@ function useDebouncedAiStanceTip(
         tip: tipText,
       });
 
-      return { tip: tipText, source, reason };
+      return { tip: tipText, source, reason, languageCode: responseLanguage };
     },
   });
 }
@@ -260,7 +267,41 @@ export function QuestionStanceSlider({
   const label = stanceLabels[value] ?? t("stance.selectStance");
   const fallbackTipKey = STANCE_TIP_KEYS[value];
   const fallbackTip = fallbackTipKey ? t(fallbackTipKey) : "";
-  const tip = aiData?.tip || fallbackTip;
+  // PR 3 — never show AI commentary in a language the reader did not ask for.
+  //
+  // This tip is Class 4 derived content and IS genuinely model-generated,
+  // unlike the societal-pulse narrative, which turned out to be deterministic
+  // templating. The request carries language_code and the prompt instructs the
+  // model, but an instruction is not a guarantee: an English tip was rendering
+  // under a Hindi heading on the live page.
+  //
+  // The response reports its own language, so it is compared with the reader
+  // language here. On a mismatch the localized static explanation is used: a
+  // correct generic sentence beats a specific one the reader cannot read, and
+  // it keeps the page honestly monolingual instead of needing a scan exemption.
+  const aiLanguage = (aiData as any)?.languageCode as string | null | undefined;
+  const readerLanguage = (languageCode ?? "en").split("-")[0].toLowerCase();
+
+  // Absence of confirmation is NOT confirmation.
+  //
+  // A deployed ai-stance-tip that predates language support returns no
+  // language_code at all, so treating "missing" as "fine" would let exactly
+  // the responses most likely to be English through unchecked — which is what
+  // was happening on Dev, where the function source handles language but the
+  // deployed version does not (edge functions deploy separately from
+  // migrations).
+  //
+  // English readers accept unconditionally: English is the model default and a
+  // missing field tells us nothing either way. Every other reader requires the
+  // response to positively state their language, and otherwise gets the
+  // localized static explanation. Fail-safe, and it stays correct after the
+  // function is redeployed.
+  const aiLanguageMatches =
+    readerLanguage === "en"
+      ? true
+      : !!aiLanguage && aiLanguage.split("-")[0].toLowerCase() === readerLanguage;
+
+  const tip = (aiLanguageMatches ? aiData?.tip : null) || fallbackTip;
 
   // Ref guard: fires onInteractionStart exactly once per mount.
   // The slider remounts on question change (key prop), so this resets naturally.
