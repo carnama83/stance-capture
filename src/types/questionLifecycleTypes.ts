@@ -178,6 +178,18 @@ export interface QuestionWithLifecycle {
   slider_low_label?:              string | null;
   slider_high_label?:             string | null;
 
+  // PR 2a — provenance of the wording above.
+  //
+  // The exact question_renditions row the localized RPCs rendered THIS text
+  // from. It must travel with the question all the way to the stance write:
+  // set_question_stance(uuid, integer, uuid) records it verbatim and refuses to
+  // resolve one itself, because "what is published now" is not "what this
+  // respondent read" once wording has been superseded.
+  //
+  // Optional only while the old unlocalized read paths still exist. Never
+  // substitute a fallback value if it is missing — omit the submit instead.
+  rendition_id?:                  string | null;
+
   // Option C: local candidate cross-link
   // For party-level questions — the party's candidate in the user's constituency
   local_candidate_id?:            string | null;

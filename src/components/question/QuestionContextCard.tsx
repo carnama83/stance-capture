@@ -19,11 +19,19 @@
 // still lives in the href.
 
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { Info, ExternalLink } from "lucide-react";
 
 interface QuestionContextCardProps {
   contextSummary?: string | null;
   supportingLinks?: string[] | null;
+  /**
+   * PR 3 — the language contextSummary is actually written in. It comes from
+   * the rendition, so under the D1 permissive fallback it may not be the
+   * reader's. Declared on the paragraph so the reader is told, and so the DOM
+   * scan can tell a declared fallback from an untranslated string.
+   */
+  instrumentLanguageCode?: string | null;
 }
 
 function hostnameOf(url: string): string {
@@ -37,7 +45,9 @@ function hostnameOf(url: string): string {
 export function QuestionContextCard({
   contextSummary,
   supportingLinks,
+  instrumentLanguageCode,
 }: QuestionContextCardProps) {
+  const { t } = useTranslation();
   const text = contextSummary?.trim() || null;
   const links = (supportingLinks ?? []).filter((u): u is string => typeof u === "string" && u.trim().length > 0);
 
@@ -49,14 +59,19 @@ export function QuestionContextCard({
         <Info className="h-4 w-4 text-slate-400 mt-0.5 shrink-0" />
         <div className="min-w-0 flex-1">
           <p className="text-[11px] font-semibold tracking-wide uppercase text-slate-500 mb-1">
-            Background
+            {t("question.background")}
           </p>
 
-          <p className="text-sm text-slate-700 leading-relaxed">{text}</p>
+          <p
+            className="text-sm text-slate-700 leading-relaxed"
+            data-instrument-language={instrumentLanguageCode ?? undefined}
+          >
+            {text}
+          </p>
 
           {links.length > 0 && (
             <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2 pt-2 border-t border-slate-200">
-              <span className="text-[11px] font-medium text-slate-500">Sources:</span>
+              <span className="text-[11px] font-medium text-slate-500">{t("question.sources")}</span>
               {links.slice(0, 3).map((url) => (
                 <a
                   key={url}

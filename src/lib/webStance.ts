@@ -49,17 +49,44 @@ export type WebStanceResult = {
   distribution: { responses: number; pct_high: number; pct_middle: number; pct_low: number };
 };
 
+/** Coarse IP-derived location, best-effort. Used only to resolve a location_id. */
+export type WebStanceGeo = {
+  countryCode?: string | null;
+  region?: string | null;
+  city?: string | null;
+};
+
 /**
  * Record an anonymous web stance. The RPC mints THIS visitor's own ref (parented to
  * the ref they arrived on), dedups by device, writes the stance, and returns the live
  * result. The minted ref is stashed locally so ShareButton can extend the chain.
+ *
+ * `renditionId` is the rendition whose wording the visitor actually read. It is
+ * staged alongside the score so that, if they later sign in, the commit path has
+ * honest provenance to promote. Staging without one is allowed but the row will
+ * be SKIPPED at commit time rather than committed against inferred wording — so
+ * pass it whenever the caller knows it.
+ *
+ * `geo` was previously accepted by callers but silently dropped: this function
+ * declared two parameters while Index.tsx passed three, so p_country_code /
+ * p_state_name / p_city_name were never sent and homepage staged stances never
+ * resolved a location. It is now threaded through properly.
  */
-export async function recordWebStance(questionId: string, score: number): Promise<WebStanceResult> {
+export async function recordWebStance(
+  questionId: string,
+  score: number,
+  renditionId?: string | null,
+  geo?: WebStanceGeo | null,
+): Promise<WebStanceResult> {
   const { data, error } = await supabase.rpc("record_web_stance", {
     p_ref: getRefFromUrl(),
     p_question_id: questionId,
     p_score: score,
     p_device_id: getDeviceId() || null,
+    p_country_code: geo?.countryCode ?? null,
+    p_state_name: geo?.region ?? null,
+    p_city_name: geo?.city ?? null,
+    p_rendition_id: renditionId ?? null,
   });
   if (error) throw error;
   const result = data as WebStanceResult;

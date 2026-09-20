@@ -29,6 +29,11 @@
 //   panel transition is below the fold. Future enhancement: add an inline cue near
 //   the guest slider after first interaction so mobile users get immediate feedback.
 
+import { useTranslation } from "react-i18next";
+import { formatNumber } from "@/lib/intlFormat";
+import { usePlaceLabels } from "@/hooks/usePlaceLabels";
+import { useRenditionLanguages } from "@/hooks/useRenditionLanguages";
+import { ContentLanguageIndicator } from "@/components/question/ContentLanguageIndicator";
 import * as React from "react";
 import { Link } from "react-router-dom";
 import { QuestionStanceSlider } from "@/components/question/QuestionStanceSlider";
@@ -214,6 +219,7 @@ function GuestPreviewCard({
   distribution: HeroDistribution | null;
   state: "locked" | "engaged";
 }) {
+  const { t, i18n } = useTranslation();
   const hasData = distribution != null && (distribution.responses ?? 0) > 0;
   const isLocked = state === "locked";
 
@@ -229,7 +235,7 @@ function GuestPreviewCard({
       {/* Card header */}
       <div className="flex items-center justify-between mb-2">
         <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-          {isLocked ? "Community view" : "Your comparison"}
+          {isLocked ? t("hero.communityView") : t("hero.yourComparison")}
         </p>
         {!isLocked && (
           <span
@@ -278,19 +284,22 @@ function GuestPreviewCard({
           <div className="flex justify-between text-[10px] text-slate-400">
             <span>
               <span className="inline-block h-1.5 w-1.5 rounded-full bg-red-400 mr-1" />
-              Oppose {formatPct(distribution.opposePct)}
+              {t("stance.oppose")} {formatPct(distribution.opposePct)}
             </span>
             <span>
               <span className="inline-block h-1.5 w-1.5 rounded-full bg-slate-300 mr-1" />
-              Neutral {formatPct(distribution.neutralPct)}
+              {t("stance.neutral")} {formatPct(distribution.neutralPct)}
             </span>
             <span>
               <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400 mr-1" />
-              Support {formatPct(distribution.supportPct)}
+              {t("stance.support")} {formatPct(distribution.supportPct)}
             </span>
           </div>
           <p className="text-[10px] text-slate-400">
-            {distribution.responses.toLocaleString()} stance{distribution.responses === 1 ? "" : "s"} recorded
+            {t("stance.stancesRecorded", {
+              count: distribution.responses,
+              formattedCount: formatNumber(distribution.responses, i18n.language),
+            })}
           </p>
         </div>
       )}
@@ -298,7 +307,7 @@ function GuestPreviewCard({
       {/* Supporting line */}
       <p className="mt-2 text-[11px] text-slate-500 leading-snug">
         {isLocked
-          ? "See where your stance lands after you respond."
+          ? t("hero.seeWhereStanceLands")
           : "See whether your stance is closer to the majority or the minority."}
       </p>
 
@@ -306,7 +315,7 @@ function GuestPreviewCard({
       {isLocked && (
         <div className="mt-2 flex justify-center">
           <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-medium text-slate-500">
-            🔒 Answer to compare
+            {t("hero.answerToCompare")}
           </span>
         </div>
       )}
@@ -325,6 +334,7 @@ function SectionBGuestLocked({
   onLogin: () => void;
   onSignup: () => void;
 }) {
+  const { t, i18n } = useTranslation();
   return (
     <div className="flex flex-col justify-between h-full p-5">
       <div>
@@ -332,15 +342,15 @@ function SectionBGuestLocked({
         <div className="flex items-center gap-1.5 mb-3">
           <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
           <span className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">
-            Live insight
+            {t("hero.liveInsight")}
           </span>
         </div>
 
         <h3 className="text-base font-semibold text-slate-900 leading-snug mb-1">
-          See where you stand
+          {t("hero.seeWhereYouStand")}
         </h3>
         <p className="text-xs text-slate-500 leading-relaxed mb-3">
-          Answer the question to reveal how your stance compares with society.
+          {t("hero.answerToReveal")}
         </p>
 
         {/* Preview card with real community data */}
@@ -349,9 +359,9 @@ function SectionBGuestLocked({
         {/* Value bullets */}
         <ul className="mt-3 space-y-1.5">
           {[
-            "Compare with your region, country, and globally",
-            "Track how opinions shift over time",
-            "Build your personal stance profile",
+            t("hero.benefitCompareRegions"),
+            t("hero.benefitTrackShifts"),
+            t("hero.benefitStanceProfile"),
           ].map((item) => (
             <li key={item} className="flex items-start gap-2 text-xs text-slate-500">
               <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-indigo-400" />
@@ -368,17 +378,17 @@ function SectionBGuestLocked({
           onClick={onSignup}
           className="w-full rounded-lg bg-slate-900 px-4 py-2.5 text-xs font-semibold text-white hover:bg-slate-700 transition-colors"
         >
-          Create free account
+          {t("hero.createFreeAccount")}
         </button>
         <button
           type="button"
           onClick={onLogin}
           className="w-full rounded-lg border border-slate-200 px-4 py-2.5 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors"
         >
-          Log in
+          {t("hero.logIn")}
         </button>
         <p className="text-center text-[10px] text-slate-400 mt-1">
-          Join others tracking how society is thinking in real time
+          {t("hero.joinOthersTracking")}
         </p>
       </div>
     </div>
@@ -396,6 +406,7 @@ function SectionBGuestEngaged({
   onLogin: () => void;
   onSignup: () => void;
 }) {
+  const { t, i18n } = useTranslation();
   return (
     <div className="flex flex-col justify-between h-full p-5">
       <div>
@@ -403,7 +414,7 @@ function SectionBGuestEngaged({
         <div className="flex items-center gap-1.5 mb-3">
           <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
           <span className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">
-            Live insight
+            {t("hero.liveInsight")}
           </span>
         </div>
 
@@ -440,14 +451,14 @@ function SectionBGuestEngaged({
           className="w-full rounded-lg px-4 py-2.5 text-xs font-semibold text-white transition-colors hover:brightness-110"
           style={{ backgroundColor: "#6048C0" }}
         >
-          Create free account
+          {t("hero.createFreeAccount")}
         </button>
         <button
           type="button"
           onClick={onLogin}
           className="w-full rounded-lg border border-slate-200 px-4 py-2.5 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors"
         >
-          Log in
+          {t("hero.logIn")}
         </button>
         <p className="text-center text-[10px] text-slate-400 mt-1">
           Unlock your stance profile in seconds
@@ -677,6 +688,7 @@ const PULSE_CONFIG: Record<
 };
 
 function PulseRow({ chip }: { chip: SocietalPulseChip }) {
+  const { t, i18n } = useTranslation();
   const cfg = PULSE_CONFIG[chip.icon];
 
   return (
@@ -698,7 +710,7 @@ function PulseRow({ chip }: { chip: SocietalPulseChip }) {
           {chip.title}
         </p>
         <p className="text-[10px] leading-snug mt-0.5">
-          <span className="text-slate-400">Momentum </span>
+          <span className="text-slate-400">{t("hero.momentum")} </span>
           <span className="font-semibold" style={{ color: cfg.labelColor }}>
             {cfg.label}
           </span>
@@ -1176,6 +1188,12 @@ function SectionAQuestion({
   onDismissSliderTip?: () => void;
   languageCode?: string;
 }) {
+  const { t, i18n } = useTranslation();
+  const { placeLabel } = usePlaceLabels(i18n.language);
+  // D1 — a question with no rendition in the reader language falls back to its
+  // original. The fallback must be LABELLED, never silent.
+  const { languageOf } = useRenditionLanguages([question?.rendition_id]);
+  const instrumentLanguage = languageOf(question?.rendition_id);
   const isResultMode =
     status === "hero_answered_result" || status === "hero_transitioning";
   const isSubmitting = status === "hero_submitting";
@@ -1224,10 +1242,10 @@ function SectionAQuestion({
           {/* Eyebrow */}
           <div className="flex items-center gap-1.5 mb-0.5">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-sm font-semibold" style={{ color: "#5E3D9E" }}>One big shifting question</span>
+            <span className="text-sm font-semibold" style={{ color: "#5E3D9E" }}>{t("hero.oneBigShiftingQuestion")}</span>
           </div>
           <p className="text-xs text-slate-500 mb-4">
-            Answer in seconds — see where society stands.
+            {t("hero.answerInSeconds")}
           </p>
 
           {/* Tags + signals */}
@@ -1236,7 +1254,7 @@ function SectionAQuestion({
               <Tag primary>{question.topic_title}</Tag>
             )}
             {question.audience_location_label && (
-              <Tag>📍 {question.audience_location_label}</Tag>
+              <Tag>📍 {placeLabel(question.audience_location_label)}</Tag>
             )}
             {question.tags && question.tags.slice(0, 2).map((t) => (
               <Tag key={t}>{t}</Tag>
@@ -1249,6 +1267,7 @@ function SectionAQuestion({
                 🌐 Global conversation
               </span>
             )}
+            <ContentLanguageIndicator renditionLanguageCode={instrumentLanguage} />
           </div>
 
           {/* Question headline — always shown in full.
@@ -1257,6 +1276,7 @@ function SectionAQuestion({
               click-through to QDP just to read what you're being asked. */}
           <button
             type="button"
+            data-instrument-language={instrumentLanguage ?? undefined}
             onClick={() => onNavigateToQuestion(question.question_id)}
             className={[
               "text-left font-bold text-slate-900 leading-snug hover:underline underline-offset-2",
@@ -1311,6 +1331,7 @@ function SectionAQuestion({
                 questionText={question.question_text}
                 summary={question.summary}
                 languageCode={languageCode}
+                instrumentLanguageCode={instrumentLanguage}
                 initialValue={isResultMode ? (submittedStance ?? null) : null}
                 disabled={isSubmitting}
                 pulseThumb={!isSubmitting && !isResultMode}
@@ -1345,6 +1366,7 @@ function SectionAQuestion({
               questionText={question.question_text}
               summary={question.summary}
               languageCode={languageCode}
+              instrumentLanguageCode={instrumentLanguage}
               initialValue={null}
               onSubmit={(v) => (onStage ? onStage(question.question_id, v) : onLoginRedirect())}
               onInteractionStart={onGuestEngage}
@@ -1354,14 +1376,14 @@ function SectionAQuestion({
 
             <div className="mt-5 flex flex-col items-center gap-2">
               <p className="text-xs text-slate-400">
-                Your stance is recorded anonymously — add your voice below to count it.
+                {t("hero.stanceRecordedAnonymously")}
               </p>
             </div>
 
             {/* Community teaser — replaces CommunityStanceBar for guests */}
             <div className="mt-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-center">
               <p className="text-xs font-medium text-slate-500">
-                💬 Add your voice to unlock how the community is thinking.
+                {t("hero.addYourVoiceUnlock")}
               </p>
             </div>
           </>
@@ -1397,6 +1419,7 @@ function SectionAError({
 // ─── Section A — Waiting for next ─────────────────────────────────────────────
 
 function SectionAWaiting() {
+  const { t, i18n } = useTranslation();
   const [showSpinner, setShowSpinner] = React.useState(true);
   React.useEffect(() => {
     const t = setTimeout(() => setShowSpinner(false), 3000);
@@ -1413,7 +1436,7 @@ function SectionAWaiting() {
       ) : (
         <>
           <p className="text-sm font-medium text-slate-600">You're all caught up!</p>
-          <p className="text-xs text-slate-400">New questions are on their way. Check back shortly.</p>
+          <p className="text-xs text-slate-400">{t("hero.newQuestionsOnTheWay")}</p>
         </>
       )}
     </div>
@@ -1431,7 +1454,11 @@ function QueueCard({
   isUpNext: boolean;
   onClick: () => void;
 }) {
-  const teaser = deriveTeaserLabel(question);
+  const { t, i18n } = useTranslation();
+  const teaserLabel = deriveTeaserLabel(question);
+  const teaser = teaserLabel
+    ? ("key" in teaserLabel ? t(teaserLabel.key) : teaserLabel.raw)
+    : null;
 
   return (
     <button
@@ -1502,6 +1529,7 @@ function SectionC({
   status: HeroStatus;
   onPromote: (id: string) => void;
 }) {
+  const { t, i18n } = useTranslation();
   const hasAnswered =
     status === "hero_answered_result" || status === "hero_transitioning";
 
@@ -1564,6 +1592,7 @@ export function HeroSection({
   onDismissSliderTip,
   languageCode,
 }: HeroSectionProps) {
+  const { t, i18n } = useTranslation();
   const {
     status,
     currentHeroQuestion,
@@ -1701,11 +1730,11 @@ export function HeroSection({
       <div>
         <div className="flex items-center justify-between mb-2 px-0.5">
           <p className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">
-            Up next
+            {t("feed.upNext")}
           </p>
           {queuedQuestions.length > 0 && (
             <p className="text-[11px] text-slate-400">
-              {queuedQuestions.length} question{queuedQuestions.length === 1 ? "" : "s"} queued
+              {t("hero.questionsQueued", { count: queuedQuestions.length })}
             </p>
           )}
         </div>

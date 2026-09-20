@@ -83,30 +83,23 @@ export type QuestionStanceSliderProps = {
   // renditions, since ai-stance-tip's prompt never said what language to
   // answer in. Omitted/undefined behaves exactly as before (English).
   languageCode?: string;
+  /** Language of the rendition supplying sliderLow/HighLabel (D1 fallback). */
+  instrumentLanguageCode?: string | null;
 };
 
 // Oppose/support framing matches the pre-commit prompt ("Do you support or oppose this?")
 // and is meaningful for both binary propositions and multi-axis trade-off questions,
 // where "agree/disagree" has no clear referent.
-const STANCE_LABELS: Record<number, string> = {
-  [-2]: "Strongly oppose",
-  [-1]: "Lean oppose",
-  [0]: "Neutral",
-  [1]: "Lean support",
-  [2]: "Strongly support",
-};
-
-const STANCE_TIPS_FALLBACK: Record<number, string> = {
-  [-2]:
-    "You strongly oppose this. You would prefer alternatives that avoid these trade-offs entirely.",
-  [-1]:
-    "You lean toward opposing this. You see more downsides than upsides, but might accept it with significant changes.",
-  [0]:
-    "You're neutral or unsure. You may see valid points on multiple sides or need more information to decide.",
-  [1]:
-    "You lean toward supporting this. You believe the benefits outweigh the costs, with some reservations.",
-  [2]:
-    "You strongly support this. You accept the trade-offs as worthwhile to achieve the intended outcome.",
+// PR 1.4 — these were hardcoded English. They are generic (identical for every
+// question, not question-specific stance-meaning text), so they are Class 1
+// chrome and belong in i18next. The question-specific AI tip that normally
+// replaces them is Class 4 derived content, handled separately.
+const STANCE_TIP_KEYS: Record<number, string> = {
+  [-2]: "stance.tipStronglyOppose",
+  [-1]: "stance.tipLeanOppose",
+  [0]: "stance.tipNeutral",
+  [1]: "stance.tipLeanSupport",
+  [2]: "stance.tipStronglySupport",
 };
 
 
@@ -182,6 +175,7 @@ function useDebouncedAiStanceTip(
         );
         return {
           tip: null as string | null,
+          languageCode: null as string | null,
           source: "fallback" as const,
           reason: "invoke_error" as const,
         };
@@ -192,6 +186,12 @@ function useDebouncedAiStanceTip(
         raw && typeof raw.tip === "string" ? (raw.tip as string).trim() : null;
       const source =
         raw && raw.source === "ai" ? ("ai" as const) : ("fallback" as const);
+      // PR 3 — the language the model actually answered in. ai-stance-tip is
+      // told which language to use, but a model instruction is a request and
+      // not a guarantee, so the response reports what it did and the caller
+      // checks rather than assuming.
+      const responseLanguage =
+        raw && typeof raw.language_code === "string" ? (raw.language_code as string) : null;
       const reason = raw?.reason ?? null;
 
       console.info("[QuestionStanceSlider] ai-stance-tip result", {
@@ -201,7 +201,7 @@ function useDebouncedAiStanceTip(
         tip: tipText,
       });
 
-      return { tip: tipText, source, reason };
+      return { tip: tipText, source, reason, languageCode: responseLanguage };
     },
   });
 }
@@ -222,6 +222,7 @@ export function QuestionStanceSlider({
   sliderHighLabel,
   headerAction,
   languageCode,
+  instrumentLanguageCode,
 }: QuestionStanceSliderProps) {
   const { t } = useTranslation();
   const [value, setValue] = React.useState<number>(clampStance(initialValue));
@@ -263,9 +264,44 @@ export function QuestionStanceSlider({
     { neutral: t("stance.neutral"), leanOppose: t("stance.leanOppose"), leanSupport: t("stance.leanSupport") },
     languageCode
   );
-  const label = stanceLabels[value] ?? "Select stance";
-  const fallbackTip = STANCE_TIPS_FALLBACK[value] ?? "";
-  const tip = aiData?.tip || fallbackTip;
+  const label = stanceLabels[value] ?? t("stance.selectStance");
+  const fallbackTipKey = STANCE_TIP_KEYS[value];
+  const fallbackTip = fallbackTipKey ? t(fallbackTipKey) : "";
+  // PR 3 — never show AI commentary in a language the reader did not ask for.
+  //
+  // This tip is Class 4 derived content and IS genuinely model-generated,
+  // unlike the societal-pulse narrative, which turned out to be deterministic
+  // templating. The request carries language_code and the prompt instructs the
+  // model, but an instruction is not a guarantee: an English tip was rendering
+  // under a Hindi heading on the live page.
+  //
+  // The response reports its own language, so it is compared with the reader
+  // language here. On a mismatch the localized static explanation is used: a
+  // correct generic sentence beats a specific one the reader cannot read, and
+  // it keeps the page honestly monolingual instead of needing a scan exemption.
+  const aiLanguage = (aiData as any)?.languageCode as string | null | undefined;
+  const readerLanguage = (languageCode ?? "en").split("-")[0].toLowerCase();
+
+  // Absence of confirmation is NOT confirmation.
+  //
+  // A deployed ai-stance-tip that predates language support returns no
+  // language_code at all, so treating "missing" as "fine" would let exactly
+  // the responses most likely to be English through unchecked — which is what
+  // was happening on Dev, where the function source handles language but the
+  // deployed version does not (edge functions deploy separately from
+  // migrations).
+  //
+  // English readers accept unconditionally: English is the model default and a
+  // missing field tells us nothing either way. Every other reader requires the
+  // response to positively state their language, and otherwise gets the
+  // localized static explanation. Fail-safe, and it stays correct after the
+  // function is redeployed.
+  const aiLanguageMatches =
+    readerLanguage === "en"
+      ? true
+      : !!aiLanguage && aiLanguage.split("-")[0].toLowerCase() === readerLanguage;
+
+  const tip = (aiLanguageMatches ? aiData?.tip : null) || fallbackTip;
 
   // Ref guard: fires onInteractionStart exactly once per mount.
   // The slider remounts on question change (key prop), so this resets naturally.
@@ -357,7 +393,13 @@ export function QuestionStanceSlider({
   const isProminent = !!pulseThumb;
 
   return (
-    <div className="w-full space-y-3">
+    // PR 1.8 / D1 — declares which language this INSTRUMENT text is in.
+    // Under the permissive language policy a question with no rendition in the
+    // reader language falls back to its original, so the pole labels here are
+    // legitimately in another language. The Hindi DOM scan exempts text inside
+    // a declared-and-labelled instrument block, and still flags it when the
+    // declaration is absent — so an UNlabelled fallback remains a failure.
+    <div className="w-full space-y-3" data-instrument-language={instrumentLanguageCode ?? undefined}>
 
       {/* Pre-commit prompt — decision-first framing for hero/featured */}
       {!committed && (
@@ -375,7 +417,7 @@ export function QuestionStanceSlider({
           </div>
         ) : (
           <p className="text-[11px] text-slate-500">
-            Move the slider to express your view.
+            {t("stance.moveSlider")}
           </p>
         )
       )}
@@ -383,7 +425,7 @@ export function QuestionStanceSlider({
       {/* Header label */}
       <div className="flex items-center justify-between text-[11px] text-slate-600">
         <span className="font-semibold uppercase tracking-wide">
-          {isProminent ? "Your position" : "Your stance"}
+          {isProminent ? t("stance.yourPosition") : t("stance.yourStance")}
         </span>
         <span className="font-semibold text-slate-900">{label}</span>
       </div>
@@ -395,7 +437,7 @@ export function QuestionStanceSlider({
         aria-labelledby="stance-slider-label"
       >
         <span id="stance-slider-label" className="sr-only">
-          Stance slider — move left to oppose, right to support
+          {t("stance.sliderAria")}
         </span>
 
         <div className="relative py-2 sm:py-1 touch-pan-x">
@@ -427,7 +469,7 @@ export function QuestionStanceSlider({
             aria-valuemin={-2}
             aria-valuemax={2}
             aria-valuenow={value}
-            aria-valuetext={stanceLabels[value] ?? "Neutral"}
+            aria-valuetext={stanceLabels[value] ?? t("stance.neutral")}
           />
 
           {/* Colored fill — decorative */}
@@ -477,7 +519,7 @@ export function QuestionStanceSlider({
             {stanceLabels[-1]}
           </span>
           {/* 0 */}
-          <span className="shrink-0">Neutral</span>
+          <span className="shrink-0">{t("stance.neutral")}</span>
           {/* +1: hidden on mobile */}
           <span className="hidden max-w-[100px] leading-tight text-center shrink-0 text-slate-400">
             {stanceLabels[1]}
@@ -489,17 +531,17 @@ export function QuestionStanceSlider({
         </div>
 
         <div className="block sm:hidden text-[10px] text-slate-400 mt-0.5">
-          Swipe or drag the slider to adjust your stance.
+          {t("stance.swipeOrDrag")}
         </div>
       </div>
 
       {/* Tip box */}
       <div className="rounded-md border bg-slate-50 px-3 py-2 text-[11px] text-slate-700 min-h-[52px]">
         <div className="flex items-center justify-between mb-0.5">
-          <div className="font-semibold">What this stance means</div>
+          <div className="font-semibold">{t("stance.whatThisMeans")}</div>
           {aiLoading && (
             <div className="text-[9px] text-slate-400 animate-pulse">
-              Loading AI tip...
+              {t("stance.loadingAiTip")}
             </div>
           )}
         </div>

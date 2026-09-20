@@ -21,11 +21,18 @@
 import * as React from "react";
 import { AlertTriangle } from "lucide-react";
 import { useQuestionAuthorities } from "@/hooks/useQuestionAuthorities";
+import { useTranslation } from "react-i18next";
 
 interface IncidentSummaryCardProps {
   questionId: string;
   summary?: string | null;
   contextSummary?: string | null;
+  /**
+   * PR 3 — "what happened" is rendition-derived Class 2 text, so under the D1
+   * permissive fallback it may not be in the reader's language. Declared for
+   * the same reason the Background paragraph is.
+   */
+  instrumentLanguageCode?: string | null;
   publishedAt?: string | null;
 }
 
@@ -33,10 +40,12 @@ export function IncidentSummaryCard({
   questionId,
   summary,
   contextSummary,
+  instrumentLanguageCode,
   publishedAt,
 }: IncidentSummaryCardProps) {
   const { data: authorities = [] } = useQuestionAuthorities(questionId);
 
+  const { t } = useTranslation();
   const whatHappened = contextSummary?.trim() || summary?.trim() || null;
   const dateLabel = publishedAt
     ? new Date(publishedAt).toLocaleDateString(undefined, { dateStyle: "long" })
@@ -58,11 +67,16 @@ export function IncidentSummaryCard({
         <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
         <div className="min-w-0 flex-1">
           <p className="text-[11px] font-semibold tracking-wide uppercase text-amber-700 mb-1">
-            Civic Incident
+            {t("question.civicIncident")}
           </p>
 
           {whatHappened && (
-            <p className="text-sm text-amber-900 mb-2">{whatHappened}</p>
+            <p
+              className="text-sm text-amber-900 mb-2"
+              data-instrument-language={instrumentLanguageCode ?? undefined}
+            >
+              {whatHappened}
+            </p>
           )}
 
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-amber-700">

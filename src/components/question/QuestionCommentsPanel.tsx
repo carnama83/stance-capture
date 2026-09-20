@@ -21,6 +21,8 @@ import { useToast } from "@/components/ui/use-toast";
 import { getSentimentColorHex } from "@/lib/stanceColors";
 import { ThumbsUp, ThumbsDown, Flag, AlertTriangle, Pencil, Trash2, Loader2 } from "lucide-react";
 import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_PROJECT_REF, getJwt } from "@/lib/env";
+import { useTranslation } from "react-i18next";
+import { useLanguage } from "@/hooks/useLanguage";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -880,12 +882,15 @@ function CommentThread({
 // ── QuestionCommentsPanel ──────────────────────────────────────────────────────
 
 export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
+  const { t } = useTranslation();
   const sb = getSupabase()!;
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
   const [sessionUserId, setSessionUserId] = React.useState<string | null>(null);
+  // PR 3.6 — recorded with each comment; see create_question_comment.
+  const { languageCode } = useLanguage(sessionUserId);
   const [posting, setPosting] = React.useState(false);
   const [sortMode, setSortMode] = React.useState<SortMode>("latest");
   // G3: civility warning state
@@ -1241,6 +1246,11 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
         p_question_id: questionId,
         p_parent_comment_id: parentId ?? null,
         p_body: body,
+        // PR 3.6 — the language the author was reading while they wrote. It
+        // cannot be recovered afterwards: script detection would read Devanagari
+        // as Hindi and then get every Hindi comment typed in Latin script wrong,
+        // and English is indistinguishable from untranslated.
+        p_language_code: languageCode,
       });
       return (Array.isArray(data) ? data[0] : data) as QuestionCommentRow;
     },
@@ -1404,7 +1414,7 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
     <Card className="mt-6">
       <CardHeader>
         <CardTitle className="text-sm font-semibold flex items-center gap-2">
-          Comments
+          {t("comments.title")}
           {/* M-G07: comment count badge — sentiment.comment_count is realtime-updated;
                fall back to liveCommentCount before sentiment loads */}
           {((sentiment?.comment_count ?? liveCommentCount) > 0) && (
@@ -1414,8 +1424,7 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
           )}
         </CardTitle>
         <p className="mt-1 text-xs text-slate-500">
-          Share your reasoning, questions, or concerns. Your stance slider captures your position;
-          comments capture your thinking.
+          {t("comments.intro")}
         </p>
       </CardHeader>
 
@@ -1473,7 +1482,7 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
 
           <div className="flex justify-between items-center">
             <span className="text-[11px] text-slate-400">
-              Be constructive and respectful.
+              {t("comments.guideline")}
             </span>
             <div className="flex items-center gap-2">
               {civilityWarning && (
@@ -1502,7 +1511,7 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
                   ? "Posting…"
                   : civilityWarning
                   ? "Edit comment"
-                  : "Post comment"}
+                  : t("comments.post")}
               </Button>
             </div>
           </div>
@@ -1535,7 +1544,7 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
           )}
           {!isInitialLoading && sortedNodes.length === 0 && (
             <p className="text-xs text-slate-500">
-              No comments yet. Be the first to share your thoughts.
+              {t("comments.empty")}
             </p>
           )}
           {sortedNodes.length > 0 && (

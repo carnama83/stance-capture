@@ -14,6 +14,7 @@ import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2, ChevronDown, ChevronUp, Scale } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 type Tradeoff = {
   label: string;
@@ -177,6 +178,7 @@ export default function TradeoffExplorer({
   summary,
   avgScore,
 }: TradeoffExplorerProps) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = React.useState(false);
 
   // FIX: weights initialise from localStorage if available, fall back to empty
@@ -253,12 +255,12 @@ export default function TradeoffExplorer({
         <div className="flex items-center gap-2">
           <Scale className="h-3.5 w-3.5 text-slate-400 shrink-0" />
           <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-            Explore the trade-offs
+            {t("question.tradeoffsTitle")}
           </span>
         </div>
         <div className="flex items-center gap-1.5">
           <span className="text-[10px] text-slate-400">
-            {expanded ? "Hide" : "Before you answer"}
+            {expanded ? t("question.hide") : t("question.tradeoffsSubtitle")}
           </span>
           {expanded
             ? <ChevronUp className="h-3.5 w-3.5 text-slate-400" />
