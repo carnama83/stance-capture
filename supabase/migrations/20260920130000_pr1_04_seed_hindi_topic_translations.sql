@@ -33,7 +33,9 @@ alter table public.topic_translations
 comment on column public.topic_translations.review_status is
   'machine_generated | human_reviewed. Rows seeded by PR 1.5 are machine_generated and have had no native-speaker review — a deliberate, recorded product decision. Flip to human_reviewed when someone Hindi-fluent has checked the row.';
 
-insert into public.topic_translations (topic_id, language_code, display_name, review_status) values
+insert into public.topic_translations (topic_id, language_code, display_name, review_status)
+select v.topic_id::uuid, v.language_code, v.display_name, v.review_status
+from (values
  ('cf5d445d-28a8-4ddf-af3a-5fa4dbc0d82d','hi','गर्भपात और स्वास्थ्य सेवा जवाबदेही','machine_generated'),
  ('c1df5575-b19b-407b-985e-87a254470bfe','hi','एआई साक्षरता और शिक्षा','machine_generated'),
  ('fc7873ce-a575-4a57-a7e9-85bee466d0e3','hi','आंध्र प्रदेश शिक्षा नीति','machine_generated'),
@@ -149,6 +151,19 @@ insert into public.topic_translations (topic_id, language_code, display_name, re
  ('c68c472a-109a-458c-bd7e-4a7ba71ee439','hi','विकसित भारत पहल','machine_generated'),
  ('c561d5fd-b18b-44d9-b01a-27ec736c04a6','hi','वन्यजीव अवैध शिकार के मुद्दे','machine_generated'),
  ('367ce3dc-8e00-4ca3-a0c6-42b5c2feceba','hi','महिला आरक्षण नीति','machine_generated')
+) as v(topic_id, language_code, display_name, review_status)
+-- PROMOTION SAFETY (added when this reached UAT).
+--
+-- These ids are DEV's topics. topic_translations.topic_id is FK-constrained to
+-- topics(id), so on any other environment this insert aborts the entire
+-- migration with a foreign-key violation -- UAT and Prod generate their own
+-- topics from their own ingest, and UAT shares ZERO topic titles with Dev.
+--
+-- Filtering to ids that actually exist makes the migration a no-op wherever
+-- those topics are absent, instead of a hard failure. It changes nothing on
+-- Dev, where every id resolves. Seeding for other environments is pr1_04b,
+-- which keys on TITLE rather than id for exactly this reason.
+where exists (select 1 from public.topics t where t.id = v.topic_id::uuid)
 on conflict (topic_id, language_code) do update
   set display_name  = excluded.display_name,
       review_status = excluded.review_status,
