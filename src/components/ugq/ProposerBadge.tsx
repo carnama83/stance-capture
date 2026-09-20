@@ -51,7 +51,11 @@ export function ProposerBadge({ questionId, source, className }: Props) {
         <Trans
           i18nKey="ugq.proposedBy"
           values={{ handle: data.proposer_handle }}
-          components={{ h: <span className="font-medium text-slate-700" /> }}
+          components={{
+            h: (
+              <span className="font-medium text-slate-700" data-proper-noun="handle" />
+            ),
+          }}
         />
       </span>
     </div>
