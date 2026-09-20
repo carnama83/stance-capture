@@ -48,7 +48,7 @@ type SourceProvenanceRow = {
   // PR 3 shape: the SIGNAL is the durable fact; trend_reason is English display
   // text the database should never have been emitting. Kept on the row only so
   // an older server that has no trend_signal still renders something.
-  trend_signal: string | null;
+  trend_signal?: string | null;
   trend_reason: string | null;
   days_since_published: number;
 };
@@ -196,7 +196,7 @@ export default function WhyIsTrendingPanel({
         question_id: string;
         source_count: number;
         source_diversity_score: number;
-        trend_signal: string | null;
+        trend_signal?: string | null;
         trend_reason: string | null;
         days_since_published: number;
       }>;
@@ -366,12 +366,16 @@ export default function WhyIsTrendingPanel({
             <p className="text-[11px]" style={{ color: styles.text, opacity: 0.85 }}>
               {signalDescription}
             </p>
-            {(provenance?.trend_signal || provenance?.trend_reason) && (
+            {provenance && (provenance.trend_signal !== undefined || provenance.trend_reason) && (
               <p className="text-[10px] mt-1 italic" style={{ color: styles.text, opacity: 0.7 }}>
-                {/* Prefer the CODE. trend_reason is server-rendered English and
-                    is only a fallback for a server predating trend_signal. */}
-                {provenance.trend_signal
-                  ? t(REASON_KEY[provenance.trend_signal] ?? "trending.reasonRecent")
+                {/* NULL is a value, not an absence: get_trending_questions_v3 ends
+                    its CASE with ELSE NULL, meaning "no specific signal" — which
+                    maps to reasonRecent, the same thing trend_reason says in
+                    English. Only an UNDEFINED column means the server predates
+                    trend_signal and its prose is all we have. Reading null as
+                    "old server" is what left "Recent activity" on Prod. */}
+                {provenance.trend_signal !== undefined
+                  ? t(REASON_KEY[provenance.trend_signal ?? ""] ?? "trending.reasonRecent")
                   : provenance.trend_reason}
               </p>
             )}
