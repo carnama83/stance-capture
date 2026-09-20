@@ -62,12 +62,14 @@ const ROUTES: Array<{ name: string; path: string }> = [
 
 type Finding = { text: string; tag: string; path: string };
 
-async function collectFindings(page: Page): Promise<{
+async function collectFindings(page: Page, lang: string): Promise<{
   latin: Finding[];
   rawKeys: Finding[];
   pendingCount: number;
+  fallbackBlocks: number;
+  indicators: number;
 }> {
-  return page.evaluate(({ allowlist, exact }: { allowlist: string[]; exact: string[] }) => {
+  return page.evaluate(({ allowlist, exact, uiLang }: { allowlist: string[]; exact: string[]; uiLang: string }) => {
     const isSuspiciousLatin = (text: string): boolean => {
       const t = text.trim();
       if (!t || t.length < 3) return false;
@@ -138,6 +140,21 @@ async function collectFindings(page: Page): Promise<{
       // otherwise it hides unrelated English chrome from this test.
       if (parent.closest("[data-i18n-pending]")) continue;
 
+      // Class-2 instrument text under the D1 labelled fallback. When a question
+      // has no rendition in the reader language the original is shown instead,
+      // so the question wording and pole labels are LEGITIMATELY in another
+      // language. The element declares which one.
+      //
+      // This is narrower than it looks: the attribute sits on the rendition-
+      // derived elements themselves (the headline button, the slider root), not
+      // on the card — chrome beside them is still scanned. And a fallback with
+      // no declaration still fails, which is the point.
+      const declared = parent.closest("[data-instrument-language]");
+      if (declared) {
+        const lang = declared.getAttribute("data-instrument-language") ?? "";
+        if (lang && lang.split("-")[0].toLowerCase() !== uiLang.split("-")[0].toLowerCase()) continue;
+      }
+
       if (isSuspiciousLatin(text)) latin.push(entry);
     }
 
@@ -145,8 +162,14 @@ async function collectFindings(page: Page): Promise<{
       latin,
       rawKeys,
       pendingCount: document.querySelectorAll("[data-i18n-pending]").length,
+      // A fallback that is not labelled is a silent mixed-language page, which
+      // is exactly what D1 chose against.
+      fallbackBlocks: Array.from(document.querySelectorAll("[data-instrument-language]"))
+        .map((el) => el.getAttribute("data-instrument-language") ?? "")
+        .filter((l) => l && l.split("-")[0].toLowerCase() !== uiLang.split("-")[0].toLowerCase()).length,
+      indicators: document.querySelectorAll("[data-content-language-indicator]").length,
     };
-  }, { allowlist: PROPER_NOUN_ALLOWLIST, exact: EXACT_ALLOWLIST });
+  }, { allowlist: PROPER_NOUN_ALLOWLIST, exact: EXACT_ALLOWLIST, uiLang: lang });
 }
 
 async function settle(page: Page, path: string, lang: string) {
@@ -163,7 +186,7 @@ const fmt = (f: Finding[]) =>
 for (const route of ROUTES) {
   test(`[hi] no Latin-script chrome leaks on ${route.name}`, async ({ page }) => {
     await settle(page, route.path, "hi");
-    const { latin } = await collectFindings(page);
+    const { latin } = await collectFindings(page, "hi");
     expect(
       latin,
       `Untranslated Latin-script text in Hindi mode on ${route.name}:\n${fmt(latin)}\n\n` +
@@ -175,7 +198,7 @@ for (const route of ROUTES) {
   for (const lang of ["en", "hi"]) {
     test(`[${lang}] no raw i18n keys in the DOM on ${route.name}`, async ({ page }) => {
       await settle(page, route.path, lang);
-      const { rawKeys } = await collectFindings(page);
+      const { rawKeys } = await collectFindings(page, lang);
       expect(
         rawKeys,
         `Unresolved i18n key rendered on ${route.name} (${lang}):\n${fmt(rawKeys)}\n\n` +
@@ -191,6 +214,30 @@ for (const route of ROUTES) {
 // scan it belongs to rather than being rediscovered later.
 test.skip("PR 3: no data-i18n-pending exemptions remain", async ({ page }) => {
   await settle(page, ROUTES[0].path, "hi");
-  const { pendingCount } = await collectFindings(page);
+  const { pendingCount } = await collectFindings(page, lang);
   expect(pendingCount).toBe(0);
+});
+
+// D1 — a fallback must be LABELLED, never silent.
+//
+// The exemption above lets declared instrument text through. This is the check
+// that stops that exemption becoming a loophole: if any block declares itself
+// to be in a language other than the reader's, the content-language indicator
+// has to be on the page saying so. Declaring a fallback and not labelling it
+// is precisely the silent mixed-language page D1 chose against.
+test("[hi] every content-language fallback is labelled", async ({ page }) => {
+  await settle(page, ROUTES[0].path, "hi");
+  const { fallbackBlocks, indicators } = await collectFindings(page, "hi");
+
+  if (fallbackBlocks === 0) {
+    test.skip(true, "no fallback content on this render — nothing to label");
+    return;
+  }
+
+  expect(
+    indicators,
+    `${fallbackBlocks} block(s) declare non-Hindi instrument text but no ` +
+      `content-language indicator is rendered. A fallback the reader cannot ` +
+      `see is a silent mixed-language page.`
+  ).toBeGreaterThan(0);
 });

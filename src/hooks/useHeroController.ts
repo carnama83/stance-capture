@@ -65,6 +65,8 @@ export type HeroQuestion = {
   cover_image_url?: string | null;
   impact_normalized?: number | null;
   slider_low_label?: string | null;
+  /** PR 2a/D1 — rendition this row was rendered from; may be a fallback. */
+  rendition_id?: string | null;
   slider_high_label?: string | null;
   // Sep 2026, NEW — see VideoThumbnailCard.
   content_type?: string | null;

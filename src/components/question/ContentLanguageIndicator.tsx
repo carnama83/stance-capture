@@ -47,6 +47,7 @@ export function ContentLanguageIndicator({ renditionLanguageCode, className }: P
 
   return (
     <span
+      data-content-language-indicator={contentLanguage}
       className={
         className ??
         "inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-600"

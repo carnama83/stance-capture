@@ -83,6 +83,8 @@ export type QuestionStanceSliderProps = {
   // renditions, since ai-stance-tip's prompt never said what language to
   // answer in. Omitted/undefined behaves exactly as before (English).
   languageCode?: string;
+  /** Language of the rendition supplying sliderLow/HighLabel (D1 fallback). */
+  instrumentLanguageCode?: string | null;
 };
 
 // Oppose/support framing matches the pre-commit prompt ("Do you support or oppose this?")
@@ -213,6 +215,7 @@ export function QuestionStanceSlider({
   sliderHighLabel,
   headerAction,
   languageCode,
+  instrumentLanguageCode,
 }: QuestionStanceSliderProps) {
   const { t } = useTranslation();
   const [value, setValue] = React.useState<number>(clampStance(initialValue));
@@ -349,7 +352,13 @@ export function QuestionStanceSlider({
   const isProminent = !!pulseThumb;
 
   return (
-    <div className="w-full space-y-3">
+    // PR 1.8 / D1 — declares which language this INSTRUMENT text is in.
+    // Under the permissive language policy a question with no rendition in the
+    // reader language falls back to its original, so the pole labels here are
+    // legitimately in another language. The Hindi DOM scan exempts text inside
+    // a declared-and-labelled instrument block, and still flags it when the
+    // declaration is absent — so an UNlabelled fallback remains a failure.
+    <div className="w-full space-y-3" data-instrument-language={instrumentLanguageCode ?? undefined}>
 
       {/* Pre-commit prompt — decision-first framing for hero/featured */}
       {!committed && (

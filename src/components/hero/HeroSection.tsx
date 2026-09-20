@@ -32,6 +32,8 @@
 import { useTranslation } from "react-i18next";
 import { formatNumber } from "@/lib/intlFormat";
 import { usePlaceLabels } from "@/hooks/usePlaceLabels";
+import { useRenditionLanguages } from "@/hooks/useRenditionLanguages";
+import { ContentLanguageIndicator } from "@/components/question/ContentLanguageIndicator";
 import * as React from "react";
 import { Link } from "react-router-dom";
 import { QuestionStanceSlider } from "@/components/question/QuestionStanceSlider";
@@ -1188,6 +1190,10 @@ function SectionAQuestion({
 }) {
   const { t, i18n } = useTranslation();
   const { placeLabel } = usePlaceLabels(i18n.language);
+  // D1 — a question with no rendition in the reader language falls back to its
+  // original. The fallback must be LABELLED, never silent.
+  const { languageOf } = useRenditionLanguages([question?.rendition_id]);
+  const instrumentLanguage = languageOf(question?.rendition_id);
   const isResultMode =
     status === "hero_answered_result" || status === "hero_transitioning";
   const isSubmitting = status === "hero_submitting";
@@ -1261,6 +1267,7 @@ function SectionAQuestion({
                 🌐 Global conversation
               </span>
             )}
+            <ContentLanguageIndicator renditionLanguageCode={instrumentLanguage} />
           </div>
 
           {/* Question headline — always shown in full.
@@ -1269,6 +1276,7 @@ function SectionAQuestion({
               click-through to QDP just to read what you're being asked. */}
           <button
             type="button"
+            data-instrument-language={instrumentLanguage ?? undefined}
             onClick={() => onNavigateToQuestion(question.question_id)}
             className={[
               "text-left font-bold text-slate-900 leading-snug hover:underline underline-offset-2",
@@ -1323,6 +1331,7 @@ function SectionAQuestion({
                 questionText={question.question_text}
                 summary={question.summary}
                 languageCode={languageCode}
+                instrumentLanguageCode={instrumentLanguage}
                 initialValue={isResultMode ? (submittedStance ?? null) : null}
                 disabled={isSubmitting}
                 pulseThumb={!isSubmitting && !isResultMode}
@@ -1357,6 +1366,7 @@ function SectionAQuestion({
               questionText={question.question_text}
               summary={question.summary}
               languageCode={languageCode}
+              instrumentLanguageCode={instrumentLanguage}
               initialValue={null}
               onSubmit={(v) => (onStage ? onStage(question.question_id, v) : onLoginRedirect())}
               onInteractionStart={onGuestEngage}

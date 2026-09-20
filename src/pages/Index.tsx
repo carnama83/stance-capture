@@ -44,6 +44,8 @@ import { QuestionStanceSlider } from "@/components/question/QuestionStanceSlider
 import { recordWebStance } from "@/lib/webStance";
 import { regionDisplayName, formatNumber } from "@/lib/intlFormat";
 import { useTopicLabels } from "@/hooks/useTopicLabels";
+import { useRenditionLanguages } from "@/hooks/useRenditionLanguages";
+import { ContentLanguageIndicator } from "@/components/question/ContentLanguageIndicator";
 import { HomeOptInPrompt } from "@/components/HomeOptInPrompt";
 import { QuestionCoverImage } from "@/components/question/QuestionCoverImage";
 import { ElectionCardChrome } from "@/components/question/ElectionCardChrome";
@@ -110,6 +112,8 @@ type RegionRow = {
 
 type TrendingHomepageQuestionRow = {
   question_id: string;
+  /** PR 2a — rendition this row was rendered from (may be a D1 fallback). */
+  rendition_id?: string | null;
   question_text: string;
   summary: string | null;
   tags: string[] | null;
@@ -136,6 +140,8 @@ type TrendingHomepageQuestionRow = {
 };
 
 type AnonQuestionRow = {
+  /** PR 2a — rendition this row was rendered from (may be a D1 fallback). */
+  rendition_id?: string | null;
   id: string;
   question: string;
   summary: string | null;
@@ -1778,6 +1784,10 @@ function FeaturedQuestionCard({
   electionMeta?: ElectionMeta;
   languageCode?: string;
 }) {
+  // D1 — the pole labels below come from a rendition that may be a
+  // fallback in another language. Declare which, so the Hindi DOM scan can
+  // tell a labelled fallback from a chrome leak.
+  const { languageOf: renditionLanguageOf } = useRenditionLanguages([q?.rendition_id]);
   const { t } = useTranslation();
   const postAnswerStats = cardStats?.get(q.question_id) ?? null;
   const effectiveStats = postAnswerStats ?? featuredStats ?? null;
@@ -1842,9 +1852,13 @@ function FeaturedQuestionCard({
         <div className="mt-5 pt-5" style={{ borderTop: `1px solid ${C.hairline}` }}>
           {isAuthed ? (
             <>
+              {/* D1 — a fallback must be labelled, never silent. Renders nothing
+                  when the instrument is already in the reader language. */}
+              <ContentLanguageIndicator renditionLanguageCode={renditionLanguageOf(q?.rendition_id)} />
               <QuestionStanceSlider
                 key={`featured-${q.question_id}`}
                 questionId={q.question_id}
+                instrumentLanguageCode={renditionLanguageOf(q?.rendition_id)}
                 questionText={q.question_text}
                 summary={q.summary}
                 languageCode={languageCode}
@@ -1880,9 +1894,13 @@ function FeaturedQuestionCard({
             </>
           ) : (
             <div className="cursor-pointer">
+              {/* D1 — a fallback must be labelled, never silent. Renders nothing
+                  when the instrument is already in the reader language. */}
+              <ContentLanguageIndicator renditionLanguageCode={renditionLanguageOf(q?.rendition_id)} />
               <QuestionStanceSlider
                 key={`featured-anon-${q.question_id}`}
                 questionId={q.question_id}
+                instrumentLanguageCode={renditionLanguageOf(q?.rendition_id)}
                 questionText={q.question_text}
                 summary={q.summary}
                 languageCode={languageCode}
@@ -1950,6 +1968,10 @@ function FeaturedQuestionCardAnon({
   electionMeta?: ElectionMeta;
   languageCode?: string;
 }) {
+  // D1 — the pole labels below come from a rendition that may be a
+  // fallback in another language. Declare which, so the Hindi DOM scan can
+  // tell a labelled fallback from a chrome leak.
+  const { languageOf: renditionLanguageOf } = useRenditionLanguages([q?.rendition_id]);
   const { t } = useTranslation();
   return (
     <div className={`${card} overflow-hidden md:grid md:grid-cols-[1.25fr_1fr]`}>
@@ -1983,8 +2005,12 @@ function FeaturedQuestionCardAnon({
 
         <div className="mt-5 pt-5" style={{ borderTop: `1px solid ${C.hairline}` }}>
           <div className="cursor-pointer">
+            {/* D1 — a fallback must be labelled, never silent. Renders nothing
+                when the instrument is already in the reader language. */}
+            <ContentLanguageIndicator renditionLanguageCode={renditionLanguageOf(q?.rendition_id)} />
             <QuestionStanceSlider
               questionId={q.id}
+              instrumentLanguageCode={renditionLanguageOf(q?.rendition_id)}
               questionText={q.question}
               summary={q.summary}
               languageCode={languageCode}
@@ -2052,6 +2078,10 @@ function GridQuestionCard({
   electionMeta?: ElectionMeta;
   languageCode?: string;
 }) {
+  // D1 — the pole labels below come from a rendition that may be a
+  // fallback in another language. Declare which, so the Hindi DOM scan can
+  // tell a labelled fallback from a chrome leak.
+  const { languageOf: renditionLanguageOf } = useRenditionLanguages([q?.rendition_id]);
   const { t } = useTranslation();
   const postAnswerStats = cardStats?.get(q.question_id) ?? null;
   const globalRegion = postAnswerStats?.regions?.global ?? null;
@@ -2124,8 +2154,12 @@ function GridQuestionCard({
         <div className="mt-auto pt-4">
           {isAuthed ? (
             <>
+              {/* D1 — a fallback must be labelled, never silent. Renders nothing
+                  when the instrument is already in the reader language. */}
+              <ContentLanguageIndicator renditionLanguageCode={renditionLanguageOf(q?.rendition_id)} />
               <QuestionStanceSlider
                 questionId={q.question_id}
+                instrumentLanguageCode={renditionLanguageOf(q?.rendition_id)}
                 questionText={q.question_text}
                 summary={q.summary}
                 languageCode={languageCode}
@@ -2160,8 +2194,12 @@ function GridQuestionCard({
             </>
           ) : (
             <div className="cursor-pointer">
+              {/* D1 — a fallback must be labelled, never silent. Renders nothing
+                  when the instrument is already in the reader language. */}
+              <ContentLanguageIndicator renditionLanguageCode={renditionLanguageOf(q?.rendition_id)} />
               <QuestionStanceSlider
                 questionId={q.question_id}
+                instrumentLanguageCode={renditionLanguageOf(q?.rendition_id)}
                 questionText={q.question_text}
                 summary={q.summary}
                 languageCode={languageCode}
@@ -2204,6 +2242,10 @@ function GridQuestionCardAnon({
   electionMeta?: ElectionMeta;
   languageCode?: string;
 }) {
+  // D1 — the pole labels below come from a rendition that may be a
+  // fallback in another language. Declare which, so the Hindi DOM scan can
+  // tell a labelled fallback from a chrome leak.
+  const { languageOf: renditionLanguageOf } = useRenditionLanguages([q?.rendition_id]);
   const { t } = useTranslation();
   return (
     <div className={`${card} flex flex-col overflow-hidden`}>
@@ -2248,8 +2290,12 @@ function GridQuestionCardAnon({
 
         <div className="mt-auto pt-4">
           <div className="cursor-pointer">
+            {/* D1 — a fallback must be labelled, never silent. Renders nothing
+                when the instrument is already in the reader language. */}
+            <ContentLanguageIndicator renditionLanguageCode={renditionLanguageOf(q?.rendition_id)} />
             <QuestionStanceSlider
               questionId={q.id}
+              instrumentLanguageCode={renditionLanguageOf(q?.rendition_id)}
               questionText={q.question}
               summary={q.summary}
               languageCode={languageCode}
@@ -3730,6 +3776,11 @@ export default function IndexPage() {
                 slider_high_label: q.slider_high_label ?? null,
                 content_type: q.content_type ?? null,
                 video_recording_path: q.video_recording_path ?? null,
+                // D1/PR 2a — must survive this mapping: it is what the hero
+                // reports as provenance and what the content-language
+                // indicator compares against. Dropping it here silently
+                // disabled both.
+                rendition_id: q.rendition_id ?? null,
               }))}
               isLoading={isAuthed ? authedIsLoading : anonIsLoading}
               isAuthed={isAuthed}

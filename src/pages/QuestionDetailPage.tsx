@@ -771,6 +771,10 @@ function StanceCard({
   isArchived?: boolean;
   languageCode: string;
 }) {
+  // D1 — declare the language of the instrument text this card renders, so
+  // the Hindi DOM scan can tell a labelled fallback from a chrome leak.
+  const { languageOf: stanceCardLanguageOf } = useRenditionLanguages([question?.rendition_id]);
+  const stanceCardInstrumentLanguage = stanceCardLanguageOf(question?.rendition_id);
   const { t } = useTranslation();
   return (
     <section className="rounded-xl border border-slate-200 bg-slate-50 p-4 md:p-5 shadow-sm">
@@ -868,6 +872,7 @@ function StanceCard({
             <QuestionStanceSlider
               key={`stance-${questionId}-${myStance ?? "null"}`}
               questionId={questionId}
+              instrumentLanguageCode={stanceCardInstrumentLanguage}
               questionText={question.question}
               summary={question.summary ?? null}
               languageCode={languageCode}
