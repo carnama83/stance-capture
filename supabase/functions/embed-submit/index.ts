@@ -122,7 +122,13 @@ serve(async (req)=>{
       // question's English rendition and falls back to its source-language
       // original -- which is what the widget actually renders today.
       const { data: embedRenditionId, error: embedRendErr } =
-        await adminSb.rpc("resolve_response_rendition", {
+        // PR 2a: renamed from resolve_response_rendition. This remains a
+        // KNOWN fabrication point — the embed widget renders the question on a
+        // third-party page and sends back no rendition, so the server picks
+        // what is published now. It is recorded here rather than hidden: when
+        // the widget is updated to return the rendition it rendered, this call
+        // should be deleted, not re-pointed.
+        await adminSb.rpc("select_rendition_to_display", {
           p_question_id: question_id,
           p_language_code: "en"
         });

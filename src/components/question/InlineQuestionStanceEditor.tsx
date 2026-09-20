@@ -12,6 +12,13 @@ type Session = import("@supabase/supabase-js").Session;
 
 type Props = {
   questionId: string;
+  /**
+   * PR 2a — the rendition whose wording the caller is displaying for this
+   * question. Required for a save: set_question_stance records it verbatim and
+   * will not resolve one itself, because what is published at submit time is
+   * not necessarily what this respondent read.
+   */
+  renditionId?: string | null;
   // optional: if you already know user's stance from parent, you can pass it
   initialScore?: number | null;
   className?: string;
@@ -33,6 +40,7 @@ const STANCE_VALUES = [-2, -1, 0, 1, 2] as const;
 
 export function InlineQuestionStanceEditor({
   questionId,
+  renditionId = null,
   initialScore = null,
   className,
 }: Props) {
@@ -89,6 +97,10 @@ export function InlineQuestionStanceEditor({
       const { data, error } = await sb.rpc("set_question_stance", {
         p_question_id: questionId,
         p_score: newScore,
+        // Clearing (newScore === null) needs no provenance — the RPC deletes
+        // before it looks at the rendition. Saving a score without one is
+        // rejected server-side rather than silently resolved.
+        p_rendition_id: renditionId,
       });
 
       if (error) throw error;

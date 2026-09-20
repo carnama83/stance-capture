@@ -22,6 +22,9 @@ type ForYouQuestion = {
   topic_id?: string | null;
   tags?: string[] | null;
   cover_image_url?: string | null;
+  // PR 2a: rendition that produced `question` above. get_for_you_feed now
+  // includes it in each row of its jsonb payload.
+  rendition_id?: string | null;
 };
 
 type ForYouFeed = {
@@ -281,9 +284,14 @@ function QuickTile({ q, onAnswered }: QuickTileProps) {
     mutationFn: async (score: number) => {
       const sb = getSupabase();
       if (!sb) throw new Error("Supabase not available");
+      // PR 2a: record the rendition this tile actually rendered. If the feed
+      // row carried none the server rejects with RENDITION_REQUIRED, which is
+      // the correct outcome — the alternative is attributing the answer to
+      // wording the respondent never saw.
       const { error } = await sb.rpc("set_question_stance", {
         p_question_id: q.id,
         p_score: score,
+        p_rendition_id: q.rendition_id ?? null,
       });
       if (error) throw error;
       return score;

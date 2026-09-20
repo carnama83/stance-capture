@@ -5,6 +5,7 @@ import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getSupabase } from "@/lib/supabaseClient";
 import { Pencil, Check, X, Link as LinkIcon, Plus, Trash2 } from "lucide-react";
+import { useLanguage } from "@/hooks/useLanguage";
 
 interface StanceText {
   rationale: string | null;
@@ -17,6 +18,21 @@ interface RationaleEditorProps {
 
 export function RationaleEditor({ questionId }: RationaleEditorProps) {
   const queryClient = useQueryClient();
+  // PR 3.6 — recorded with the rationale; see upsert_stance_text.
+  //
+  // The user id is resolved rather than passed as null: useLanguage only reads
+  // the PROFILE preference when there is a user, so useLanguage(null) would
+  // return the default for a signed-in reader whose language lives in their
+  // profile -- and then stamp that wrong language onto their own words.
+  const [authorId, setAuthorId] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    let alive = true;
+    getSupabase()?.auth.getSession().then(({ data }) => {
+      if (alive) setAuthorId(data.session?.user?.id ?? null);
+    });
+    return () => { alive = false; };
+  }, []);
+  const { languageCode } = useLanguage(authorId);
   const [editing, setEditing] = React.useState(false);
   const [draft, setDraft] = React.useState("");
   const [draftLinks, setDraftLinks] = React.useState<string[]>([]);
@@ -46,6 +62,9 @@ export function RationaleEditor({ questionId }: RationaleEditorProps) {
         p_question_id: questionId,
         p_rationale: rationale || null,
         p_links: links,
+        // PR 3.6 — see create_question_comment. Recorded at write time because
+        // it is unrecoverable later.
+        p_language_code: languageCode,
       });
       if (error) throw error;
       return data;

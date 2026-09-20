@@ -42,6 +42,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getSupabase } from "@/lib/supabaseClient";
 import { QuestionStanceSlider } from "@/components/question/QuestionStanceSlider";
 import { recordWebStance } from "@/lib/webStance";
+import { regionDisplayName, formatNumber } from "@/lib/intlFormat";
+import { useTopicLabels } from "@/hooks/useTopicLabels";
+import { useRenditionLanguages } from "@/hooks/useRenditionLanguages";
+import { ContentLanguageIndicator } from "@/components/question/ContentLanguageIndicator";
 import { HomeOptInPrompt } from "@/components/HomeOptInPrompt";
 import { QuestionCoverImage } from "@/components/question/QuestionCoverImage";
 import { ElectionCardChrome } from "@/components/question/ElectionCardChrome";
@@ -94,10 +98,22 @@ type RegionRow = {
   state_label: string | null;
   country_label: string | null;
   global_label: string | null;
+  /**
+   * PR 1.5 — ISO 3166-1 alpha-2 for the signed-in user's country.
+   *
+   * No schema change was needed for this: user_region_dimensions already
+   * derives it from locations.iso_code (all 15 country rows are populated).
+   * The column simply was never selected, which is why a signed-in Hindi
+   * reader saw "United States" while an anonymous one — who has an
+   * IP-derived code — correctly saw "संयुक्त राज्य".
+   */
+  country_code: string | null;
 };
 
 type TrendingHomepageQuestionRow = {
   question_id: string;
+  /** PR 2a — rendition this row was rendered from (may be a D1 fallback). */
+  rendition_id?: string | null;
   question_text: string;
   summary: string | null;
   tags: string[] | null;
@@ -124,6 +140,8 @@ type TrendingHomepageQuestionRow = {
 };
 
 type AnonQuestionRow = {
+  /** PR 2a — rendition this row was rendered from (may be a D1 fallback). */
+  rendition_id?: string | null;
   id: string;
   question: string;
   summary: string | null;
@@ -195,8 +213,23 @@ type SocietalPulseOutput = {
   state: "STABLE" | "REAWAKENING" | "POLARIZING" | "ACCELERATING" | "FOCUSED";
   narrative: {
     title: string;
+    /** Retained English. Rendered only if the RPC predates PR 3. */
     sentence_1: string;
     sentence_2: string | null;
+    /**
+     * PR 3.1 — the pulse narrative is deterministic template selection, not
+     * generated prose, so the server sends the STATE and the client renders
+     * the sentence from an i18n template. No fact sets, no claim checker.
+     */
+    state?: "STABLE" | "REAWAKENING" | "POLARIZING" | "ACCELERATING" | "FOCUSED";
+    params?: {
+      t1: string | null;
+      t2: string | null;
+      t3: string | null;
+      /** True when no topic qualified and the server substituted a placeholder. */
+      t1_missing?: boolean;
+      t2_missing?: boolean;
+    };
   };
   chips: Array<{
     topic_id: string;
@@ -205,9 +238,37 @@ type SocietalPulseOutput = {
     href: string;
   }>;
   micro_metrics: Array<{
-    label: string;
+    /**
+     * PR 1 — i18n key for a metric whose label the CLIENT knows.
+     *
+     * Translation must not happen where these are built. They are assembled
+     * inside a react-query queryFn, and calling t() there bakes whichever
+     * language happened to be active at fetch time into the cache. The query
+     * key carries no language, so switching to Hindi never refetches and the
+     * English labels survive forever. That is exactly why "0 polarized" kept
+     * rendering in English while home.polarizedLabel was correctly translated.
+     *
+     * Resolve at render instead.
+     */
+    labelKey?: string;
+    /** Server-supplied display text, used only when there is no labelKey. */
+    label?: string;
     value: number | null;
   }>;
+};
+
+/**
+ * PR 1 — momentum metric CODE -> i18n key.
+ *
+ * get_societal_pulse_homepage emits a stable code per micro-metric. The enum
+ * value stays data; the words are chrome. Anything not in this map falls back
+ * to the server-supplied English label, so a new code added server-side
+ * degrades to English rather than rendering blank.
+ */
+const PULSE_METRIC_KEYS: Record<string, string> = {
+  rapid_shifts: "home.topicsShiftingRapidly",
+  polarized: "home.polarizedLabel",
+  reawakening: "home.reawakeningLabel",
 };
 
 type ParticipationStatsRow = {
@@ -950,7 +1011,43 @@ function TheRoomRightNow({
   participation: ParticipationStatsRow | null;
   regionLabel: string;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  // Class 3 lookup: topic labels localize where they render, falling back to
+  // the canonical English title so an untranslated topic never hides a chip.
+  const { topicLabel } = useTopicLabels(i18n.language);
+
+  // PR 3.1 — render the pulse narrative from i18n templates keyed on the
+  // server-supplied state.
+  //
+  // The interpolated topic names are Class 3 metadata: chips arrive ordered by
+  // the same movement_score that selects t1/t2/t3, so the first three chips
+  // give the topic_ids needed to localize them. When the server had no
+  // qualifying topic it substitutes an English placeholder and flags it, so
+  // the placeholder is replaced with a localized one rather than shown.
+  //
+  // Falls back to the server sentences for an RPC predating PR 3, which keeps
+  // a non-atomic deploy readable instead of blank.
+  const pulseSentences = React.useMemo(() => {
+    const n = pulse?.narrative;
+    if (!n) return { s1: "", s2: "" as string | null };
+    if (!n.state || !n.params) return { s1: n.sentence_1, s2: n.sentence_2 };
+
+    const chipName = (i: number, raw: string | null, missing?: boolean) => {
+      if (missing) return i === 0 ? t("pulse.fallbackT1") : t("pulse.fallbackT2");
+      const chip = pulse?.chips?.[i];
+      return chip ? topicLabel(chip.topic_id, chip.title) : (raw ?? "");
+    };
+
+    const t1 = chipName(0, n.params.t1, n.params.t1_missing);
+    const t2 = chipName(1, n.params.t2, n.params.t2_missing);
+    const t3 = n.params.t3 ? chipName(2, n.params.t3) : null;
+
+    const s1 = t(`pulse.${n.state}_s1`, { t1, t2 });
+    const s2 = t3
+      ? t(`pulse.${n.state}_s2t3`, { t3 })
+      : t(`pulse.${n.state}_s2`);
+    return { s1, s2 };
+  }, [pulse, t, topicLabel]);
   const iconGlyph = (icon: SocietalPulseOutput["chips"][number]["icon"]) => {
     switch (icon) {
       case "reawakening": return "↺";
@@ -972,10 +1069,15 @@ function TheRoomRightNow({
           {pulse?.narrative || (pulse?.chips?.length ?? 0) > 0 ? (
             <>
               {pulse?.narrative && (
+                /* PR 3.1 — localized. The data-i18n-pending exemption that
+                   used to sit here is GONE: the narrative is deterministic
+                   template selection, so the server sends a state and the
+                   client renders the sentence from an i18n template. There is
+                   no generated prose to hold back for a claim checker. */
                 <p className="text-sm leading-relaxed" style={{ color: C.ink }}>
-                  {pulse.narrative.sentence_1}
-                  {pulse.narrative.sentence_2 && (
-                    <span style={{ color: C.body }}> {pulse.narrative.sentence_2}</span>
+                  {pulseSentences.s1}
+                  {pulseSentences.s2 && (
+                    <span style={{ color: C.body }}> {pulseSentences.s2}</span>
                   )}
                 </p>
               )}
@@ -987,21 +1089,30 @@ function TheRoomRightNow({
                       to={c.href || "/topics/" + c.topic_id}
                       className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold"
                       style={{ color: C.brand, background: C.brandWash }}
-                      title={c.title}
+                      title={topicLabel(c.topic_id, c.title)}
                     >
                       <span style={{ color: C.meta }}>{iconGlyph(c.icon)}</span>
-                      <span className="line-clamp-1 max-w-[170px]">{c.title}</span>
+                      <span className="line-clamp-1 max-w-[170px]">
+                        {topicLabel(c.topic_id, c.title)}
+                      </span>
                     </Link>
                   ))}
                 </div>
               )}
               {(pulse?.micro_metrics?.length ?? 0) > 0 && (
                 <div className="mt-auto flex flex-wrap gap-2 pt-3">
-                  {pulse!.micro_metrics.slice(0, 3).map((m) => (
-                    <Pill key={m.label}>
-                      {m.value == null ? m.label : formatNum(m.value) + " " + m.label}
-                    </Pill>
-                  ))}
+                  {pulse!.micro_metrics.slice(0, 3).map((m, i) => {
+                    // labelKey wins; label is only a fallback for chips the
+                    // server labelled, which carry no code to map from.
+                    const text = m.labelKey ? t(m.labelKey) : (m.label ?? "");
+                    return (
+                      <Pill key={m.labelKey ?? m.label ?? i}>
+                        {m.value == null
+                          ? text
+                          : formatNumber(m.value, i18n.language) + " " + text}
+                      </Pill>
+                    );
+                  })}
                 </div>
               )}
             </>
@@ -1382,7 +1493,19 @@ function YouVsSociety({
                 {fingerprint.summaryTags.slice(0, 2).join(", ").toLowerCase()}
               </p>
               <p className="mt-1.5 text-sm leading-relaxed" style={{ color: C.body }}>
-                {t("home.drawnFromAnswers", { answered, topics: topicsAnswered })}
+                {/*
+                  `count` is what selects the plural form. The key exists only
+                  as drawnFromAnswers_one / _other, so without it i18next looks
+                  up the bare "home.drawnFromAnswers", finds nothing in hi OR
+                  en, and renders the raw key into the DOM. This was visible in
+                  English too — it was never a Hindi gap. `answered` is kept
+                  alongside because the message interpolates it by name.
+                */}
+                {t("home.drawnFromAnswers", {
+                  count: answered,
+                  answered,
+                  topics: topicsAnswered,
+                })}
               </p>
             </>
           ) : (
@@ -1699,6 +1822,10 @@ function FeaturedQuestionCard({
   electionMeta?: ElectionMeta;
   languageCode?: string;
 }) {
+  // D1 — the pole labels below come from a rendition that may be a
+  // fallback in another language. Declare which, so the Hindi DOM scan can
+  // tell a labelled fallback from a chrome leak.
+  const { languageOf: renditionLanguageOf } = useRenditionLanguages([q?.rendition_id]);
   const { t } = useTranslation();
   const postAnswerStats = cardStats?.get(q.question_id) ?? null;
   const effectiveStats = postAnswerStats ?? featuredStats ?? null;
@@ -1763,9 +1890,13 @@ function FeaturedQuestionCard({
         <div className="mt-5 pt-5" style={{ borderTop: `1px solid ${C.hairline}` }}>
           {isAuthed ? (
             <>
+              {/* D1 — a fallback must be labelled, never silent. Renders nothing
+                  when the instrument is already in the reader language. */}
+              <ContentLanguageIndicator renditionLanguageCode={renditionLanguageOf(q?.rendition_id)} />
               <QuestionStanceSlider
                 key={`featured-${q.question_id}`}
                 questionId={q.question_id}
+                instrumentLanguageCode={renditionLanguageOf(q?.rendition_id)}
                 questionText={q.question_text}
                 summary={q.summary}
                 languageCode={languageCode}
@@ -1801,9 +1932,13 @@ function FeaturedQuestionCard({
             </>
           ) : (
             <div className="cursor-pointer">
+              {/* D1 — a fallback must be labelled, never silent. Renders nothing
+                  when the instrument is already in the reader language. */}
+              <ContentLanguageIndicator renditionLanguageCode={renditionLanguageOf(q?.rendition_id)} />
               <QuestionStanceSlider
                 key={`featured-anon-${q.question_id}`}
                 questionId={q.question_id}
+                instrumentLanguageCode={renditionLanguageOf(q?.rendition_id)}
                 questionText={q.question_text}
                 summary={q.summary}
                 languageCode={languageCode}
@@ -1871,6 +2006,10 @@ function FeaturedQuestionCardAnon({
   electionMeta?: ElectionMeta;
   languageCode?: string;
 }) {
+  // D1 — the pole labels below come from a rendition that may be a
+  // fallback in another language. Declare which, so the Hindi DOM scan can
+  // tell a labelled fallback from a chrome leak.
+  const { languageOf: renditionLanguageOf } = useRenditionLanguages([q?.rendition_id]);
   const { t } = useTranslation();
   return (
     <div className={`${card} overflow-hidden md:grid md:grid-cols-[1.25fr_1fr]`}>
@@ -1904,8 +2043,12 @@ function FeaturedQuestionCardAnon({
 
         <div className="mt-5 pt-5" style={{ borderTop: `1px solid ${C.hairline}` }}>
           <div className="cursor-pointer">
+            {/* D1 — a fallback must be labelled, never silent. Renders nothing
+                when the instrument is already in the reader language. */}
+            <ContentLanguageIndicator renditionLanguageCode={renditionLanguageOf(q?.rendition_id)} />
             <QuestionStanceSlider
               questionId={q.id}
+              instrumentLanguageCode={renditionLanguageOf(q?.rendition_id)}
               questionText={q.question}
               summary={q.summary}
               languageCode={languageCode}
@@ -1973,6 +2116,10 @@ function GridQuestionCard({
   electionMeta?: ElectionMeta;
   languageCode?: string;
 }) {
+  // D1 — the pole labels below come from a rendition that may be a
+  // fallback in another language. Declare which, so the Hindi DOM scan can
+  // tell a labelled fallback from a chrome leak.
+  const { languageOf: renditionLanguageOf } = useRenditionLanguages([q?.rendition_id]);
   const { t } = useTranslation();
   const postAnswerStats = cardStats?.get(q.question_id) ?? null;
   const globalRegion = postAnswerStats?.regions?.global ?? null;
@@ -2045,8 +2192,12 @@ function GridQuestionCard({
         <div className="mt-auto pt-4">
           {isAuthed ? (
             <>
+              {/* D1 — a fallback must be labelled, never silent. Renders nothing
+                  when the instrument is already in the reader language. */}
+              <ContentLanguageIndicator renditionLanguageCode={renditionLanguageOf(q?.rendition_id)} />
               <QuestionStanceSlider
                 questionId={q.question_id}
+                instrumentLanguageCode={renditionLanguageOf(q?.rendition_id)}
                 questionText={q.question_text}
                 summary={q.summary}
                 languageCode={languageCode}
@@ -2081,8 +2232,12 @@ function GridQuestionCard({
             </>
           ) : (
             <div className="cursor-pointer">
+              {/* D1 — a fallback must be labelled, never silent. Renders nothing
+                  when the instrument is already in the reader language. */}
+              <ContentLanguageIndicator renditionLanguageCode={renditionLanguageOf(q?.rendition_id)} />
               <QuestionStanceSlider
                 questionId={q.question_id}
+                instrumentLanguageCode={renditionLanguageOf(q?.rendition_id)}
                 questionText={q.question_text}
                 summary={q.summary}
                 languageCode={languageCode}
@@ -2125,6 +2280,10 @@ function GridQuestionCardAnon({
   electionMeta?: ElectionMeta;
   languageCode?: string;
 }) {
+  // D1 — the pole labels below come from a rendition that may be a
+  // fallback in another language. Declare which, so the Hindi DOM scan can
+  // tell a labelled fallback from a chrome leak.
+  const { languageOf: renditionLanguageOf } = useRenditionLanguages([q?.rendition_id]);
   const { t } = useTranslation();
   return (
     <div className={`${card} flex flex-col overflow-hidden`}>
@@ -2169,8 +2328,12 @@ function GridQuestionCardAnon({
 
         <div className="mt-auto pt-4">
           <div className="cursor-pointer">
+            {/* D1 — a fallback must be labelled, never silent. Renders nothing
+                when the instrument is already in the reader language. */}
+            <ContentLanguageIndicator renditionLanguageCode={renditionLanguageOf(q?.rendition_id)} />
             <QuestionStanceSlider
               questionId={q.id}
+              instrumentLanguageCode={renditionLanguageOf(q?.rendition_id)}
               questionText={q.question}
               summary={q.summary}
               languageCode={languageCode}
@@ -2273,7 +2436,7 @@ export default function IndexPage() {
       const { data, error } = await sb
         .from("user_region_dimensions")
         .select(
-          "user_id, city_label, county_label, state_label, country_label, global_label"
+          "user_id, city_label, county_label, state_label, country_label, global_label, country_code"
         )
         .eq("user_id", userId)
         .maybeSingle<RegionRow>();
@@ -2284,6 +2447,7 @@ export default function IndexPage() {
   });
 
   const countryLabel = myRegion?.country_label ?? null;
+  const profileCountryCode = myRegion?.country_code ?? null;
   const globalLabel = myRegion?.global_label ?? "Global";
   const hasCountry = !!countryLabel;
 
@@ -2346,6 +2510,33 @@ export default function IndexPage() {
       ? effectiveCountryLabel
       : globalLabel;
 
+  // PR 1.5 — DISPLAY-ONLY localized country names.
+  //
+  // regionLabel itself must stay the canonical English label: it is also sent
+  // as p_region_label / p_exclude_country_label to the feed RPCs, which match
+  // it against questions.audience_location_label. Localizing the value used for
+  // queries would silently empty the feed.
+  //
+  // Intl.DisplayNames needs an ISO 3166-1 alpha-2 code. Only the IP-derived
+  // code is available today, so a signed-in user whose country comes from their
+  // profile still sees the English label — profiles carry no country code, and
+  // adding one is a data question rather than chrome. When no code is present
+  // these fall through to the original label, so this is never a regression.
+  // A signed-in user's own country setting wins over IP geolocation; the IP
+  // code remains the fallback for anonymous visitors.
+  const displayCountryCode = profileCountryCode ?? ipCountryCode;
+
+  // Only localize regionLabel when it actually IS the country. regionLabel is
+  // either the country label or the literal "Global", and regionDisplayName
+  // returns the Intl name whenever a code resolves — so passing the country
+  // code while the user has the Global tab selected would render "संयुक्त
+  // राज्य" where the page should say "वैश्विक".
+  const regionLabelDisplay =
+    effectiveCountryLabel && regionLabel === effectiveCountryLabel
+      ? regionDisplayName(languageCode, displayCountryCode, regionLabel)
+      : regionLabel;
+  const countryLabelDisplay = regionDisplayName(languageCode, displayCountryCode, effectiveCountryLabel);
+
   // ── Cover hydration safety net (unchanged) ──
   const hydrateCoversForTrendingRows = React.useCallback(
     async (rows: TrendingHomepageQuestionRow[]) => {
@@ -2385,7 +2576,10 @@ export default function IndexPage() {
 
   const societyPulseQuery = useQuery({
     enabled: !!sb,
-    queryKey: ["home-society-pulse", regionLabel],
+    // languageCode is in the key as a safety net: nothing in this queryFn
+    // translates any more, but if something ever does, a language switch will
+    // refetch rather than serve a stale translation.
+    queryKey: ["home-society-pulse", regionLabel, languageCode],
     retry: false,
     queryFn: async () => {
       if (!sb) return null;
@@ -2448,7 +2642,17 @@ export default function IndexPage() {
                 }));
             }
 
-            return { ...row, chips } as SocietalPulseOutput;
+            // Translate nothing here — this runs inside a queryFn, and a t()
+            // call would bake the fetch-time language into the cache. Carry the
+            // KEY through and resolve it at render.
+            const micro_metrics = (Array.isArray(row.micro_metrics) ? row.micro_metrics : []).map(
+              (m: { code?: string; label?: string; value: number | null }) => ({
+                labelKey: m.code ? PULSE_METRIC_KEYS[m.code] : undefined,
+                label: m.label,
+                value: m.value,
+              }),
+            );
+            return { ...row, chips, micro_metrics } as SocietalPulseOutput;
           }
         }
       } catch (e) {
@@ -2502,7 +2706,7 @@ export default function IndexPage() {
                           ? null
                           : Number(c.value),
                     }))
-                  : [{ label: t("home.topicsSurfacing"), value: Number(row.topic_count ?? 0) }],
+                  : [{ labelKey: "home.topicsSurfacing", value: Number(row.topic_count ?? 0) }],
             };
             return mapped;
           }
@@ -2566,9 +2770,9 @@ export default function IndexPage() {
         },
         chips: trendChips,
         micro_metrics: legacyRow ? [
-          { label: t("home.topicsShiftingRapidly"), value: Number(legacyRow.rapid_shifts_count ?? 0) },
-          { label: t("home.polarizedLabel"), value: Number(legacyRow.polarized_count ?? 0) },
-          { label: t("home.reawakeningLabel"), value: Number(legacyRow.reawakening_count ?? 0) },
+          { labelKey: "home.topicsShiftingRapidly", value: Number(legacyRow.rapid_shifts_count ?? 0) },
+          { labelKey: "home.polarizedLabel", value: Number(legacyRow.polarized_count ?? 0) },
+          { labelKey: "home.reawakeningLabel", value: Number(legacyRow.reawakening_count ?? 0) },
         ] : [],
       } as SocietalPulseOutput;
     },
@@ -3246,6 +3450,44 @@ export default function IndexPage() {
 
   const [submittingQuestionId, setSubmittingQuestionId] = React.useState<string | null>(null);
 
+  // PR 2a — question_id → the rendition that produced the wording on screen.
+  //
+  // submitStance is handed to cards as an (questionId, value) callback, so the
+  // rendition cannot ride along as an argument without changing every card's
+  // prop signature. Instead it is recovered from the same feed queries that
+  // rendered those cards: each localized RPC now returns the rendition_id for
+  // the row it produced.
+  //
+  // Feeds cannot disagree here. wording_for() is deterministic for a given
+  // (question, language), and every feed on this page is fetched with the same
+  // active language, so a question appearing in two feeds carries the same id
+  // in both. Row shapes differ (the trending RPCs key on question_id, the
+  // latest feed on id), hence the defensive read of both.
+  const renditionByQuestionId = React.useMemo(() => {
+    const map = new Map<string, string>();
+    const absorb = (rows: unknown) => {
+      if (!Array.isArray(rows)) return;
+      for (const row of rows as Array<Record<string, unknown>>) {
+        const qid = (row?.question_id ?? row?.id) as string | undefined;
+        const rid = row?.rendition_id as string | undefined;
+        if (qid && rid && !map.has(qid)) map.set(qid, rid);
+      }
+    };
+    const absorbPages = (q: { data?: { pages?: unknown[] } } | undefined) =>
+      q?.data?.pages?.forEach(absorb);
+
+    absorbPages(trendingQuestionsNationalQuery as any);
+    absorbPages(trendingQuestionsGlobalQuery as any);
+    absorbPages(anonTrendingQuery as any);
+    absorb((fallbackFeedQuery as any)?.data);
+    return map;
+  }, [
+    trendingQuestionsNationalQuery.data,
+    trendingQuestionsGlobalQuery.data,
+    anonTrendingQuery.data,
+    fallbackFeedQuery.data,
+  ]);
+
   const submitStance = React.useCallback(
     async (questionId: string, value: number) => {
       if (!sb) {
@@ -3281,7 +3523,16 @@ export default function IndexPage() {
             "apikey": anonKey,
             "Authorization": `Bearer ${jwt}`,
           },
-          body: JSON.stringify({ p_question_id: questionId, p_score: value }),
+          body: JSON.stringify({
+            p_question_id: questionId,
+            p_score: value,
+            // Recovered from the feed row that rendered this card. If it is
+            // missing the server rejects with RENDITION_REQUIRED rather than
+            // attributing the answer to whatever is published now — a loud
+            // failure is correct here, since the alternative is a fabricated
+            // measurement.
+            p_rendition_id: renditionByQuestionId.get(questionId) ?? null,
+          }),
         });
       } finally {
         setSubmittingQuestionId(null);
@@ -3345,7 +3596,7 @@ export default function IndexPage() {
         }
       }).catch(() => { /* silent — ack is non-critical */ });
     },
-    [sb, session, userId, qc, navigate, regionLabel, fetchDistribution, fetchCardStats]
+    [sb, session, userId, qc, navigate, regionLabel, fetchDistribution, fetchCardStats, renditionByQuestionId]
   );
 
   const redirectToLogin = React.useCallback(
@@ -3367,7 +3618,12 @@ export default function IndexPage() {
   const stageStance = React.useCallback(
     async (questionId: string, value: number) => {
       try {
-        await recordWebStance(questionId, value, ipGeoRef.current);
+        await recordWebStance(
+          questionId,
+          value,
+          renditionByQuestionId.get(questionId) ?? null,
+          ipGeoRef.current,
+        );
         setStagedQuestions((prev) => {
           const next = new Set(prev);
           next.add(questionId);
@@ -3385,7 +3641,11 @@ export default function IndexPage() {
         toast.error("Couldn't save your answer — check your connection and try again.");
       }
     },
-    []
+    // renditionByQuestionId must be listed: it is a memo that is empty on first
+    // render and fills once the feeds resolve. With the previous empty dep array
+    // this callback would have closed over the empty map permanently and staged
+    // every anonymous stance with a null rendition.
+    [renditionByQuestionId]
   );
 
   // ── Impression recording ──
@@ -3515,7 +3775,7 @@ export default function IndexPage() {
               </div>
               <TabsList>
                 {effectiveHasCountry && (
-                  <TabsTrigger value="country">{effectiveCountryLabel}</TabsTrigger>
+                  <TabsTrigger value="country">{countryLabelDisplay}</TabsTrigger>
                 )}
                 <TabsTrigger value="global">{t("home.globalTab")}</TabsTrigger>
               </TabsList>
@@ -3554,6 +3814,11 @@ export default function IndexPage() {
                 slider_high_label: q.slider_high_label ?? null,
                 content_type: q.content_type ?? null,
                 video_recording_path: q.video_recording_path ?? null,
+                // D1/PR 2a — must survive this mapping: it is what the hero
+                // reports as provenance and what the content-language
+                // indicator compares against. Dropping it here silently
+                // disabled both.
+                rendition_id: q.rendition_id ?? null,
               }))}
               isLoading={isAuthed ? authedIsLoading : anonIsLoading}
               isAuthed={isAuthed}
@@ -3607,7 +3872,7 @@ export default function IndexPage() {
                 snap={isAuthed ? (whereYouStandQuery.data ?? null) : null}
                 analytics={isAuthed ? (personalAnalyticsQuery.data ?? null) : null}
                 snapshot={isAuthed ? (myStanceSnapshotQuery.data ?? null) : null}
-                regionLabel={regionLabel}
+                regionLabel={regionLabelDisplay}
               />
 
               {/* ── Feed — the ONE place questions are listed ── */}

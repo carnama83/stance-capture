@@ -80,7 +80,7 @@ Deno.serve(async (req)=>{
       }
     });
   }
-  const { question_id, original_stance_before_reveal, final_stance, reveal_timing_ms } = body;
+  const { question_id, original_stance_before_reveal, final_stance, reveal_timing_ms, rendition_id } = body;
   // Validate inputs
   if (!question_id) {
     return new Response(JSON.stringify({
@@ -147,21 +147,42 @@ Deno.serve(async (req)=>{
     "Prefer": "return=representation"
   };
   const switchedAfterReveal = final_stance !== original_stance_before_reveal;
-  // F2 (Sep 2026): this is a merge-duplicates POST, so it rewrites the whole
-  // row -- omitting rendition_id would blank the provenance of a stance that
-  // already had it. Resolve it explicitly rather than relying on the upsert
-  // to preserve a column it is not sending.
-  const rendRes = await fetch(
-    `${projectUrl}/rest/v1/rpc/resolve_response_rendition`,
-    { method: "POST", headers: srHeaders,
-      body: JSON.stringify({ p_question_id: question_id, p_language_code: "en" }) });
-  const renditionId = rendRes.ok ? await rendRes.json().catch(() => null) : null;
+  // PR 2a — provenance comes from the client, or from the row already there.
+  // It is NEVER resolved.
+  //
+  // This used to call resolve_response_rendition(question_id, "en") — note the
+  // hardcoded language. Because the request is a merge-duplicates POST that
+  // rewrites the whole row, that did something worse than the main write path
+  // ever did: a Hindi respondent who used the reveal mechanic had their correct
+  // Hindi rendition_id OVERWRITTEN with the English one. Defect A and Defect C
+  // compounded, and unlike either it destroyed provenance that was already
+  // right.
+  //
+  // Order matters. final_stance is a NEW choice made against the wording on
+  // screen at the time, so the client-supplied rendition is the truthful one.
+  // The existing row is only a fallback, for client builds that predate this
+  // change — better their previous real rendition than a fabricated one.
+  let renditionId: string | null =
+    typeof rendition_id === "string" && rendition_id.length > 0 ? rendition_id : null;
+
   if (!renditionId) {
-    log("error", "no published wording to attribute stance to", { question_id, userId });
+    const existingRes = await fetch(
+      `${projectUrl}/rest/v1/question_stances?user_id=eq.${userId}&question_id=eq.${question_id}&select=rendition_id`,
+      { headers: srHeaders });
+    if (existingRes.ok) {
+      const rows = await existingRes.json().catch(() => []);
+      const existing = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+      if (existing?.rendition_id) renditionId = existing.rendition_id as string;
+    }
+  }
+
+  if (!renditionId) {
+    log("error", "no rendition to attribute stance to — refusing to fabricate one", { question_id, userId });
     return new Response(JSON.stringify({
       ok: false,
-      error: "This question is not currently answerable."
-    }), { status: 409, headers: { "content-type": "application/json" } });
+      error: "RENDITION_REQUIRED",
+      message: "This stance cannot be recorded without the rendition that was displayed."
+    }), { status: 400, headers: { "content-type": "application/json" } });
   }
   // Upsert question_stances with Switch Mechanic fields
   // Uses service role to bypass RLS for the atomic write

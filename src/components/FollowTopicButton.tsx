@@ -1,5 +1,6 @@
 // src/components/FollowTopicButton.tsx
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { getSupabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/use-toast";
@@ -13,6 +14,7 @@ export function FollowTopicButton({
   topicId,
   size = "sm",
 }: FollowTopicButtonProps) {
+  const { t } = useTranslation();
   const [isFollowing, setIsFollowing] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -85,7 +87,7 @@ export function FollowTopicButton({
       onClick={handleToggle}
       disabled={loading}
     >
-      {isFollowing ? "Following" : "Follow"}
+      {isFollowing ? t("question.following") : t("question.follow")}
     </Button>
   );
 }

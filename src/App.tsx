@@ -53,6 +53,7 @@ import AdminDraftsPage from "@/routes/admin/drafts/Index";
 import AdminQuestionsPage from "@/routes/admin/questions/Index";
 import AdminUGQQueuePage from "@/routes/admin/ugq-queue/Index";
 import AdminRenditionReviewPage from "@/routes/admin/rendition-review/Index";
+import AdminRenditionLifecyclePage from "@/routes/admin/rendition-lifecycle/Index";
 import AdminProposerPage from "@/routes/admin/proposers/Index";
 import ShareAnalyticsPage from "@/routes/admin/share-analytics/Index";
 import AdminIngestionReviewPage from "@/routes/admin/ingestion-review/Index";
@@ -373,6 +374,7 @@ const App: React.FC = () => {
                 <Route path="live-questions" element={<AdminLiveQuestionsPage />} />
                 <Route path="ugq-queue" element={<AdminUGQQueuePage />} />
                 <Route path="rendition-review" element={<AdminRenditionReviewPage />} />
+                <Route path="rendition-lifecycle" element={<AdminRenditionLifecyclePage />} />
                 <Route path="proposers" element={<AdminProposerPage />} />
                 <Route
                   path="live-questions/:id"

@@ -309,6 +309,84 @@ serve(async (req) => {
         return fallbackConfirmation("Visit stancecapture.com to see the community view.");
       }
 
+      // ── D4 / PR 2b.6 — reject a reply whose instrument was withdrawn ──────
+      //
+      // The card this person tapped was bound to a rendition at send time
+      // (f2_13). If that wording has since been invalidated, the answer they
+      // just gave is an answer to a question we already know was defective.
+      // "Accept and quarantine" is not defensible here: unlike a reply that
+      // was valid when sent and invalidated afterwards, at THIS moment the
+      // defect is already known. So the reply is not recorded, and they are
+      // asked again against current wording.
+      //
+      // On validity timing: the brief says to judge this on the provider's
+      // inbound message timestamp. Meta does not supply one in the encrypted
+      // Flow data_exchange, and this exchange is a synchronous round trip
+      // rather than a queued webhook — so receipt time differs from submission
+      // by request latency, not queue time, and the delay the rule guards
+      // against does not arise on this channel. See pr2b_04.
+      const { data: replyValid } = await supabase.rpc("whatsapp_response_is_valid", {
+        p_rendition_id: session.rendition_id,
+      });
+
+      if (replyValid === false) {
+        // Re-point the session at the wording we are about to show, so the
+        // re-answer is attributed to what they actually read this time.
+        const { data: oldRend } = await supabase
+          .from("question_renditions")
+          .select("language_code")
+          .eq("id", session.rendition_id)
+          .maybeSingle();
+
+        const { data: currentRid } = await supabase.rpc("select_rendition_to_display", {
+          p_question_id: questionId,
+          p_language_code: oldRend?.language_code ?? "en",
+        });
+
+        let newRend: any = null;
+        if (currentRid) {
+          const { data } = await supabase
+            .from("question_renditions")
+            .select("rendered_text, slider_low_label, slider_high_label, context_summary")
+            .eq("id", currentRid)
+            .maybeSingle();
+          newRend = data;
+        }
+
+        await supabase
+          .from("whatsapp_flow_sessions")
+          .update({
+            rendition_id: currentRid ?? null,
+            responded_at: new Date().toISOString(),
+            response_outcome: "rejected_invalidated",
+          })
+          .eq("flow_token", flowToken);
+
+        // MIRROR RULE (2b.7): states only that a newer version exists. It must
+        // not say the previous wording was wrong or imply a correction —
+        // telling someone that immediately before re-asking primes them to
+        // read the replacement as a fix for something.
+        const reaskNotice = (oldRend?.language_code ?? "en") === "hi"
+          ? "इस प्रश्न का नया संस्करण उपलब्ध है। कृपया नीचे दिए गए प्रश्न को पढ़कर अपना रुख फिर से बताएं।"
+          : "A newer version of this question is available. Please read it below and give your stance again.";
+
+        return new Response(
+          await encryptResponse({
+            version: FLOW_DATA_API_VERSION,
+            screen: "STANCE_INPUT",
+            data: {
+              question_text: (newRend?.rendered_text ?? "").slice(0, 300),
+              question_summary: reaskNotice.slice(0, 150),
+              stance_options: buildStanceOptions(
+                newRend?.slider_low_label,
+                newRend?.slider_high_label,
+              ),
+            },
+          }, aesKey, iv),
+          { status: 200, headers: { "Content-Type": "text/plain" } },
+        );
+      }
+
       // AA4.2 — attribute to a verified Stance Capture account if the phone matches
       let userId: string | null = null;
       const { data: profile } = await supabase
@@ -348,7 +426,10 @@ serve(async (req) => {
       // rendition was captured and the best available answer is the current one.
       let waRenditionId: string | null = session.rendition_id ?? null;
       if (!waRenditionId) {
-        const { data: resolved } = await supabase.rpc("resolve_response_rendition", {
+        // PR 2a: renamed from resolve_response_rendition. Reached only for
+        // sessions created before f2_13 bound a rendition at send time; every
+        // new session carries session.rendition_id and never lands here.
+        const { data: resolved } = await supabase.rpc("select_rendition_to_display", {
           p_question_id: questionId,
           p_language_code: "en",
         });
@@ -367,6 +448,21 @@ serve(async (req) => {
           rendition_id: waRenditionId,
           forward_chain_id: forwardChainId,
         }, { onConflict: "whatsapp_phone_hash,question_id" });
+
+        // PR 2b.6 — record the disposition of this reply. Every inbound
+        // response now ends in exactly one of two states, so a rejected
+        // re-ask can be told apart from a reply that never arrived.
+        //
+        // provider_timestamp is deliberately left NULL: Meta sends none in the
+        // Flow data_exchange. responded_at is the authoritative time for this
+        // channel because the exchange is synchronous — see pr2b_04.
+        await supabase
+          .from("whatsapp_flow_sessions")
+          .update({
+            responded_at: new Date().toISOString(),
+            response_outcome: "recorded",
+          })
+          .eq("flow_token", flowToken);
       }
 
       // AA7 — open a short session so a later "YES" subscribes to this question
