@@ -105,29 +105,39 @@ function fireAnalytics(event: AnalyticsEvent, meta?: Record<string, unknown>) {
 // Client-side only — no extra API calls.
 // Priority: trend_micro_signal → score-based → location-based → default
 
-export function deriveTeaserLabel(q: HeroQuestion): string | null {
-  // Use existing trend_micro_signal if available
+/**
+ * PR 1 — returns an i18n KEY, not display text.
+ *
+ * This used to return "Trending now" / "Split issue" / "Local debate" directly,
+ * so the teaser chip was English on a Hindi page. Same three-way split as the
+ * pulse micro-metrics: the signal is data, the words are chrome.
+ *
+ * `raw` is the escape hatch for a short server signal this helper does not
+ * recognise. It has no key to map to, so it passes through untranslated — and
+ * the Hindi DOM scan will flag it, which is the correct signal that a new
+ * server signal needs a key rather than something to hide.
+ */
+export type TeaserLabel = { key: string } | { raw: string } | null;
+
+export function deriveTeaserLabel(q: HeroQuestion): TeaserLabel {
   if (q.trend_micro_signal) {
     const sig = q.trend_micro_signal.toLowerCase();
-    if (sig.includes("trend") || sig.includes("surge")) return "Trending now";
-    if (sig.includes("polar") || sig.includes("split")) return "Split issue";
-    if (sig.includes("local") || sig.includes("region")) return "Local debate";
-    // Return capitalised raw signal if it's short and readable
+    if (sig.includes("trend") || sig.includes("surge")) return { key: "hero.teaserTrendingNow" };
+    if (sig.includes("polar") || sig.includes("split")) return { key: "hero.teaserSplitIssue" };
+    if (sig.includes("local") || sig.includes("region")) return { key: "hero.teaserLocalDebate" };
     if (q.trend_micro_signal.length <= 20) {
-      return q.trend_micro_signal.charAt(0).toUpperCase() + q.trend_micro_signal.slice(1);
+      return { raw: q.trend_micro_signal.charAt(0).toUpperCase() + q.trend_micro_signal.slice(1) };
     }
   }
 
-  // Derive from trend_score: high score = trending
-  if (q.trend_score != null && q.trend_score > 0.7) return "Trending now";
+  if (q.trend_score != null && q.trend_score > 0.7) return { key: "hero.teaserTrendingNow" };
 
-  // Location-scoped questions get a local label
   if (
     q.audience_location_label &&
     q.audience_location_label !== "Global" &&
     q.audience_location_label.split(",").length <= 2
   ) {
-    return "Local debate";
+    return { key: "hero.teaserLocalDebate" };
   }
 
   return null;

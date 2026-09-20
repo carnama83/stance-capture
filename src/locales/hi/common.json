@@ -485,7 +485,12 @@
     "joinOthersTracking": "वास्तविक समय में समाज की सोच को ट्रैक करने वालों से जुड़ें",
     "seeWhereStanceLands": "उत्तर देने के बाद देखें आपका रुख कहाँ बैठता है।",
     "newQuestionsOnTheWay": "नए प्रश्न आ रहे हैं। थोड़ी देर बाद देखें।",
-    "momentum": "गति"
+    "momentum": "गति",
+    "teaserTrendingNow": "अभी चर्चा में",
+    "teaserSplitIssue": "विभाजित मुद्दा",
+    "teaserLocalDebate": "स्थानीय बहस",
+    "questionsQueued_one": "{{count}} प्रश्न कतार में",
+    "questionsQueued_other": "{{count}} प्रश्न कतार में"
   },
   "feed": {
     "upNext": "आगे"

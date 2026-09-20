@@ -485,7 +485,12 @@
     "joinOthersTracking": "Join others tracking how society is thinking in real time",
     "seeWhereStanceLands": "See where your stance lands after you respond.",
     "newQuestionsOnTheWay": "New questions are on their way. Check back shortly.",
-    "momentum": "Momentum"
+    "momentum": "Momentum",
+    "teaserTrendingNow": "Trending now",
+    "teaserSplitIssue": "Split issue",
+    "teaserLocalDebate": "Local debate",
+    "questionsQueued_one": "{{count}} question queued",
+    "questionsQueued_other": "{{count}} questions queued"
   },
   "feed": {
     "upNext": "Up next"

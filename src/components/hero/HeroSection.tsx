@@ -1443,7 +1443,10 @@ function QueueCard({
   onClick: () => void;
 }) {
   const { t, i18n } = useTranslation();
-  const teaser = deriveTeaserLabel(question);
+  const teaserLabel = deriveTeaserLabel(question);
+  const teaser = teaserLabel
+    ? ("key" in teaserLabel ? t(teaserLabel.key) : teaserLabel.raw)
+    : null;
 
   return (
     <button
@@ -1719,7 +1722,7 @@ export function HeroSection({
           </p>
           {queuedQuestions.length > 0 && (
             <p className="text-[11px] text-slate-400">
-              {queuedQuestions.length} question{queuedQuestions.length === 1 ? "" : "s"} queued
+              {t("hero.questionsQueued", { count: queuedQuestions.length })}
             </p>
           )}
         </div>

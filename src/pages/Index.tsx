@@ -42,7 +42,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getSupabase } from "@/lib/supabaseClient";
 import { QuestionStanceSlider } from "@/components/question/QuestionStanceSlider";
 import { recordWebStance } from "@/lib/webStance";
-import { regionDisplayName } from "@/lib/intlFormat";
+import { regionDisplayName, formatNumber } from "@/lib/intlFormat";
 import { HomeOptInPrompt } from "@/components/HomeOptInPrompt";
 import { QuestionCoverImage } from "@/components/question/QuestionCoverImage";
 import { ElectionCardChrome } from "@/components/question/ElectionCardChrome";
@@ -206,9 +206,37 @@ type SocietalPulseOutput = {
     href: string;
   }>;
   micro_metrics: Array<{
-    label: string;
+    /**
+     * PR 1 — i18n key for a metric whose label the CLIENT knows.
+     *
+     * Translation must not happen where these are built. They are assembled
+     * inside a react-query queryFn, and calling t() there bakes whichever
+     * language happened to be active at fetch time into the cache. The query
+     * key carries no language, so switching to Hindi never refetches and the
+     * English labels survive forever. That is exactly why "0 polarized" kept
+     * rendering in English while home.polarizedLabel was correctly translated.
+     *
+     * Resolve at render instead.
+     */
+    labelKey?: string;
+    /** Server-supplied display text, used only when there is no labelKey. */
+    label?: string;
     value: number | null;
   }>;
+};
+
+/**
+ * PR 1 — momentum metric CODE -> i18n key.
+ *
+ * get_societal_pulse_homepage emits a stable code per micro-metric. The enum
+ * value stays data; the words are chrome. Anything not in this map falls back
+ * to the server-supplied English label, so a new code added server-side
+ * degrades to English rather than rendering blank.
+ */
+const PULSE_METRIC_KEYS: Record<string, string> = {
+  rapid_shifts: "home.topicsShiftingRapidly",
+  polarized: "home.polarizedLabel",
+  reawakening: "home.reawakeningLabel",
 };
 
 type ParticipationStatsRow = {
@@ -951,7 +979,7 @@ function TheRoomRightNow({
   participation: ParticipationStatsRow | null;
   regionLabel: string;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const iconGlyph = (icon: SocietalPulseOutput["chips"][number]["icon"]) => {
     switch (icon) {
       case "reawakening": return "↺";
@@ -1013,11 +1041,18 @@ function TheRoomRightNow({
               )}
               {(pulse?.micro_metrics?.length ?? 0) > 0 && (
                 <div className="mt-auto flex flex-wrap gap-2 pt-3">
-                  {pulse!.micro_metrics.slice(0, 3).map((m) => (
-                    <Pill key={m.label}>
-                      {m.value == null ? m.label : formatNum(m.value) + " " + m.label}
-                    </Pill>
-                  ))}
+                  {pulse!.micro_metrics.slice(0, 3).map((m, i) => {
+                    // labelKey wins; label is only a fallback for chips the
+                    // server labelled, which carry no code to map from.
+                    const text = m.labelKey ? t(m.labelKey) : (m.label ?? "");
+                    return (
+                      <Pill key={m.labelKey ?? m.label ?? i}>
+                        {m.value == null
+                          ? text
+                          : formatNumber(m.value, i18n.language) + " " + text}
+                      </Pill>
+                    );
+                  })}
                 </div>
               )}
             </>
@@ -2428,7 +2463,10 @@ export default function IndexPage() {
 
   const societyPulseQuery = useQuery({
     enabled: !!sb,
-    queryKey: ["home-society-pulse", regionLabel],
+    // languageCode is in the key as a safety net: nothing in this queryFn
+    // translates any more, but if something ever does, a language switch will
+    // refetch rather than serve a stale translation.
+    queryKey: ["home-society-pulse", regionLabel, languageCode],
     retry: false,
     queryFn: async () => {
       if (!sb) return null;
@@ -2491,7 +2529,17 @@ export default function IndexPage() {
                 }));
             }
 
-            return { ...row, chips } as SocietalPulseOutput;
+            // Translate nothing here — this runs inside a queryFn, and a t()
+            // call would bake the fetch-time language into the cache. Carry the
+            // KEY through and resolve it at render.
+            const micro_metrics = (Array.isArray(row.micro_metrics) ? row.micro_metrics : []).map(
+              (m: { code?: string; label?: string; value: number | null }) => ({
+                labelKey: m.code ? PULSE_METRIC_KEYS[m.code] : undefined,
+                label: m.label,
+                value: m.value,
+              }),
+            );
+            return { ...row, chips, micro_metrics } as SocietalPulseOutput;
           }
         }
       } catch (e) {
@@ -2545,7 +2593,7 @@ export default function IndexPage() {
                           ? null
                           : Number(c.value),
                     }))
-                  : [{ label: t("home.topicsSurfacing"), value: Number(row.topic_count ?? 0) }],
+                  : [{ labelKey: "home.topicsSurfacing", value: Number(row.topic_count ?? 0) }],
             };
             return mapped;
           }
@@ -2609,9 +2657,9 @@ export default function IndexPage() {
         },
         chips: trendChips,
         micro_metrics: legacyRow ? [
-          { label: t("home.topicsShiftingRapidly"), value: Number(legacyRow.rapid_shifts_count ?? 0) },
-          { label: t("home.polarizedLabel"), value: Number(legacyRow.polarized_count ?? 0) },
-          { label: t("home.reawakeningLabel"), value: Number(legacyRow.reawakening_count ?? 0) },
+          { labelKey: "home.topicsShiftingRapidly", value: Number(legacyRow.rapid_shifts_count ?? 0) },
+          { labelKey: "home.polarizedLabel", value: Number(legacyRow.polarized_count ?? 0) },
+          { labelKey: "home.reawakeningLabel", value: Number(legacyRow.reawakening_count ?? 0) },
         ] : [],
       } as SocietalPulseOutput;
     },
