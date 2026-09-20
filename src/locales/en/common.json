@@ -506,5 +506,9 @@
     "title": "Oops! Page not found",
     "body": "The page you're looking for doesn't exist or has been moved.",
     "returnHome": "Return to Home"
+  },
+  "language": {
+    "shownIn": "In {{language}}",
+    "shownInTitle": "This question has not been translated into your language yet, so it is shown in {{language}}."
   }
 }

@@ -91,3 +91,27 @@ export function formatDate(
     return String(value);
   }
 }
+
+/**
+ * PR 1.9 — the name of a language, written in the UI language.
+ *
+ * Used by the content-language indicator. Deriving this from Intl rather than
+ * a hardcoded "English" key means the chip reads correctly for any language
+ * pair the platform later supports:
+ *
+ *   languageDisplayName("hi", "en")  → "अंग्रेज़ी"
+ *   languageDisplayName("hi", "mr")  → "मराठी"
+ *   languageDisplayName("en", "hi")  → "Hindi"
+ *
+ * Returns the raw code if Intl cannot resolve it, which is visible and
+ * debuggable rather than silently blank.
+ */
+export function languageDisplayName(uiLanguageCode: string, ofLanguageCode: string): string {
+  const of_ = (ofLanguageCode ?? "").trim();
+  if (!of_) return "";
+  try {
+    return new Intl.DisplayNames([localeFor(uiLanguageCode)], { type: "language" }).of(of_) ?? of_;
+  } catch {
+    return of_;
+  }
+}

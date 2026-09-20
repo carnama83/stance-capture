@@ -47,6 +47,8 @@ import TradeoffExplorer from "@/components/insights/TradeoffExplorer";
 import { RationaleEditor } from "@/components/RationaleEditor";
 import { WebOptInCard } from "@/components/WebOptInCard";
 import { recordWebStance } from "@/lib/webStance";
+import { ContentLanguageIndicator } from "@/components/question/ContentLanguageIndicator";
+import { useRenditionLanguages } from "@/hooks/useRenditionLanguages";
 
 import {
 
@@ -979,6 +981,11 @@ export default function QuestionDetailPage() {
     staleTime: 60_000,
   });
 
+  // PR 1.9 — the language the displayed rendition is actually in, so the
+  // content-language indicator can tell the reader when a question fell back
+  // to another language rather than being withheld.
+  const { languageOf } = useRenditionLanguages([question?.rendition_id]);
+
   const { data: topicLite } = useQuery({
     enabled: !!question?.topic_id,
     queryKey: ["question-topic-lite", question?.topic_id ?? ""],
@@ -1523,6 +1530,14 @@ export default function QuestionDetailPage() {
             <h1 className="text-2xl md:text-3xl font-semibold leading-[1.15] tracking-[-0.02em] text-slate-900">
               {question.question}
             </h1>
+
+            {/* PR 1.9 — renders only when the wording on screen is NOT in the
+                reader language, which happens under the permissive policy
+                (profiles.show_unavailable_language). Silent before this. */}
+            <ContentLanguageIndicator
+              renditionLanguageCode={languageOf(question.rendition_id)}
+              className="mt-2 inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-600"
+            />
 
             {/* Epic MP: verbatim manifesto quote + provenance for manifesto-promise questions */}
             <ManifestoProvenance sourceMeta={question.source_meta} />
