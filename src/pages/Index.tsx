@@ -42,6 +42,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getSupabase } from "@/lib/supabaseClient";
 import { QuestionStanceSlider } from "@/components/question/QuestionStanceSlider";
 import { recordWebStance } from "@/lib/webStance";
+import { regionDisplayName } from "@/lib/intlFormat";
 import { HomeOptInPrompt } from "@/components/HomeOptInPrompt";
 import { QuestionCoverImage } from "@/components/question/QuestionCoverImage";
 import { ElectionCardChrome } from "@/components/question/ElectionCardChrome";
@@ -972,7 +973,22 @@ function TheRoomRightNow({
           {pulse?.narrative || (pulse?.chips?.length ?? 0) > 0 ? (
             <>
               {pulse?.narrative && (
-                <p className="text-sm leading-relaxed" style={{ color: C.ink }}>
+                <p
+                  className="text-sm leading-relaxed"
+                  style={{ color: C.ink }}
+                  /* Content Class 4 — AI-written commentary derived from the
+                     societal-pulse fact set. Not localized until PR 3, which
+                     generates EN and HI as siblings from one fact set rather
+                     than translating one into the other.
+
+                     The attribute sits on THIS paragraph and not on the
+                     surrounding RoomCard on purpose: the card also holds the
+                     title, the blurb and the topic chips, and exempting the
+                     wrapper would hide that untranslated Class-1 and Class-3
+                     text from the Hindi DOM scan. PR 3 asserts zero of these
+                     remain. */
+                  data-i18n-pending="pulse-narrative"
+                >
                   {pulse.narrative.sentence_1}
                   {pulse.narrative.sentence_2 && (
                     <span style={{ color: C.body }}> {pulse.narrative.sentence_2}</span>
@@ -2358,6 +2374,21 @@ export default function IndexPage() {
       ? effectiveCountryLabel
       : globalLabel;
 
+  // PR 1.5 — DISPLAY-ONLY localized country names.
+  //
+  // regionLabel itself must stay the canonical English label: it is also sent
+  // as p_region_label / p_exclude_country_label to the feed RPCs, which match
+  // it against questions.audience_location_label. Localizing the value used for
+  // queries would silently empty the feed.
+  //
+  // Intl.DisplayNames needs an ISO 3166-1 alpha-2 code. Only the IP-derived
+  // code is available today, so a signed-in user whose country comes from their
+  // profile still sees the English label — profiles carry no country code, and
+  // adding one is a data question rather than chrome. When no code is present
+  // these fall through to the original label, so this is never a regression.
+  const regionLabelDisplay = regionDisplayName(languageCode, ipCountryCode, regionLabel);
+  const countryLabelDisplay = regionDisplayName(languageCode, ipCountryCode, effectiveCountryLabel);
+
   // ── Cover hydration safety net (unchanged) ──
   const hydrateCoversForTrendingRows = React.useCallback(
     async (rows: TrendingHomepageQuestionRow[]) => {
@@ -3583,7 +3614,7 @@ export default function IndexPage() {
               </div>
               <TabsList>
                 {effectiveHasCountry && (
-                  <TabsTrigger value="country">{effectiveCountryLabel}</TabsTrigger>
+                  <TabsTrigger value="country">{countryLabelDisplay}</TabsTrigger>
                 )}
                 <TabsTrigger value="global">{t("home.globalTab")}</TabsTrigger>
               </TabsList>
@@ -3675,7 +3706,7 @@ export default function IndexPage() {
                 snap={isAuthed ? (whereYouStandQuery.data ?? null) : null}
                 analytics={isAuthed ? (personalAnalyticsQuery.data ?? null) : null}
                 snapshot={isAuthed ? (myStanceSnapshotQuery.data ?? null) : null}
-                regionLabel={regionLabel}
+                regionLabel={regionLabelDisplay}
               />
 
               {/* ── Feed — the ONE place questions are listed ── */}

@@ -28,6 +28,16 @@ import { test, expect, type Page } from "@playwright/test";
  * indicator chip must NOT be added: it renders as अंग्रेज़ी में in Hindi mode
  * (PR 1.9), and allowlisting "English" here would hand-wave a real leak.
  */
+/**
+ * Brand wordmarks that must match the text node EXACTLY.
+ *
+ * The logo renders the single word "Stance". Putting that in the substring
+ * allowlist below would also silence "Your Stance", "Stance history" and every
+ * other real leak containing the word — so short brand marks are matched whole
+ * and nothing else is affected.
+ */
+const EXACT_ALLOWLIST = ["Stance"];
+
 const PROPER_NOUN_ALLOWLIST = [
   "Stance Capture",
   "Reuters",
@@ -57,10 +67,21 @@ async function collectFindings(page: Page): Promise<{
   rawKeys: Finding[];
   pendingCount: number;
 }> {
-  return page.evaluate((allowlist: string[]) => {
+  return page.evaluate(({ allowlist, exact }: { allowlist: string[]; exact: string[] }) => {
     const isSuspiciousLatin = (text: string): boolean => {
       const t = text.trim();
       if (!t || t.length < 3) return false;
+      if (exact.includes(t)) return false;
+      // Substring allowlist is matched against the NODE only.
+      //
+      // An earlier revision also matched it against several levels of ancestor
+      // text to catch brand names split across elements. That silently gutted
+      // the test: short entries like "US", "PPI" and "F-1" appear somewhere in
+      // almost any large ancestor's combined text, so nearly every leak was
+      // suppressed and the suite went from 7 findings to 1 without a single
+      // string being translated. A scan that passes by going blind is worse
+      // than one that fails honestly. Split brand marks are handled by
+      // EXACT_ALLOWLIST instead.
       if (allowlist.some((n) => t.includes(n))) return false;
       // Pure numbers, dates, percentages and punctuation are script-neutral.
       if (/^[\d\s.,:%+\-–—/()]+$/.test(t)) return false;
@@ -125,7 +146,7 @@ async function collectFindings(page: Page): Promise<{
       rawKeys,
       pendingCount: document.querySelectorAll("[data-i18n-pending]").length,
     };
-  }, PROPER_NOUN_ALLOWLIST);
+  }, { allowlist: PROPER_NOUN_ALLOWLIST, exact: EXACT_ALLOWLIST });
 }
 
 async function settle(page: Page, path: string, lang: string) {

@@ -88,25 +88,16 @@ export type QuestionStanceSliderProps = {
 // Oppose/support framing matches the pre-commit prompt ("Do you support or oppose this?")
 // and is meaningful for both binary propositions and multi-axis trade-off questions,
 // where "agree/disagree" has no clear referent.
-const STANCE_LABELS: Record<number, string> = {
-  [-2]: "Strongly oppose",
-  [-1]: "Lean oppose",
-  [0]: "Neutral",
-  [1]: "Lean support",
-  [2]: "Strongly support",
-};
-
-const STANCE_TIPS_FALLBACK: Record<number, string> = {
-  [-2]:
-    "You strongly oppose this. You would prefer alternatives that avoid these trade-offs entirely.",
-  [-1]:
-    "You lean toward opposing this. You see more downsides than upsides, but might accept it with significant changes.",
-  [0]:
-    "You're neutral or unsure. You may see valid points on multiple sides or need more information to decide.",
-  [1]:
-    "You lean toward supporting this. You believe the benefits outweigh the costs, with some reservations.",
-  [2]:
-    "You strongly support this. You accept the trade-offs as worthwhile to achieve the intended outcome.",
+// PR 1.4 — these were hardcoded English. They are generic (identical for every
+// question, not question-specific stance-meaning text), so they are Class 1
+// chrome and belong in i18next. The question-specific AI tip that normally
+// replaces them is Class 4 derived content, handled separately.
+const STANCE_TIP_KEYS: Record<number, string> = {
+  [-2]: "stance.tipStronglyOppose",
+  [-1]: "stance.tipLeanOppose",
+  [0]: "stance.tipNeutral",
+  [1]: "stance.tipLeanSupport",
+  [2]: "stance.tipStronglySupport",
 };
 
 
@@ -263,8 +254,9 @@ export function QuestionStanceSlider({
     { neutral: t("stance.neutral"), leanOppose: t("stance.leanOppose"), leanSupport: t("stance.leanSupport") },
     languageCode
   );
-  const label = stanceLabels[value] ?? "Select stance";
-  const fallbackTip = STANCE_TIPS_FALLBACK[value] ?? "";
+  const label = stanceLabels[value] ?? t("stance.selectStance");
+  const fallbackTipKey = STANCE_TIP_KEYS[value];
+  const fallbackTip = fallbackTipKey ? t(fallbackTipKey) : "";
   const tip = aiData?.tip || fallbackTip;
 
   // Ref guard: fires onInteractionStart exactly once per mount.
@@ -375,7 +367,7 @@ export function QuestionStanceSlider({
           </div>
         ) : (
           <p className="text-[11px] text-slate-500">
-            Move the slider to express your view.
+            {t("stance.moveSlider")}
           </p>
         )
       )}
@@ -383,7 +375,7 @@ export function QuestionStanceSlider({
       {/* Header label */}
       <div className="flex items-center justify-between text-[11px] text-slate-600">
         <span className="font-semibold uppercase tracking-wide">
-          {isProminent ? "Your position" : "Your stance"}
+          {isProminent ? t("stance.yourPosition") : t("stance.yourStance")}
         </span>
         <span className="font-semibold text-slate-900">{label}</span>
       </div>
@@ -395,7 +387,7 @@ export function QuestionStanceSlider({
         aria-labelledby="stance-slider-label"
       >
         <span id="stance-slider-label" className="sr-only">
-          Stance slider — move left to oppose, right to support
+          {t("stance.sliderAria")}
         </span>
 
         <div className="relative py-2 sm:py-1 touch-pan-x">
@@ -427,7 +419,7 @@ export function QuestionStanceSlider({
             aria-valuemin={-2}
             aria-valuemax={2}
             aria-valuenow={value}
-            aria-valuetext={stanceLabels[value] ?? "Neutral"}
+            aria-valuetext={stanceLabels[value] ?? t("stance.neutral")}
           />
 
           {/* Colored fill — decorative */}
@@ -477,7 +469,7 @@ export function QuestionStanceSlider({
             {stanceLabels[-1]}
           </span>
           {/* 0 */}
-          <span className="shrink-0">Neutral</span>
+          <span className="shrink-0">{t("stance.neutral")}</span>
           {/* +1: hidden on mobile */}
           <span className="hidden max-w-[100px] leading-tight text-center shrink-0 text-slate-400">
             {stanceLabels[1]}
@@ -489,17 +481,17 @@ export function QuestionStanceSlider({
         </div>
 
         <div className="block sm:hidden text-[10px] text-slate-400 mt-0.5">
-          Swipe or drag the slider to adjust your stance.
+          {t("stance.swipeOrDrag")}
         </div>
       </div>
 
       {/* Tip box */}
       <div className="rounded-md border bg-slate-50 px-3 py-2 text-[11px] text-slate-700 min-h-[52px]">
         <div className="flex items-center justify-between mb-0.5">
-          <div className="font-semibold">What this stance means</div>
+          <div className="font-semibold">{t("stance.whatThisMeans")}</div>
           {aiLoading && (
             <div className="text-[9px] text-slate-400 animate-pulse">
-              Loading AI tip...
+              {t("stance.loadingAiTip")}
             </div>
           )}
         </div>

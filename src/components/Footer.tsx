@@ -8,6 +8,7 @@
  * Adjust the folder name if yours differs.
  */
 
+import { useTranslation } from "react-i18next";
 import { CSSProperties } from "react";
 
 /**
@@ -20,26 +21,26 @@ import { CSSProperties } from "react";
  * TODO: replace the contact email below with a real, monitored address.
  */
 export default function Footer() {
+  const { t } = useTranslation();
   return (
     <footer style={styles.footer}>
       <div style={styles.inner}>
         <div style={styles.brandCol}>
           <p style={styles.brand}>Stance Capture</p>
           <p style={styles.tagline}>
-            A civic-technology platform for capturing public opinion and
-            revealing how views compare and change over time.
+            {t("footer.tagline")}
           </p>
         </div>
 
         <nav style={styles.nav} aria-label="Footer">
           <a style={styles.navLink} href="#/about">
-            About
+            {t("footer.about")}
           </a>
           <a style={styles.navLink} href="#/privacy">
-            Privacy
+            {t("footer.privacy")}
           </a>
           <a style={styles.navLink} href="mailto:your-email@gmail.com">
-            Contact
+            {t("footer.contact")}
           </a>
         </nav>
       </div>

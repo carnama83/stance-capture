@@ -15,6 +15,8 @@
 // Props use the normalized CommunityStanceData field names (supportPct / opposePct)
 // NOT the raw DB names (pct_agree / pct_disagree).
 
+import { useTranslation } from "react-i18next";
+import { formatNumber } from "@/lib/intlFormat";
 import * as React from "react";
 import { RefreshCw } from "lucide-react";
 import { resolvePoleLabels } from "@/lib/poleLabels";
@@ -95,9 +97,8 @@ function formatPct(val: number | null | undefined): string {
   return `${Math.round(val)}%`;
 }
 
-function formatNum(val: number): string {
-  return val === 1 ? "1 stance recorded" : `${val} stances recorded`;
-}
+// formatNum removed in PR 1: the count is now a plural i18n key, so the
+// pluralisation rule comes from the locale rather than an English ternary.
 
 // ── Skeleton ──────────────────────────────────────────────────────────────────
 
@@ -137,7 +138,16 @@ export function CommunityStanceBar({
   // generic oppose/support frame. Pure relabel — numbers/percentages unchanged.
   // Negative pole (opposePct / red) → low label; positive pole (supportPct /
   // green) → high label.
-  const { negFull, posFull } = resolvePoleLabels(lowLabel, highLabel);
+  const { t, i18n } = useTranslation();
+  // PR 1.4: the generic fallbacks were hardcoded English inside
+  // resolvePoleLabels. A Hindi page must not fall back to "Oppose"/"Support"
+  // just because a question predates the pole-label pipeline.
+  const { negFull, posFull } = resolvePoleLabels(
+    lowLabel,
+    highLabel,
+    t("stance.oppose"),
+    t("stance.support"),
+  );
 
   // Ghost marker position: map score -2..+2 to 0..100% across the bar.
   // Clamped to 4..96 (not the full 0..100) so an extreme (-2 or +2) stance's
@@ -168,7 +178,7 @@ export function CommunityStanceBar({
           className="w-full rounded-full bg-slate-100"
           style={{ height: compact ? 8 : 10 }}
           role="img"
-          aria-label="No stances recorded yet"
+          aria-label={t("stance.noStancesYet")}
         />
         <div className={`flex items-start justify-between gap-2 ${compact ? "text-[11px]" : "text-xs"} text-slate-400`}>
           <span className="flex min-w-0 flex-1 items-start gap-1">
@@ -177,7 +187,7 @@ export function CommunityStanceBar({
           </span>
           <span className="flex shrink-0 items-start gap-1 whitespace-nowrap">
             <span className="mt-0.5 inline-block h-2 w-2 shrink-0 rounded-full bg-slate-200" />
-            Neutral 0%
+            {t("stance.neutral")} 0%
           </span>
           <span className="flex min-w-0 flex-1 items-start justify-end gap-1 text-right">
             <span className="break-words">{posFull} 0%</span>
@@ -185,7 +195,7 @@ export function CommunityStanceBar({
           </span>
         </div>
         <p className={`${compact ? "text-[11px]" : "text-xs"} text-slate-400`}>
-          No stances recorded yet.
+          {t("stance.noStancesYet")}
         </p>
       </div>
     );
@@ -233,7 +243,7 @@ export function CommunityStanceBar({
         className="flex w-full overflow-hidden rounded-full"
         style={{ height: compact ? 8 : 10 }}
         role="img"
-        aria-label={`Community stance: ${formatPct(opposePct)} ${negFull}, ${formatPct(neutralPct)} neutral, ${formatPct(supportPct)} ${posFull}`}
+        aria-label={`${t("stance.communityStance")}: ${formatPct(opposePct)} ${negFull}, ${formatPct(neutralPct)} ${t("stance.neutralLower")}, ${formatPct(supportPct)} ${posFull}`}
       >
         {oW > 0 && (
           <div
@@ -284,7 +294,7 @@ export function CommunityStanceBar({
         </span>
         <span className="flex shrink-0 items-start gap-1 whitespace-nowrap">
           <span className="mt-0.5 inline-block h-2 w-2 shrink-0 rounded-full bg-slate-300" />
-          Neutral {formatPct(neutralPct)}
+          {t("stance.neutral")} {formatPct(neutralPct)}
         </span>
         <span className="flex min-w-0 flex-1 items-start justify-end gap-1 text-right">
           <span className="break-words">{posFull} {formatPct(supportPct)}</span>
@@ -298,7 +308,12 @@ export function CommunityStanceBar({
           compact ? "text-[11px]" : "text-xs"
         } text-slate-500`}
       >
-        <span>{formatNum(responses)}</span>
+        <span>
+          {t("stance.stancesRecorded", {
+            count: responses,
+            formattedCount: formatNumber(responses, i18n.language),
+          })}
+        </span>
         {avgScore != null && (
           <span className="text-[10px] text-slate-400">
             avg {avgScore.toFixed(2)} (−2 to +2)
