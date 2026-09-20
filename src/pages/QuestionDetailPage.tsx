@@ -486,6 +486,9 @@ async function trackQuestionInteraction(
 // ---------- Editorial hero image ----------
 import { getHeroImageUrl } from "@/lib/imageUtils";
 import { buildStanceLabels } from "@/lib/stanceColors";
+import { formatDate } from "@/lib/intlFormat";
+import { useTopicLabels } from "@/hooks/useTopicLabels";
+import { usePlaceLabels } from "@/hooks/usePlaceLabels";
 
 function EditorialHeroImage({
   imageUrl,
@@ -794,6 +797,7 @@ function StanceCard({
           summary={question.summary}
           contextSummary={question.context_summary}
           publishedAt={question.published_at}
+          instrumentLanguageCode={stanceCardLanguageOf(question.rendition_id) ?? null}
         />
       ) : (
         // Generic, neutral counterpart for non-incident questions — mainly
@@ -804,6 +808,7 @@ function StanceCard({
         <QuestionContextCard
           contextSummary={question.context_summary}
           supportingLinks={question.supporting_links}
+          instrumentLanguageCode={stanceCardLanguageOf(question.rendition_id) ?? null}
         />
       )}
 
@@ -832,7 +837,7 @@ function StanceCard({
             )}
             {question.archived_at && (
               <p className="text-xs text-amber-600 mt-0.5">
-                {t("stance.archivedOn", { date: new Date(question.archived_at).toLocaleDateString(undefined, { dateStyle: "long" }) })}
+                {t("stance.archivedOn", { date: formatDate(question.archived_at, languageCode, { dateStyle: "long" }) })}
               </p>
             )}
             <p className="text-xs text-amber-600 mt-1">{t("stance.stancesNoLongerAccepted")}</p>
@@ -990,6 +995,8 @@ export default function QuestionDetailPage() {
   // content-language indicator can tell the reader when a question fell back
   // to another language rather than being withheld.
   const { languageOf } = useRenditionLanguages([question?.rendition_id]);
+  const { topicLabel } = useTopicLabels(languageCode);
+  const { placeLabel } = usePlaceLabels(languageCode);
 
   const { data: topicLite } = useQuery({
     enabled: !!question?.topic_id,
@@ -1502,7 +1509,7 @@ export default function QuestionDetailPage() {
               <span aria-hidden className="text-slate-300">·</span>
               {question.published_at ? (
                 <time dateTime={question.published_at} className="text-[12px] text-slate-500">
-                  {new Date(question.published_at).toLocaleDateString(undefined, { dateStyle: "long" })}
+                  {formatDate(question.published_at, languageCode, { dateStyle: "long" })}
                 </time>
               ) : (
                 <span className="text-[12px] text-slate-500">—</span>
@@ -1510,7 +1517,15 @@ export default function QuestionDetailPage() {
               <span aria-hidden className="text-slate-300">·</span>
               <span className="inline-flex items-center gap-1 text-[12px] text-slate-500">
                 <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
-                {question.location_label ?? "Global"}
+                {/* Class 5. The country component localizes; a state or city
+                    name has no CLDR data and is reproduced verbatim, so this
+                    span declares itself a proper noun rather than reading as an
+                    untranslated string. */}
+                <span data-proper-noun="place">
+                  {question.location_label
+                    ? placeLabel(question.location_label)
+                    : t("stance.global")}
+                </span>
               </span>
             </div>
 
@@ -1532,7 +1547,10 @@ export default function QuestionDetailPage() {
             )}
 
             {/* Headline */}
-            <h1 className="text-2xl md:text-3xl font-semibold leading-[1.15] tracking-[-0.02em] text-slate-900">
+            <h1
+              className="text-2xl md:text-3xl font-semibold leading-[1.15] tracking-[-0.02em] text-slate-900"
+              data-instrument-language={languageOf(question.rendition_id) ?? undefined}
+            >
               {question.question}
             </h1>
 
@@ -1565,7 +1583,10 @@ export default function QuestionDetailPage() {
             )}
 
             {question.summary && question.source !== "manifesto_promise" && (
-              <p className="max-w-[44rem] font-normal text-base md:text-lg text-slate-600 leading-relaxed md:leading-[1.6] text-left">
+              <p
+                className="max-w-[44rem] font-normal text-base md:text-lg text-slate-600 leading-relaxed md:leading-[1.6] text-left"
+                data-instrument-language={languageOf(question.rendition_id) ?? undefined}
+              >
                 {question.summary}
               </p>
             )}
@@ -1631,7 +1652,7 @@ export default function QuestionDetailPage() {
                       )}
                       {rq.published_at && (
                         <span className="text-[10px] text-slate-500">
-                          {new Date(rq.published_at).toLocaleDateString(undefined, { dateStyle: "medium" })}
+                          {formatDate(rq.published_at, languageCode, { dateStyle: "medium" })}
                         </span>
                       )}
                     </div>
@@ -1643,7 +1664,7 @@ export default function QuestionDetailPage() {
 
           <footer className="mt-8 pt-6 border-t border-slate-100">
             <button type="button" onClick={handleBack} className="text-sm text-slate-500 hover:text-slate-900 transition-colors">
-              ← Back
+              {t("question.back")}
             </button>
           </footer>
         </main>
@@ -1658,7 +1679,7 @@ export default function QuestionDetailPage() {
                   <div className="min-w-0">
                     <div className="text-[11px] font-semibold tracking-wide uppercase text-slate-500">{t("stance.topic")}</div>
                     <div className="mt-1 text-sm font-medium text-slate-900">
-                      {topicLite?.title ?? t("stance.viewTopic")}
+                      {topicLabel(question.topic_id, topicLite?.title) || t("stance.viewTopic")}
                     </div>
                   </div>
                   <div className="shrink-0 flex items-center gap-2">
@@ -1692,6 +1713,7 @@ export default function QuestionDetailPage() {
                 isEmpty={!communityStatsLoading && !communityStats}
                 lowLabel={question.slider_low_label ?? null}
                 highLabel={question.slider_high_label ?? null}
+                instrumentLanguageCode={languageOf(question.rendition_id) ?? null}
                 myStanceScore={myStance}
                 myStanceCounted={isAuthed}
               />
@@ -1758,7 +1780,7 @@ export default function QuestionDetailPage() {
               onClick={handleBack}
               className="text-sm text-slate-500 hover:text-slate-900 transition-colors"
             >
-              ← Back
+              {t("question.back")}
             </button>
           </div>
           {content}

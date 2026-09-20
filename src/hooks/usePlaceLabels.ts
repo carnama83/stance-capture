@@ -54,9 +54,26 @@ export function usePlaceLabels(languageCode: string) {
   const placeLabel = (label: string | null | undefined): string => {
     const raw = (label ?? "").trim();
     if (!raw) return "";
+
     const code = byLabel.get(raw.toLowerCase());
-    if (!code) return raw;
-    return regionDisplayName(languageCode, code, raw);
+    if (code) return regionDisplayName(languageCode, code, raw);
+
+    // Composite labels ("Karnataka, India", "Bhopal, India") are the common
+    // shape in the data. CLDR knows the country and nothing else, so localize
+    // the part it knows and leave the rest exactly as written. Half a label in
+    // the reader's script beats none, and it still invents nothing: the head is
+    // reproduced verbatim, never transliterated.
+    const comma = raw.lastIndexOf(",");
+    if (comma > 0) {
+      const head = raw.slice(0, comma).trim();
+      const tail = raw.slice(comma + 1).trim();
+      const tailCode = byLabel.get(tail.toLowerCase());
+      if (tailCode) {
+        return `${head}, ${regionDisplayName(languageCode, tailCode, tail)}`;
+      }
+    }
+
+    return raw;
   };
 
   return { placeLabel, isLoading: query.isLoading };

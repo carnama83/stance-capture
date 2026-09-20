@@ -53,6 +53,12 @@ export interface CommunityStanceBarProps {
   /** Positive-pole label for this question (slider_high_label). See lowLabel. */
   highLabel?: string | null;
   /**
+   * PR 3 — the language the pole labels are written in. They come from the
+   * rendition and define the measurement axis, so an undeclared foreign-language
+   * pole is both a silent fallback and a measurement-integrity problem.
+   */
+  instrumentLanguageCode?: string | null;
+  /**
    * The current viewer's own staged stance score (-2..+2). When provided, a
    * ghost marker is drawn on the bar at that position. The stance is NOT part
    * of the counted distribution — it's shown so they can see where they'd land.
@@ -130,6 +136,7 @@ export function CommunityStanceBar({
   compact = false,
   lowLabel,
   highLabel,
+  instrumentLanguageCode,
   myStanceScore,
   myStanceCounted = false,
 }: CommunityStanceBarProps) {
@@ -183,14 +190,14 @@ export function CommunityStanceBar({
         <div className={`flex items-start justify-between gap-2 ${compact ? "text-[11px]" : "text-xs"} text-slate-400`}>
           <span className="flex min-w-0 flex-1 items-start gap-1">
             <span className="mt-0.5 inline-block h-2 w-2 shrink-0 rounded-full bg-slate-200" />
-            <span className="break-words">{negFull} 0%</span>
+            <span className="break-words" data-instrument-language={instrumentLanguageCode ?? undefined}>{negFull} 0%</span>
           </span>
           <span className="flex shrink-0 items-start gap-1 whitespace-nowrap">
             <span className="mt-0.5 inline-block h-2 w-2 shrink-0 rounded-full bg-slate-200" />
             {t("stance.neutral")} 0%
           </span>
           <span className="flex min-w-0 flex-1 items-start justify-end gap-1 text-right">
-            <span className="break-words">{posFull} 0%</span>
+            <span className="break-words" data-instrument-language={instrumentLanguageCode ?? undefined}>{posFull} 0%</span>
             <span className="mt-0.5 inline-block h-2 w-2 shrink-0 rounded-full bg-slate-200" />
           </span>
         </div>
@@ -290,14 +297,14 @@ export function CommunityStanceBar({
       <div className={`flex items-start justify-between gap-2 ${compact ? "text-[11px]" : "text-xs"} text-slate-600`}>
         <span className="flex min-w-0 flex-1 items-start gap-1">
           <span className="mt-0.5 inline-block h-2 w-2 shrink-0 rounded-full bg-red-400" />
-          <span className="break-words">{negFull} {formatPct(opposePct)}</span>
+          <span className="break-words" data-instrument-language={instrumentLanguageCode ?? undefined}>{negFull} {formatPct(opposePct)}</span>
         </span>
         <span className="flex shrink-0 items-start gap-1 whitespace-nowrap">
           <span className="mt-0.5 inline-block h-2 w-2 shrink-0 rounded-full bg-slate-300" />
           {t("stance.neutral")} {formatPct(neutralPct)}
         </span>
         <span className="flex min-w-0 flex-1 items-start justify-end gap-1 text-right">
-          <span className="break-words">{posFull} {formatPct(supportPct)}</span>
+          <span className="break-words" data-instrument-language={instrumentLanguageCode ?? undefined}>{posFull} {formatPct(supportPct)}</span>
           <span className="mt-0.5 inline-block h-2 w-2 shrink-0 rounded-full bg-emerald-400" />
         </span>
       </div>
@@ -387,6 +394,7 @@ function Header({
   onRefresh?: () => void;
   isLoading: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex items-center justify-between mb-1">
       <span
@@ -394,7 +402,7 @@ function Header({
           compact ? "text-[10px]" : "text-[11px]"
         }`}
       >
-        Community Stance
+        {t("question.communityStance")}
       </span>
       {onRefresh && (
         <button

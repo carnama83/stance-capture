@@ -21,6 +21,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { getSentimentColorHex } from "@/lib/stanceColors";
 import { ThumbsUp, ThumbsDown, Flag, AlertTriangle, Pencil, Trash2, Loader2 } from "lucide-react";
 import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_PROJECT_REF, getJwt } from "@/lib/env";
+import { useTranslation } from "react-i18next";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -880,6 +881,7 @@ function CommentThread({
 // ── QuestionCommentsPanel ──────────────────────────────────────────────────────
 
 export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
+  const { t } = useTranslation();
   const sb = getSupabase()!;
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -1404,7 +1406,7 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
     <Card className="mt-6">
       <CardHeader>
         <CardTitle className="text-sm font-semibold flex items-center gap-2">
-          Comments
+          {t("comments.title")}
           {/* M-G07: comment count badge — sentiment.comment_count is realtime-updated;
                fall back to liveCommentCount before sentiment loads */}
           {((sentiment?.comment_count ?? liveCommentCount) > 0) && (
@@ -1414,8 +1416,7 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
           )}
         </CardTitle>
         <p className="mt-1 text-xs text-slate-500">
-          Share your reasoning, questions, or concerns. Your stance slider captures your position;
-          comments capture your thinking.
+          {t("comments.intro")}
         </p>
       </CardHeader>
 
@@ -1473,7 +1474,7 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
 
           <div className="flex justify-between items-center">
             <span className="text-[11px] text-slate-400">
-              Be constructive and respectful.
+              {t("comments.guideline")}
             </span>
             <div className="flex items-center gap-2">
               {civilityWarning && (
@@ -1502,7 +1503,7 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
                   ? "Posting…"
                   : civilityWarning
                   ? "Edit comment"
-                  : "Post comment"}
+                  : t("comments.post")}
               </Button>
             </div>
           </div>
@@ -1535,7 +1536,7 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
           )}
           {!isInitialLoading && sortedNodes.length === 0 && (
             <p className="text-xs text-slate-500">
-              No comments yet. Be the first to share your thoughts.
+              {t("comments.empty")}
             </p>
           )}
           {sortedNodes.length > 0 && (

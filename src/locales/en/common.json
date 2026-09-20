@@ -532,5 +532,25 @@
     "FOCUSED_s1": "Movement is concentrated around {{t1}} and {{t2}}, where stance intensity is changing faster than most other topics.",
     "FOCUSED_s2": "Outside of those, signals look steadier.",
     "FOCUSED_s2t3": "Outside of those, signals look steadier — though {{t3}} is beginning to pick up."
+  },
+  "question": {
+    "back": "← Back",
+    "background": "Background",
+    "tradeoffsTitle": "Explore the trade-offs",
+    "tradeoffsSubtitle": "Before you answer",
+    "communityStance": "Community Stance",
+    "follow": "Follow",
+    "following": "Following",
+    "hide": "Hide",
+    "sources": "Sources:",
+    "civicIncident": "Civic Incident"
+  },
+  "comments": {
+    "title": "Comments",
+    "intro": "Share your reasoning, questions, or concerns. Your stance slider captures your position; comments capture your thinking.",
+    "guideline": "Be constructive and respectful.",
+    "post": "Post comment",
+    "posting": "Posting…",
+    "empty": "No comments yet. Be the first to share your thoughts."
   }
 }
