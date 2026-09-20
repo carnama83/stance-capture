@@ -112,7 +112,8 @@
     "locationOptional": "Location",
     "locationPlaceholder": "e.g. Lucknow, UP",
     "reviewing": "Reviewing…",
-    "submitForReview": "Submit for review"
+    "submitForReview": "Submit for review",
+    "proposedBy": "Proposed by <h>@{{handle}}</h>"
   },
   "signup": {
     "weDetectedLocation": "We detected your location as {{location}}. Use this?",
@@ -446,7 +447,13 @@
     "notAnsweredYet": "Not counted until you answer again",
     "supportOrOppose": "Do you support or oppose this?",
     "chooseInSeconds": "Choose a position in seconds.",
-    "sliderTip": "Drag the slider to share where you stand. You can change it anytime."
+    "sliderTip": "Drag the slider to share where you stand. You can change it anytime.",
+    "avgScore": "avg {{avg}} (−2 to +2)",
+    "trendNotEnoughData": "Not enough data",
+    "trendSupportUp": "Support up {{pp}}pp this week",
+    "trendSupportDown": "Support down {{pp}}pp this week",
+    "trendSteady": "Sentiment steady this week",
+    "earlyData": "(early data)"
   },
   "share": {
     "button": "Share",
@@ -497,7 +504,18 @@
     "teaserSplitIssue": "Split issue",
     "teaserLocalDebate": "Local debate",
     "questionsQueued_one": "{{count}} question queued",
-    "questionsQueued_other": "{{count}} questions queued"
+    "questionsQueued_other": "{{count}} questions queued",
+    "whereYouStand": "Where you stand",
+    "yourStanceHistory": "Your Stance History",
+    "withTheMajority": "with the majority",
+    "insightEmpty": "Answer a few questions to see where you stand",
+    "insightNoData": "Not enough community data yet to compare",
+    "insightForming": "Your profile is still forming",
+    "insightMajority": "You're usually in step with the majority",
+    "insightMixed": "Sometimes with the majority, sometimes not",
+    "insightMinority": "You often take the less common view",
+    "noStanceHistory": "No stance history yet",
+    "buildHistory": "Answer more questions to build your history"
   },
   "feed": {
     "upNext": "Up next"
@@ -558,5 +576,52 @@
   },
   "onboarding": {
     "gotIt": "Got it"
+  },
+  "trending": {
+    "whyTrending": "Why is this trending?",
+    "responsesToday": "{{n}} responses today",
+    "vsYesterday": "{{delta}} vs yesterday",
+    "earlySignal": "Early signal — only {{n}} responses so far",
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "responses": "responses",
+    "signalProvenance": "Signal provenance",
+    "sources0": "No news coverage detected — organic discussion only",
+    "sources1": "1 news source — limited coverage",
+    "sourcesFew": "{{n}} news sources — moderate coverage",
+    "sourcesMany": "{{n}} news sources — broad coverage",
+    "momentumBreakdown": "Momentum breakdown",
+    "volume": "Volume",
+    "recency": "Recency",
+    "userDiversity": "User diversity",
+    "overallScore": "Overall trending score",
+    "topRegion": "Strongest regional engagement",
+    "regionResponses": "{{n}} responses",
+    "signalMediaDrivenLabel": "Media-driven",
+    "signalMediaDrivenDesc": "{{sources}} news sources covering this topic are pushing engagement — not just organic participation.",
+    "signalOrganicLabel": "Organic momentum",
+    "signalOrganicDesc": "Growing through direct participation — not driven by a news spike. People are finding and sharing this independently.",
+    "signalPolarisingLabel": "Polarising",
+    "signalPolarisingDesc": "People on both sides are responding rapidly — the question is actively dividing opinion.",
+    "signalSteadyLabel": "Steady engagement",
+    "signalSteadyDesc": "Consistent participation over time with no unusual spike. A reliable long-term discussion.",
+    "confidenceLowLabel": "Low sample",
+    "confidenceLowDesc": "Fewer than 30 responses — trends shown are early signals only.",
+    "confidenceBuildingLabel": "Building signal",
+    "confidenceBuildingDesc": "{{responses}} responses — trend is forming. Check back as more people weigh in.",
+    "confidenceEstablishedLabel": "Established signal",
+    "confidenceEstablishedDesc": "{{responses}} responses — a reliable picture of community sentiment.",
+    "confidenceStrongLabel": "Strong signal",
+    "confidenceStrongDesc": "{{responses}} responses — high-confidence community data.",
+    "badgeMediaSpike": "Media spike",
+    "badgeOrganic": "Organic",
+    "badgePolarising": "Polarising",
+    "badgeSteady": "Trending",
+    "badgeLowSample": "Early signal",
+    "badgeScoreTitle": "Trending score: {{score}}",
+    "newResponsesToday": "{{n}} new responses today",
+    "lowSampleCaution": "⚠ Low sample — interpret with caution",
+    "responseActivity14d": "14-day response activity",
+    "mediaSpikeArticles": "Media spike · {{n}} articles"
   }
 }

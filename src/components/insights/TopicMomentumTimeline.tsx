@@ -7,6 +7,7 @@
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getSupabase } from "@/lib/supabaseClient";
+import { useTranslation } from "react-i18next";
 
 type DayRow = {
   snapshot_date: string;
@@ -25,6 +26,7 @@ interface TopicMomentumTimelineProps {
 }
 
 export default function TopicMomentumTimeline({ topicId }: TopicMomentumTimelineProps) {
+  const { t } = useTranslation();
   // Fetch question IDs for this topic
   const { data: questionIds } = useQuery<string[]>({
     queryKey: ["s3-topic-questions", topicId],
@@ -117,11 +119,11 @@ export default function TopicMomentumTimeline({ topicId }: TopicMomentumTimeline
     <div className="mt-3 border-t border-slate-100 pt-3">
       <div className="flex items-center justify-between mb-2">
         <span className="text-[11px] font-medium text-slate-500">
-          14-day response activity
+          {t("trending.responseActivity14d")}
         </span>
         {isMediaSpike && (
           <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">
-            Media spike · {mediaSurge!.articles_24h} articles
+            {t("trending.mediaSpikeArticles", { n: mediaSurge!.articles_24h })}
           </span>
         )}
       </div>

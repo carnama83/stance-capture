@@ -510,6 +510,7 @@ function AlignmentRing({
   pct: number;
   isEmpty?: boolean;
 }) {
+  const { t } = useTranslation();
   const size = 115;
   const stroke = 9;
   const r = (size - stroke) / 2;
@@ -576,7 +577,7 @@ function AlignmentRing({
         fill="#94a3b8"
         fontWeight="500"
       >
-        with the majority
+        {t("hero.withTheMajority")}
       </text>
     </svg>
   );
@@ -1018,6 +1019,8 @@ function SectionBAuthed({
   returnNudge: ReturnNudge | null;
   streak: UserStreak | null;
 }) {
+  const { t } = useTranslation();
+
   if (isLoading) {
     return <SectionBSkeleton />;
   }
@@ -1040,16 +1043,16 @@ function SectionBAuthed({
   // against. Avoids agree/disagree wording so it reads correctly for trade-off
   // questions (no implied "right" side). Softer copy for low / no data.
   const insightLine = isEmpty
-    ? "Answer a few questions to see where you stand"
+    ? t("hero.insightEmpty")
     : noCommunityData
-    ? "Not enough community data yet to compare"
+    ? t("hero.insightNoData")
     : isForming
-    ? "Your profile is still forming"
+    ? t("hero.insightForming")
     : alignmentPct >= 65
-    ? "You're usually in step with the majority"
+    ? t("hero.insightMajority")
     : alignmentPct >= 40
-    ? "Sometimes with the majority, sometimes not"
-    : "You often take the less common view";
+    ? t("hero.insightMixed")
+    : t("hero.insightMinority");
 
   return (
     <div className="flex flex-col h-full p-4 gap-3 overflow-y-auto">
@@ -1060,7 +1063,7 @@ function SectionBAuthed({
         <div className="flex items-center gap-1.5 mb-3">
           <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
           <span className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">
-            Where you stand
+            {t("hero.whereYouStand")}
           </span>
         </div>
 
@@ -1080,14 +1083,14 @@ function SectionBAuthed({
       {/* ── Block 2: Stance history ── */}
       <div>
         <p className="text-xs font-semibold text-slate-700 mb-2">
-          Your Stance History
+          {t("hero.yourStanceHistory")}
         </p>
 
         {isEmpty || topics.length === 0 ? (
           <p className="text-[11px] text-slate-400 italic">
             {isEmpty
-              ? "No stance history yet"
-              : "Answer more questions to build your history"}
+              ? t("hero.noStanceHistory")
+              : t("hero.buildHistory")}
           </p>
         ) : (
           <div className="space-y-1">

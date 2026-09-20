@@ -13,6 +13,7 @@
 import * as React from "react";
 import { Badge } from "@/components/ui/badge";
 import { Flame, Zap, TrendingUp, AlertCircle } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 export type TrendingSignalType =
   | "media-driven"
@@ -32,30 +33,30 @@ interface TrendingBadgeProps {
 
 const SIGNAL_CONFIG: Record<
   TrendingSignalType,
-  { label: string; Icon: React.ElementType; badgeClass: string }
+  { labelKey: string; Icon: React.ElementType; badgeClass: string }
 > = {
   "media-driven": {
-    label: "Media spike",
+    labelKey: "trending.badgeMediaSpike",
     Icon: Zap,
     badgeClass: "bg-amber-500 hover:bg-amber-600 border-0",
   },
   organic: {
-    label: "Organic",
+    labelKey: "trending.badgeOrganic",
     Icon: TrendingUp,
     badgeClass: "bg-emerald-600 hover:bg-emerald-700 border-0",
   },
   polarising: {
-    label: "Polarising",
+    labelKey: "trending.badgePolarising",
     Icon: Flame,
     badgeClass: "bg-red-500 hover:bg-red-600 border-0",
   },
   steady: {
-    label: "Trending",
+    labelKey: "trending.badgeSteady",
     Icon: Flame,
     badgeClass: "bg-orange-500 hover:bg-orange-600 border-0",
   },
   low_sample: {
-    label: "Early signal",
+    labelKey: "trending.badgeLowSample",
     Icon: AlertCircle,
     badgeClass:
       "bg-slate-200 hover:bg-slate-300 border-0 text-slate-600",
@@ -88,6 +89,7 @@ export function TrendingBadge({
   responsesTotal,
   className = "",
 }: TrendingBadgeProps) {
+  const { t } = useTranslation();
   // Low-sample override: if we have fewer than threshold responses,
   // show "Early signal" regardless of the trending score
   const isLowSample =
@@ -97,7 +99,7 @@ export function TrendingBadge({
     ? "low_sample"
     : (signalType ?? deriveSignal(trendingScore));
 
-  const { label, Icon, badgeClass } = SIGNAL_CONFIG[resolved];
+  const { labelKey, Icon, badgeClass } = SIGNAL_CONFIG[resolved];
 
   return (
     <Badge
@@ -105,14 +107,14 @@ export function TrendingBadge({
       className={`${badgeClass} ${className}`}
       title={
         isLowSample
-          ? `Early signal — only ${responsesTotal} responses so far`
+          ? t("trending.earlySignal", { n: responsesTotal })
           : trendingScore
-          ? `Trending score: ${Math.round(trendingScore)}`
+          ? t("trending.badgeScoreTitle", { score: Math.round(trendingScore) })
           : undefined
       }
     >
       <Icon className="w-3 h-3 mr-1" />
-      {label}
+      {t(labelKey)}
       {showScore && trendingScore && !isLowSample && (
         <span className="ml-1 text-xs opacity-90">
           ({Math.round(trendingScore)})
