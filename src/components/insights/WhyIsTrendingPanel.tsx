@@ -13,6 +13,7 @@
 //     rather than fetching the global top surge
 
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import { getSupabase } from "@/lib/supabaseClient";
 import { TrendingUp, ChevronDown, ChevronUp, AlertCircle, Users, Newspaper, Zap } from "lucide-react";
@@ -56,74 +57,40 @@ type ConfidenceLevel = "low" | "building" | "established" | "strong";
 function classifySignal(
   metrics: TrendingMetrics,
   provenance: SourceProvenanceRow | null,
-): { type: SignalType; label: string; description: string } {
+): { type: SignalType; sources: number } {
   const hasMediaDrive =
     provenance && provenance.source_count >= 3 && provenance.source_diversity_score >= 0.6;
 
   if (hasMediaDrive) {
-    return {
-      type: "media-driven",
-      label: "Media-driven",
-      description: `${provenance!.source_count} news sources covering this topic are pushing engagement — not just organic participation.`,
-    };
+    return { type: "media-driven", sources: provenance!.source_count };
   }
 
   if (metrics.velocity_score >= 0.7) {
-    return {
-      type: "organic",
-      label: "Organic momentum",
-      description: "Growing through direct participation — not driven by a news spike. People are finding and sharing this independently.",
-    };
+    return { type: "organic", sources: 0 };
   }
 
   const accel = metrics.responses_24h / Math.max(metrics.responses_7d / 7, 1);
   if (accel >= 2.5) {
-    return {
-      type: "polarising",
-      label: "Polarising",
-      description: "People on both sides are responding rapidly — the question is actively dividing opinion.",
-    };
+    return { type: "polarising", sources: 0 };
   }
 
-  return {
-    type: "steady",
-    label: "Steady engagement",
-    description: "Consistent participation over time with no unusual spike. A reliable long-term discussion.",
-  };
+  return { type: "steady", sources: 0 };
 }
 
 // ── Signal quality / confidence ───────────────────────────────────────────────
 
 function getConfidenceLevel(responses_total: number): {
   level: ConfidenceLevel;
-  label: string;
-  description: string;
   color: string;
+  responses: number;
 } {
-  if (responses_total < 30) return {
-    level: "low",
-    label: "Low sample",
-    description: "Fewer than 30 responses — trends shown are early signals only.",
-    color: "#9CA3AF",
-  };
-  if (responses_total < 100) return {
-    level: "building",
-    label: "Building signal",
-    description: `${responses_total} responses — trend is forming. Check back as more people weigh in.`,
-    color: "#F59E0B",
-  };
-  if (responses_total < 500) return {
-    level: "established",
-    label: "Established signal",
-    description: `${responses_total} responses — a reliable picture of community sentiment.`,
-    color: "#3B82F6",
-  };
-  return {
-    level: "strong",
-    label: "Strong signal",
-    description: `${responses_total.toLocaleString()} responses — high-confidence community data.`,
-    color: "#10B981",
-  };
+  if (responses_total < 30)
+    return { level: "low", color: "#9CA3AF", responses: responses_total };
+  if (responses_total < 100)
+    return { level: "building", color: "#F59E0B", responses: responses_total };
+  if (responses_total < 500)
+    return { level: "established", color: "#3B82F6", responses: responses_total };
+  return { level: "strong", color: "#10B981", responses: responses_total };
 }
 
 // ── Momentum component bar ────────────────────────────────────────────────────
@@ -178,6 +145,7 @@ export default function WhyIsTrendingPanel({
   questionId,
   topicId,
 }: WhyIsTrendingPanelProps) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = React.useState(false);
 
   // ── Core trending metrics ───────────────────────────────────────────────────
@@ -263,6 +231,31 @@ export default function WhyIsTrendingPanel({
   const styles = SIGNAL_STYLES[signal.type];
   const isLowSample = metrics.responses_total < 30;
 
+  // Codes -> reader-language text. The key segment is derived from the
+  // discriminator so a new signal type is a compile error here, not a silently
+  // missing string.
+  const SIGNAL_KEY: Record<SignalType, string> = {
+    "media-driven": "MediaDriven",
+    organic: "Organic",
+    polarising: "Polarising",
+    steady: "Steady",
+  };
+  const CONFIDENCE_KEY: Record<ConfidenceLevel, string> = {
+    low: "Low",
+    building: "Building",
+    established: "Established",
+    strong: "Strong",
+  };
+  const signalLabel = t(`trending.signal${SIGNAL_KEY[signal.type]}Label`);
+  const signalDescription = t(`trending.signal${SIGNAL_KEY[signal.type]}Desc`, {
+    sources: signal.sources,
+  });
+  const confidenceLabel = t(`trending.confidence${CONFIDENCE_KEY[confidence.level]}Label`);
+  const confidenceDescription = t(
+    `trending.confidence${CONFIDENCE_KEY[confidence.level]}Desc`,
+    { responses: confidence.responses },
+  );
+
   // Momentum change: today vs yesterday
   const momentumDelta = metrics.responses_24h - (metrics.responses_prev_24h ?? 0);
   const momentumDirection = momentumDelta > 0 ? "↑" : momentumDelta < 0 ? "↓" : "→";
@@ -288,7 +281,7 @@ export default function WhyIsTrendingPanel({
         <div className="flex items-center gap-2">
           <TrendingUp className="h-3.5 w-3.5 text-slate-400 shrink-0" aria-hidden="true" />
           <h3 className="text-[11px] font-semibold tracking-wide uppercase text-slate-500">
-            Why is this trending?
+            {t("trending.whyTrending")}
           </h3>
         </div>
         {expanded
@@ -305,15 +298,15 @@ export default function WhyIsTrendingPanel({
               className="text-[10px] font-medium px-2 py-0.5 rounded-full"
               style={{ background: styles.bg, color: styles.text }}
             >
-              {signal.label}
+              {signalLabel}
             </span>
 
             {/* 24h response count with delta */}
             <span className="text-xs text-slate-500">
-              {metrics.responses_24h} responses today
+              {t("trending.responsesToday", { n: metrics.responses_24h })}
               {momentumDelta !== 0 && (
                 <span style={{ color: momentumColor }} className="ml-1 font-medium">
-                  {momentumDirection}{Math.abs(momentumDelta)} vs yesterday
+                  {t("trending.vsYesterday", { delta: `${momentumDirection}${Math.abs(momentumDelta)}` })}
                 </span>
               )}
             </span>
@@ -323,7 +316,7 @@ export default function WhyIsTrendingPanel({
           {isLowSample && (
             <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
               <AlertCircle className="h-3 w-3 shrink-0" aria-hidden="true" />
-              <span>Early signal — only {metrics.responses_total} responses so far</span>
+              <span>{t("trending.earlySignal", { n: metrics.responses_total })}</span>
             </div>
           )}
 
@@ -334,7 +327,7 @@ export default function WhyIsTrendingPanel({
               style={{ backgroundColor: confidence.color }}
               aria-hidden="true"
             />
-            <span className="text-[10px] text-slate-400">{confidence.label}</span>
+            <span className="text-[10px] text-slate-400">{confidenceLabel}</span>
           </div>
         </div>
       )}
@@ -347,7 +340,7 @@ export default function WhyIsTrendingPanel({
           {isLowSample && (
             <div className="flex items-start gap-2 rounded-lg bg-slate-50 border border-slate-200 px-3 py-2">
               <AlertCircle className="h-3.5 w-3.5 text-slate-400 shrink-0 mt-0.5" aria-hidden="true" />
-              <p className="text-[11px] text-slate-500">{confidence.description}</p>
+              <p className="text-[11px] text-slate-500">{confidenceDescription}</p>
             </div>
           )}
 
@@ -357,10 +350,10 @@ export default function WhyIsTrendingPanel({
             style={{ background: styles.bg, borderLeft: `3px solid ${styles.border}` }}
           >
             <p className="text-xs font-medium mb-0.5" style={{ color: styles.text }}>
-              {signal.label}
+              {signalLabel}
             </p>
             <p className="text-[11px]" style={{ color: styles.text, opacity: 0.85 }}>
-              {signal.description}
+              {signalDescription}
             </p>
             {provenance?.trend_reason && (
               <p className="text-[10px] mt-1 italic" style={{ color: styles.text, opacity: 0.7 }}>
@@ -372,16 +365,16 @@ export default function WhyIsTrendingPanel({
           {/* Momentum comparison — today vs yesterday */}
           <div className="grid grid-cols-2 gap-2">
             <div className="bg-slate-50 rounded-lg px-3 py-2">
-              <p className="text-[10px] text-slate-400 mb-0.5">Today</p>
+              <p className="text-[10px] text-slate-400 mb-0.5">{t("trending.today")}</p>
               <p className="text-sm font-medium text-slate-900">{metrics.responses_24h}</p>
-              <p className="text-[10px] text-slate-400">responses</p>
+              <p className="text-[10px] text-slate-400">{t("trending.responses")}</p>
             </div>
             <div className="bg-slate-50 rounded-lg px-3 py-2">
-              <p className="text-[10px] text-slate-400 mb-0.5">Yesterday</p>
+              <p className="text-[10px] text-slate-400 mb-0.5">{t("trending.yesterday")}</p>
               <p className="text-sm font-medium text-slate-900">
                 {metrics.responses_prev_24h ?? Math.round(metrics.responses_7d / 7)}
               </p>
-              <p className="text-[10px] text-slate-400">responses</p>
+              <p className="text-[10px] text-slate-400">{t("trending.responses")}</p>
             </div>
           </div>
 
@@ -392,14 +385,14 @@ export default function WhyIsTrendingPanel({
               style={{ backgroundColor: confidence.color }}
               aria-hidden="true"
             />
-            <span className="text-[11px] text-slate-600 font-medium">{confidence.label}</span>
-            <span className="text-[11px] text-slate-400">— {confidence.description}</span>
+            <span className="text-[11px] text-slate-600 font-medium">{confidenceLabel}</span>
+            <span className="text-[11px] text-slate-400">— {confidenceDescription}</span>
           </div>
 
           {/* ── Signal provenance ─────────────────────────────────────────── */}
           <div className="border-t border-slate-100 pt-2.5 space-y-2">
             <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
-              Signal provenance
+              {t("trending.signalProvenance")}
             </p>
 
             {/* Source diversity */}
@@ -408,10 +401,12 @@ export default function WhyIsTrendingPanel({
                 <Newspaper className="h-3.5 w-3.5 text-slate-400 shrink-0" aria-hidden="true" />
                 <div className="flex-1 min-w-0">
                   <p className="text-[11px] text-slate-600">
-                    {provenance.source_count === 0 && "No news coverage detected — organic discussion only"}
-                    {provenance.source_count === 1 && "1 news source — limited coverage"}
-                    {provenance.source_count >= 2 && provenance.source_count <= 4 && `${provenance.source_count} news sources — moderate coverage`}
-                    {provenance.source_count >= 5 && `${provenance.source_count} news sources — broad coverage`}
+                    {provenance.source_count === 0 && t("trending.sources0")}
+                    {provenance.source_count === 1 && t("trending.sources1")}
+                    {provenance.source_count >= 2 && provenance.source_count <= 4 &&
+                      t("trending.sourcesFew", { n: provenance.source_count })}
+                    {provenance.source_count >= 5 &&
+                      t("trending.sourcesMany", { n: provenance.source_count })}
                   </p>
                   {provenance.source_count > 0 && (
                     <div className="mt-1 h-1 w-full rounded-full bg-slate-100 overflow-hidden">
@@ -445,27 +440,27 @@ export default function WhyIsTrendingPanel({
           {/* ── Momentum decomposition ────────────────────────────────────── */}
           <div className="border-t border-slate-100 pt-2.5 space-y-2">
             <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
-              Momentum breakdown
+              {t("trending.momentumBreakdown")}
             </p>
             <div className="space-y-1.5">
               <MomentumBar
-                label="Volume"
+                label={t("trending.volume")}
                 value={metrics.volume_score}
                 color="#3B82F6"
               />
               <MomentumBar
-                label="Recency"
+                label={t("trending.recency")}
                 value={metrics.recency_score}
                 color="#8B5CF6"
               />
               <MomentumBar
-                label="User diversity"
+                label={t("trending.userDiversity")}
                 value={metrics.diversity_score}
                 color="#10B981"
               />
             </div>
             <div className="flex justify-between text-[10px] text-slate-400 mt-1">
-              <span>Overall trending score</span>
+              <span>{t("trending.overallScore")}</span>
               <span className="font-medium text-slate-600">
                 {Math.round(metrics.trending_score)}/100
               </span>
@@ -484,13 +479,13 @@ export default function WhyIsTrendingPanel({
           {/* Top region */}
           {topRegion && (
             <div className="border-t border-slate-100 pt-2.5">
-              <p className="text-[10px] text-slate-400 mb-1">Strongest regional engagement</p>
+              <p className="text-[10px] text-slate-400 mb-1">{t("trending.topRegion")}</p>
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium text-slate-700">
                   {topRegion.region_label}
                 </span>
                 <span className="text-[11px] text-slate-500">
-                  {topRegion.total_responses} responses
+                  {t("trending.regionResponses", { n: topRegion.total_responses })}
                 </span>
               </div>
               {topRegion.pct_support !== null && (

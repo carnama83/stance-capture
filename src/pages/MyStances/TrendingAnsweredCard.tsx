@@ -17,6 +17,7 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { TrendingUp, Activity, ArrowLeftRight, Loader2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 type TrendingAnsweredRow = {
   question_id: string;
@@ -185,6 +186,7 @@ interface TrendingAnsweredCardProps {
 }
 
 export default function TrendingAnsweredCard({ userId }: TrendingAnsweredCardProps) {
+  const { t } = useTranslation();
   const { data, isLoading } = useQuery<TrendingAnsweredRow[]>({
     queryKey: ["trending-answered", userId],
     queryFn: () => fetchTrendingAnswered(userId),
@@ -260,7 +262,7 @@ export default function TrendingAnsweredCard({ userId }: TrendingAnsweredCardPro
                 </span>
               )}
               {row.signal === "trending" && row.responses_24h > 0 && (
-                <span>{row.responses_24h} new responses today</span>
+                <span>{t("trending.newResponsesToday", { n: row.responses_24h })}</span>
               )}
             </div>
           </div>

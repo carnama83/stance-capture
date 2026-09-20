@@ -11,6 +11,7 @@
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Lightbulb } from "lucide-react";
+import { Trans } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { SUPABASE_URL, getJwt, supabaseHeaders } from "@/lib/env";
 
@@ -46,7 +47,13 @@ export function ProposerBadge({ questionId, source, className }: Props) {
   return (
     <div className={cn("inline-flex items-center gap-1 text-xs text-slate-500", className)}>
       <Lightbulb className="h-3.5 w-3.5 text-amber-500" />
-      <span>Proposed by <span className="font-medium text-slate-700">@{data.proposer_handle}</span></span>
+      <span>
+        <Trans
+          i18nKey="ugq.proposedBy"
+          values={{ handle: data.proposer_handle }}
+          components={{ h: <span className="font-medium text-slate-700" /> }}
+        />
+      </span>
     </div>
   );
 }

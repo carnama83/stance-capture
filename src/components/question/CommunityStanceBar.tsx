@@ -323,7 +323,7 @@ export function CommunityStanceBar({
         </span>
         {avgScore != null && (
           <span className="text-[10px] text-slate-400">
-            avg {avgScore.toFixed(2)} (−2 to +2)
+            {t("stance.avgScore", { avg: avgScore.toFixed(2) })}
           </span>
         )}
       </div>
