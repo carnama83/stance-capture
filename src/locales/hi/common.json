@@ -622,6 +622,15 @@
     "newResponsesToday": "आज {{n}} नई प्रतिक्रियाएँ",
     "lowSampleCaution": "⚠ कम नमूना — सावधानी से समझें",
     "responseActivity14d": "14-दिन की प्रतिक्रिया गतिविधि",
-    "mediaSpikeArticles": "मीडिया उछाल · {{n}} लेख"
+    "mediaSpikeArticles": "मीडिया उछाल · {{n}} लेख",
+    "uniqueParticipants": "आज {{n}} अलग-अलग प्रतिभागी",
+    "uniquePct": "({{pct}}% अलग)",
+    "publishedAgo_one": "प्रश्न {{count}} दिन पहले प्रकाशित · कुल {{responses}} प्रतिक्रियाएँ।",
+    "publishedAgo_other": "प्रश्न {{count}} दिन पहले प्रकाशित · कुल {{responses}} प्रतिक्रियाएँ।",
+    "totalResponsesOnQuestion": "इस प्रश्न पर कुल {{responses}} प्रतिक्रियाएँ।",
+    "reasonBreaking": "ताज़ा खबर शुरुआती चर्चा पैदा कर रही है",
+    "reasonGaining": "सामुदायिक भागीदारी तेज़ हो रही है",
+    "reasonStable": "लगातार सामुदायिक भागीदारी",
+    "reasonRecent": "हाल की गतिविधि"
   }
 }

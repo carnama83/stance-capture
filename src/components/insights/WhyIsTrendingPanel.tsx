@@ -45,6 +45,10 @@ type RegionalRow = {
 type SourceProvenanceRow = {
   source_count: number;
   source_diversity_score: number;
+  // PR 3 shape: the SIGNAL is the durable fact; trend_reason is English display
+  // text the database should never have been emitting. Kept on the row only so
+  // an older server that has no trend_signal still renders something.
+  trend_signal: string | null;
   trend_reason: string | null;
   days_since_published: number;
 };
@@ -192,6 +196,7 @@ export default function WhyIsTrendingPanel({
         question_id: string;
         source_count: number;
         source_diversity_score: number;
+        trend_signal: string | null;
         trend_reason: string | null;
         days_since_published: number;
       }>;
@@ -200,6 +205,7 @@ export default function WhyIsTrendingPanel({
         ? {
             source_count: match.source_count,
             source_diversity_score: match.source_diversity_score,
+            trend_signal: match.trend_signal,
             trend_reason: match.trend_reason,
             days_since_published: match.days_since_published,
           }
@@ -245,6 +251,11 @@ export default function WhyIsTrendingPanel({
     building: "Building",
     established: "Established",
     strong: "Strong",
+  };
+  const REASON_KEY: Record<string, string> = {
+    breaking: "trending.reasonBreaking",
+    gaining: "trending.reasonGaining",
+    stable: "trending.reasonStable",
   };
   const signalLabel = t(`trending.signal${SIGNAL_KEY[signal.type]}Label`);
   const signalDescription = t(`trending.signal${SIGNAL_KEY[signal.type]}Desc`, {
@@ -355,9 +366,13 @@ export default function WhyIsTrendingPanel({
             <p className="text-[11px]" style={{ color: styles.text, opacity: 0.85 }}>
               {signalDescription}
             </p>
-            {provenance?.trend_reason && (
+            {(provenance?.trend_signal || provenance?.trend_reason) && (
               <p className="text-[10px] mt-1 italic" style={{ color: styles.text, opacity: 0.7 }}>
-                {provenance.trend_reason}
+                {/* Prefer the CODE. trend_reason is server-rendered English and
+                    is only a fallback for a server predating trend_signal. */}
+                {provenance.trend_signal
+                  ? t(REASON_KEY[provenance.trend_signal] ?? "trending.reasonRecent")
+                  : provenance.trend_reason}
               </p>
             )}
           </div>
@@ -427,10 +442,13 @@ export default function WhyIsTrendingPanel({
             <div className="flex items-center gap-2">
               <Users className="h-3.5 w-3.5 text-slate-400 shrink-0" aria-hidden="true" />
               <p className="text-[11px] text-slate-600">
-                {metrics.unique_users_24h} unique participants today
+                {t("trending.uniqueParticipants", { n: metrics.unique_users_24h })}
                 {metrics.responses_24h > 0 && (
                   <span className="text-slate-400">
-                    {" "}({Math.round((metrics.unique_users_24h / metrics.responses_24h) * 100)}% unique)
+                    {" "}
+                    {t("trending.uniquePct", {
+                      pct: Math.round((metrics.unique_users_24h / metrics.responses_24h) * 100),
+                    })}
                   </span>
                 )}
               </p>
@@ -481,7 +499,7 @@ export default function WhyIsTrendingPanel({
             <div className="border-t border-slate-100 pt-2.5">
               <p className="text-[10px] text-slate-400 mb-1">{t("trending.topRegion")}</p>
               <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-slate-700">
+                <span className="text-xs font-medium text-slate-700" data-proper-noun="place">
                   {topRegion.region_label}
                 </span>
                 <span className="text-[11px] text-slate-500">
@@ -501,13 +519,17 @@ export default function WhyIsTrendingPanel({
           {/* Age of question */}
           {provenance?.days_since_published !== undefined && (
             <p className="text-[10px] text-slate-400">
-              Question published {provenance.days_since_published} day{provenance.days_since_published !== 1 ? "s" : ""} ago ·{" "}
-              {metrics.responses_total.toLocaleString()} total responses.
+              {t("trending.publishedAgo", {
+                count: provenance.days_since_published,
+                responses: metrics.responses_total.toLocaleString(),
+              })}
             </p>
           )}
           {!provenance && (
             <p className="text-[10px] text-slate-400">
-              {metrics.responses_total.toLocaleString()} total responses on this question.
+              {t("trending.totalResponsesOnQuestion", {
+                responses: metrics.responses_total.toLocaleString(),
+              })}
             </p>
           )}
         </div>
