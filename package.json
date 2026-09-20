@@ -14,6 +14,7 @@
     "build:uat": "vite build --mode uat",
     "preview:uat": "vite preview --mode uat",
     "test:i18n:parity": "node scripts/check-i18n-parity.mjs",
+    "test:i18n:querykeys": "node scripts/check-query-keys.mjs",
     "test:i18n:dom": "playwright test tests/i18n/",
     "test:i18n": "npm run test:i18n:parity && npm run test:i18n:dom"
   },
