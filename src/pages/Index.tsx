@@ -95,6 +95,16 @@ type RegionRow = {
   state_label: string | null;
   country_label: string | null;
   global_label: string | null;
+  /**
+   * PR 1.5 — ISO 3166-1 alpha-2 for the signed-in user's country.
+   *
+   * No schema change was needed for this: user_region_dimensions already
+   * derives it from locations.iso_code (all 15 country rows are populated).
+   * The column simply was never selected, which is why a signed-in Hindi
+   * reader saw "United States" while an anonymous one — who has an
+   * IP-derived code — correctly saw "संयुक्त राज्य".
+   */
+  country_code: string | null;
 };
 
 type TrendingHomepageQuestionRow = {
@@ -2336,7 +2346,7 @@ export default function IndexPage() {
       const { data, error } = await sb
         .from("user_region_dimensions")
         .select(
-          "user_id, city_label, county_label, state_label, country_label, global_label"
+          "user_id, city_label, county_label, state_label, country_label, global_label, country_code"
         )
         .eq("user_id", userId)
         .maybeSingle<RegionRow>();
@@ -2347,6 +2357,7 @@ export default function IndexPage() {
   });
 
   const countryLabel = myRegion?.country_label ?? null;
+  const profileCountryCode = myRegion?.country_code ?? null;
   const globalLabel = myRegion?.global_label ?? "Global";
   const hasCountry = !!countryLabel;
 
@@ -2421,8 +2432,20 @@ export default function IndexPage() {
   // profile still sees the English label — profiles carry no country code, and
   // adding one is a data question rather than chrome. When no code is present
   // these fall through to the original label, so this is never a regression.
-  const regionLabelDisplay = regionDisplayName(languageCode, ipCountryCode, regionLabel);
-  const countryLabelDisplay = regionDisplayName(languageCode, ipCountryCode, effectiveCountryLabel);
+  // A signed-in user's own country setting wins over IP geolocation; the IP
+  // code remains the fallback for anonymous visitors.
+  const displayCountryCode = profileCountryCode ?? ipCountryCode;
+
+  // Only localize regionLabel when it actually IS the country. regionLabel is
+  // either the country label or the literal "Global", and regionDisplayName
+  // returns the Intl name whenever a code resolves — so passing the country
+  // code while the user has the Global tab selected would render "संयुक्त
+  // राज्य" where the page should say "वैश्विक".
+  const regionLabelDisplay =
+    effectiveCountryLabel && regionLabel === effectiveCountryLabel
+      ? regionDisplayName(languageCode, displayCountryCode, regionLabel)
+      : regionLabel;
+  const countryLabelDisplay = regionDisplayName(languageCode, displayCountryCode, effectiveCountryLabel);
 
   // ── Cover hydration safety net (unchanged) ──
   const hydrateCoversForTrendingRows = React.useCallback(
