@@ -31,6 +31,7 @@
 
 import { useTranslation } from "react-i18next";
 import { formatNumber } from "@/lib/intlFormat";
+import { usePlaceLabels } from "@/hooks/usePlaceLabels";
 import * as React from "react";
 import { Link } from "react-router-dom";
 import { QuestionStanceSlider } from "@/components/question/QuestionStanceSlider";
@@ -1186,6 +1187,7 @@ function SectionAQuestion({
   languageCode?: string;
 }) {
   const { t, i18n } = useTranslation();
+  const { placeLabel } = usePlaceLabels(i18n.language);
   const isResultMode =
     status === "hero_answered_result" || status === "hero_transitioning";
   const isSubmitting = status === "hero_submitting";
@@ -1246,7 +1248,7 @@ function SectionAQuestion({
               <Tag primary>{question.topic_title}</Tag>
             )}
             {question.audience_location_label && (
-              <Tag>📍 {question.audience_location_label}</Tag>
+              <Tag>📍 {placeLabel(question.audience_location_label)}</Tag>
             )}
             {question.tags && question.tags.slice(0, 2).map((t) => (
               <Tag key={t}>{t}</Tag>

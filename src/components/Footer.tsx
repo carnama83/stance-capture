@@ -48,7 +48,7 @@ export default function Footer() {
       <div style={styles.bottomBar}>
         <span>© {new Date().getFullYear()} Stance Capture</span>
         <span style={styles.dot}>·</span>
-        <span>Bhopal, India</span>
+        <span>{t("footer.location")}</span>
       </div>
     </footer>
   );

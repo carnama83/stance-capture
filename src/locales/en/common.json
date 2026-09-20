@@ -499,7 +499,8 @@
     "about": "About",
     "contact": "Contact",
     "privacy": "Privacy",
-    "tagline": "A civic-technology platform for capturing public opinion and revealing how views shift."
+    "tagline": "A civic-technology platform for capturing public opinion and revealing how views shift.",
+    "location": "Bhopal, India"
   },
   "notFound": {
     "title": "Oops! Page not found",

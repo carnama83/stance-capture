@@ -43,6 +43,7 @@ import { getSupabase } from "@/lib/supabaseClient";
 import { QuestionStanceSlider } from "@/components/question/QuestionStanceSlider";
 import { recordWebStance } from "@/lib/webStance";
 import { regionDisplayName, formatNumber } from "@/lib/intlFormat";
+import { useTopicLabels } from "@/hooks/useTopicLabels";
 import { HomeOptInPrompt } from "@/components/HomeOptInPrompt";
 import { QuestionCoverImage } from "@/components/question/QuestionCoverImage";
 import { ElectionCardChrome } from "@/components/question/ElectionCardChrome";
@@ -990,6 +991,9 @@ function TheRoomRightNow({
   regionLabel: string;
 }) {
   const { t, i18n } = useTranslation();
+  // Class 3 lookup: topic labels localize where they render, falling back to
+  // the canonical English title so an untranslated topic never hides a chip.
+  const { topicLabel } = useTopicLabels(i18n.language);
   const iconGlyph = (icon: SocietalPulseOutput["chips"][number]["icon"]) => {
     switch (icon) {
       case "reawakening": return "↺";
@@ -1041,10 +1045,12 @@ function TheRoomRightNow({
                       to={c.href || "/topics/" + c.topic_id}
                       className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold"
                       style={{ color: C.brand, background: C.brandWash }}
-                      title={c.title}
+                      title={topicLabel(c.topic_id, c.title)}
                     >
                       <span style={{ color: C.meta }}>{iconGlyph(c.icon)}</span>
-                      <span className="line-clamp-1 max-w-[170px]">{c.title}</span>
+                      <span className="line-clamp-1 max-w-[170px]">
+                        {topicLabel(c.topic_id, c.title)}
+                      </span>
                     </Link>
                   ))}
                 </div>
