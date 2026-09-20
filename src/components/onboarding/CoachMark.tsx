@@ -10,6 +10,7 @@
 
 import * as React from "react";
 import { X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 export interface CoachMarkProps {
   text: string;
@@ -46,6 +47,7 @@ export function CoachMark({
   zIndexClassName = "z-30",
   fixed,
 }: CoachMarkProps) {
+  const { t } = useTranslation();
   if (fixed) {
     return (
       <div
@@ -65,7 +67,7 @@ export function CoachMark({
             onClick={onDismiss}
             className="mt-2.5 text-[12px] font-medium bg-white text-[#3F3BC9] rounded-lg px-2.5 py-1 hover:bg-[#EFEEFB] transition-colors"
           >
-            Got it
+            {t("onboarding.gotIt")}
           </button>
           {/* Arrow pointing down-right toward a bottom-right fixed FAB */}
           <div className="absolute -bottom-1 right-6 w-2.5 h-2.5 bg-[#3F3BC9] rotate-45" />
@@ -93,7 +95,7 @@ export function CoachMark({
             onClick={onDismiss}
             className="mt-2.5 text-[12px] font-medium bg-white text-[#3F3BC9] rounded-lg px-2.5 py-1 hover:bg-[#EFEEFB] transition-colors"
           >
-            Got it
+            {t("onboarding.gotIt")}
           </button>
           {/* Arrow pointing down toward the slider the bubble is docked above */}
           <div className="absolute -bottom-1 left-6 w-2.5 h-2.5 bg-[#3F3BC9] rotate-45" />
@@ -122,7 +124,7 @@ export function CoachMark({
           onClick={onDismiss}
           className="mt-2.5 text-[12px] font-medium bg-white text-[#3F3BC9] rounded-lg px-2.5 py-1 hover:bg-[#EFEEFB] transition-colors"
         >
-          Got it
+          {t("onboarding.gotIt")}
         </button>
         <div
           className={

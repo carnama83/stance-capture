@@ -443,7 +443,10 @@
     "needsReconfirmationTitle": "A newer version of this question is available",
     "needsReconfirmationBody": "Please read it and give your stance again.",
     "needsReconfirmationCta": "Review and answer",
-    "notAnsweredYet": "Not counted until you answer again"
+    "notAnsweredYet": "Not counted until you answer again",
+    "supportOrOppose": "Do you support or oppose this?",
+    "chooseInSeconds": "Choose a position in seconds.",
+    "sliderTip": "Drag the slider to share where you stand. You can change it anytime."
   },
   "share": {
     "button": "Share",
@@ -552,5 +555,8 @@
     "post": "Post comment",
     "posting": "Posting…",
     "empty": "No comments yet. Be the first to share your thoughts."
+  },
+  "onboarding": {
+    "gotIt": "Got it"
   }
 }
