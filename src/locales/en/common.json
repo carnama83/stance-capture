@@ -622,6 +622,15 @@
     "newResponsesToday": "{{n}} new responses today",
     "lowSampleCaution": "⚠ Low sample — interpret with caution",
     "responseActivity14d": "14-day response activity",
-    "mediaSpikeArticles": "Media spike · {{n}} articles"
+    "mediaSpikeArticles": "Media spike · {{n}} articles",
+    "uniqueParticipants": "{{n}} unique participants today",
+    "uniquePct": "({{pct}}% unique)",
+    "publishedAgo_one": "Question published {{count}} day ago · {{responses}} total responses.",
+    "publishedAgo_other": "Question published {{count}} days ago · {{responses}} total responses.",
+    "totalResponsesOnQuestion": "{{responses}} total responses on this question.",
+    "reasonBreaking": "Breaking news generating early discussion",
+    "reasonGaining": "Community engagement accelerating",
+    "reasonStable": "Sustained community engagement",
+    "reasonRecent": "Recent activity"
   }
 }
