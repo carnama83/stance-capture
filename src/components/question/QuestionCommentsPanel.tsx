@@ -22,6 +22,7 @@ import { getSentimentColorHex } from "@/lib/stanceColors";
 import { ThumbsUp, ThumbsDown, Flag, AlertTriangle, Pencil, Trash2, Loader2 } from "lucide-react";
 import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_PROJECT_REF, getJwt } from "@/lib/env";
 import { useTranslation } from "react-i18next";
+import { useLanguage } from "@/hooks/useLanguage";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -888,6 +889,8 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
   const navigate = useNavigate();
 
   const [sessionUserId, setSessionUserId] = React.useState<string | null>(null);
+  // PR 3.6 — recorded with each comment; see create_question_comment.
+  const { languageCode } = useLanguage(sessionUserId);
   const [posting, setPosting] = React.useState(false);
   const [sortMode, setSortMode] = React.useState<SortMode>("latest");
   // G3: civility warning state
@@ -1243,6 +1246,11 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
         p_question_id: questionId,
         p_parent_comment_id: parentId ?? null,
         p_body: body,
+        // PR 3.6 — the language the author was reading while they wrote. It
+        // cannot be recovered afterwards: script detection would read Devanagari
+        // as Hindi and then get every Hindi comment typed in Latin script wrong,
+        // and English is indistinguishable from untranslated.
+        p_language_code: languageCode,
       });
       return (Array.isArray(data) ? data[0] : data) as QuestionCommentRow;
     },
