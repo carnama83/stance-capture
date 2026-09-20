@@ -407,10 +407,10 @@ export function QuestionStanceSlider({
           <div className="flex items-start justify-between gap-2">
             <div>
               <p className="text-sm font-semibold text-slate-800">
-                Do you support or oppose this?
+                {t("stance.supportOrOppose")}
               </p>
               <p className="text-[11px] text-slate-400 mt-0.5">
-                Choose a position in seconds.
+                {t("stance.chooseInSeconds")}
               </p>
             </div>
             {headerAction}
@@ -465,7 +465,7 @@ export function QuestionStanceSlider({
             onValueChange={handleChange}
             onValueCommit={handleCommit}
             className="relative w-full"
-            aria-label="Stance"
+            aria-label={t("stance.sliderAria")}
             aria-valuemin={-2}
             aria-valuemax={2}
             aria-valuenow={value}
@@ -594,7 +594,7 @@ export function QuestionStanceSlider({
       {disabled && (
         <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
           <div className="h-1.5 w-1.5 rounded-full bg-slate-300 animate-pulse" />
-          Saving…
+          {t("stance.saving")}
         </div>
       )}
     </div>
