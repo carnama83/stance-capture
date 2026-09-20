@@ -112,7 +112,8 @@
     "locationOptional": "स्थान",
     "locationPlaceholder": "जैसे, लखनऊ, UP",
     "reviewing": "समीक्षा हो रही है…",
-    "submitForReview": "समीक्षा के लिए भेजें"
+    "submitForReview": "समीक्षा के लिए भेजें",
+    "proposedBy": "<h>@{{handle}}</h> द्वारा प्रस्तावित"
   },
   "signup": {
     "weDetectedLocation": "हमने आपका स्थान {{location}} के रूप में पहचाना है। इसका उपयोग करें?",
@@ -446,7 +447,13 @@
     "notAnsweredYet": "जब तक आप दोबारा उत्तर नहीं देते, यह गिना नहीं जाएगा",
     "supportOrOppose": "क्या आप इसका समर्थन करते हैं या विरोध?",
     "chooseInSeconds": "कुछ ही सेकंड में अपनी स्थिति चुनें।",
-    "sliderTip": "अपना रुख बताने के लिए स्लाइडर खिसकाएँ। आप इसे कभी भी बदल सकते हैं।"
+    "sliderTip": "अपना रुख बताने के लिए स्लाइडर खिसकाएँ। आप इसे कभी भी बदल सकते हैं।",
+    "avgScore": "औसत {{avg}} (−2 से +2)",
+    "trendNotEnoughData": "पर्याप्त डेटा नहीं",
+    "trendSupportUp": "इस सप्ताह समर्थन {{pp}}pp बढ़ा",
+    "trendSupportDown": "इस सप्ताह समर्थन {{pp}}pp घटा",
+    "trendSteady": "इस सप्ताह भावना स्थिर",
+    "earlyData": "(शुरुआती डेटा)"
   },
   "share": {
     "button": "शेयर करें",
@@ -497,7 +504,18 @@
     "teaserSplitIssue": "विभाजित मुद्दा",
     "teaserLocalDebate": "स्थानीय बहस",
     "questionsQueued_one": "{{count}} प्रश्न कतार में",
-    "questionsQueued_other": "{{count}} प्रश्न कतार में"
+    "questionsQueued_other": "{{count}} प्रश्न कतार में",
+    "whereYouStand": "आप कहाँ खड़े हैं",
+    "yourStanceHistory": "आपका रुख इतिहास",
+    "withTheMajority": "बहुमत के साथ",
+    "insightEmpty": "कुछ सवालों के जवाब दें और देखें आप कहाँ खड़े हैं",
+    "insightNoData": "तुलना के लिए अभी पर्याप्त सामुदायिक डेटा नहीं है",
+    "insightForming": "आपकी प्रोफ़ाइल अभी बन रही है",
+    "insightMajority": "आप आमतौर पर बहुमत के साथ रहते हैं",
+    "insightMixed": "कभी बहुमत के साथ, कभी नहीं",
+    "insightMinority": "आप अक्सर कम प्रचलित राय रखते हैं",
+    "noStanceHistory": "अभी कोई रुख इतिहास नहीं",
+    "buildHistory": "अपना इतिहास बनाने के लिए और सवालों के जवाब दें"
   },
   "feed": {
     "upNext": "आगे"
@@ -558,5 +576,52 @@
   },
   "onboarding": {
     "gotIt": "समझ गए"
+  },
+  "trending": {
+    "whyTrending": "यह क्यों चर्चा में है?",
+    "responsesToday": "आज {{n}} प्रतिक्रियाएँ",
+    "vsYesterday": "कल की तुलना में {{delta}}",
+    "earlySignal": "शुरुआती संकेत — अब तक केवल {{n}} प्रतिक्रियाएँ",
+    "today": "आज",
+    "yesterday": "कल",
+    "responses": "प्रतिक्रियाएँ",
+    "signalProvenance": "संकेत का स्रोत",
+    "sources0": "कोई समाचार कवरेज नहीं मिला — केवल स्वाभाविक चर्चा",
+    "sources1": "1 समाचार स्रोत — सीमित कवरेज",
+    "sourcesFew": "{{n}} समाचार स्रोत — मध्यम कवरेज",
+    "sourcesMany": "{{n}} समाचार स्रोत — व्यापक कवरेज",
+    "momentumBreakdown": "गति का विश्लेषण",
+    "volume": "मात्रा",
+    "recency": "नवीनता",
+    "userDiversity": "उपयोगकर्ता विविधता",
+    "overallScore": "कुल ट्रेंडिंग स्कोर",
+    "topRegion": "सबसे अधिक क्षेत्रीय भागीदारी",
+    "regionResponses": "{{n}} प्रतिक्रियाएँ",
+    "signalMediaDrivenLabel": "मीडिया-प्रेरित",
+    "signalMediaDrivenDesc": "{{sources}} समाचार स्रोत इस विषय को कवर कर रहे हैं और भागीदारी बढ़ा रहे हैं — यह केवल स्वाभाविक भागीदारी नहीं है।",
+    "signalOrganicLabel": "स्वाभाविक गति",
+    "signalOrganicDesc": "प्रत्यक्ष भागीदारी से बढ़ रहा है — किसी समाचार उछाल से नहीं। लोग इसे स्वयं खोज और साझा कर रहे हैं।",
+    "signalPolarisingLabel": "ध्रुवीकरण",
+    "signalPolarisingDesc": "दोनों पक्षों के लोग तेज़ी से प्रतिक्रिया दे रहे हैं — यह सवाल सक्रिय रूप से राय को बाँट रहा है।",
+    "signalSteadyLabel": "स्थिर भागीदारी",
+    "signalSteadyDesc": "समय के साथ लगातार भागीदारी, कोई असामान्य उछाल नहीं। एक भरोसेमंद दीर्घकालिक चर्चा।",
+    "confidenceLowLabel": "कम नमूना",
+    "confidenceLowDesc": "30 से कम प्रतिक्रियाएँ — दिखाए गए रुझान केवल शुरुआती संकेत हैं।",
+    "confidenceBuildingLabel": "बनता संकेत",
+    "confidenceBuildingDesc": "{{responses}} प्रतिक्रियाएँ — रुझान बन रहा है। और लोगों की राय आने पर फिर देखें।",
+    "confidenceEstablishedLabel": "स्थापित संकेत",
+    "confidenceEstablishedDesc": "{{responses}} प्रतिक्रियाएँ — सामुदायिक भावना की भरोसेमंद तस्वीर।",
+    "confidenceStrongLabel": "मज़बूत संकेत",
+    "confidenceStrongDesc": "{{responses}} प्रतिक्रियाएँ — उच्च-विश्वसनीयता सामुदायिक डेटा।",
+    "badgeMediaSpike": "मीडिया उछाल",
+    "badgeOrganic": "स्वाभाविक",
+    "badgePolarising": "ध्रुवीकरण",
+    "badgeSteady": "चर्चा में",
+    "badgeLowSample": "शुरुआती संकेत",
+    "badgeScoreTitle": "ट्रेंडिंग स्कोर: {{score}}",
+    "newResponsesToday": "आज {{n}} नई प्रतिक्रियाएँ",
+    "lowSampleCaution": "⚠ कम नमूना — सावधानी से समझें",
+    "responseActivity14d": "14-दिन की प्रतिक्रिया गतिविधि",
+    "mediaSpikeArticles": "मीडिया उछाल · {{n}} लेख"
   }
 }

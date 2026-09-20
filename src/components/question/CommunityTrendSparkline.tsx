@@ -8,6 +8,7 @@ import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getSupabase } from "@/lib/supabaseClient";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 type TrendPoint = {
   snapshot_date: string;
@@ -20,17 +21,17 @@ type TrendPoint = {
 };
 
 function trendDirection(points: TrendPoint[]): {
-  label: string;
+  key: string;
   delta: number;
   icon: "up" | "down" | "flat";
 } {
-  if (points.length < 2) return { label: "Not enough data", delta: 0, icon: "flat" };
+  if (points.length < 2) return { key: "stance.trendNotEnoughData", delta: 0, icon: "flat" };
   const first = points[0].pct_support;
   const last  = points[points.length - 1].pct_support;
   const delta = Math.round(last - first);
-  if (delta > 2)  return { label: `Support up ${delta}pp this week`, delta, icon: "up" };
-  if (delta < -2) return { label: `Support down ${Math.abs(delta)}pp this week`, delta, icon: "down" };
-  return { label: "Sentiment steady this week", delta, icon: "flat" };
+  if (delta > 2)  return { key: "stance.trendSupportUp", delta, icon: "up" };
+  if (delta < -2) return { key: "stance.trendSupportDown", delta, icon: "down" };
+  return { key: "stance.trendSteady", delta, icon: "flat" };
 }
 
 interface CommunityTrendSparklineProps {
@@ -38,6 +39,7 @@ interface CommunityTrendSparklineProps {
 }
 
 export function CommunityTrendSparkline({ questionId }: CommunityTrendSparklineProps) {
+  const { t } = useTranslation();
   const { data: points, isLoading, isError, error } = useQuery<TrendPoint[]>({
     queryKey: ["community-trend", questionId],
     staleTime: 10 * 60_000,
@@ -133,10 +135,10 @@ export function CommunityTrendSparkline({ questionId }: CommunityTrendSparklineP
       <div className="flex items-center gap-1">
         <Icon className={`h-3 w-3 shrink-0 ${iconClass}`} />
         <span className={`text-[10px] font-medium ${iconClass}`}>
-          {trend.label}
+          {t(trend.key, { pp: Math.abs(trend.delta) })}
         </span>
         {hasLowSample && (
-          <span className="text-[10px] text-slate-400 font-normal ml-0.5">(early data)</span>
+          <span className="text-[10px] text-slate-400 font-normal ml-0.5">{t("stance.earlyData")}</span>
         )}
       </div>
     </div>

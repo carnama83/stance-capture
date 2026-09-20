@@ -13,6 +13,7 @@ import {
   ResponsiveContainer, ReferenceLine, Area, ComposedChart, Legend,
 } from "recharts";
 import { Loader2, TrendingUp, Users, MapPin, BarChart3, AlertCircle, GitCompare } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -284,6 +285,7 @@ function AggregatedStanceSection({
 function MacroTrendsSection({
   regionScope, regionKey, days,
 }: { regionScope: RegionScope; regionKey: string; days: number }) {
+  const { t } = useTranslation();
   const { data, isLoading, isError } = useQuery<TrendPoint[]>({
     queryKey: ["macro-trends", regionScope, regionKey, days],
     staleTime: 5 * 60_000,
@@ -364,7 +366,7 @@ function MacroTrendsSection({
                       ))}
                     {isLow && (
                       <p style={{ color: "#d97706", marginTop: 6, borderTop: "1px solid #fef3c7", paddingTop: 4 }}>
-                        ⚠ Low sample — interpret with caution
+                        {t("trending.lowSampleCaution")}
                       </p>
                     )}
                   </div>
