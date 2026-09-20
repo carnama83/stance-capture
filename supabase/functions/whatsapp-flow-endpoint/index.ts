@@ -348,7 +348,10 @@ serve(async (req) => {
       // rendition was captured and the best available answer is the current one.
       let waRenditionId: string | null = session.rendition_id ?? null;
       if (!waRenditionId) {
-        const { data: resolved } = await supabase.rpc("resolve_response_rendition", {
+        // PR 2a: renamed from resolve_response_rendition. Reached only for
+        // sessions created before f2_13 bound a rendition at send time; every
+        // new session carries session.rendition_id and never lands here.
+        const { data: resolved } = await supabase.rpc("select_rendition_to_display", {
           p_question_id: questionId,
           p_language_code: "en",
         });

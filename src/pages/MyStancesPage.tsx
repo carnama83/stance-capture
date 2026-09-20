@@ -15,6 +15,7 @@ import QuickTakesCard from "./MyStances/QuickTakesCard";
 import TrendingAnsweredCard from "./MyStances/TrendingAnsweredCard";
 import { ShareStatsCard } from "./MyStances/ShareStatsCard";
 import TopicHistoryDrawer from "@/components/insights/TopicHistoryDrawer";
+import { useLanguage } from "@/hooks/useLanguage";
 
 import * as React from "react";
 import { QuestionPhaseBadge } from "@/components/question/QuestionPhaseBadge";
@@ -63,6 +64,16 @@ type MyStanceRow = {
   created_at: string | null;
   updated_at: string | null;
   question: LiveQuestion | null;
+  /**
+   * PR 2a — the rendition currently DISPLAYED for this question in the reader
+   * language, which is what an edit here records.
+   *
+   * Not the rendition they originally answered: re-answering from this page is
+   * a new measurement against the wording now on screen. The wording they
+   * originally answered lives on question_stances.rendition_id and is what
+   * PR 2b will need for the reconfirmation flow.
+   */
+  rendition_id: string | null;
 };
 
 
@@ -85,7 +96,7 @@ function useSupabaseSession() {
   return { session, ready };
 }
 
-async function fetchMyStances(userId: string): Promise<MyStanceRow[]> {
+async function fetchMyStances(userId: string, languageCode: string): Promise<MyStanceRow[]> {
   const sb = getSupabase();
   if (!sb) throw new Error("Supabase client not available");
 
@@ -102,7 +113,10 @@ async function fetchMyStances(userId: string): Promise<MyStanceRow[]> {
   const questionIds = Array.from(new Set(rows.map((r) => r.question_id).filter(Boolean)));
 
   if (!questionIds.length) {
-    return rows.map((r) => ({ stance_id: r.id, question_id: r.question_id, score: r.score, created_at: r.created_at, updated_at: r.updated_at, question: null }));
+    // No questions resolved: no wording, so no rendition to record either.
+    // Editing such a row is rejected server-side with RENDITION_REQUIRED
+    // rather than silently attributed to whatever is published.
+    return rows.map((r) => ({ stance_id: r.id, question_id: r.question_id, score: r.score, created_at: r.created_at, updated_at: r.updated_at, question: null, rendition_id: null }));
   }
 
   // E-02: resolve question details from the questions table, not the live-feed view.
@@ -146,14 +160,73 @@ async function fetchMyStances(userId: string): Promise<MyStanceRow[]> {
     });
   }
 
-  return rows.map((r) => ({
-    stance_id: r.id,
-    question_id: r.question_id,
-    score: r.score,
-    created_at: r.created_at,
-    updated_at: r.updated_at,
-    question: questionMap.get(r.question_id) ?? null,
-  }));
+  // PR 2a — resolve the wording to DISPLAY, in the reader language.
+  //
+  // This page previously rendered questions.question, the canonical English
+  // column, so a Hindi reader saw English here while every other surface was
+  // translated — and, worse, an edit had no rendition to report, which is why
+  // this was the one write path left on the deprecated overload.
+  //
+  // One batched query mirrors what select_rendition_to_display() does
+  // server-side: prefer a published rendition in the reader language, else the
+  // published original. The original always exists (seeded by f2_02), so there
+  // is always something truthful to record.
+  const renditionByQuestion = new Map<string, { id: string; text: string | null; low: string | null; high: string | null }>();
+  if (questionIds.length) {
+    const { data: rends } = await sb
+      .from("question_renditions")
+      .select("id, question_id, language_code, rendition_type, rendered_text, slider_low_label, slider_high_label")
+      .in("question_id", questionIds)
+      .eq("lifecycle_status", "published");
+
+    for (const row of ((rends ?? []) as any[])) {
+      const existing = renditionByQuestion.get(row.question_id);
+      const isExact = row.language_code === languageCode;
+      const isOriginal = row.rendition_type === "original";
+      // Exact language wins; the original is only taken when nothing better is
+      // already held.
+      if (!existing || isExact) {
+        if (existing && !isExact) continue;
+        renditionByQuestion.set(row.question_id, {
+          id: row.id,
+          text: row.rendered_text ?? null,
+          low: row.slider_low_label ?? null,
+          high: row.slider_high_label ?? null,
+        });
+      } else if (!existing && isOriginal) {
+        renditionByQuestion.set(row.question_id, {
+          id: row.id,
+          text: row.rendered_text ?? null,
+          low: row.slider_low_label ?? null,
+          high: row.slider_high_label ?? null,
+        });
+      }
+    }
+  }
+
+  return rows.map((r) => {
+    const base = questionMap.get(r.question_id) ?? null;
+    const rend = renditionByQuestion.get(r.question_id) ?? null;
+    // Overlay the localized wording onto the canonical row, keeping every
+    // language-independent field (tags, location, phase, topic) as-is.
+    const question: LiveQuestion | null = base
+      ? ({
+          ...base,
+          question: rend?.text ?? base.question,
+          slider_low_label: rend?.low ?? base.slider_low_label,
+          slider_high_label: rend?.high ?? base.slider_high_label,
+        } as LiveQuestion)
+      : null;
+    return {
+      stance_id: r.id,
+      question_id: r.question_id,
+      score: r.score,
+      created_at: r.created_at,
+      updated_at: r.updated_at,
+      question,
+      rendition_id: rend?.id ?? null,
+    };
+  });
 }
 
 // N: Secure export — calls generate-export edge function which writes to
@@ -223,6 +296,7 @@ export default function MyStancesPage() {
   const navigate = useNavigate();
   const isAuthed = !!session;
   const userId = session?.user?.id ?? null;
+  const { languageCode } = useLanguage(userId);
   const { toast } = useToast();
 
   // Onboarding coach-mark: standalone, no dependsOn — eligible the first
@@ -244,8 +318,10 @@ export default function MyStancesPage() {
 
   const { data: rawRows, isLoading, isError, error } = useQuery<MyStanceRow[], Error>({
     enabled: !!userId,
-    queryKey: ["my-stances", userId],
-    queryFn: () => fetchMyStances(userId!),
+    // languageCode is part of the key: the rows now carry localized wording,
+    // so two languages are two different results.
+    queryKey: ["my-stances", userId, languageCode],
+    queryFn: () => fetchMyStances(userId!, languageCode),
     staleTime: 60_000,
   });
 
@@ -641,9 +717,14 @@ function MyStanceCard({ row, userId }: { row: MyStanceRow; userId: string }) {
     try {
       const sb = getSupabase();
       if (!sb) throw new Error("Supabase not available");
+      // PR 2a — record the rendition this card is DISPLAYING. This was the
+      // last caller of the deprecated three-argument overload, which resolved
+      // a rendition server-side and so attributed the edit to whatever was
+      // published at submit time rather than to the wording shown here.
       const { error } = await sb.rpc("set_question_stance", {
         p_question_id: row.question_id,
         p_score: selectedScore,
+        p_rendition_id: row.rendition_id,
       });
       if (error) throw error;
       // Invalidate the scoped my-stances list (userId key) and the
