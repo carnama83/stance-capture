@@ -74,6 +74,14 @@ type MyStanceRow = {
    * PR 2b will need for the reconfirmation flow.
    */
   rendition_id: string | null;
+  /**
+   * PR 2b.3 — the rendition this stance was ORIGINALLY answered against has
+   * been withdrawn, so the score no longer counts and must be re-answered.
+   *
+   * Derived, not stored: it is read from the rendition lifecycle rather than a
+   * flag on the stance, so it cannot drift out of step with reality.
+   */
+  needs_reconfirmation: boolean;
 };
 
 
@@ -116,7 +124,7 @@ async function fetchMyStances(userId: string, languageCode: string): Promise<MyS
     // No questions resolved: no wording, so no rendition to record either.
     // Editing such a row is rejected server-side with RENDITION_REQUIRED
     // rather than silently attributed to whatever is published.
-    return rows.map((r) => ({ stance_id: r.id, question_id: r.question_id, score: r.score, created_at: r.created_at, updated_at: r.updated_at, question: null, rendition_id: null }));
+    return rows.map((r) => ({ stance_id: r.id, question_id: r.question_id, score: r.score, created_at: r.created_at, updated_at: r.updated_at, question: null, rendition_id: null, needs_reconfirmation: false }));
   }
 
   // E-02: resolve question details from the questions table, not the live-feed view.
@@ -204,6 +212,20 @@ async function fetchMyStances(userId: string, languageCode: string): Promise<MyS
     }
   }
 
+  // PR 2b.3 — which of these stances were answered against wording that has
+  // since been withdrawn. Usually empty, so this is one cheap extra query
+  // rather than a join on the hot path.
+  const needsReconfirmation = new Set<string>();
+  {
+    const { data: nr } = await sb
+      .from("v_my_stances_needing_reconfirmation")
+      .select("question_id")
+      .eq("user_id", userId);
+    for (const row of ((nr ?? []) as Array<{ question_id: string }>)) {
+      if (row.question_id) needsReconfirmation.add(row.question_id);
+    }
+  }
+
   return rows.map((r) => {
     const base = questionMap.get(r.question_id) ?? null;
     const rend = renditionByQuestion.get(r.question_id) ?? null;
@@ -225,6 +247,7 @@ async function fetchMyStances(userId: string, languageCode: string): Promise<MyS
       updated_at: r.updated_at,
       question,
       rendition_id: rend?.id ?? null,
+      needs_reconfirmation: needsReconfirmation.has(r.question_id),
     };
   });
 }
@@ -682,7 +705,16 @@ function MyStanceCard({ row, userId }: { row: MyStanceRow; userId: string }) {
     : "Unknown";
 
   const [editing, setEditing] = React.useState(false);
-  const [selectedScore, setSelectedScore] = React.useState(row.score);
+  // PR 2b.3 — start UNSET when the instrument was withdrawn.
+  //
+  // Seeding the editor with row.score would pre-select a position the
+  // respondent took on DIFFERENT wording. If they then pressed save without
+  // moving the slider, the platform would record that score against text they
+  // never read — the exact transfer the measurement rules forbid. 0 is the
+  // neutral midpoint, not a stance, and handleSave below refuses a no-op.
+  const [selectedScore, setSelectedScore] = React.useState(
+    row.needs_reconfirmation ? 0 : row.score,
+  );
   const [saving, setSaving] = React.useState(false);
   const queryClient = useQueryClient();
 
@@ -698,6 +730,12 @@ function MyStanceCard({ row, userId }: { row: MyStanceRow; userId: string }) {
     i18n.language
   );
 
+  // PR 2b.3 — when the instrument was withdrawn the previous score is NOT the
+  // user's stance on the replacement wording. It is kept in the data for audit
+  // but must never be shown as current, and never pre-selected in the editor:
+  // carrying it across would fabricate a measurement against text they have
+  // not read.
+  const needsReconfirmation = row.needs_reconfirmation;
   const currentLabel = stanceLabels[editing ? selectedScore : row.score] ?? String(row.score);
   const currentTone: "pos" | "neg" | "neu" =
     (editing ? selectedScore : row.score) > 0 ? "pos" :
@@ -712,7 +750,11 @@ function MyStanceCard({ row, userId }: { row: MyStanceRow; userId: string }) {
   // ['stance-history', questionId] so the trend badge + sparkline
   // reflect the new score immediately without a page reload.
   async function handleSave() {
-    if (selectedScore === row.score) { setEditing(false); return; }
+    // When reconfirming, an unchanged value is a real answer and must go
+    // through: the score is being re-attached to NEW wording, so it is a new
+    // measurement even at the same number. Only skip the no-op for an ordinary
+    // edit, where nothing has changed at all.
+    if (!row.needs_reconfirmation && selectedScore === row.score) { setEditing(false); return; }
     setSaving(true);
     try {
       const sb = getSupabase();
@@ -834,9 +876,22 @@ function MyStanceCard({ row, userId }: { row: MyStanceRow; userId: string }) {
         </div>
 
         <div className="flex flex-col items-end gap-1 shrink-0">
-          <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] ${stanceToneClass}`}>
-            {currentLabel}
-          </span>
+          {needsReconfirmation ? (
+            /* PR 2b.3 — the withdrawn score is NOT shown as a current stance.
+               Showing it would present a position the respondent never took on
+               this wording. Neutral copy only: it says a newer version exists,
+               never that the old one was wrong (Mirror Rule, 2b.7). */
+            <span
+              className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] text-amber-800"
+              title={t("stance.needsReconfirmationBody")}
+            >
+              {t("stance.notAnsweredYet")}
+            </span>
+          ) : (
+            <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] ${stanceToneClass}`}>
+              {currentLabel}
+            </span>
+          )}
           {!editing && (
             <button
               type="button"

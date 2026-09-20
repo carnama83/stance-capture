@@ -439,7 +439,11 @@
     "stancesRecorded_other": "{{formattedCount}} रुख दर्ज किए गए",
     "noStancesYet": "अभी तक कोई रुख दर्ज नहीं हुआ।",
     "neutralLower": "तटस्थ",
-    "communityStance": "सामुदायिक रुख"
+    "communityStance": "सामुदायिक रुख",
+    "needsReconfirmationTitle": "इस प्रश्न का नया संस्करण उपलब्ध है",
+    "needsReconfirmationBody": "कृपया इसे पढ़कर अपना रुख फिर से बताएं।",
+    "needsReconfirmationCta": "पढ़कर उत्तर दें",
+    "notAnsweredYet": "जब तक आप दोबारा उत्तर नहीं देते, यह गिना नहीं जाएगा"
   },
   "share": {
     "button": "शेयर करें",

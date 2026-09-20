@@ -439,7 +439,11 @@
     "stancesRecorded_other": "{{formattedCount}} stances recorded",
     "noStancesYet": "No stances recorded yet.",
     "neutralLower": "neutral",
-    "communityStance": "Community stance"
+    "communityStance": "Community stance",
+    "needsReconfirmationTitle": "A newer version of this question is available",
+    "needsReconfirmationBody": "Please read it and give your stance again.",
+    "needsReconfirmationCta": "Review and answer",
+    "notAnsweredYet": "Not counted until you answer again"
   },
   "share": {
     "button": "Share",
