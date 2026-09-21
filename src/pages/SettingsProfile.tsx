@@ -39,6 +39,7 @@ import { useUiLanguage } from "../hooks/useUiLanguage";
 import UsernameField from "../components/UsernameField";
 import AvatarUploader from "../components/AvatarUploader";
 import { DobField } from "../components/DobField";
+import { useTranslation } from "react-i18next";
 
 type DisplayHandleMode = "random_id" | "username";
 
@@ -84,6 +85,7 @@ interface DobCorrectionSectionProps {
 }
 
 function DobCorrectionSection({ sb, onDobCleared }: DobCorrectionSectionProps) {
+  const { t } = useTranslation();
   const [open, setOpen]         = React.useState(false);
   const [step, setStep]         = React.useState<"reauth" | "set_dob">("reauth");
   const [password, setPassword] = React.useState("");
@@ -98,7 +100,7 @@ function DobCorrectionSection({ sb, onDobCleared }: DobCorrectionSectionProps) {
         className="text-xs text-slate-500 underline underline-offset-2 hover:text-slate-700"
         onClick={() => setOpen(true)}
       >
-        Correct my date of birth
+        {t("settingsProfile.correctMyDateOfBirth")}
       </button>
     );
   }
@@ -153,16 +155,16 @@ function DobCorrectionSection({ sb, onDobCleared }: DobCorrectionSectionProps) {
 
   return (
     <div className="rounded border border-slate-200 bg-slate-50 p-4 space-y-3 mt-2">
-      <div className="text-sm font-medium">Correct date of birth</div>
+      <div className="text-sm font-medium">{t("settingsProfile.correctDateOfBirth")}</div>
 
       {step === "reauth" && (
         <>
           <p className="text-xs text-slate-500">
-            For security, please confirm your current password before changing your date of birth.
+            {t("settingsProfile.forSecurityPleaseConfirmYour")}
           </p>
           <input
             type="password"
-            placeholder="Current password"
+            placeholder={t("settingsProfile.currentPassword")}
             className="w-full border rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
             value={password}
             onChange={e => setPassword(e.target.value)}
@@ -175,7 +177,7 @@ function DobCorrectionSection({ sb, onDobCleared }: DobCorrectionSectionProps) {
               className="flex-1 border rounded px-3 py-1.5 text-sm"
               onClick={() => { setOpen(false); setErr(""); setPassword(""); }}
             >
-              Cancel
+              {t("auth.cancel")}
             </button>
             <button
               type="button"
@@ -191,7 +193,7 @@ function DobCorrectionSection({ sb, onDobCleared }: DobCorrectionSectionProps) {
 
       {step === "set_dob" && (
         <>
-          <p className="text-xs text-slate-500">Identity confirmed. Select your correct date of birth.</p>
+          <p className="text-xs text-slate-500">{t("settingsProfile.identityConfirmedSelectYourCorrect")}</p>
           <DobField value={newDob} setValue={setNewDob} />
           {err && <p className="text-xs text-rose-600">{err}</p>}
           <div className="flex gap-2">
@@ -200,7 +202,7 @@ function DobCorrectionSection({ sb, onDobCleared }: DobCorrectionSectionProps) {
               className="flex-1 border rounded px-3 py-1.5 text-sm"
               onClick={() => { setStep("reauth"); setErr(""); }}
             >
-              Back
+              {t("auth.back")}
             </button>
             <button
               type="button"
@@ -225,6 +227,7 @@ interface DobSetSectionProps {
 }
 
 function DobSetSection({ sb, onDobSet }: DobSetSectionProps) {
+  const { t } = useTranslation();
   const [dob, setDob]   = React.useState("");
   const [err, setErr]   = React.useState("");
   const [busy, setBusy] = React.useState(false);
@@ -247,7 +250,7 @@ function DobSetSection({ sb, onDobSet }: DobSetSectionProps) {
   return (
     <div className="space-y-3">
       <p className="text-xs text-slate-500">
-        Your date of birth has not been set. It is used for age verification and optional age display.
+        {t("settingsProfile.yourDateOfBirthHas")}
       </p>
       <DobField value={dob} setValue={setDob} />
       {err && <p className="text-xs text-rose-600">{err}</p>}
@@ -277,6 +280,7 @@ interface WhatsAppPhoneSectionProps {
 }
 
 function WhatsAppPhoneSection({ sb, uid }: WhatsAppPhoneSectionProps) {
+  const { t } = useTranslation();
   const [step, setStep]                     = React.useState<WhatsAppPhoneStep>("idle");
   const [phone, setPhone]                   = React.useState("");
   const [otp, setOtp]                       = React.useState("");
@@ -427,10 +431,9 @@ function WhatsAppPhoneSection({ sb, uid }: WhatsAppPhoneSectionProps) {
 
   return (
     <div className="rounded border p-3 space-y-3">
-      <div className="text-sm font-medium">WhatsApp number</div>
+      <div className="text-sm font-medium">{t("settingsProfile.whatsappNumber")}</div>
       <p className="text-xs text-slate-500">
-        Add your WhatsApp number to send interactive stance questions directly to your contacts.
-        Your number is stored as a one-way hash — it cannot be read or shared.
+        {t("settingsProfile.addYourWhatsappNumberTo")}
       </p>
 
       {msg && <p className="text-xs text-emerald-600">{msg}</p>}
@@ -441,7 +444,7 @@ function WhatsAppPhoneSection({ sb, uid }: WhatsAppPhoneSectionProps) {
         <div className="flex items-center justify-between rounded border border-emerald-200 bg-emerald-50 px-3 py-2">
           <div className="flex items-center gap-2">
             <span className="text-emerald-600 text-sm">✓</span>
-            <span className="text-sm text-emerald-800 font-medium">WhatsApp number verified</span>
+            <span className="text-sm text-emerald-800 font-medium">{t("settingsProfile.whatsappNumberVerified")}</span>
           </div>
           <button
             type="button"
@@ -449,7 +452,7 @@ function WhatsAppPhoneSection({ sb, uid }: WhatsAppPhoneSectionProps) {
             onClick={handleRemove}
             disabled={busy}
           >
-            Remove
+            {t("settingsProfile.remove")}
           </button>
         </div>
       )}
@@ -461,7 +464,7 @@ function WhatsAppPhoneSection({ sb, uid }: WhatsAppPhoneSectionProps) {
           className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:border-slate-400 transition-colors"
           onClick={() => { setStep("enter_phone"); setErr(""); setMsg(""); }}
         >
-          Add WhatsApp number
+          {t("settingsProfile.addWhatsappNumber")}
         </button>
       )}
 
@@ -477,7 +480,7 @@ function WhatsAppPhoneSection({ sb, uid }: WhatsAppPhoneSectionProps) {
             autoComplete="tel"
           />
           <p className="text-[11px] text-slate-400">
-            Include your country code, e.g. +91 for India, +1 for US.
+            {t("settingsProfile.includeYourCountryCodeE")}
           </p>
           <div className="flex gap-2">
             <button
@@ -485,7 +488,7 @@ function WhatsAppPhoneSection({ sb, uid }: WhatsAppPhoneSectionProps) {
               className="flex-1 border rounded px-3 py-1.5 text-sm"
               onClick={() => { setStep("idle"); setErr(""); setPhone(""); }}
             >
-              Cancel
+              {t("auth.cancel")}
             </button>
             <button
               type="button"
@@ -503,7 +506,7 @@ function WhatsAppPhoneSection({ sb, uid }: WhatsAppPhoneSectionProps) {
       {step === "enter_otp" && (
         <div className="space-y-2">
           <p className="text-xs text-slate-500">
-            Enter the 6-digit code sent to <span className="font-medium">{phone}</span> on WhatsApp.
+            {t("settingsProfile.enterCodeSentTo", { number: phone })}
           </p>
           <input
             type="text"
@@ -520,7 +523,7 @@ function WhatsAppPhoneSection({ sb, uid }: WhatsAppPhoneSectionProps) {
               className="flex-1 border rounded px-3 py-1.5 text-sm"
               onClick={() => { setStep("enter_phone"); setErr(""); setOtp(""); setVerificationToken(null); }}
             >
-              Back
+              {t("auth.back")}
             </button>
             <button
               type="button"
@@ -537,7 +540,7 @@ function WhatsAppPhoneSection({ sb, uid }: WhatsAppPhoneSectionProps) {
             onClick={handleSendOtp}
             disabled={busy}
           >
-            Resend code
+            {t("settingsProfile.resendCode")}
           </button>
         </div>
       )}
@@ -548,6 +551,7 @@ function WhatsAppPhoneSection({ sb, uid }: WhatsAppPhoneSectionProps) {
 // ── Main page ────────────────────────────────────────────────────────────────
 
 export default function SettingsProfile() {
+  const { t } = useTranslation();
   const sb = React.useMemo(getSupabase, []);
   const queryClient = useQueryClient();
 
@@ -862,13 +866,13 @@ export default function SettingsProfile() {
 
   return (
     <div className="mx-auto max-w-xl p-6 space-y-4">
-      <h1 className="text-2xl font-bold">Profile settings</h1>
+      <h1 className="text-2xl font-bold">{t("settingsProfile.profileSettings")}</h1>
       {msg && <p className="text-sm text-slate-700">{msg}</p>}
 
       {/* Debug: username error */}
       {lastUsernameError && (
         <div className="rounded border p-3 text-xs bg-white">
-          <div className="font-medium mb-1">set_username error (debug)</div>
+          <div className="font-medium mb-1">{t("settingsProfile.setUsernameErrorDebug")}</div>
           <pre className="whitespace-pre-wrap break-words">
             {JSON.stringify(lastUsernameError, null, 2)}
           </pre>
@@ -877,20 +881,20 @@ export default function SettingsProfile() {
 
       {/* Random ID */}
       <div className="rounded border p-3 space-y-1">
-        <div className="text-sm font-medium">Your Random ID (read-only)</div>
+        <div className="text-sm font-medium">{t("settingsProfile.yourRandomIdReadOnly")}</div>
         <div className="text-sm text-slate-700 break-all">
-          {randomId ? randomId : <span className="text-slate-500">Loading…</span>}
+          {randomId ? randomId : <span className="text-slate-500">{t("common.loading")}</span>}
         </div>
         <div className="text-xs text-slate-500">
-          Generated at registration and cannot be changed.
+          {t("settingsProfile.generatedAtRegistrationAndCannot")}
         </div>
       </div>
 
       {/* Username */}
       <div className="rounded border p-3 space-y-2">
-        <div className="text-sm font-medium">Username</div>
+        <div className="text-sm font-medium">{t("settingsPrivacy.username")}</div>
         <div className="text-xs text-slate-500">
-          You can update your username (subject to rules/limits enforced by the server).
+          {t("settingsProfile.youCanUpdateYourUsername")}
         </div>
         <UsernameField
           value={form.username}
@@ -900,7 +904,7 @@ export default function SettingsProfile() {
         {/* M-A05: quota display */}
         {usernameQuota && (
           <p className={"text-xs " + (usernameQuota.used >= usernameQuota.limit ? "text-rose-600 font-medium" : "text-slate-500")}>
-            {usernameQuota.used} of {usernameQuota.limit} username changes used in the last 30 days
+            {t("settingsProfile.usernameQuota", { used: usernameQuota.used, limit: usernameQuota.limit })}
             {usernameQuota.resetsInDays != null
               ? ` (resets in ${usernameQuota.resetsInDays} day${usernameQuota.resetsInDays === 1 ? "" : "s"})`
               : ""}
@@ -922,9 +926,9 @@ export default function SettingsProfile() {
 
       {/* Display choice */}
       <div className="rounded border p-3 space-y-2">
-        <div className="text-sm font-medium">Public display</div>
+        <div className="text-sm font-medium">{t("settingsProfile.publicDisplay")}</div>
         <div className="text-xs text-slate-500">
-          Choose what other users see on your stances/comments/posts.
+          {t("settingsProfile.chooseWhatOtherUsersSee")}
         </div>
         <div className="flex flex-wrap gap-2">
           <button
@@ -938,7 +942,7 @@ export default function SettingsProfile() {
             disabled={busy}
             aria-pressed={form.display_handle_mode === "random_id"}
           >
-            Use Random ID {form.display_handle_mode === "random_id" ? "✓" : ""}
+            {t("settingsProfile.useRandomId")} {form.display_handle_mode === "random_id" ? "✓" : ""}
           </button>
           <button
             type="button"
@@ -952,11 +956,11 @@ export default function SettingsProfile() {
             aria-pressed={form.display_handle_mode === "username"}
             title={!isUsernameSet ? "Set a username first" : ""}
           >
-            Use Username {form.display_handle_mode === "username" ? "✓" : ""}
+            {t("settingsProfile.useUsername")} {form.display_handle_mode === "username" ? "✓" : ""}
           </button>
         </div>
         <div className="text-xs text-slate-600">
-          Currently showing: <span className="font-medium">{handle || "(unknown)"}</span>
+          {t("settingsProfile.currentlyShowing")} <span className="font-medium">{handle || "(unknown)"}</span>
         </div>
       </div>
 
@@ -965,7 +969,7 @@ export default function SettingsProfile() {
         <textarea
           className="w-full border rounded px-3 py-2"
           rows={3}
-          placeholder="Bio"
+          placeholder={t("settingsProfile.bio")}
           maxLength={BIO_MAX}
           value={form.bio}
           onChange={e => setForm(f => ({ ...f, bio: e.target.value }))}
@@ -977,7 +981,7 @@ export default function SettingsProfile() {
 
       {/* M-A07: Age opt-in toggle */}
       <div className="rounded border p-3 space-y-2">
-        <div className="text-sm font-medium">Age display</div>
+        <div className="text-sm font-medium">{t("settingsProfile.ageDisplay")}</div>
         <label className="flex items-center gap-2 cursor-pointer select-none">
           <input
             type="checkbox"
@@ -985,23 +989,21 @@ export default function SettingsProfile() {
             onChange={e => setForm(f => ({ ...f, show_age: e.target.checked }))}
             className="h-4 w-4 rounded border-slate-300"
           />
-          <span className="text-sm text-slate-700">Show my age on my public profile</span>
+          <span className="text-sm text-slate-700">{t("settingsProfile.showMyAgeOnMy")}</span>
         </label>
         <p className="text-xs text-slate-500">
-          When enabled, your age (calculated from your date of birth) is visible on your profile.
+          {t("settingsProfile.whenEnabledYourAgeCalculated")}
         </p>
       </div>
 
       {/* Language preference */}
       <div className="rounded border p-3 space-y-2">
-        <div className="text-sm font-medium">Language</div>
+        <div className="text-sm font-medium">{t("nav.languageToggle")}</div>
         <div className="text-xs text-slate-500">
-          Choose which language questions display in. You will only see questions whose
-          wording has been verified to ask the same thing in that language — everyone
-          answering a question answers the same question, whichever language they read it in.
+          {t("settingsProfile.chooseWhichLanguageQuestionsDisplay")}
         </div>
         {activeLanguages.length === 0 ? (
-          <div className="text-xs text-slate-400 italic">No additional languages available yet.</div>
+          <div className="text-xs text-slate-400 italic">{t("settingsProfile.noAdditionalLanguagesAvailableYet")}</div>
         ) : (
           <div className="flex flex-wrap gap-2">
             {activeLanguages.map(lang => (
@@ -1031,9 +1033,9 @@ export default function SettingsProfile() {
             disabled={busy}
           />
           <span className="text-xs text-slate-600">
-            Also show questions not yet available in my language
+            {t("settingsProfile.alsoShowQuestionsNotYet")}
             <span className="block text-slate-400">
-              They appear in their original language. Off by default.
+              {t("settingsProfile.theyAppearInTheirOriginal")}
             </span>
           </span>
         </label>
@@ -1041,15 +1043,15 @@ export default function SettingsProfile() {
 
       {/* M-A06: DOB — set if unset, greyed out if already set */}
       <div className="rounded border p-3 space-y-2">
-        <div className="text-sm font-medium">Date of birth</div>
+        <div className="text-sm font-medium">{t("settingsProfile.dateOfBirth")}</div>
         {dobSet ? (
           <>
             <p className="text-xs text-slate-500">
-              Your date of birth is set and encrypted. It cannot be viewed, only corrected.
+              {t("settingsProfile.yourDateOfBirthIs")}
             </p>
             <div className="flex items-center gap-2 rounded border border-slate-200 bg-slate-50 px-3 py-2 opacity-60 cursor-not-allowed select-none">
               <span className="text-sm text-slate-500">••••-••-••</span>
-              <span className="text-xs text-slate-400 ml-auto">Locked</span>
+              <span className="text-xs text-slate-400 ml-auto">{t("settingsProfile.locked")}</span>
             </div>
             <DobCorrectionSection
               sb={sb}
