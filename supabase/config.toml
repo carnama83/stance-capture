@@ -123,19 +123,19 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.ugq-moderate]
-# Sep 2026 (F2 promotion): MUST stay false. ugq-verify-preview and ugq-screen call
-# this endpoint server-to-server with x-cron-secret ONLY -- runtime-injected
-# Authorization/apikey headers are rejected at the gateway on these projects (the
-# v3 fix, 2026-07-06). Letting the CLI default this back to true silently breaks
-# the whole voice/video fact-check path, which fails OPEN, so nobody is told.
+# Sep 2026: MUST stay false, and was MISSING from this file entirely while the
+# deployed function ran with verify_jwt=false - so the next CLI deploy would have
+# silently flipped it to true. It does its own authorization two ways: an admin_users
+# lookup for admin actions, and an x-cron-secret check for the narrow system path
+# (action=approve only) that ugq-verify-preview uses. That system call sends NO
+# Authorization header at all, so a platform-level JWT gate would reject it outright.
 verify_jwt = false
 
 [functions.ugq-video-url]
-# Sep 2026 (F2 promotion): MUST stay false. Deliberately public and
-# unauthenticated -- this app supports anonymous browsing and a published video
-# question is public content. It takes only question_id and looks the storage
-# path up server-side, so there is nothing to probe. true here would break
-# playback for every signed-out viewer.
+# Sep 2026: MUST stay false, and was likewise MISSING from this file. Public and
+# unauthenticated by design - anonymous visitors play raw clips on published video
+# questions. It takes only question_id (never a storage path), resolves the path
+# server-side, and since defect UGQ-D4 also requires questions.status = active.
 verify_jwt = false
 
 [functions.whatsapp-flow-webhook]
@@ -160,3 +160,14 @@ entrypoint = "./functions/whatsapp-broadcast-dispatch/index.ts"
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/enrich-images/index.ts"
+[functions.whatsapp-flow-endpoint]
+enabled = true
+# Sep 2026 (F2 build): MUST stay false, and was MISSING from this file entirely while
+# the deployed function ran with verify_jwt=false - the next CLI deploy would have
+# silently flipped it to true and broken the Flow. Meta calls this endpoint directly
+# and never sends a Supabase JWT; it authenticates the caller itself, two ways:
+# RSA-OAEP decryption of the payload with our private key (an attacker cannot produce
+# a decryptable body), and optional x-hub-signature-256 HMAC verification when
+# WHATSAPP_APP_SECRET is set. Same defect shape as ugq-moderate and ugq-video-url.
+verify_jwt = false
+entrypoint = "./functions/whatsapp-flow-endpoint/index.ts"
