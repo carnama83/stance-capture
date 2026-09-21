@@ -9,6 +9,7 @@
  */
 
 import { useTranslation } from "react-i18next";
+import { CONTACT_MAILTO } from "@/lib/contact";
 import { CSSProperties } from "react";
 
 /**
@@ -39,7 +40,7 @@ export default function Footer() {
           <a style={styles.navLink} href="#/privacy">
             {t("footer.privacy")}
           </a>
-          <a style={styles.navLink} href="mailto:your-email@gmail.com">
+          <a style={styles.navLink} href={CONTACT_MAILTO}>
             {t("footer.contact")}
           </a>
         </nav>
