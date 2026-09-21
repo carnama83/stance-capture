@@ -51,7 +51,9 @@ function computeWindowDelta(points: HistoryPoint[], windowMs: number): number | 
 
 function fmtDelta(delta: number | null, period: "week" | "month"): string | null {
   if (delta === null) return null;
-  return `${delta > 0 ? "+" : ""}${delta} this ${period}`;
+  return i18n.t(period === "week" ? "stanceSparkline.deltaThisWeek" : "stanceSparkline.deltaThisMonth", {
+    delta: delta > 0 ? `+${delta}` : String(delta),
+  });
 }
 
 export function StanceSparkline({ questionId, currentScore }: StanceSparklineProps) {

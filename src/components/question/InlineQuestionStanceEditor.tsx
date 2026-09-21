@@ -2,6 +2,7 @@
 // ✨ EPIC C PHASE-AWARE: Added record_question_answer RPC call for phase tracking
 
 import * as React from "react";
+import { STANCE_LABEL_KEYS } from "@/lib/stanceLabelKeys";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getSupabase } from "@/lib/supabaseClient";
 import { getStanceColorHex } from "@/lib/stanceColors";
@@ -29,13 +30,7 @@ type QuestionStanceRow = {
   score: number | null;
 };
 
-const STANCE_LABELS: Record<number, string> = {
-  [-2]: "Strongly disagree",
-  [-1]: "Disagree",
-  0: "Neutral",
-  1: "Agree",
-  2: "Strongly agree",
-};
+
 
 const STANCE_VALUES = [-2, -1, 0, 1, 2] as const;
 
@@ -139,8 +134,8 @@ export function InlineQuestionStanceEditor({
       toast({
         title:
           newScore === null || newScore === undefined
-            ? "Stance cleared"
-            : "Stance updated",
+            ? t("inlineQuestionStanceEditor.stanceCleared")
+            : t("inlineQuestionStanceEditor.stanceUpdated"),
         description:
           newScore === null || newScore === undefined
             ? t("inlineQuestionStanceEditor.stanceRemoved")

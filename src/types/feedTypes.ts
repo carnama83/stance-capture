@@ -1,3 +1,4 @@
+import i18n from "@/lib/i18n";
 /**
  * Epic C - Feed & Discovery Types
  * Matches actual database schema with correct lifecycle states
@@ -44,34 +45,34 @@ export interface FeedFilters {
 }
 
 export const STATE_LABELS: Record<QuestionState, { 
-  label: string; 
+  labelKey: string; 
   color: string; 
   icon: string;
-  description: string;
+  descriptionKey: string;
 }> = {
   new: {
-    label: 'New',
+    labelKey: 'questionState.new',
     color: 'bg-blue-100 text-blue-800 border-blue-200',
     icon: '🆕',
-    description: 'Posted in the last 24 hours',
+    descriptionKey: 'questionState.newDescription',
   },
   active: {
-    label: 'Active',
+    labelKey: 'questionState.active',
     color: 'bg-green-100 text-green-800 border-green-200',
     icon: '✅',
-    description: 'Currently receiving responses',
+    descriptionKey: 'questionState.activeDescription',
   },
   dormant: {
-    label: 'Dormant',
+    labelKey: 'questionState.dormant',
     color: 'bg-gray-100 text-gray-800 border-gray-200',
     icon: '💤',
-    description: 'Low engagement, may archive soon',
+    descriptionKey: 'questionState.dormantDescription',
   },
   archived: {
-    label: 'Archived',
+    labelKey: 'questionState.archived',
     color: 'bg-gray-50 text-gray-600 border-gray-200',
     icon: '📦',
-    description: 'No longer accepting responses',
+    descriptionKey: 'questionState.archivedDescriptionFeed',
   },
 };
 
@@ -81,12 +82,12 @@ export function formatTimeAgo(publishedAt: string): string {
   const published = new Date(publishedAt);
   const hours = Math.floor((now.getTime() - published.getTime()) / (1000 * 60 * 60));
   
-  if (hours < 1) return 'Just now';
-  if (hours < 24) return `${hours}h ago`;
+  if (hours < 1) return i18n.t('timeAgo.justNow');
+  if (hours < 24) return i18n.t('timeAgo.hours', { n: hours });
   const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
+  if (days < 7) return i18n.t('timeAgo.days', { n: days });
   const weeks = Math.floor(days / 7);
-  if (weeks < 4) return `${weeks}w ago`;
+  if (weeks < 4) return i18n.t('timeAgo.weeks', { n: weeks });
   const months = Math.floor(days / 30);
   return `${months}mo ago`;
 }

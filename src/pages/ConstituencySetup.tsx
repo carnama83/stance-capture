@@ -159,7 +159,9 @@ export default function ConstituencySetupPage() {
       setSaved(true);
       toast({
         title: t("constituency.constituencySaved"),
-        description: `Election questions for ${selectedConstituency?.name} will appear in your feed.`,
+        description: t("constituency.electionQuestionsWillAppear", {
+          name: selectedConstituency?.name,
+        }),
       });
     } catch (e: any) {
       toast({ title: t("settingsNotif.failedToSave"), description: e.message, variant: "destructive" });

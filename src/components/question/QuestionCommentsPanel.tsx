@@ -146,7 +146,7 @@ type RichCommentInputProps = {
 
 const RichCommentInput = React.forwardRef<RichCommentInputHandle, RichCommentInputProps>(
   function RichCommentInput(
-    { placeholder = "Add a comment…", initialValue = "", disabled = false, minHeight = 72, className = "", onChange },
+    { placeholder, initialValue = "", disabled = false, minHeight = 72, className = "", onChange },
     ref,
   ) {
     const divRef = React.useRef<HTMLDivElement>(null);
@@ -365,9 +365,9 @@ function getInitials(name: string | null | undefined): string {
 
 function describeMood(avg: number | null | undefined): string {
   if (avg == null || Number.isNaN(avg)) return i18n.t("comments.noMoodYet");
-  if (avg <= -0.3) return "Mostly critical";
+  if (avg <= -0.3) return i18n.t("comments.mostlyCritical");
   if (avg < 0.3) return "Mixed / divided";
-  return "Mostly supportive";
+  return i18n.t("comments.mostlySupportive");
 }
 
 function timeAgo(iso: string): string {

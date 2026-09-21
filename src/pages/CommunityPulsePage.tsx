@@ -416,7 +416,7 @@ function MacroTrendsSection({
               stroke="#6366f1"
               strokeWidth={2}
               dot={false}
-              name="Avg score"
+              name={t("pulsePage.avgScore")}
             />
           </ComposedChart>
         </ResponsiveContainer>
@@ -572,7 +572,7 @@ function DemographicSection({ questionId }: { questionId: string | null }) {
   const labelMap = dimension === "age_group" ? AGE_GROUP_LABELS : GENDER_LABEL_KEYS;
   const asLabel = (v: string) =>
     dimension === "age_group" ? (labelMap[v] ?? v) : t(labelMap[v] ?? v);
-  const dimensionLabel = dimension === "age_group" ? "By age group" : "By gender";
+  const dimensionLabel = dimension === "age_group" ? t("pulsePage.byAgeGroup") : t("pulsePage.byGender");
 
   const chartData = sortedData.map((r) => ({
     group:   asLabel(r.dimension_value),

@@ -146,11 +146,11 @@ type ThreadSentimentRow = {
 };
 
 const STANCE_SCALE = [
-  { value: -2, labelShort: "Strongly oppose", labelKey: "questionDetail.stronglyOppose" },
-  { value: -1, labelShort: "Lean oppose", labelKey: "stance.leanOppose" },
-  { value: 0, labelShort: "Neutral", labelKey: "ugq.neutralLabel" },
-  { value: 1, labelShort: "Lean support", labelKey: "stance.leanSupport" },
-  { value: 2, labelShort: "Strongly support", labelKey: "questionDetail.stronglySupport" },
+  { value: -2, labelKey: "questionDetail.stronglyOppose" },
+  { value: -1, labelKey: "stance.leanOppose" },
+  { value: 0, labelKey: "ugq.neutralLabel" },
+  { value: 1, labelKey: "stance.leanSupport" },
+  { value: 2, labelKey: "questionDetail.stronglySupport" },
 ];
 
 // ---------- Session hook ----------

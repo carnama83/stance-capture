@@ -3,6 +3,7 @@
 // Option 2 feedback: header area transforms into community stats after each answer.
 
 import * as React from "react";
+import { STANCE_LABEL_KEYS } from "@/lib/stanceLabelKeys";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { getSupabase } from "@/lib/supabaseClient";
@@ -65,13 +66,7 @@ function Tag({ children, primary }: { children: React.ReactNode; primary?: boole
 
 // ── Minimal stance slider — no AI tip, no internal saving state ───────────────
 
-const STANCE_LABELS: Record<number, string> = {
-  [-2]: "Strongly disagree",
-  [-1]: "Disagree",
-  [0]:  "Neutral",
-  [1]:  "Agree",
-  [2]:  "Strongly agree",
-};
+
 
 const STANCE_LABELS_PAST_KEYS: Record<number, string> = {
   [-2]: "quickTakes.pastStronglyDisagreed",
@@ -97,7 +92,7 @@ function QuickSlider({ onCommit, disabled }: {
           {t("stance.yourStance")}
         </span>
         <span className="text-[11px] font-medium" style={{ color }}>
-          {STANCE_LABELS[value]}
+          {t(STANCE_LABEL_KEYS[value])}
         </span>
       </div>
       <div className="relative h-5 flex items-center mb-1">

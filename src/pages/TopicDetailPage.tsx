@@ -1,4 +1,5 @@
 import * as React from "react";
+import { STANCE_LABEL_KEYS } from "@/lib/stanceLabelKeys";
 import i18n from "@/lib/i18n";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -97,11 +98,8 @@ function useSupabaseSession() {
 }
 
 function stanceLabelShort(score: number | null | undefined): string {
-  if (score === 2) return "Strongly agree";
-  if (score === 1) return "Agree";
-  if (score === 0) return "Neutral";
-  if (score === -1) return "Disagree";
-  if (score === -2) return "Strongly disagree";
+  const key = score == null ? null : STANCE_LABEL_KEYS[score];
+  if (key) return i18n.t(key);
   return i18n.t("topicDetail.noStance");
 }
 
@@ -181,7 +179,9 @@ function QuestionStancePill({
 
   if (!isAuthed && !regionRow) return null;
 
-  const youPart = isAuthed ? `You: ${stanceLabelShort(my)}` : null;
+  const youPart = isAuthed
+    ? i18n.t("topicDetail.youStance", { stance: stanceLabelShort(my) })
+    : null;
 
   let regionPart: string | null = null;
   if (regionRow && regionRow.pct_agree != null && regionLabel) {
@@ -190,7 +190,7 @@ function QuestionStancePill({
       regionLabel.length > 18
         ? regionLabel.replace(/ county/i, "").trim()
         : regionLabel;
-    regionPart = `${shortLabel}: ${pct}% agree`;
+    regionPart = i18n.t("topicDetail.regionAgree", { region: shortLabel, pct });
   }
 
   const text = [youPart, regionPart].filter(Boolean).join(" · ");
@@ -390,10 +390,10 @@ function getTrendLabel(
   const s = score ?? 0;
   const a = activity ?? 0;
 
-  if (a >= 20 || s >= 80) return "Very hot";
-  if (a >= 10 || s >= 50) return "Heating up";
-  if (a >= 3 || s >= 20) return "Some activity";
-  return "Quiet right now";
+  if (a >= 20 || s >= 80) return "trendLabel.veryHot";
+  if (a >= 10 || s >= 50) return "trendLabel.heatingUp";
+  if (a >= 3 || s >= 20) return "trendLabel.someActivity";
+  return "trendLabel.quietRightNow";
 }
 
 // ----- Page -----
@@ -647,7 +647,7 @@ export default function TopicDetailPage() {
                 </button>
               </div>
               <div className="text-[11px]">
-                <span className="font-medium">{trendLabel}</span>
+                <span className="font-medium">{t(trendLabel)}</span>
                 {topic.location_label && (
                   <>
                     {" "}

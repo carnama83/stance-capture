@@ -655,7 +655,9 @@
     "loadingComments": "Loading comments…",
     "showMoreComments": "Show more comments",
     "editedWhen": "· edited {{when}}",
-    "noMoodYet": "No mood yet"
+    "noMoodYet": "No mood yet",
+    "mostlyCritical": "Mostly critical",
+    "mostlySupportive": "Mostly supportive"
   },
   "onboarding": {
     "gotIt": "Got it"
@@ -777,7 +779,8 @@
     "clearView": "Clear view",
     "slightView": "Slight view",
     "noStrongView": "No strong view",
-    "averagePositionOnTopic": "Your average position on this topic"
+    "averagePositionOnTopic": "Your average position on this topic",
+    "exportFailed": "Export failed"
   },
   "quickTakes": {
     "title": "Today's quick takes",
@@ -938,7 +941,9 @@
     "mutedCount_one": "{{count}} topic muted — no stance shift or activity alerts for that topic.",
     "mutedCount_other": "{{count}} topics muted — no stance shift or activity alerts for those topics.",
     "unmute": "Unmute",
-    "mute": "Mute"
+    "mute": "Mute",
+    "muteTopicAria": "Mute notifications for {{topic}}",
+    "unmuteTopicAria": "Unmute notifications for {{topic}}"
   },
   "settingsAccount": {
     "deletionRequestSubmittedYouHave": "Deletion request submitted. You have 14 days to cancel.",
@@ -1111,7 +1116,8 @@
     "showingUnavailableLanguage": "Showing questions not yet in your language.",
     "showingOnlyMyLanguage": "Showing only questions available in your language.",
     "resetsInDays_one": "(resets in {{count}} day)",
-    "resetsInDays_other": "(resets in {{count}} days)"
+    "resetsInDays_other": "(resets in {{count}} days)",
+    "phoneVerification": "Phone verification"
   },
   "settingsLocation": {
     "chooseYourCountryStateCounty": "Choose your country, state, county, or city to see how people in your region think about each question.",
@@ -1184,7 +1190,16 @@
     "startBuildingYourInsights": "Start Building Your Insights",
     "theMoreQuestionsYouAnswer": "The more questions you answer, the richer your insights become.",
     "beliefProfile": "Belief profile",
-    "howYouVeChanged": "How you've changed"
+    "howYouVeChanged": "How you've changed",
+    "leansTowardAgreement": "Leans toward agreement",
+    "broadlyNeutral": "Broadly neutral",
+    "leansTowardDisagreement": "Leans toward disagreement",
+    "highlyConsistent": "Highly consistent",
+    "mostlyConsistent": "Mostly consistent",
+    "somewhatVariable": "Somewhat variable",
+    "activelyEvolving": "Actively evolving",
+    "stronglyAgreementLeaning": "Strongly agreement-leaning",
+    "stronglyDisagreementLeaning": "Strongly disagreement-leaning"
   },
   "proposalDetail": {
     "couldNotLoadThisProposal": "Could not load this proposal.",
@@ -1270,7 +1285,9 @@
     "demographics": "Demographics",
     "questionsCount": "Questions ({{count}})",
     "comparingTwoRegionsSideBy": "Comparing two regions side by side.",
-    "distributionAcrossAllQuestionsIn": "Distribution across all questions in this region."
+    "distributionAcrossAllQuestionsIn": "Distribution across all questions in this region.",
+    "byAgeGroup": "By age group",
+    "byGender": "By gender"
   },
   "publisher": {
     "htmlSnippet": "HTML snippet",
@@ -1577,7 +1594,8 @@
     "uploadAvatar": "Upload avatar",
     "removeAvatar": "Remove avatar",
     "uploading": "Uploading…",
-    "uploadTimedOut": "Upload timed out. Check your connection and try again."
+    "uploadTimedOut": "Upload timed out. Check your connection and try again.",
+    "avatarOf": "Avatar of @{{handle}}"
   },
   "oAuthCallback": {
     "supabaseClientUnavailableCheckEnvironment": "Supabase client unavailable. Check environment variables.",
@@ -1644,7 +1662,9 @@
   },
   "topicDetail": {
     "pleaseTryAgainOrGo": "Please try again or go back to topics.",
-    "noStance": "No stance"
+    "noStance": "No stance",
+    "youStance": "You: {{stance}}",
+    "regionAgree": "{{region}}: {{pct}}% agree"
   },
   "feedFilters": {
     "active": "Active",
@@ -1672,7 +1692,9 @@
     "createAnAccountOrLog": "Create an account or log in to record your stance on this question.",
     "wantToRecordYourStance": "Want to record your stance?",
     "needToBeLoggedIn": "You need to be logged in",
-    "stanceRemoved": "You've removed your stance on this question."
+    "stanceRemoved": "You've removed your stance on this question.",
+    "stanceCleared": "Stance cleared",
+    "stanceUpdated": "Stance updated"
   },
   "sinceLastVisit": {
     "sinceYouLastVisited": "Since You Last Visited",
@@ -1704,7 +1726,9 @@
     "unmuteNotificationsForThisTopic": "Unmute notifications for this topic",
     "muteNotificationsForThisTopic": "Mute notifications for this topic",
     "muted": "Muted",
-    "notify": "Notify"
+    "notify": "Notify",
+    "notificationsMuted": "Topic notifications muted",
+    "notificationsUnmuted": "Topic notifications unmuted"
   },
   "threeTierTrending": {
     "aroundTheWorld": "Around the World",
@@ -1885,7 +1909,9 @@
     "noChangesYetYouVe": "No changes yet — you've answered this question once.",
     "firstAnswer": "First answer:",
     "changedFromTo": "Changed",
-    "fromFirstAnswer": "{{delta}} from first answer"
+    "fromFirstAnswer": "{{delta}} from first answer",
+    "deltaThisWeek": "{{delta}} this week",
+    "deltaThisMonth": "{{delta}} this month"
   },
   "whatsAppSignin": {
     "thisSignInLinkIs": "This sign-in link is missing its token. Please use the link from your WhatsApp message.",
@@ -2018,7 +2044,8 @@
     "alignGroup": "You align with {{pct}}% of respondents — the {{group}} group",
     "supportive": "supportive",
     "opposed": "opposed",
-    "neutral": "neutral"
+    "neutral": "neutral",
+    "yourStanceAria": "Your stance: {{stance}}"
   },
   "stanceSubmission": {
     "stanceSubmitted": "Stance submitted",
@@ -2053,7 +2080,8 @@
     "dormant": "Dormant",
     "dormantDescription": "Low engagement, may archive soon",
     "archived": "Archived",
-    "archivedDescription": "No longer accepting new responses"
+    "archivedDescription": "No longer accepting new responses",
+    "archivedDescriptionFeed": "No longer accepting responses"
   },
   "gender": {
     "male": "Male",
@@ -2075,5 +2103,18 @@
     "marketing": "Marketing communications",
     "termsOfService": "Terms of service",
     "privacyPolicy": "Privacy policy"
+  },
+  "trendLabel": {
+    "veryHot": "Very hot",
+    "heatingUp": "Heating up",
+    "someActivity": "Some activity",
+    "quiet": "Quiet",
+    "quietRightNow": "Quiet right now"
+  },
+  "timeAgo": {
+    "justNow": "Just now",
+    "hours": "{{n}}h ago",
+    "days": "{{n}}d ago",
+    "weeks": "{{n}}w ago"
   }
 }
