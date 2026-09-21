@@ -2156,9 +2156,11 @@
     "s10.body": "We use reasonable technical and organizational measures to protect your information. No method of transmission or storage is completely secure, and we cannot guarantee absolute security.",
     "s11.heading": "11. Changes to this policy",
     "s11.body": "We may update this Privacy Policy from time to time. We will post the updated version here and revise the “Last updated” date above.",
-    "s12.heading": "12. Contact us",
-    "s12.org": "Stance Capture",
-    "s12.address": "Bhopal, India",
-    "s12.emailLabel": "Email:"
+    "s12.heading": "12. Governing language",
+    "s12.body": "This Privacy Policy is published in English and in Hindi. The English version is the original. If there is any difference in meaning between the two versions, the English version governs.",
+    "s13.heading": "13. Contact us",
+    "s13.org": "Stance Capture",
+    "s13.address": "Bhopal, India",
+    "s13.emailLabel": "Email:"
   }
 }
