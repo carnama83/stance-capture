@@ -6,7 +6,13 @@
 -- vault.decrypted_secrets inline for the service-role key; Prod already uses the
 -- hardened private.get_secret(). Copying Dev verbatim would REGRESS Prod, so this
 -- merges both improvements. private.get_secret() is confirmed present on Dev, UAT
--- and Prod. Dev itself is left unchanged (out of scope for this sync).
+-- and Prod.
+--
+-- Applied to all three environments, Dev included. Dev was initially left out, which
+-- would have made it the only environment still reading vault.decrypted_secrets inline
+-- for the service-role key -- i.e. the sync would have fixed UAT and Prod while leaving
+-- the source environment behind. This migration is idempotent (CREATE OR REPLACE, no
+-- return-type change, so existing grants are preserved) and is safe to re-run anywhere.
 
 CREATE OR REPLACE FUNCTION public.run_reframe_http()
  RETURNS void
