@@ -1,4 +1,5 @@
 import * as React from "react";
+import { localeFor } from "@/lib/intlFormat";
 import { STANCE_LABEL_KEYS } from "@/lib/stanceLabelKeys";
 import i18n from "@/lib/i18n";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -608,7 +609,7 @@ export default function TopicDetailPage() {
               {topic.updated_at && (
                 <div className="mt-1 text-[11px] text-slate-500">
                   {t("common.updated")}{" "}
-                  {new Date(topic.updated_at).toLocaleString(undefined, {
+                  {new Date(topic.updated_at).toLocaleString(localeFor(i18n.language), {
                     dateStyle: "medium",
                     timeStyle: "short",
                   })}
@@ -881,7 +882,7 @@ export default function TopicDetailPage() {
                         )}
                         {q.published_at && (
                           <span className="text-[10px] text-slate-500">
-                            {new Date(q.published_at).toLocaleDateString(undefined, {
+                            {new Date(q.published_at).toLocaleDateString(localeFor(i18n.language), {
                               dateStyle: "medium",
                             })}
                           </span>

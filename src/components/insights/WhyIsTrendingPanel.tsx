@@ -13,6 +13,8 @@
 //     rather than fetching the global top surge
 
 import * as React from "react";
+import { localeFor } from "@/lib/intlFormat";
+import i18n from "@/lib/i18n";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import { getSupabase } from "@/lib/supabaseClient";
@@ -525,14 +527,14 @@ export default function WhyIsTrendingPanel({
             <p className="text-[10px] text-slate-400">
               {t("trending.publishedAgo", {
                 count: provenance.days_since_published,
-                responses: metrics.responses_total.toLocaleString(),
+                responses: metrics.responses_total.toLocaleString(localeFor(i18n.language)),
               })}
             </p>
           )}
           {!provenance && (
             <p className="text-[10px] text-slate-400">
               {t("trending.totalResponsesOnQuestion", {
-                responses: metrics.responses_total.toLocaleString(),
+                responses: metrics.responses_total.toLocaleString(localeFor(i18n.language)),
               })}
             </p>
           )}

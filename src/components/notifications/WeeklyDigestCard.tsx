@@ -2,6 +2,8 @@
 // Renders the latest weekly digest inline when a digest notification is clicked.
 
 import * as React from "react";
+import { localeFor } from "@/lib/intlFormat";
+import i18n from "@/lib/i18n";
 import { useNavigate } from "react-router-dom";
 import { TrendingUp, MessageSquare, ArrowRight, X, Loader2 } from "lucide-react";
 import { useMyLatestWeeklyDigest } from "@/hooks/useMyLatestWeeklyDigest";
@@ -15,7 +17,7 @@ function formatDateRange(start: string, end: string): string {
   const s = new Date(start);
   const e = new Date(end);
   const opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
-  return `${s.toLocaleDateString("en-US", opts)} – ${e.toLocaleDateString("en-US", opts)}`;
+  return `${s.toLocaleDateString(localeFor(i18n.language), opts)} – ${e.toLocaleDateString(localeFor(i18n.language), opts)}`;
 }
 
 export function WeeklyDigestCard({ onClose }: WeeklyDigestCardProps) {

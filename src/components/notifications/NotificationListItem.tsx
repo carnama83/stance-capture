@@ -11,6 +11,8 @@
 // instead of falling through to the generic Bell.
 
 import * as React from "react";
+import { localeFor } from "@/lib/intlFormat";
+import i18n from "@/lib/i18n";
 import { useNavigate } from "react-router-dom";
 import {
   Bell, TrendingUp, BookOpen, MapPin, Globe,
@@ -134,7 +136,7 @@ function timeAgo(iso: string): string {
   if (mins  < 60) return `${mins}m ago`;
   if (hours < 24) return `${hours}h ago`;
   if (days  <  7) return `${days}d ago`;
-  return new Date(iso).toLocaleDateString();
+  return new Date(iso).toLocaleDateString(localeFor(i18n.language));
 }
 
 // ── Click tracking ─────────────────────────────────────────────────────────────

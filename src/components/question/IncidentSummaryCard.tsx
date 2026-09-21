@@ -19,6 +19,8 @@
 // no new column needed; R-FR-16 never specified one.
 
 import * as React from "react";
+import { localeFor } from "@/lib/intlFormat";
+import i18n from "@/lib/i18n";
 import { AlertTriangle } from "lucide-react";
 import { useQuestionAuthorities } from "@/hooks/useQuestionAuthorities";
 import { useTranslation } from "react-i18next";
@@ -48,7 +50,7 @@ export function IncidentSummaryCard({
   const { t } = useTranslation();
   const whatHappened = contextSummary?.trim() || summary?.trim() || null;
   const dateLabel = publishedAt
-    ? new Date(publishedAt).toLocaleDateString(undefined, { dateStyle: "long" })
+    ? new Date(publishedAt).toLocaleDateString(localeFor(i18n.language), { dateStyle: "long" })
     : null;
 
   // Distinct institution categories (domains) across all mapped authorities,

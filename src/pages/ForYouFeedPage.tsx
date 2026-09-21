@@ -1,5 +1,7 @@
 // src/pages/ForYouFeedPage.tsx
 import * as React from "react";
+import { localeFor } from "@/lib/intlFormat";
+import i18n from "@/lib/i18n";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getSupabase } from "@/lib/supabaseClient";
@@ -107,7 +109,7 @@ export default function ForYouFeedPage() {
                           <span>
                             {new Date(
                               question.published_at
-                            ).toLocaleDateString()}
+                            ).toLocaleDateString(localeFor(i18n.language))}
                           </span>
                         )}
                       </div>

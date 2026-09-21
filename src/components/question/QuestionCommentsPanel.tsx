@@ -10,6 +10,7 @@
 // M-G05: cursor-based pagination — root comments paged, replies always full (new)
 
 import * as React from "react";
+import { localeFor } from "@/lib/intlFormat";
 import i18n from "@/lib/i18n";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getSupabase } from "@/lib/supabaseClient";
@@ -379,7 +380,7 @@ function timeAgo(iso: string): string {
   if (mins < 60) return `${mins}m ago`;
   if (hours < 24) return `${hours}h ago`;
   if (days < 7) return `${days}d ago`;
-  return new Date(iso).toLocaleDateString(undefined, { dateStyle: "medium" });
+  return new Date(iso).toLocaleDateString(localeFor(i18n.language), { dateStyle: "medium" });
 }
 
 // G3: Call OpenAI moderation API via our Edge Function proxy.
