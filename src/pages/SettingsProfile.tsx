@@ -112,7 +112,7 @@ function DobCorrectionSection({ sb, onDobCleared }: DobCorrectionSectionProps) {
     try {
       const { data: sessionData } = await sb.auth.getSession();
       const email = sessionData.session?.user?.email;
-      if (!email) throw new Error("Could not read your email. Please refresh.");
+      if (!email) throw new Error(t("settingsProfile.couldNotReadEmail"));
       const { error } = await sb.auth.signInWithPassword({ email, password });
       if (error) throw error;
       setStep("set_dob");
@@ -132,8 +132,7 @@ function DobCorrectionSection({ sb, onDobCleared }: DobCorrectionSectionProps) {
       if (clearErr) {
         if (clearErr.message?.includes("function") || clearErr.code === "PGRST202") {
           throw new Error(
-            "The clear_my_dob function is not yet deployed. " +
-            "Please contact support to correct your date of birth.",
+            t("settingsProfile.clearDobNotDeployed"),
           );
         }
         throw clearErr;
@@ -356,8 +355,8 @@ function WhatsAppPhoneSection({ sb, uid }: WhatsAppPhoneSectionProps) {
         const reason = data.reason ?? data.error ?? data.message ?? "unknown";
         throw new Error(
           data.reason === "opted_out"
-            ? "This number has opted out of WhatsApp messages. Reply START on WhatsApp first."
-            : `Could not send verification message (${reason}). Check the Supabase Edge Function logs for details.`
+            ? t("settingsProfile.numberOptedOut")
+            : t("settingsProfile.couldNotSendVerification", { reason })
         );
       }
       // Store verification token returned by the Edge Function
@@ -393,9 +392,9 @@ function WhatsAppPhoneSection({ sb, uid }: WhatsAppPhoneSectionProps) {
         const msg = error.message.toLowerCase();
         throw new Error(
           msg.includes("invalid")
-            ? "Incorrect or expired code. Please try again."
+            ? t("settingsProfile.incorrectOrExpiredCode")
             : msg.includes("duplicate key") || msg.includes("verified_phone_hash")
-            ? "This WhatsApp number is already linked to another account."
+            ? t("settingsProfile.numberAlreadyLinked")
             : error.message
         );
       }
@@ -769,7 +768,9 @@ export default function SettingsProfile() {
         .eq("user_id", uid);
       if (error) throw error;
       setForm(f => ({ ...f, show_unavailable_language: next }));
-      setMsg(next ? "Showing questions not yet in your language." : "Showing only questions available in your language.");
+      setMsg(next
+        ? t("settingsProfile.showingUnavailableLanguage")
+        : t("settingsProfile.showingOnlyMyLanguage"));
       // Same cache key the feed reads its language preference under; without
       // this the feed keeps serving the previous eligibility until an unrelated
       // navigation refetches.
@@ -906,7 +907,7 @@ export default function SettingsProfile() {
           <p className={"text-xs " + (usernameQuota.used >= usernameQuota.limit ? "text-rose-600 font-medium" : "text-slate-500")}>
             {t("settingsProfile.usernameQuota", { used: usernameQuota.used, limit: usernameQuota.limit })}
             {usernameQuota.resetsInDays != null
-              ? ` (resets in ${usernameQuota.resetsInDays} day${usernameQuota.resetsInDays === 1 ? "" : "s"})`
+              ? " " + t("settingsProfile.resetsInDays", { count: usernameQuota.resetsInDays })
               : ""}
             .{usernameQuota.used >= usernameQuota.limit ? t("settingsProfile.youCannotChangeYourUsername") : ""}
           </p>

@@ -2,6 +2,7 @@
 // Phase 3 — Q1: Natural-language category sentences using topic tags.
 
 import * as React from "react";
+import i18n from "@/lib/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { getSupabase } from "@/lib/supabaseClient";
 import {
@@ -100,22 +101,24 @@ function topicSentence(tag: string | null | undefined, avgScore: number | null):
     if (disagreeLean)   return "snapshotSentence.justiceLeanOppose";
     return "snapshotSentence.justiceMixed";
   }
+  // An unrecognised tag keeps its own name inside the sentence, so these
+  // carry the tag as a value rather than being pre-built in English.
   const tagLabel = tag.charAt(0).toUpperCase() + tag.slice(1).toLowerCase();
-  if (agreeStrong)    return `tend to strongly support the direction on ${tagLabel} issues.`;
-  if (agreeLean)      return `generally lean toward agreement on ${tagLabel} questions.`;
-  if (disagreeStrong) return `tend to strongly oppose the current ${tagLabel} direction.`;
-  if (disagreeLean)   return `tend to lean against current ${tagLabel} policy.`;
-  return `have a mixed view on ${tagLabel} issues.`;
+  if (agreeStrong)    return i18n.t("snapshotSentence.tagStrongSupport", { tag: tagLabel });
+  if (agreeLean)      return i18n.t("snapshotSentence.tagLeanSupport", { tag: tagLabel });
+  if (disagreeStrong) return i18n.t("snapshotSentence.tagStrongOppose", { tag: tagLabel });
+  if (disagreeLean)   return i18n.t("snapshotSentence.tagLeanOppose", { tag: tagLabel });
+  return i18n.t("snapshotSentence.tagMixed", { tag: tagLabel });
 }
 
 function categoryLabel(tag: string | null | undefined, topicTitle: string): string {
   if (!tag) return topicTitle;
   const t = tag.toLowerCase();
-  if (t.match(/environ|climate/)) return "Environment & climate";
-  if (t.match(/hous/))            return "Housing";
-  if (t.match(/econom|tax/))      return "Economy";
-  if (t.match(/tech|ai|digital/)) return "Technology";
-  if (t.match(/health/))          return "Health";
+  if (t.match(/environ|climate/)) return i18n.t("snapshotCategory.environment");
+  if (t.match(/hous/))            return i18n.t("snapshotCategory.housing");
+  if (t.match(/econom|tax/))      return i18n.t("snapshotCategory.economy");
+  if (t.match(/tech|ai|digital/)) return i18n.t("snapshotCategory.technology");
+  if (t.match(/health/))          return i18n.t("snapshotCategory.health");
   if (t.match(/educat/))          return "Education";
   if (t.match(/immigra/))         return "Immigration";
   if (t.match(/crime|justice/))   return "Justice & law";

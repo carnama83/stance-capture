@@ -224,7 +224,8 @@
     "cancel": "रद्द करें",
     "forgotPassword": "पासवर्ड भूल गए?",
     "dontHaveAccount": "खाता नहीं है?",
-    "signUp": "साइन अप करें"
+    "signUp": "साइन अप करें",
+    "supabaseNotConfigured": "Supabase कॉन्फ़िगर नहीं है।"
   },
   "home": {
     "alignmentUp": "हाल ही में आप समुदाय की भावना के साथ थोड़ा और जुड़ रहे हैं।",
@@ -366,7 +367,8 @@
     "proposeQuestionCoachMark": "कोई ऐसा प्रश्न है जिसका जवाब दुनिया को देना चाहिए? यहां प्रस्तावित करें।",
     "newPhaseSinceAnswered": "आपके उत्तर देने के बाद नया चरण",
     "publicBalanceMovedByAmount": "आपके उत्तर देने के बाद सार्वजनिक संतुलन {{amount}} बदला",
-    "publicBalanceMoved": "आपके उत्तर देने के बाद सार्वजनिक संतुलन बदला"
+    "publicBalanceMoved": "आपके उत्तर देने के बाद सार्वजनिक संतुलन बदला",
+    "couldNotSaveAnswer": "आपका उत्तर सहेजा नहीं जा सका — अपना कनेक्शन जाँचकर फिर प्रयास करें।"
   },
   "stance": {
     "neutral": "तटस्थ",
@@ -489,7 +491,8 @@
     "directPostFailed": "सीधी पोस्ट विफल रही",
     "openingXInBrowser": "आपके ब्राउज़र में X खोला जा रहा है।",
     "linkCopied": "लिंक क्लिपबोर्ड पर कॉपी हो गया",
-    "shareFailed": "शेयर करना विफल रहा"
+    "shareFailed": "शेयर करना विफल रहा",
+    "whatDoYouThink": "आप क्या सोचते हैं? 👇"
   },
   "hero": {
     "oneBigShiftingQuestion": "एक बड़ा बदलता सवाल",
@@ -549,7 +552,12 @@
     "moreCount": "{{n}} और",
     "newResponses": "· {{n}} नए",
     "keepStreakAlive": "अपनी {{days}} दिन की लय बनाए रखें",
-    "dayStreakCount": "{{days}} दिन की लय"
+    "dayStreakCount": "{{days}} दिन की लय",
+    "noQuestionsAvailable": "अभी कोई सवाल उपलब्ध नहीं है।",
+    "failedToSubmitStance": "रुख नहीं भेजा जा सका। कृपया फिर से प्रयास करें।",
+    "saveStanceHistory": "अपना रुख इतिहास सहेजें",
+    "compareAcrossRegions": "क्षेत्रों के बीच तुलना करें",
+    "followIssues": "आपके लिए अहम मुद्दों को फ़ॉलो करें"
   },
   "feed": {
     "upNext": "आगे"
@@ -646,7 +654,8 @@
     "mostHelpful": "सर्वाधिक उपयोगी",
     "loadingComments": "टिप्पणियाँ लोड हो रही हैं…",
     "showMoreComments": "और टिप्पणियाँ दिखाएँ",
-    "editedWhen": "· संपादित {{when}}"
+    "editedWhen": "· संपादित {{when}}",
+    "noMoodYet": "अभी कोई भाव नहीं"
   },
   "onboarding": {
     "gotIt": "समझ गए"
@@ -758,7 +767,17 @@
     "hideTopicHistory": "विषय इतिहास छिपाएँ",
     "showTopicHistory": "विषय इतिहास दिखाएँ",
     "hideHistory": "इतिहास छिपाएँ",
-    "topicHistory": "विषय इतिहास"
+    "topicHistory": "विषय इतिहास",
+    "latestPositionLeans": "आपकी नवीनतम स्थिति — \"{{pole}}\" की ओर झुकी",
+    "answeredCount_one": "{{count}} उत्तर दिया",
+    "answeredCount_other": "{{count}} उत्तर दिए",
+    "middleGround": "मध्य स्थिति",
+    "latestPositionMiddle": "आपकी नवीनतम स्थिति — बिलकुल बीच में",
+    "strongView": "मज़बूत राय",
+    "clearView": "स्पष्ट राय",
+    "slightView": "हल्की राय",
+    "noStrongView": "कोई मज़बूत राय नहीं",
+    "averagePositionOnTopic": "इस विषय पर आपकी औसत स्थिति"
   },
   "quickTakes": {
     "title": "आज के त्वरित सवाल",
@@ -780,7 +799,10 @@
     "pastDisagreed": "असहमति जताई",
     "pastNeutral": "तटस्थ रहे",
     "pastAgreed": "सहमति जताई",
-    "pastStronglyAgreed": "पूर्णतः सहमति जताई"
+    "pastStronglyAgreed": "पूर्णतः सहमति जताई",
+    "citySimilar": "{{city}} में {{pct}}% सहमत हैं — राष्ट्रीय तस्वीर जैसा ही।",
+    "cityAbove": "{{city}} में {{pct}}% सहमत हैं — राष्ट्रीय औसत से ऊपर।",
+    "cityBelow": "{{city}} में {{pct}}% सहमत हैं — राष्ट्रीय औसत से नीचे।"
   },
   "search": {
     "title": "खोजें",
@@ -951,7 +973,8 @@
     "deletionScheduledDetail": "{{requested}} को अनुरोध किया गया। आपका खाता और सारा डेटा <b>{{execute}}</b> को स्थायी रूप से हटा दिया जाएगा ({{days}} दिन शेष)।",
     "typeDeleteToConfirm": "पुष्टि के लिए <code>DELETE</code> लिखें",
     "consentGranted": "सहमति दी गई",
-    "consentWithdrawn": "सहमति वापस ली गई"
+    "consentWithdrawn": "सहमति वापस ली गई",
+    "termsOfService": "सेवा की शर्तें"
   },
   "settingsPrivacy": {
     "failedToUpdateWhatsappSetting": "WhatsApp सेटिंग अपडेट नहीं हो सकी। कृपया फिर से प्रयास करें।",
@@ -1078,7 +1101,17 @@
     "setAUsernameBeforeChoosing": "\"उपयोगकर्ता नाम\" प्रदर्शन मोड चुनने से पहले उपयोगकर्ता नाम सेट करें।",
     "displayHandleUpdated": "प्रदर्शित हैंडल अपडेट हो गया।",
     "dateOfBirthUpdatedSuccessfully": "जन्म तिथि सफलतापूर्वक अपडेट हो गई।",
-    "dateOfBirthSaved": "जन्म तिथि सहेजी गई।"
+    "dateOfBirthSaved": "जन्म तिथि सहेजी गई।",
+    "couldNotReadEmail": "आपका ईमेल नहीं पढ़ा जा सका। कृपया पेज ताज़ा करें।",
+    "clearDobNotDeployed": "clear_my_dob फ़ंक्शन अभी तैनात नहीं है। अपनी जन्म तिथि सुधारने के लिए कृपया सहायता से संपर्क करें।",
+    "numberOptedOut": "इस नंबर ने WhatsApp संदेश लेने से मना किया है। पहले WhatsApp पर START लिखकर भेजें।",
+    "couldNotSendVerification": "सत्यापन संदेश नहीं भेजा जा सका ({{reason}})। विवरण के लिए Supabase Edge Function लॉग देखें।",
+    "incorrectOrExpiredCode": "कोड ग़लत है या समाप्त हो चुका है। कृपया फिर से प्रयास करें।",
+    "numberAlreadyLinked": "यह WhatsApp नंबर पहले से किसी दूसरे खाते से जुड़ा है।",
+    "showingUnavailableLanguage": "वे सवाल भी दिखाए जा रहे हैं जो अभी आपकी भाषा में नहीं हैं।",
+    "showingOnlyMyLanguage": "केवल आपकी भाषा में उपलब्ध सवाल दिखाए जा रहे हैं।",
+    "resetsInDays_one": "({{count}} दिन में रीसेट)",
+    "resetsInDays_other": "({{count}} दिनों में रीसेट)"
   },
   "settingsLocation": {
     "chooseYourCountryStateCounty": "अपना देश, राज्य, ज़िला या शहर चुनें ताकि देख सकें कि आपके क्षेत्र के लोग हर सवाल पर क्या सोचते हैं।",
@@ -1283,7 +1316,10 @@
     "browseQuestions": "प्रश्न आईडी को किसी भी सक्रिय Stance Capture सवाल से बदलें। सवाल यहाँ देखें: <a>stancecapture.com/topics</a>।",
     "copied": "कॉपी हो गया ✓",
     "copy": "कॉपी करें",
-    "applyForEmbedAccess": "एम्बेड पहुँच के लिए आवेदन करें"
+    "applyForEmbedAccess": "एम्बेड पहुँच के लिए आवेदन करें",
+    "widgetLoadsAcrossPages": "आपके सभी पृष्ठों पर विजेट लोड",
+    "completedResponses": "आपके पाठकों से पूरी हुई प्रतिक्रियाएँ",
+    "readersWhoSubmitted": "जिन पाठकों ने रुख भेजा"
   },
   "topicHistoryDrawer": {
     "yourStance": "आपका रुख:",
@@ -1361,7 +1397,8 @@
     "constituencySetNotice": "आपका निर्वाचन क्षेत्र सेट है। <b>{{name}}</b> के चुनावी सवाल आपके फ़ीड में दिखेंगे।",
     "noMatch": "\"{{q}}\" से कोई निर्वाचन क्षेत्र मेल नहीं खाता",
     "districtLabel": "· ज़िला {{district}}",
-    "registeredNotice": "आपका पंजीकृत निर्वाचन क्षेत्र आपके वर्तमान निवास से अलग हो सकता है। ऊपर दिया गया क्षेत्र चुनावी उद्देश्यों के लिए आपका <b>पंजीकृत</b> मतदान क्षेत्र है — आपका वर्तमान भौतिक स्थान नहीं (EL-QA-G08)।"
+    "registeredNotice": "आपका पंजीकृत निर्वाचन क्षेत्र आपके वर्तमान निवास से अलग हो सकता है। ऊपर दिया गया क्षेत्र चुनावी उद्देश्यों के लिए आपका <b>पंजीकृत</b> मतदान क्षेत्र है — आपका वर्तमान भौतिक स्थान नहीं (EL-QA-G08)।",
+    "electionQuestionsWillAppear": "{{name}} के चुनावी सवाल आपके फ़ीड में दिखेंगे।"
   },
   "webOptIn": {
     "itSNotInThe": "यह अभी सामुदायिक कुल में शामिल नहीं है। इसे गिनती में लाने के लिए अपनी आवाज़ जोड़ें।",
@@ -1456,7 +1493,11 @@
     "seeAll": "सभी देखें",
     "answeredTodayCount_one": "आपने आज {{count}} सवाल का उत्तर दिया",
     "answeredTodayCount_other": "आपने आज {{count}} सवालों के उत्तर दिए",
-    "seeAllInMyStances": "मेरे रुख में सभी {{count}} देखें →"
+    "seeAllInMyStances": "मेरे रुख में सभी {{count}} देखें →",
+    "logInToSeeFollowed": "आप जिन विषयों को फ़ॉलो करते हैं, उन्हें देखने के लिए लॉग इन करें।",
+    "noTrendingTopicsYet": "अभी कोई चर्चित विषय नहीं।",
+    "notFollowingAnyTopics": "आप अभी किसी विषय को फ़ॉलो नहीं कर रहे।",
+    "noTopicsYet": "अभी कोई विषय नहीं।"
   },
   "todayQuestionsFeed": {
     "curatedByOurEditorialTeam": "हमारी संपादकीय टीम द्वारा चयनित",
@@ -1535,7 +1576,8 @@
     "replaceAvatar": "अवतार बदलें",
     "uploadAvatar": "अवतार अपलोड करें",
     "removeAvatar": "अवतार हटाएँ",
-    "uploading": "अपलोड हो रहा है…"
+    "uploading": "अपलोड हो रहा है…",
+    "uploadTimedOut": "अपलोड का समय समाप्त हो गया। अपना कनेक्शन जाँचकर फिर प्रयास करें।"
   },
   "oAuthCallback": {
     "supabaseClientUnavailableCheckEnvironment": "Supabase क्लाइंट उपलब्ध नहीं। एनवायरनमेंट वेरिएबल जाँचें।",
@@ -1548,7 +1590,8 @@
     "signInFailed": "साइन-इन विफल",
     "backToLogin": "लॉगिन पर वापस",
     "settingUpYourProfile": "आपकी प्रोफ़ाइल तैयार हो रही है…",
-    "savingAccountConnection": "खाता कनेक्शन सहेजा जा रहा है…"
+    "savingAccountConnection": "खाता कनेक्शन सहेजा जा रहा है…",
+    "completingSignIn": "साइन-इन पूरा हो रहा है…"
   },
   "personalizedFeed": {
     "failedToLoadYourPersonalized": "आपका वैयक्तिक फ़ीड लोड नहीं हो सका।",
@@ -1600,7 +1643,8 @@
     "failedToLoadQuestion": "सवाल लोड नहीं हो सका:"
   },
   "topicDetail": {
-    "pleaseTryAgainOrGo": "कृपया फिर से प्रयास करें या विषयों पर वापस जाएँ।"
+    "pleaseTryAgainOrGo": "कृपया फिर से प्रयास करें या विषयों पर वापस जाएँ।",
+    "noStance": "कोई रुख नहीं"
   },
   "feedFilters": {
     "active": "सक्रिय",
@@ -1626,7 +1670,9 @@
     "couldnTUpdateYourStance": "आपका रुख अपडेट नहीं हो सका",
     "logInToAnswer": "उत्तर देने के लिए लॉग इन करें",
     "createAnAccountOrLog": "इस सवाल पर अपना रुख दर्ज करने के लिए खाता बनाएँ या लॉग इन करें।",
-    "wantToRecordYourStance": "अपना रुख दर्ज करना चाहते हैं?"
+    "wantToRecordYourStance": "अपना रुख दर्ज करना चाहते हैं?",
+    "needToBeLoggedIn": "आपका लॉग इन होना आवश्यक है",
+    "stanceRemoved": "आपने इस सवाल पर अपना रुख हटा दिया है।"
   },
   "sinceLastVisit": {
     "sinceYouLastVisited": "आपकी पिछली विज़िट के बाद से",
@@ -1636,7 +1682,12 @@
     "noDataAvailable": "कोई डेटा उपलब्ध नहीं।",
     "thingsHaveBeenRelativelySteady": "आपकी अनुपस्थिति में स्थिति काफ़ी स्थिर रही।",
     "awayFor": "आप {{duration}} दूर रहे।",
-    "shiftOnAverage": "बदलाव: औसतन {{delta}}"
+    "shiftOnAverage": "बदलाव: औसतन {{delta}}",
+    "shiftedPositive": "{{topic}} पर भावना और सकारात्मक हुई है।",
+    "shiftedNegative": "{{topic}} पर भावना और नकारात्मक हुई है।",
+    "gainingAttention_one": "{{topic}} पर ध्यान बढ़ रहा है ({{count}} नई प्रतिक्रिया)।",
+    "gainingAttention_other": "{{topic}} पर ध्यान बढ़ रहा है ({{count}} नई प्रतिक्रियाएँ)।",
+    "relativelyStable": "{{topic}} अपेक्षाकृत स्थिर है।"
   },
   "locationPicker": {
     "countryId": "देश (ID)",
@@ -1661,7 +1712,9 @@
     "unableToLoadTrendingTopics": "अभी चर्चित विषय लोड नहीं हो सके।",
     "noTrendingTopicsYetCheck": "अभी कोई चर्चित विषय नहीं। जल्द फिर देखें!",
     "thisWeek": "इस सप्ताह",
-    "signUpToSeeLocal": "अपने क्षेत्र के चर्चित विषय देखने के लिए <a>साइन अप करें</a>"
+    "signUpToSeeLocal": "अपने क्षेत्र के चर्चित विषय देखने के लिए <a>साइन अप करें</a>",
+    "inYourArea": "आपके क्षेत्र में",
+    "inYourAreaTier": "आपके क्षेत्र में ({{tier}})"
   },
   "forYouFeed": {
     "questionsTailoredToYourInterests": "आपकी रुचियों और स्थान के अनुसार चुने गए सवाल",
@@ -1751,7 +1804,8 @@
   },
   "dobField": {
     "month": "महीना",
-    "year": "वर्ष"
+    "year": "वर्ष",
+    "mustBeAtLeast13": "आपकी आयु कम से कम 13 वर्ष होनी चाहिए।"
   },
   "latestQuestions": {
     "latestQuestions": "नवीनतम सवाल",
@@ -1810,7 +1864,11 @@
     "couldNotExtractTradeOffs": "इस सवाल के लिए संतुलन नहीं निकाले जा सके।",
     "adjustTheSlidersToReflect": "स्लाइडर समायोजित करें कि आपके लिए क्या सबसे अहम है, फिर नीचे अपना रुख दर्ज करें।",
     "yourPriorityWeightsAreSaved": "आपकी प्राथमिकताएँ निजी रूप से सहेजी जाती हैं और इस सवाल पर लौटने पर यहीं मिलेंगी।",
-    "leaningOnThisQuestion": "इस सवाल पर {{leaning}}।"
+    "leaningOnThisQuestion": "इस सवाल पर {{leaning}}।",
+    "weighingEvenly": "आप संतुलनों को बराबर तौल रहे हैं — आपका रुख एक संतुलित दृष्टिकोण दर्शाएगा।",
+    "and": " और ",
+    "priorities": "आपकी प्राथमिकताएँ बताती हैं कि आप {{priorities}} की ओर झुकते हैं। सोचें कि यह नीचे आपके रुख को कैसे आकार देता है।",
+    "prioritiesWithNuance": "आपकी प्राथमिकताएँ बताती हैं कि आप कुछ बारीकी के साथ {{priorities}} की ओर झुकते हैं। सोचें कि यह नीचे आपके रुख को कैसे आकार देता है।"
   },
   "electionQuestion": {
     "stanceSubmissionPaused": "रुख भेजना रोका गया।",
@@ -1823,12 +1881,15 @@
     "loadingHistory": "इतिहास लोड हो रहा है…",
     "noChangesYetYouVe": "अभी कोई बदलाव नहीं — आपने इस सवाल का एक बार उत्तर दिया है।",
     "firstAnswer": "पहला उत्तर:",
-    "changedFromTo": "बदला"
+    "changedFromTo": "बदला",
+    "fromFirstAnswer": "पहले उत्तर से {{delta}}"
   },
   "whatsAppSignin": {
     "thisSignInLinkIs": "इस साइन-इन लिंक में उसका टोकन नहीं है। कृपया अपने WhatsApp संदेश वाला लिंक उपयोग करें।",
     "signInLinkProblem": "साइन-इन लिंक में समस्या",
-    "signingYouIn": "आपको साइन इन किया जा रहा है…"
+    "signingYouIn": "आपको साइन इन किया जा रहा है…",
+    "linkExpired": "यह साइन-इन लिंक समाप्त हो चुका है या पहले ही उपयोग हो चुका है। नया पाने के लिए WhatsApp पर SUBSCRIBE लिखकर भेजें।",
+    "couldNotSignIn": "आपको साइन इन नहीं किया जा सका। कृपया WhatsApp से फिर प्रयास करें।"
   },
   "moderatoronly": {
     "error": "त्रुटि",
@@ -1896,7 +1957,12 @@
     "justiceLeanSupport": "आम तौर पर आपराधिक न्याय सुधार की ओर झुकते हैं।",
     "justiceStrongOppose": "सख़्त क़ानून प्रवर्तन का पुरज़ोर समर्थन करते हैं।",
     "justiceLeanOppose": "क़ानून-व्यवस्था के प्रति अधिक पारंपरिक दृष्टिकोण को पसंद करते हैं।",
-    "justiceMixed": "आपराधिक न्याय पर मिश्रित विचार रखते हैं।"
+    "justiceMixed": "आपराधिक न्याय पर मिश्रित विचार रखते हैं।",
+    "tagStrongSupport": "{{tag}} के मुद्दों पर इस दिशा का पुरज़ोर समर्थन करते हैं।",
+    "tagLeanSupport": "{{tag}} के सवालों पर आम तौर पर सहमति की ओर झुकते हैं।",
+    "tagStrongOppose": "{{tag}} की मौजूदा दिशा का पुरज़ोर विरोध करते हैं।",
+    "tagLeanOppose": "{{tag}} की मौजूदा नीति के विरुद्ध झुकते हैं।",
+    "tagMixed": "{{tag}} के मुद्दों पर मिश्रित राय रखते हैं।"
   },
   "followTopicButton": {
     "actionFailed": "कार्रवाई विफल"
@@ -1921,7 +1987,8 @@
     "couldnTLoadTheVideo": "वीडियो लोड नहीं हो सका — फिर से करने के लिए टैप करें।"
   },
   "searchBar": {
-    "clearSearch": "खोज हटाएँ"
+    "clearSearch": "खोज हटाएँ",
+    "searchQuestionsAndTopics": "सवाल और विषय खोजें..."
   },
   "postStanceSharePrompt": {
     "wantToSeeWhatOthers": "जानना चाहते हैं दूसरे क्या सोचते हैं?",
@@ -1932,7 +1999,9 @@
     "manageInPrivacySettings": "गोपनीयता सेटिंग्स में प्रबंधित करें"
   },
   "proposeQuestionButton": {
-    "propose": "प्रस्ताव दें"
+    "propose": "प्रस्ताव दें",
+    "proposeAQuestion": "कोई सवाल प्रस्तावित करें",
+    "askAbout": "{{topic}} के बारे में पूछें"
   },
   "topicMomentumTimeline": {
     "peakDriven_one": "{{count}} समाचार स्रोत से उभरा शिखर — {{title}}।",
@@ -1940,6 +2009,68 @@
   },
   "stanceDistributionBar": {
     "responseCount_one": "{{shown}} प्रतिक्रिया",
-    "responseCount_other": "{{shown}} प्रतिक्रियाएँ"
+    "responseCount_other": "{{shown}} प्रतिक्रियाएँ",
+    "alignPole": "आप {{pct}}% उत्तरदाताओं से मेल खाते हैं — जो \"{{pole}}\" की ओर झुकते हैं",
+    "alignMiddle": "आप {{pct}}% उत्तरदाताओं से मेल खाते हैं — जो बीच में हैं",
+    "alignGroup": "आप {{pct}}% उत्तरदाताओं से मेल खाते हैं — {{group}} समूह",
+    "supportive": "समर्थक",
+    "opposed": "विरोधी",
+    "neutral": "तटस्थ"
+  },
+  "stanceSubmission": {
+    "stanceSubmitted": "रुख भेज दिया गया",
+    "yourResponseRecorded": "आपकी प्रतिक्रिया दर्ज कर ली गई है।",
+    "newerVersionAvailable": "इस सवाल का नया संस्करण उपलब्ध है",
+    "readItAndAnswerAgain": "कृपया इसे पढ़कर अपना रुख फिर से दें।",
+    "submissionPaused": "भेजना रोका गया",
+    "failedToSubmitStance": "रुख नहीं भेजा जा सका",
+    "mustBeLoggedIn": "रुख भेजने के लिए आपका लॉग इन होना आवश्यक है"
+  },
+  "errors": {
+    "pleaseLogIn": "जारी रखने के लिए कृपया लॉग इन करें।",
+    "usernameReserved": "यह उपयोगकर्ता नाम सुरक्षित है।",
+    "usernameTaken": "यह उपयोगकर्ता नाम पहले से लिया जा चुका है।",
+    "changeLimitReached": "आप बदलाव की सीमा तक पहुँच चुके हैं। बाद में प्रयास करें।",
+    "invalidCode": "अमान्य कोड। फिर से प्रयास करें।",
+    "noPermission": "इस कार्रवाई के लिए आपके पास अनुमति नहीं है।",
+    "somethingWentWrong": "कुछ गड़बड़ हो गई। कृपया फिर से प्रयास करें।"
+  },
+  "snapshotCategory": {
+    "environment": "पर्यावरण और जलवायु",
+    "housing": "आवास",
+    "economy": "अर्थव्यवस्था",
+    "technology": "तकनीक",
+    "health": "स्वास्थ्य"
+  },
+  "questionState": {
+    "new": "नया",
+    "newDescription": "पिछले 24 घंटों में पोस्ट किया गया",
+    "active": "सक्रिय",
+    "activeDescription": "अभी प्रतिक्रियाएँ मिल रही हैं",
+    "dormant": "निष्क्रिय",
+    "dormantDescription": "कम भागीदारी, जल्द संग्रहित हो सकता है",
+    "archived": "संग्रहित",
+    "archivedDescription": "अब नई प्रतिक्रियाएँ स्वीकार नहीं"
+  },
+  "gender": {
+    "male": "पुरुष",
+    "female": "महिला",
+    "nonbinary": "नॉन-बाइनरी",
+    "preferNotToSay": "बताना नहीं चाहते",
+    "selfDescribed": "स्वयं वर्णित"
+  },
+  "authorityStatus": {
+    "unacknowledged": "अस्वीकृत",
+    "underReview": "समीक्षाधीन",
+    "actionAnnounced": "कार्रवाई की घोषणा",
+    "actionCompleted": "कार्रवाई पूरी",
+    "noResponse": "कोई प्रतिक्रिया नहीं"
+  },
+  "consentKey": {
+    "ipRegionInference": "IP आधारित क्षेत्र अनुमान",
+    "analytics": "विश्लेषण",
+    "marketing": "विपणन संचार",
+    "termsOfService": "सेवा की शर्तें",
+    "privacyPolicy": "गोपनीयता नीति"
   }
 }

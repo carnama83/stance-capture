@@ -3,6 +3,7 @@
 // Renders as a small SVG — no chart library dependency.
 
 import * as React from "react";
+import i18n from "@/lib/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { getSupabase } from "@/lib/supabaseClient";
 import { useTranslation } from "react-i18next";
@@ -82,7 +83,9 @@ export function StanceSparkline({ questionId, currentScore }: StanceSparklinePro
     const last = points[points.length - 1].new_score;
     const delta = last - first;
     if (delta === 0) return null;
-    return delta > 0 ? `+${delta} from first answer` : `${delta} from first answer`;
+    return i18n.t("stanceSparkline.fromFirstAnswer", {
+      delta: delta > 0 ? `+${delta}` : String(delta),
+    });
   }, [points]);
 
   // M-E01: weekly / monthly delta labels

@@ -3638,7 +3638,7 @@ export default function IndexPage() {
         // point of failure while diagnosing this. Surface the real error and
         // let the person retry instead of silently misdirecting them.
         console.error("[stageStance] recordWebStance failed:", err);
-        toast.error("Couldn't save your answer — check your connection and try again.");
+        toast.error(t("home.couldNotSaveAnswer"));
       }
     },
     // renditionByQuestionId must be listed: it is a memo that is empty on first

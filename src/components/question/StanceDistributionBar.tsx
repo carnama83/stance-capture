@@ -15,6 +15,7 @@
 import * as React from "react";
 import { resolvePoleLabels, distinctPoleLabels } from "@/lib/poleLabels";
 import { useTranslation } from "react-i18next";
+import i18n from "@/lib/i18n";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -95,17 +96,17 @@ function deriveAlignmentText(
   // Pole-relative phrasing when the question supplied real poles.
   if (poles?.hasPoles && (bucket === "support" || bucket === "oppose")) {
     const pole = bucket === "support" ? poles.posFull : poles.negFull;
-    return `You align with ${pct}% of respondents — those leaning toward "${pole}"`;
+    return i18n.t("stanceDistributionBar.alignPole", { pct, pole });
   }
   if (poles?.hasPoles && bucket === "neutral") {
-    return `You align with ${pct}% of respondents — those in the middle`;
+    return i18n.t("stanceDistributionBar.alignMiddle", { pct });
   }
   // Generic fallback (no poles / pre-QF questions).
   const bucketLabel =
-    bucket === "support" ? "supportive"
-    : bucket === "oppose" ? "opposed"
-    : "neutral";
-  return `You align with ${pct}% of respondents — the ${bucketLabel} group`;
+    bucket === "support" ? i18n.t("stanceDistributionBar.supportive")
+    : bucket === "oppose" ? i18n.t("stanceDistributionBar.opposed")
+    : i18n.t("stanceDistributionBar.neutral");
+  return i18n.t("stanceDistributionBar.alignGroup", { pct, group: bucketLabel });
 }
 
 // ─── Segmented bar segment ────────────────────────────────────────────────────

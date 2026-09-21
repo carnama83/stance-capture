@@ -7,6 +7,7 @@
 //   N3: Data export (delegates to existing MyStancesPage export; links there)
 
 import * as React from "react";
+import i18n from "@/lib/i18n";
 import { Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -103,14 +104,14 @@ function daysUntil(iso: string): number {
 }
 
 function consentKeyLabel(key: string): string {
-  const labels: Record<string, string> = {
-    ip_region_inference: "IP-based region inference",
-    analytics: "Analytics",
-    marketing: "Marketing communications",
-    terms_of_service: "Terms of service",
-    privacy_policy: "Privacy policy",
+  const keys: Record<string, string> = {
+    ip_region_inference: "consentKey.ipRegionInference",
+    analytics: "consentKey.analytics",
+    marketing: "consentKey.marketing",
+    terms_of_service: "consentKey.termsOfService",
+    privacy_policy: "consentKey.privacyPolicy",
   };
-  return labels[key] ?? key.replace(/_/g, " ");
+  return keys[key] ? i18n.t(keys[key]) : key.replace(/_/g, " ");
 }
 
 // ── Section wrapper ────────────────────────────────────────────────────────────

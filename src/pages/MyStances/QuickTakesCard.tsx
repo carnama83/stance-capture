@@ -196,11 +196,11 @@ function HeaderArea({
     const cityAgree = Math.round(feedback.city_support_pct);
     const diff = cityAgree - agree;
     if (Math.abs(diff) <= 5) {
-      citySentence = `In ${feedback.city_label}, ${cityAgree}% agree — similar to the national picture.`;
+      citySentence = t("quickTakes.citySimilar", { city: feedback.city_label, pct: cityAgree });
     } else if (diff > 0) {
-      citySentence = `In ${feedback.city_label}, ${cityAgree}% agree — above the national average.`;
+      citySentence = t("quickTakes.cityAbove", { city: feedback.city_label, pct: cityAgree });
     } else {
-      citySentence = `In ${feedback.city_label}, ${cityAgree}% agree — below the national average.`;
+      citySentence = t("quickTakes.cityBelow", { city: feedback.city_label, pct: cityAgree });
     }
   }
 

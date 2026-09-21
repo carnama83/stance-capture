@@ -28,12 +28,12 @@ export interface AuthorityResponseRow {
   authority_registry: { name: string } | null;
 }
 
-export const STATUS_LABELS: Record<string, string> = {
-  unacknowledged: "Unacknowledged",
-  under_review: "Under review",
-  action_announced: "Action announced",
-  action_completed: "Action completed",
-  no_response: "No response",
+export const STATUS_LABEL_KEYS: Record<string, string> = {
+  unacknowledged: "authorityStatus.unacknowledged",
+  under_review: "authorityStatus.underReview",
+  action_announced: "authorityStatus.actionAnnounced",
+  action_completed: "authorityStatus.actionCompleted",
+  no_response: "authorityStatus.noResponse",
 };
 
 export const STATUS_COLORS: Record<string, string> = {
@@ -94,7 +94,9 @@ export function AuthorityResponseStatusBlock({ questionId }: { questionId: strin
                   STATUS_COLORS[r.response_status] ?? "bg-slate-100 text-slate-600"
                 }`}
               >
-                {STATUS_LABELS[r.response_status] ?? r.response_status}
+                {STATUS_LABEL_KEYS[r.response_status]
+                  ? t(STATUS_LABEL_KEYS[r.response_status])
+                  : r.response_status}
               </span>
               <span className="text-[10px] text-slate-400">{formatResponseDate(r.status_updated_at)}</span>
             </div>

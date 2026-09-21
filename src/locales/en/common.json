@@ -224,7 +224,8 @@
     "cancel": "Cancel",
     "forgotPassword": "Forgot password?",
     "dontHaveAccount": "Don't have an account?",
-    "signUp": "Sign up"
+    "signUp": "Sign up",
+    "supabaseNotConfigured": "Supabase is not configured."
   },
   "home": {
     "alignmentUp": "You've been aligning a bit more with community sentiment lately.",
@@ -366,7 +367,8 @@
     "proposeQuestionCoachMark": "Got a question the world should answer? Propose it here.",
     "newPhaseSinceAnswered": "New phase since you answered",
     "publicBalanceMovedByAmount": "Public balance moved {{amount}} since you answered",
-    "publicBalanceMoved": "Public balance moved since you answered"
+    "publicBalanceMoved": "Public balance moved since you answered",
+    "couldNotSaveAnswer": "Couldn't save your answer — check your connection and try again."
   },
   "stance": {
     "neutral": "Neutral",
@@ -489,7 +491,8 @@
     "directPostFailed": "Direct post failed",
     "openingXInBrowser": "Opening X in your browser instead.",
     "linkCopied": "Link copied to clipboard",
-    "shareFailed": "Share failed"
+    "shareFailed": "Share failed",
+    "whatDoYouThink": "What do you think? 👇"
   },
   "hero": {
     "oneBigShiftingQuestion": "One big shifting question",
@@ -549,7 +552,12 @@
     "moreCount": "{{n}} more",
     "newResponses": "· {{n}} new",
     "keepStreakAlive": "Keep your {{days}} day streak alive",
-    "dayStreakCount": "{{days}} day streak"
+    "dayStreakCount": "{{days}} day streak",
+    "noQuestionsAvailable": "No questions available right now.",
+    "failedToSubmitStance": "Failed to submit stance. Please try again.",
+    "saveStanceHistory": "Save your stance history",
+    "compareAcrossRegions": "Compare across regions",
+    "followIssues": "Follow issues that matter to you"
   },
   "feed": {
     "upNext": "Up next"
@@ -646,7 +654,8 @@
     "mostHelpful": "Most Helpful",
     "loadingComments": "Loading comments…",
     "showMoreComments": "Show more comments",
-    "editedWhen": "· edited {{when}}"
+    "editedWhen": "· edited {{when}}",
+    "noMoodYet": "No mood yet"
   },
   "onboarding": {
     "gotIt": "Got it"
@@ -758,7 +767,17 @@
     "hideTopicHistory": "Hide topic history",
     "showTopicHistory": "Show topic history",
     "hideHistory": "Hide history",
-    "topicHistory": "Topic history"
+    "topicHistory": "Topic history",
+    "latestPositionLeans": "Your latest position — leans toward \"{{pole}}\"",
+    "answeredCount_one": "{{count}} answered",
+    "answeredCount_other": "{{count}} answered",
+    "middleGround": "Middle ground",
+    "latestPositionMiddle": "Your latest position — right in the middle",
+    "strongView": "Strong view",
+    "clearView": "Clear view",
+    "slightView": "Slight view",
+    "noStrongView": "No strong view",
+    "averagePositionOnTopic": "Your average position on this topic"
   },
   "quickTakes": {
     "title": "Today's quick takes",
@@ -780,7 +799,10 @@
     "pastDisagreed": "disagreed",
     "pastNeutral": "were neutral",
     "pastAgreed": "agreed",
-    "pastStronglyAgreed": "strongly agreed"
+    "pastStronglyAgreed": "strongly agreed",
+    "citySimilar": "In {{city}}, {{pct}}% agree — similar to the national picture.",
+    "cityAbove": "In {{city}}, {{pct}}% agree — above the national average.",
+    "cityBelow": "In {{city}}, {{pct}}% agree — below the national average."
   },
   "search": {
     "title": "Search",
@@ -951,7 +973,8 @@
     "deletionScheduledDetail": "Requested on {{requested}}. Your account and all data will be permanently deleted on <b>{{execute}}</b> ({{days}} days remaining).",
     "typeDeleteToConfirm": "Type <code>DELETE</code> to confirm",
     "consentGranted": "Consent granted",
-    "consentWithdrawn": "Consent withdrawn"
+    "consentWithdrawn": "Consent withdrawn",
+    "termsOfService": "Terms of service"
   },
   "settingsPrivacy": {
     "failedToUpdateWhatsappSetting": "Failed to update WhatsApp setting. Please try again.",
@@ -1078,7 +1101,17 @@
     "setAUsernameBeforeChoosing": "Set a username before choosing \"username\" display mode.",
     "displayHandleUpdated": "Display handle updated.",
     "dateOfBirthUpdatedSuccessfully": "Date of birth updated successfully.",
-    "dateOfBirthSaved": "Date of birth saved."
+    "dateOfBirthSaved": "Date of birth saved.",
+    "couldNotReadEmail": "Could not read your email. Please refresh.",
+    "clearDobNotDeployed": "The clear_my_dob function is not yet deployed. Please contact support to correct your date of birth.",
+    "numberOptedOut": "This number has opted out of WhatsApp messages. Reply START on WhatsApp first.",
+    "couldNotSendVerification": "Could not send verification message ({{reason}}). Check the Supabase Edge Function logs for details.",
+    "incorrectOrExpiredCode": "Incorrect or expired code. Please try again.",
+    "numberAlreadyLinked": "This WhatsApp number is already linked to another account.",
+    "showingUnavailableLanguage": "Showing questions not yet in your language.",
+    "showingOnlyMyLanguage": "Showing only questions available in your language.",
+    "resetsInDays_one": "(resets in {{count}} day)",
+    "resetsInDays_other": "(resets in {{count}} days)"
   },
   "settingsLocation": {
     "chooseYourCountryStateCounty": "Choose your country, state, county, or city to see how people in your region think about each question.",
@@ -1283,7 +1316,10 @@
     "browseQuestions": "Replace the question ID with any active Stance Capture question. Browse questions at <a>stancecapture.com/topics</a>.",
     "copied": "Copied ✓",
     "copy": "Copy",
-    "applyForEmbedAccess": "Apply for embed access"
+    "applyForEmbedAccess": "Apply for embed access",
+    "widgetLoadsAcrossPages": "Widget loads across all your pages",
+    "completedResponses": "Completed responses from your readers",
+    "readersWhoSubmitted": "Readers who submitted a stance"
   },
   "topicHistoryDrawer": {
     "yourStance": "Your stance:",
@@ -1361,7 +1397,8 @@
     "constituencySetNotice": "Your constituency is set. Election questions for <b>{{name}}</b> will appear in your feed.",
     "noMatch": "No constituencies match \"{{q}}\"",
     "districtLabel": "· {{district}} district",
-    "registeredNotice": "Your registered constituency may differ from where you currently live. The constituency above is your <b>registered</b> voting constituency for election purposes — not your current physical location (EL-QA-G08)."
+    "registeredNotice": "Your registered constituency may differ from where you currently live. The constituency above is your <b>registered</b> voting constituency for election purposes — not your current physical location (EL-QA-G08).",
+    "electionQuestionsWillAppear": "Election questions for {{name}} will appear in your feed."
   },
   "webOptIn": {
     "itSNotInThe": "It's not in the community total yet. Add your voice to make it count.",
@@ -1456,7 +1493,11 @@
     "seeAll": "See all",
     "answeredTodayCount_one": "You answered {{count}} question today",
     "answeredTodayCount_other": "You answered {{count}} questions today",
-    "seeAllInMyStances": "See all {{count}} in My stances →"
+    "seeAllInMyStances": "See all {{count}} in My stances →",
+    "logInToSeeFollowed": "Log in to see topics you follow.",
+    "noTrendingTopicsYet": "No trending topics yet.",
+    "notFollowingAnyTopics": "You aren’t following any topics yet.",
+    "noTopicsYet": "No topics yet."
   },
   "todayQuestionsFeed": {
     "curatedByOurEditorialTeam": "Curated by our editorial team",
@@ -1535,7 +1576,8 @@
     "replaceAvatar": "Replace avatar",
     "uploadAvatar": "Upload avatar",
     "removeAvatar": "Remove avatar",
-    "uploading": "Uploading…"
+    "uploading": "Uploading…",
+    "uploadTimedOut": "Upload timed out. Check your connection and try again."
   },
   "oAuthCallback": {
     "supabaseClientUnavailableCheckEnvironment": "Supabase client unavailable. Check environment variables.",
@@ -1548,7 +1590,8 @@
     "signInFailed": "Sign-in failed",
     "backToLogin": "Back to login",
     "settingUpYourProfile": "Setting up your profile…",
-    "savingAccountConnection": "Saving account connection…"
+    "savingAccountConnection": "Saving account connection…",
+    "completingSignIn": "Completing sign-in…"
   },
   "personalizedFeed": {
     "failedToLoadYourPersonalized": "Failed to load your personalized feed.",
@@ -1600,7 +1643,8 @@
     "failedToLoadQuestion": "Failed to load question:"
   },
   "topicDetail": {
-    "pleaseTryAgainOrGo": "Please try again or go back to topics."
+    "pleaseTryAgainOrGo": "Please try again or go back to topics.",
+    "noStance": "No stance"
   },
   "feedFilters": {
     "active": "Active",
@@ -1626,7 +1670,9 @@
     "couldnTUpdateYourStance": "Couldn't update your stance",
     "logInToAnswer": "Log in to answer",
     "createAnAccountOrLog": "Create an account or log in to record your stance on this question.",
-    "wantToRecordYourStance": "Want to record your stance?"
+    "wantToRecordYourStance": "Want to record your stance?",
+    "needToBeLoggedIn": "You need to be logged in",
+    "stanceRemoved": "You've removed your stance on this question."
   },
   "sinceLastVisit": {
     "sinceYouLastVisited": "Since You Last Visited",
@@ -1636,7 +1682,12 @@
     "noDataAvailable": "No data available.",
     "thingsHaveBeenRelativelySteady": "Things have been relatively steady while you were away.",
     "awayFor": "You were away for {{duration}}.",
-    "shiftOnAverage": "Shift: {{delta}} on average"
+    "shiftOnAverage": "Shift: {{delta}} on average",
+    "shiftedPositive": "{{topic}} sentiment has shifted more positive.",
+    "shiftedNegative": "{{topic}} sentiment has shifted more negative.",
+    "gainingAttention_one": "{{topic}} is gaining attention ({{count}} new response).",
+    "gainingAttention_other": "{{topic}} is gaining attention ({{count}} new responses).",
+    "relativelyStable": "{{topic}} is relatively stable."
   },
   "locationPicker": {
     "countryId": "Country (ID)",
@@ -1661,7 +1712,9 @@
     "unableToLoadTrendingTopics": "Unable to load trending topics right now.",
     "noTrendingTopicsYetCheck": "No trending topics yet. Check back soon!",
     "thisWeek": "this week",
-    "signUpToSeeLocal": "<a>Sign up</a> to see trending topics in your area"
+    "signUpToSeeLocal": "<a>Sign up</a> to see trending topics in your area",
+    "inYourArea": "In Your Area",
+    "inYourAreaTier": "In Your Area ({{tier}})"
   },
   "forYouFeed": {
     "questionsTailoredToYourInterests": "Questions tailored to your interests and location",
@@ -1751,7 +1804,8 @@
   },
   "dobField": {
     "month": "Month",
-    "year": "Year"
+    "year": "Year",
+    "mustBeAtLeast13": "You must be at least 13."
   },
   "latestQuestions": {
     "latestQuestions": "Latest Questions",
@@ -1810,7 +1864,11 @@
     "couldNotExtractTradeOffs": "Could not extract trade-offs for this question.",
     "adjustTheSlidersToReflect": "Adjust the sliders to reflect what matters most to you, then record your stance below.",
     "yourPriorityWeightsAreSaved": "Your priority weights are saved privately and will be here when you return to this question.",
-    "leaningOnThisQuestion": "{{leaning}} on this question."
+    "leaningOnThisQuestion": "{{leaning}} on this question.",
+    "weighingEvenly": "You're weighing the trade-offs evenly — your stance will reflect a balanced view.",
+    "and": " and ",
+    "priorities": "Your priorities suggest you lean toward {{priorities}}. Consider how that shapes your stance below.",
+    "prioritiesWithNuance": "Your priorities suggest you lean toward {{priorities}}, with some nuance. Consider how that shapes your stance below."
   },
   "electionQuestion": {
     "stanceSubmissionPaused": "Stance submission paused.",
@@ -1823,12 +1881,15 @@
     "loadingHistory": "Loading history…",
     "noChangesYetYouVe": "No changes yet — you've answered this question once.",
     "firstAnswer": "First answer:",
-    "changedFromTo": "Changed"
+    "changedFromTo": "Changed",
+    "fromFirstAnswer": "{{delta}} from first answer"
   },
   "whatsAppSignin": {
     "thisSignInLinkIs": "This sign-in link is missing its token. Please use the link from your WhatsApp message.",
     "signInLinkProblem": "Sign-in link problem",
-    "signingYouIn": "Signing you in…"
+    "signingYouIn": "Signing you in…",
+    "linkExpired": "This sign-in link has expired or was already used. Reply SUBSCRIBE on WhatsApp to get a fresh one.",
+    "couldNotSignIn": "Couldn't sign you in. Please try again from WhatsApp."
   },
   "moderatoronly": {
     "error": "Error",
@@ -1896,7 +1957,12 @@
     "justiceLeanSupport": "generally lean toward criminal justice reform.",
     "justiceStrongOppose": "tend to strongly support tougher law enforcement.",
     "justiceLeanOppose": "tend to favour a more traditional approach to law and order.",
-    "justiceMixed": "have mixed views on criminal justice."
+    "justiceMixed": "have mixed views on criminal justice.",
+    "tagStrongSupport": "tend to strongly support the direction on {{tag}} issues.",
+    "tagLeanSupport": "generally lean toward agreement on {{tag}} questions.",
+    "tagStrongOppose": "tend to strongly oppose the current {{tag}} direction.",
+    "tagLeanOppose": "tend to lean against current {{tag}} policy.",
+    "tagMixed": "have a mixed view on {{tag}} issues."
   },
   "followTopicButton": {
     "actionFailed": "Action failed"
@@ -1921,7 +1987,8 @@
     "couldnTLoadTheVideo": "Couldn't load the video — tap to retry."
   },
   "searchBar": {
-    "clearSearch": "Clear search"
+    "clearSearch": "Clear search",
+    "searchQuestionsAndTopics": "Search questions and topics..."
   },
   "postStanceSharePrompt": {
     "wantToSeeWhatOthers": "Want to see what others think?",
@@ -1932,7 +1999,9 @@
     "manageInPrivacySettings": "Manage in Privacy Settings"
   },
   "proposeQuestionButton": {
-    "propose": "Propose"
+    "propose": "Propose",
+    "proposeAQuestion": "Propose a question",
+    "askAbout": "Ask about {{topic}}"
   },
   "topicMomentumTimeline": {
     "peakDriven_one": "Peak driven by {{count}} news outlet — {{title}}.",
@@ -1940,6 +2009,68 @@
   },
   "stanceDistributionBar": {
     "responseCount_one": "{{shown}} response",
-    "responseCount_other": "{{shown}} responses"
+    "responseCount_other": "{{shown}} responses",
+    "alignPole": "You align with {{pct}}% of respondents — those leaning toward \"{{pole}}\"",
+    "alignMiddle": "You align with {{pct}}% of respondents — those in the middle",
+    "alignGroup": "You align with {{pct}}% of respondents — the {{group}} group",
+    "supportive": "supportive",
+    "opposed": "opposed",
+    "neutral": "neutral"
+  },
+  "stanceSubmission": {
+    "stanceSubmitted": "Stance submitted",
+    "yourResponseRecorded": "Your response has been recorded.",
+    "newerVersionAvailable": "A newer version of this question is available",
+    "readItAndAnswerAgain": "Please read it and give your stance again.",
+    "submissionPaused": "Submission paused",
+    "failedToSubmitStance": "Failed to submit stance",
+    "mustBeLoggedIn": "You must be logged in to submit a stance"
+  },
+  "errors": {
+    "pleaseLogIn": "Please log in to continue.",
+    "usernameReserved": "That username is reserved.",
+    "usernameTaken": "That username is taken.",
+    "changeLimitReached": "You’ve reached the change limit. Try again later.",
+    "invalidCode": "Invalid code. Try again.",
+    "noPermission": "You don’t have permission for this action.",
+    "somethingWentWrong": "Something went wrong. Please try again."
+  },
+  "snapshotCategory": {
+    "environment": "Environment & climate",
+    "housing": "Housing",
+    "economy": "Economy",
+    "technology": "Technology",
+    "health": "Health"
+  },
+  "questionState": {
+    "new": "New",
+    "newDescription": "Posted in the last 24 hours",
+    "active": "Active",
+    "activeDescription": "Currently receiving responses",
+    "dormant": "Dormant",
+    "dormantDescription": "Low engagement, may archive soon",
+    "archived": "Archived",
+    "archivedDescription": "No longer accepting new responses"
+  },
+  "gender": {
+    "male": "Male",
+    "female": "Female",
+    "nonbinary": "Non-binary",
+    "preferNotToSay": "Prefer not to say",
+    "selfDescribed": "Self-described"
+  },
+  "authorityStatus": {
+    "unacknowledged": "Unacknowledged",
+    "underReview": "Under review",
+    "actionAnnounced": "Action announced",
+    "actionCompleted": "Action completed",
+    "noResponse": "No response"
+  },
+  "consentKey": {
+    "ipRegionInference": "IP-based region inference",
+    "analytics": "Analytics",
+    "marketing": "Marketing communications",
+    "termsOfService": "Terms of service",
+    "privacyPolicy": "Privacy policy"
   }
 }

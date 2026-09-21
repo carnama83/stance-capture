@@ -4,6 +4,7 @@
 //        Requires currentPath prop so the caller can pass the stored path alongside the URL.
 //        Falls back gracefully when path is unknown (old rows without path).
 import * as React from "react";
+import i18n from "@/lib/i18n";
 import { getSupabase } from "@/lib/supabaseClient";
 import { useTranslation } from "react-i18next";
 
@@ -252,7 +253,7 @@ export default function AvatarUploader({
     return Promise.race([
       promise,
       new Promise<T>((_, reject) =>
-        setTimeout(() => reject(new Error("Upload timed out. Check your connection and try again.")), ms)
+        setTimeout(() => reject(new Error(i18n.t("avatarUploader.uploadTimedOut"))), ms)
       ),
     ]);
   }

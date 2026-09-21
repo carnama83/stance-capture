@@ -11,6 +11,7 @@
 // on mount to avoid unbounded localStorage growth.
 
 import * as React from "react";
+import i18n from "@/lib/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2, ChevronDown, ChevronUp, Scale } from "lucide-react";
@@ -49,11 +50,15 @@ function deriveOutcomeSummary(
     else              balanced.push(t.label);
   });
   if (dominated.length === 0) {
-    return "You're weighing the trade-offs evenly — your stance will reflect a balanced view.";
+    return i18n.t("tradeoffExplorer.weighingEvenly");
   }
-  const prioritised = dominated.slice(0, 2).join(" and ");
-  const qualifier   = balanced.length > 0 ? ", with some nuance" : "";
-  return `Your priorities suggest you lean toward ${prioritised}${qualifier}. Consider how that shapes your stance below.`;
+  const prioritised = dominated.slice(0, 2).join(i18n.t("tradeoffExplorer.and"));
+  return i18n.t(
+    balanced.length > 0
+      ? "tradeoffExplorer.prioritiesWithNuance"
+      : "tradeoffExplorer.priorities",
+    { priorities: prioritised }
+  );
 }
 
 // ── localStorage weight persistence ──────────────────────────────────────────

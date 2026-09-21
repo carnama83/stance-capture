@@ -94,7 +94,7 @@ export function InlineQuestionStanceEditor({
     mutationKey: ["set-stance-inline", questionId],
     mutationFn: async (newScore: number | null) => {
       if (!sb) throw new Error("Supabase not ready");
-      if (!session?.user) throw new Error("You need to be logged in");
+      if (!session?.user) throw new Error(t("inlineQuestionStanceEditor.needToBeLoggedIn"));
 
       const { data, error } = await sb.rpc("set_question_stance", {
         p_question_id: questionId,
@@ -143,8 +143,8 @@ export function InlineQuestionStanceEditor({
             : "Stance updated",
         description:
           newScore === null || newScore === undefined
-            ? "You've removed your stance on this question."
-            : "Your stance has been recorded.",
+            ? t("inlineQuestionStanceEditor.stanceRemoved")
+            : t("stanceSubmission.yourResponseRecorded"),
       });
     },
     onError: (error: any) => {

@@ -12,6 +12,7 @@
 //     token exists, linking to /settings/account.
 
 import * as React from "react";
+import i18n from "@/lib/i18n";
 import {
   Share2, Twitter, Facebook, Link2, MessageCircle,
   Linkedin, Zap, Lock, ExternalLink
@@ -196,7 +197,7 @@ async function postDirectlyToX(
     const baseText = questionText.length > 200
       ? questionText.slice(0, 197) + "…"
       : questionText;
-    const tweetText = `${baseText}\n\nWhat do you think? 👇\n${shareUrl}`;
+    const tweetText = `${baseText}\n\n${i18n.t("share.whatDoYouThink")}\n${shareUrl}`;
 
     const { data, error } = await supabase.functions.invoke("post-to-x", {
       body: {

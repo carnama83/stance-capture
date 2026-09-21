@@ -4,6 +4,7 @@
 // Used on both Login and Signup pages.
 
 import * as React from "react";
+import i18n from "@/lib/i18n";
 import { getSupabase } from "@/lib/supabaseClient";
 import { Loader2 } from "lucide-react";
 import { Trans, useTranslation } from "react-i18next";
@@ -144,7 +145,7 @@ export default function SocialAuthButtons({ mode, onError }: SocialAuthButtonsPr
 
   async function signInWith(provider: Provider) {
     if (!sb) {
-      onError?.("Supabase is not configured.");
+      onError?.(i18n.t("auth.supabaseNotConfigured"));
       return;
     }
 

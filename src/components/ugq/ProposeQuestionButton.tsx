@@ -52,7 +52,11 @@ export function ProposeQuestionButton({
   // Only signed-in users can propose.
   if (!session?.user) return null;
 
-  const text = label ?? (presetTopicTitle ? `Ask about ${presetTopicTitle}` : "Propose a question");
+  const text =
+    label ??
+    (presetTopicTitle
+      ? t("proposeQuestionButton.askAbout", { topic: presetTopicTitle })
+      : t("proposeQuestionButton.proposeAQuestion"));
 
   return (
     <>

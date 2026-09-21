@@ -59,8 +59,8 @@ export default function WhatsAppSigninPage() {
         if (!resp.ok || !data?.ok || !data?.action_link) {
           setError(
             data?.reason === "invalid_or_expired_token"
-              ? "This sign-in link has expired or was already used. Reply SUBSCRIBE on WhatsApp to get a fresh one."
-              : "Couldn't sign you in. Please try again from WhatsApp."
+              ? t("whatsAppSignin.linkExpired")
+              : t("whatsAppSignin.couldNotSignIn")
           );
           return;
         }

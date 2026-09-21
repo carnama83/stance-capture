@@ -72,7 +72,7 @@ export function DobField({ value, setValue, error: externalError, containerRef }
     const iso = `${String(ny).padStart(4, "0")}-${String(nm).padStart(2, "0")}-${String(clampedDay).padStart(2, "0")}`;
     setValue(iso);
     const age = calcAge(ny, nm, clampedDay);
-    setInlineErr(age < 13 ? "You must be at least 13." : "");
+    setInlineErr(age < 13 ? t("dobField.mustBeAtLeast13") : "");
   }
 
   const displayErr = inlineErr || externalError || "";

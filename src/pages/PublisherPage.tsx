@@ -326,9 +326,9 @@ function PublisherStats() {
         <>
           {/* Summary cards */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <StatCard icon={<Eye className="h-4 w-4" />} label={t("publisher.totalImpressions")} value={(stats?.total_impressions ?? 0).toLocaleString()} sub="Widget loads across all your pages" />
-            <StatCard icon={<Send className="h-4 w-4" />} label={t("publisher.stancesCaptured")} value={(stats?.total_submissions ?? 0).toLocaleString()} sub="Completed responses from your readers" />
-            <StatCard icon={<MousePointerClick className="h-4 w-4" />} label={t("publisher.conversionRate")} value={`${(stats?.rate ?? 0).toFixed(1)}%`} sub="Readers who submitted a stance" />
+            <StatCard icon={<Eye className="h-4 w-4" />} label={t("publisher.totalImpressions")} value={(stats?.total_impressions ?? 0).toLocaleString()} sub={t("publisher.widgetLoadsAcrossPages")} />
+            <StatCard icon={<Send className="h-4 w-4" />} label={t("publisher.stancesCaptured")} value={(stats?.total_submissions ?? 0).toLocaleString()} sub={t("publisher.completedResponses")} />
+            <StatCard icon={<MousePointerClick className="h-4 w-4" />} label={t("publisher.conversionRate")} value={`${(stats?.rate ?? 0).toFixed(1)}%`} sub={t("publisher.readersWhoSubmitted")} />
           </div>
 
           {/* Per-question breakdown */}

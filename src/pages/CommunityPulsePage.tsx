@@ -92,12 +92,12 @@ const TREND_DAYS_OPTIONS = [
   { value: 90, labelKey: "pulsePage.90Days" },
 ];
 
-const GENDER_LABELS: Record<string, string> = {
-  male:              "Male",
-  female:            "Female",
-  nonbinary:         "Non-binary",
-  prefer_not_to_say: "Prefer not to say",
-  self_described:    "Self-described",
+const GENDER_LABEL_KEYS: Record<string, string> = {
+  male:              "gender.male",
+  female:            "gender.female",
+  nonbinary:         "gender.nonbinary",
+  prefer_not_to_say: "gender.preferNotToSay",
+  self_described:    "gender.selfDescribed",
 };
 
 const AGE_GROUP_LABELS: Record<string, string> = {
@@ -569,11 +569,13 @@ function DemographicSection({ questionId }: { questionId: string | null }) {
     ? [...data].sort((a, b) => AGE_GROUP_ORDER.indexOf(a.dimension_value) - AGE_GROUP_ORDER.indexOf(b.dimension_value))
     : data;
 
-  const labelMap = dimension === "age_group" ? AGE_GROUP_LABELS : GENDER_LABELS;
+  const labelMap = dimension === "age_group" ? AGE_GROUP_LABELS : GENDER_LABEL_KEYS;
+  const asLabel = (v: string) =>
+    dimension === "age_group" ? (labelMap[v] ?? v) : t(labelMap[v] ?? v);
   const dimensionLabel = dimension === "age_group" ? "By age group" : "By gender";
 
   const chartData = sortedData.map((r) => ({
-    group:   labelMap[r.dimension_value] ?? r.dimension_value,
+    group:   asLabel(r.dimension_value),
     support: r.pct_support ?? 0,
     neutral: r.pct_neutral ?? 0,
     oppose:  r.pct_oppose  ?? 0,
@@ -601,7 +603,7 @@ function DemographicSection({ questionId }: { questionId: string | null }) {
       <div className="flex flex-wrap gap-2">
         {sortedData.map((r) => (
           <span key={r.dimension_value} className="text-[10px] text-slate-500 bg-slate-50 border rounded px-2 py-1">
-            {labelMap[r.dimension_value] ?? r.dimension_value}: n={r.total_responses}
+            {asLabel(r.dimension_value)}: n={r.total_responses}
           </span>
         ))}
       </div>

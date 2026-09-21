@@ -100,7 +100,7 @@ export default function OAuthCallbackPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [error, setError] = React.useState<string | null>(null);
-  const [status, setStatus] = React.useState("Completing sign-in…");
+  const [status, setStatus] = React.useState(i18n.t("oAuthCallback.completingSignIn"));
   const ranRef = React.useRef(false);
 
   React.useEffect(() => {

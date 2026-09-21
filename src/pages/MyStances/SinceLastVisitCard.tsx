@@ -1,4 +1,5 @@
 import * as React from "react";
+import i18n from "@/lib/i18n";
 import { useQuery } from "@tanstack/react-query";
 
 import { getSupabase } from "@/lib/supabaseClient";
@@ -45,17 +46,17 @@ function getChangeIcon(changeType: string) {
 }
 
 function getChangeText(change: TopicChange, regionLabel: string): string {
-  const topicName = change.topic_title;
-  
+  const topic = change.topic_title;
+
   switch (change.change_type) {
     case "shifted_positive":
-      return `${topicName} sentiment has shifted more positive.`;
+      return i18n.t("sinceLastVisit.shiftedPositive", { topic });
     case "shifted_negative":
-      return `${topicName} sentiment has shifted more negative.`;
+      return i18n.t("sinceLastVisit.shiftedNegative", { topic });
     case "gaining_attention":
-      return `${topicName} is gaining attention (${change.new_responses} new responses).`;
+      return i18n.t("sinceLastVisit.gainingAttention", { topic, count: change.new_responses });
     default:
-      return `${topicName} is relatively stable.`;
+      return i18n.t("sinceLastVisit.relativelyStable", { topic });
   }
 }
 

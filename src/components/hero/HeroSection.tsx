@@ -30,6 +30,7 @@
 //   the guest slider after first interaction so mobile users get immediate feedback.
 
 import { useTranslation } from "react-i18next";
+import i18n from "@/lib/i18n";
 import { formatNumber } from "@/lib/intlFormat";
 import { usePlaceLabels } from "@/hooks/usePlaceLabels";
 import { useRenditionLanguages } from "@/hooks/useRenditionLanguages";
@@ -365,7 +366,7 @@ function SectionBGuestLocked({
           ].map((item) => (
             <li key={item} className="flex items-start gap-2 text-xs text-slate-500">
               <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-indigo-400" />
-              {item}
+              {t(item)}
             </li>
           ))}
         </ul>
@@ -431,13 +432,13 @@ function SectionBGuestEngaged({
         {/* Engaged-specific bullets */}
         <ul className="mt-3 space-y-1.5">
           {[
-            "Save your stance history",
-            "Compare across regions",
-            "Follow issues that matter to you",
+            "hero.saveStanceHistory",
+            "hero.compareAcrossRegions",
+            "hero.followIssues",
           ].map((item) => (
             <li key={item} className="flex items-start gap-2 text-xs text-slate-500">
               <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-violet-400" />
-              {item}
+              {t(item)}
             </li>
           ))}
         </ul>
@@ -801,21 +802,23 @@ function StanceHistoryRow({
     const full = (dir > 0 ? high : low) as string;
     leanText = clampPole(full, 3);
     leanTitle =
-      `Your latest position — leans toward "${full}"` +
-      (topic.answerCount > 1 ? ` · ${topic.answerCount} answered` : "");
+      i18n.t("myStances.latestPositionLeans", { pole: full }) +
+      (topic.answerCount > 1
+        ? " · " + i18n.t("myStances.answeredCount", { count: topic.answerCount })
+        : "");
   } else if (hasPoles && dir === 0) {
-    leanText = "Middle ground";
-    leanTitle = "Your latest position — right in the middle";
+    leanText = i18n.t("myStances.middleGround");
+    leanTitle = i18n.t("myStances.latestPositionMiddle");
     muted = true;
   } else {
     // No poles on the latest question — neutral strength descriptor only.
     const mag = Math.min(100, Math.abs(topic.scorePct));
     leanText =
-      mag >= 67 ? "Strong view"
-      : mag >= 34 ? "Clear view"
-      : mag >= 1 ? "Slight view"
-      : "No strong view";
-    leanTitle = "Your average position on this topic";
+      mag >= 67 ? i18n.t("myStances.strongView")
+      : mag >= 34 ? i18n.t("myStances.clearView")
+      : mag >= 1 ? i18n.t("myStances.slightView")
+      : i18n.t("myStances.noStrongView");
+    leanTitle = i18n.t("myStances.averagePositionOnTopic");
     muted = true;
   }
 
@@ -1672,7 +1675,7 @@ export function HeroSection({
 
             {status === "hero_error" && (
               <SectionAError
-                message={errorMessage ?? t("hero.somethingWentWrong")}
+                message={errorMessage ? t(errorMessage) : t("hero.somethingWentWrong")}
                 onRetry={retry}
               />
             )}

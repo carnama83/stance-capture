@@ -10,6 +10,7 @@
 // M-G05: cursor-based pagination — root comments paged, replies always full (new)
 
 import * as React from "react";
+import i18n from "@/lib/i18n";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getSupabase } from "@/lib/supabaseClient";
 import { useNavigate } from "react-router-dom";
@@ -363,7 +364,7 @@ function getInitials(name: string | null | undefined): string {
 }
 
 function describeMood(avg: number | null | undefined): string {
-  if (avg == null || Number.isNaN(avg)) return "No mood yet";
+  if (avg == null || Number.isNaN(avg)) return i18n.t("comments.noMoodYet");
   if (avg <= -0.3) return "Mostly critical";
   if (avg < 0.3) return "Mixed / divided";
   return "Mostly supportive";

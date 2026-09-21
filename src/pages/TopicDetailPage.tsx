@@ -1,4 +1,5 @@
 import * as React from "react";
+import i18n from "@/lib/i18n";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getSupabase } from "../lib/supabaseClient";
@@ -101,7 +102,7 @@ function stanceLabelShort(score: number | null | undefined): string {
   if (score === 0) return "Neutral";
   if (score === -1) return "Disagree";
   if (score === -2) return "Strongly disagree";
-  return "No stance";
+  return i18n.t("topicDetail.noStance");
 }
 
 async function fetchQuestionStatsForCard(

@@ -96,7 +96,9 @@ export function ThreeTierTrending() {
     if (grouped.local.length > 0) {
       result.push({
         tier: 'local',
-        label: `In Your Area${grouped.local[0].tier_label ? ` (${grouped.local[0].tier_label})` : ''}`,
+        label: grouped.local[0].tier_label
+          ? t("threeTierTrending.inYourAreaTier", { tier: grouped.local[0].tier_label })
+          : t("threeTierTrending.inYourArea"),
         icon: <MapPin className="w-5 h-5" />,
         emoji: '📍',
         topics: grouped.local,

@@ -23,7 +23,7 @@ import { getSupabase } from "@/lib/supabaseClient";
 import { ShareButton } from "@/components/share/ShareButton";
 import { useLanguage } from "@/hooks/useLanguage";
 import { EXPECTATION_LABEL_KEYS } from "@/components/question/ExpectationPrompt";
-import { STATUS_LABELS, STATUS_COLORS, formatResponseDate } from "@/components/question/AuthorityResponseStatusBlock";
+import { STATUS_LABEL_KEYS, STATUS_COLORS, formatResponseDate } from "@/components/question/AuthorityResponseStatusBlock";
 import { Loader2, ClipboardCheck } from "lucide-react";
 
 interface SnapshotEntry {
@@ -226,7 +226,9 @@ export default function PublicLedgerPage() {
                           STATUS_COLORS[r.response_status] ?? "bg-slate-100 text-slate-600"
                         }`}
                       >
-                        {STATUS_LABELS[r.response_status] ?? r.response_status}
+                        {STATUS_LABEL_KEYS[r.response_status]
+                          ? t(STATUS_LABEL_KEYS[r.response_status])
+                          : r.response_status}
                       </span>
                       <span className="text-[10px] text-slate-400">{formatResponseDate(r.status_updated_at)}</span>
                     </div>

@@ -278,13 +278,13 @@ export default function TopicsIndex() {
   const emptyState =
     !isLoading &&
     (tab === "following" && !isAuthed
-      ? "Log in to see topics you follow."
+      ? "index.logInToSeeFollowed"
       : filtered.length === 0
       ? tab === "trending"
-        ? "No trending topics yet."
+        ? "index.noTrendingTopicsYet"
         : tab === "following"
-        ? "You aren’t following any topics yet."
-        : "No topics yet."
+        ? "index.notFollowingAnyTopics"
+        : "index.noTopicsYet"
       : null);
 
   return (
@@ -354,7 +354,7 @@ export default function TopicsIndex() {
         {isLoading ? (
           <div className="text-sm text-slate-500">{tr("common.loading")}</div>
         ) : emptyState ? (
-          <div className="text-sm text-slate-500">{emptyState}</div>
+          <div className="text-sm text-slate-500">{tr(emptyState as string)}</div>
         ) : (
           <>
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
