@@ -78,18 +78,18 @@ interface DemoRow {
 // Helpers
 // ---------------------------------------------------------------------------
 
-const REGION_OPTIONS: Array<{ value: RegionScope; label: string }> = [
-  { value: "global",  label: "Global" },
-  { value: "country", label: "Country" },
-  { value: "state",   label: "State" },
-  { value: "county",  label: "County" },
-  { value: "city",    label: "City" },
+const REGION_OPTIONS: Array<{ value: RegionScope; labelKey: string }> = [
+  { value: "global",  labelKey: "home.globalTab" },
+  { value: "country", labelKey: "signup.countryLabel" },
+  { value: "state",   labelKey: "pulsePage.state" },
+  { value: "county",  labelKey: "signup.countyLabel" },
+  { value: "city",    labelKey: "pulsePage.city" },
 ];
 
 const TREND_DAYS_OPTIONS = [
-  { value: 7,  label: "7 days" },
-  { value: 30, label: "30 days" },
-  { value: 90, label: "90 days" },
+  { value: 7,  labelKey: "pulsePage.7Days" },
+  { value: 30, labelKey: "pulsePage.30Days" },
+  { value: 90, labelKey: "pulsePage.90Days" },
 ];
 
 const GENDER_LABELS: Record<string, string> = {
@@ -115,9 +115,9 @@ const AGE_GROUP_ORDER = ["13-17", "18-24", "25-34", "35-44", "45-54", "55-64", "
 
 type DemoDimension = "gender" | "age_group";
 
-const DIMENSION_OPTIONS: Array<{ value: DemoDimension; label: string }> = [
-  { value: "gender",    label: "Gender" },
-  { value: "age_group", label: "Age group" },
+const DIMENSION_OPTIONS: Array<{ value: DemoDimension; labelKey: string }> = [
+  { value: "gender",    labelKey: "auth.genderLabel" },
+  { value: "age_group", labelKey: "pulsePage.ageGroup" },
 ];
 
 function fmt(v: number | null): string {
@@ -170,6 +170,7 @@ function Section({ title, icon, children }: {
 function AggregatedStanceSection({
   regionScope, regionKey,
 }: { regionScope: RegionScope; regionKey: string }) {
+  const { t } = useTranslation();
   const { data, isLoading, isError } = useQuery<PulseRow[]>({
     queryKey: ["community-pulse", regionScope, regionKey],
     staleTime: 5 * 60_000,
@@ -187,7 +188,7 @@ function AggregatedStanceSection({
   });
 
   if (isLoading) return <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>;
-  if (isError || !data?.length) return <p className="text-sm text-slate-500 py-4">No data available for this region yet.</p>;
+  if (isError || !data?.length) return <p className="text-sm text-slate-500 py-4">{t("pulsePage.noDataAvailableForThis")}</p>;
 
   const macro = data[0];
 
@@ -205,10 +206,10 @@ function AggregatedStanceSection({
       {/* Macro totals */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { label: "Total responses", value: fmtNum(macro.macro_total_responses) },
-          { label: "Avg support", value: fmt(macro.macro_avg_support) },
-          { label: "Avg oppose", value: fmt(macro.macro_avg_oppose) },
-          { label: "Avg score", value: fmtScore(macro.macro_avg_score) },
+          { label: t("pulsePage.totalResponses"), value: fmtNum(macro.macro_total_responses) },
+          { label: t("pulsePage.avgSupport"), value: fmt(macro.macro_avg_support) },
+          { label: t("pulsePage.avgOppose"), value: fmt(macro.macro_avg_oppose) },
+          { label: t("pulsePage.avgScore"), value: fmtScore(macro.macro_avg_score) },
         ].map(({ label, value }) => (
           <div key={label} className="rounded-lg bg-slate-50 px-4 py-3">
             <p className="text-[10px] text-slate-500 uppercase tracking-wide">{label}</p>
@@ -219,13 +220,13 @@ function AggregatedStanceSection({
 
       {macro.macro_last_updated && (
         <p className="text-[10px] text-slate-400">
-          Last updated: {new Date(macro.macro_last_updated).toLocaleString()}
+          {t("pulsePage.lastUpdated")} {new Date(macro.macro_last_updated).toLocaleString()}
         </p>
       )}
 
       {/* Support distribution histogram */}
       <div>
-        <p className="text-xs font-medium text-slate-600 mb-2">Questions by support level</p>
+        <p className="text-xs font-medium text-slate-600 mb-2">{t("pulsePage.questionsBySupportLevel")}</p>
         <ResponsiveContainer width="100%" height={140}>
           <BarChart data={buckets} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
             <XAxis dataKey="label" tick={{ fontSize: 10 }} />
@@ -241,14 +242,14 @@ function AggregatedStanceSection({
 
       {/* Per-question table */}
       <div>
-        <p className="text-xs font-medium text-slate-600 mb-2">Questions ({data.length})</p>
+        <p className="text-xs font-medium text-slate-600 mb-2">{t("pulsePage.questions")}{data.length})</p>
         <div className="rounded-lg border border-slate-100 overflow-hidden">
           <table className="w-full text-xs">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-100">
-                <th className="text-left px-3 py-2 font-medium text-slate-600">Question</th>
-                <th className="text-right px-3 py-2 font-medium text-slate-600 w-16">Support</th>
-                <th className="text-right px-3 py-2 font-medium text-slate-600 w-16">Oppose</th>
+                <th className="text-left px-3 py-2 font-medium text-slate-600">{t("stance.questionLabel")}</th>
+                <th className="text-right px-3 py-2 font-medium text-slate-600 w-16">{t("ugq.supportDefault")}</th>
+                <th className="text-right px-3 py-2 font-medium text-slate-600 w-16">{t("ugq.opposeDefault")}</th>
                 <th className="text-right px-3 py-2 font-medium text-slate-600 w-16">n</th>
               </tr>
             </thead>
@@ -304,7 +305,7 @@ function MacroTrendsSection({
   });
 
   if (isLoading) return <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-slate-400" /></div>;
-  if (isError || !data?.length) return <p className="text-sm text-slate-500 py-4">No trend data available yet. Snapshots accumulate daily.</p>;
+  if (isError || !data?.length) return <p className="text-sm text-slate-500 py-4">{t("pulsePage.noTrendDataAvailableYet")}</p>;
 
   const chartData = data.map((p) => ({
     date: fmtDate(p.snapshot_date),
@@ -329,7 +330,7 @@ function MacroTrendsSection({
     <div className="space-y-4">
       {supportDelta !== null && (
         <div className="flex items-center gap-2 text-sm">
-          <span className="text-slate-600">Support change over {days}d:</span>
+          <span className="text-slate-600">{t("pulsePage.supportChangeOver")} {days}d:</span>
           <span className={`font-semibold ${parseFloat(supportDelta) >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
             {parseFloat(supportDelta) >= 0 ? "+" : ""}{supportDelta}%
           </span>
@@ -339,7 +340,7 @@ function MacroTrendsSection({
       {/* Support / Oppose / Neutral over time */}
       <div>
         <p className="text-xs font-medium text-slate-600 mb-1">
-          Support vs Opposition trend
+          {t("pulsePage.supportVsOppositionTrend")}
         </p>
         <ResponsiveContainer width="100%" height={180}>
           <ComposedChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
@@ -384,8 +385,8 @@ function MacroTrendsSection({
       {/* Avg score with confidence band */}
       <div>
         <p className="text-xs font-medium text-slate-600 mb-1">
-          Avg score over time
-          <span className="ml-1 text-slate-400 font-normal">(shaded = confidence band)</span>
+          {t("pulsePage.avgScoreOverTime")}
+          <span className="ml-1 text-slate-400 font-normal">{t("pulsePage.shadedConfidenceBand")}</span>
         </p>
         <ResponsiveContainer width="100%" height={140}>
           <ComposedChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
@@ -424,7 +425,7 @@ function MacroTrendsSection({
       {data.some((p) => p.is_low_sample === true || (p.is_low_sample as any) === "true") && (
         <div className="flex items-start gap-1.5 text-[10px] text-amber-600 bg-amber-50 rounded px-3 py-2">
           <AlertCircle className="h-3 w-3 shrink-0 mt-0.5" />
-          Some data points have fewer than 10 responses — treat those days with caution.
+          {t("pulsePage.someDataPointsHaveFewer")}
         </div>
       )}
     </div>
@@ -436,6 +437,7 @@ function MacroTrendsSection({
 // ---------------------------------------------------------------------------
 
 function RegionalComparisonSection({ questionId }: { questionId: string | null }) {
+  const { t } = useTranslation();
   const { data, isLoading } = useQuery<RegionRow[]>({
     queryKey: ["regional-comparison", questionId],
     enabled: !!questionId,
@@ -452,9 +454,9 @@ function RegionalComparisonSection({ questionId }: { questionId: string | null }
     },
   });
 
-  if (!questionId) return <p className="text-sm text-slate-500">Select a question above to see regional comparison.</p>;
+  if (!questionId) return <p className="text-sm text-slate-500">{t("pulsePage.selectAQuestionAboveTo")}</p>;
   if (isLoading) return <div className="flex justify-center py-4"><Loader2 className="h-4 w-4 animate-spin text-slate-400" /></div>;
-  if (!data?.length) return <p className="text-sm text-slate-500">No regional data available for this question.</p>;
+  if (!data?.length) return <p className="text-sm text-slate-500">{t("pulsePage.noRegionalDataAvailableFor")}</p>;
 
   const chartData = data.map((r) => ({
     region: r.region_label,
@@ -485,7 +487,7 @@ function RegionalComparisonSection({ questionId }: { questionId: string | null }
       <div className="flex flex-wrap gap-2">
         {data.map((r) => (
           <span key={r.region_key} className="text-[10px] text-slate-500 bg-slate-50 border rounded px-2 py-1">
-            {r.region_label}: {fmtNum(r.total_responses)} responses
+            {r.region_label}: {fmtNum(r.total_responses)} {t("trending.responses")}
           </span>
         ))}
       </div>
@@ -498,6 +500,7 @@ function RegionalComparisonSection({ questionId }: { questionId: string | null }
 // ---------------------------------------------------------------------------
 
 function DemographicSection({ questionId }: { questionId: string | null }) {
+  const { t } = useTranslation();
   const [dimension, setDimension] = React.useState<DemoDimension>("gender");
 
   const { data, isLoading } = useQuery<DemoRow[]>({
@@ -533,7 +536,7 @@ function DemographicSection({ questionId }: { questionId: string | null }) {
               : "border border-slate-200 text-slate-600 hover:bg-slate-50",
           ].join(" ")}
         >
-          {opt.label}
+          {t(opt.labelKey)}
         </button>
       ))}
     </div>
@@ -542,7 +545,7 @@ function DemographicSection({ questionId }: { questionId: string | null }) {
   if (!questionId) return (
     <div className="space-y-3">
       {toggle}
-      <p className="text-sm text-slate-500">Select a question above to see demographic breakdown.</p>
+      <p className="text-sm text-slate-500">{t("pulsePage.selectAQuestionAboveTo2")}</p>
     </div>
   );
 
@@ -556,7 +559,7 @@ function DemographicSection({ questionId }: { questionId: string | null }) {
   if (!data?.length) return (
     <div className="space-y-3">
       {toggle}
-      <p className="text-sm text-slate-500">Demographic data not yet available (requires minimum 3 responses per group).</p>
+      <p className="text-sm text-slate-500">{t("pulsePage.demographicDataNotYetAvailable")}</p>
     </div>
   );
 
@@ -580,7 +583,7 @@ function DemographicSection({ questionId }: { questionId: string | null }) {
   return (
     <div className="space-y-4">
       {toggle}
-      <p className="text-[10px] text-slate-400">{dimensionLabel} — latest snapshot</p>
+      <p className="text-[10px] text-slate-400">{dimensionLabel} {t("pulsePage.latestSnapshot")}</p>
       <ResponsiveContainer width="100%" height={160}>
         <BarChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
           <XAxis dataKey="group" tick={{ fontSize: 10 }} />
@@ -615,8 +618,9 @@ interface CompareRegionsSectionProps {
 }
 
 function CompareRegionsSection({ regionOptions }: CompareRegionsSectionProps) {
-  const defaultA = regionOptions[0] ?? { value: "global" as RegionScope, label: "Global", key: "global" };
-  const defaultB = regionOptions[1] ?? regionOptions[0] ?? { value: "global" as RegionScope, label: "Global", key: "global" };
+  const { t } = useTranslation();
+  const defaultA = regionOptions[0] ?? { value: "global" as RegionScope, label: t("home.globalTab"), key: "global" };
+  const defaultB = regionOptions[1] ?? regionOptions[0] ?? { value: "global" as RegionScope, label: t("home.globalTab"), key: "global" };
 
   const [regionA, setRegionA] = React.useState(defaultA);
   const [regionB, setRegionB] = React.useState(defaultB);
@@ -676,14 +680,15 @@ function CompareRegionsSection({ regionOptions }: CompareRegionsSectionProps) {
   const chartHeight = Math.max(160, questionIds.length * 28 + 60);
 
   const MacroStats = ({ data }: { data: PulseRow[] | undefined }) => {
+  const { t } = useTranslation();
     if (!data?.length) return null;
     const m = data[0];
     return (
       <div className="flex gap-3 mb-3">
         {[
-          { label: "Responses", value: fmtNum(m.macro_total_responses) },
-          { label: "Avg support", value: fmt(m.macro_avg_support) },
-          { label: "Avg oppose",  value: fmt(m.macro_avg_oppose) },
+          { label: t("pulsePage.responses"), value: fmtNum(m.macro_total_responses) },
+          { label: t("pulsePage.avgSupport"), value: fmt(m.macro_avg_support) },
+          { label: t("pulsePage.avgOppose"),  value: fmt(m.macro_avg_oppose) },
         ].map(({ label, value }) => (
           <div key={label} className="rounded-lg bg-slate-50 px-3 py-2 flex-1">
             <p className="text-[10px] text-slate-500 uppercase tracking-wide">{label}</p>
@@ -703,13 +708,14 @@ function CompareRegionsSection({ regionOptions }: CompareRegionsSectionProps) {
     isLoading: boolean;
     label: string;
   }) => {
+  const { t } = useTranslation();
     if (isLoading) return (
       <div className="flex justify-center items-center" style={{ height: chartHeight }}>
         <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
       </div>
     );
     if (!chartData.length) return (
-      <p className="text-xs text-slate-500 py-4">No data available for {label}.</p>
+      <p className="text-xs text-slate-500 py-4">{t("pulsePage.noDataAvailableFor")} {label}.</p>
     );
     return (
       <ResponsiveContainer width="100%" height={chartHeight}>
@@ -740,7 +746,7 @@ function CompareRegionsSection({ regionOptions }: CompareRegionsSectionProps) {
       {/* Region selectors */}
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
-          <p className="text-[10px] font-medium text-slate-500 uppercase tracking-wide">Region A</p>
+          <p className="text-[10px] font-medium text-slate-500 uppercase tracking-wide">{t("pulsePage.regionA")}</p>
           <select
             value={regionA.value}
             onChange={(e) => {
@@ -755,7 +761,7 @@ function CompareRegionsSection({ regionOptions }: CompareRegionsSectionProps) {
           </select>
         </div>
         <div className="space-y-1">
-          <p className="text-[10px] font-medium text-slate-500 uppercase tracking-wide">Region B</p>
+          <p className="text-[10px] font-medium text-slate-500 uppercase tracking-wide">{t("pulsePage.regionB")}</p>
           <select
             value={regionB.value}
             onChange={(e) => {
@@ -775,7 +781,7 @@ function CompareRegionsSection({ regionOptions }: CompareRegionsSectionProps) {
       {sameRegion && (
         <div className="flex items-center gap-1.5 text-[11px] text-amber-600 bg-amber-50 rounded px-3 py-2">
           <AlertCircle className="h-3 w-3 shrink-0" />
-          Select two different regions to compare.
+          {t("pulsePage.selectTwoDifferentRegionsTo")}
         </div>
       )}
 
@@ -802,9 +808,9 @@ function CompareRegionsSection({ regionOptions }: CompareRegionsSectionProps) {
       {!sameRegion && !loadingA && !loadingB && chartA.length > 0 && (
         <div className="flex gap-4 text-[10px] text-slate-500">
           {[
-            { color: "#10b981", label: "Support" },
-            { color: "#94a3b8", label: "Neutral" },
-            { color: "#f43f5e", label: "Oppose" },
+            { color: "#10b981", label: t("ugq.supportDefault") },
+            { color: "#94a3b8", label: t("ugq.neutralLabel") },
+            { color: "#f43f5e", label: t("ugq.opposeDefault") },
           ].map(({ color, label }) => (
             <span key={label} className="flex items-center gap-1">
               <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: color }} />
@@ -817,7 +823,7 @@ function CompareRegionsSection({ regionOptions }: CompareRegionsSectionProps) {
       {/* Insufficient options fallback */}
       {regionOptions.length < 2 && (
         <p className="text-xs text-slate-500">
-          Set your location in your profile to unlock regional comparisons.
+          {t("pulsePage.setYourLocationInYour")}
         </p>
       )}
     </div>
@@ -830,6 +836,7 @@ function CompareRegionsSection({ regionOptions }: CompareRegionsSectionProps) {
 // ---------------------------------------------------------------------------
 
 export default function CommunityPulsePage({ userKey = "anon" }: { userKey?: string } = {}) {
+  const { t } = useTranslation();
   const [regionScope, setRegionScope] = React.useState<RegionScope>("global");
   const [regionKey, setRegionKey] = React.useState("global");
   const [trendDays, setTrendDays] = React.useState(30);
@@ -863,7 +870,7 @@ export default function CommunityPulsePage({ userKey = "anon" }: { userKey?: str
 
   // Build region options dynamically from user's actual labels
   const regionOptions: Array<{ value: RegionScope; label: string; key: string }> = [
-    { value: "global",  label: "Global",                              key: "global" },
+    { value: "global",  label: t("home.globalTab"),                              key: "global" },
     ...(userRegion?.country_label ? [{ value: "country" as RegionScope, label: userRegion.country_label, key: userRegion.country_label }] : []),
     ...(userRegion?.state_label   ? [{ value: "state"   as RegionScope, label: userRegion.state_label,   key: userRegion.state_label   }] : []),
     ...(userRegion?.county_label  ? [{ value: "county"  as RegionScope, label: userRegion.county_label,  key: userRegion.county_label  }] : []),
@@ -912,15 +919,15 @@ export default function CommunityPulsePage({ userKey = "anon" }: { userKey?: str
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">Community Pulse</h1>
+            <h1 className="text-2xl font-bold text-slate-900">{t("pulsePage.communityPulse")}</h1>
             <p className="text-sm text-slate-500 mt-1">
-              Explore how the community stands across questions, regions, and time.
+              {t("pulsePage.exploreHowTheCommunityStands")}
             </p>
           </div>
 
           {/* Region selector */}
           <div className="flex items-center gap-2 shrink-0">
-            <label className="text-xs text-slate-600 font-medium">Region</label>
+            <label className="text-xs text-slate-600 font-medium">{t("pulsePage.region")}</label>
             <select
               value={regionScope}
               onChange={(e) => {
@@ -941,7 +948,7 @@ export default function CommunityPulsePage({ userKey = "anon" }: { userKey?: str
 
         {/* F1 — Aggregated Stance Dashboard + M-F03 Compare Regions mode */}
         <Section
-          title="Stance Distribution"
+          title={t("pulsePage.stanceDistribution")}
           icon={<BarChart3 className="h-4 w-4" />}
         >
           {/* Mode toggle */}
@@ -951,8 +958,8 @@ export default function CommunityPulsePage({ userKey = "anon" }: { userKey?: str
             </p>
             <div className="flex gap-1">
               {[
-                { mode: false, label: "View" },
-                { mode: true,  label: "Compare" },
+                { mode: false, label: t("pulsePage.view") },
+                { mode: true,  label: t("pulsePage.compare") },
               ].map(({ mode, label }) => (
                 <button
                   key={label}
@@ -979,9 +986,9 @@ export default function CommunityPulsePage({ userKey = "anon" }: { userKey?: str
         </Section>
 
         {/* F2 — Macro Trends */}
-        <Section title="Macro Trends Over Time" icon={<TrendingUp className="h-4 w-4" />}>
+        <Section title={t("pulsePage.macroTrendsOverTime")} icon={<TrendingUp className="h-4 w-4" />}>
           <div className="flex items-center gap-2 mb-4">
-            <label className="text-xs text-slate-600">Window</label>
+            <label className="text-xs text-slate-600">{t("pulsePage.window")}</label>
             <div className="flex gap-1">
               {TREND_DAYS_OPTIONS.map((o) => (
                 <button
@@ -995,7 +1002,7 @@ export default function CommunityPulsePage({ userKey = "anon" }: { userKey?: str
                       : "border border-slate-200 text-slate-600 hover:bg-slate-50",
                   ].join(" ")}
                 >
-                  {o.label}
+                  {t(o.labelKey)}
                 </button>
               ))}
             </div>
@@ -1004,18 +1011,18 @@ export default function CommunityPulsePage({ userKey = "anon" }: { userKey?: str
         </Section>
 
         {/* F3 — Comparative Views */}
-        <Section title="Comparative Views" icon={<MapPin className="h-4 w-4" />}>
+        <Section title={t("pulsePage.comparativeViews")} icon={<MapPin className="h-4 w-4" />}>
           <div className="space-y-5">
             {/* Question selector */}
             {pulseData && pulseData.length > 0 && (
               <div className="flex items-start gap-2">
-                <label className="text-xs text-slate-600 font-medium mt-2 shrink-0">Question</label>
+                <label className="text-xs text-slate-600 font-medium mt-2 shrink-0">{t("stance.questionLabel")}</label>
                 <select
                   value={selectedQuestionId ?? ""}
                   onChange={(e) => setSelectedQuestionId(e.target.value || null)}
                   className="flex-1 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-400"
                 >
-                  <option value="">Select a question…</option>
+                  <option value="">{t("pulsePage.selectAQuestion")}</option>
                   {pulseData.map((r) => (
                     <option key={r.question_id} value={r.question_id}>
                       {r.question_text.slice(0, 80)}{r.question_text.length > 80 ? "…" : ""}
@@ -1028,7 +1035,7 @@ export default function CommunityPulsePage({ userKey = "anon" }: { userKey?: str
             {/* Regional comparison */}
             <div>
               <p className="text-xs font-semibold text-slate-700 mb-2 flex items-center gap-1.5">
-                <MapPin className="h-3 w-3" /> Regional breakdown
+                <MapPin className="h-3 w-3" /> {t("pulsePage.regionalBreakdown")}
               </p>
               <RegionalComparisonSection questionId={selectedQuestionId} />
             </div>
@@ -1036,7 +1043,7 @@ export default function CommunityPulsePage({ userKey = "anon" }: { userKey?: str
             {/* Demographic breakdown */}
             <div>
               <p className="text-xs font-semibold text-slate-700 mb-2 flex items-center gap-1.5">
-                <Users className="h-3 w-3" /> Demographics
+                <Users className="h-3 w-3" /> {t("pulsePage.demographics")}
               </p>
               <DemographicSection questionId={selectedQuestionId} />
             </div>

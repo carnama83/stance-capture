@@ -10,10 +10,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery } from "@tanstack/react-query";
 import { Code2, BarChart3, Users, Zap, CheckCircle2, Loader2, TrendingUp, Eye, Send, MousePointerClick } from "lucide-react";
+import { useTranslation, Trans } from "react-i18next";
 
 // ─── Embed code previewer ─────────────────────────────────────────────────────
 
 function EmbedCodePreview({ questionId }: { questionId: string }) {
+  const { t } = useTranslation();
   const [copied, setCopied] = React.useState(false);
   const baseUrl = window.location.origin;
   const snippet = `<div data-sc-question="${questionId}" data-sc-theme="light"></div>\n<script src="${baseUrl}/embed.js" async></script>`;
@@ -27,7 +29,7 @@ function EmbedCodePreview({ questionId }: { questionId: string }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-slate-900 overflow-hidden">
       <div className="flex items-center justify-between px-4 py-2 border-b border-slate-700">
-        <span className="text-xs text-slate-400 font-mono">HTML snippet</span>
+        <span className="text-xs text-slate-400 font-mono">{t("publisher.htmlSnippet")}</span>
         <button
           type="button"
           onClick={copy}
@@ -60,6 +62,7 @@ function FeatureCard({ icon, title, description }: { icon: React.ReactNode; titl
 // ─── Registration form ────────────────────────────────────────────────────────
 
 function RegistrationForm() {
+  const { t } = useTranslation();
   const { toast } = useToast();
   const [name, setName] = React.useState("");
   const [domain, setDomain] = React.useState("");
@@ -91,21 +94,21 @@ function RegistrationForm() {
     setSubmitting(false);
 
     if (error) {
-      toast({ title: "Registration failed", description: error.message, variant: "destructive" });
+      toast({ title: t("publisher.registrationFailed"), description: error.message, variant: "destructive" });
       return;
     }
 
     setDone(true);
-    toast({ title: "Application submitted! We'll be in touch within 1 business day." });
+    toast({ title: t("publisher.applicationSubmittedWeLlBe") });
   }
 
   if (done) {
     return (
       <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-8 text-center space-y-3">
         <CheckCircle2 className="h-10 w-10 text-emerald-500 mx-auto" />
-        <h3 className="text-base font-semibold text-emerald-900">Application received</h3>
+        <h3 className="text-base font-semibold text-emerald-900">{t("publisher.applicationReceived")}</h3>
         <p className="text-sm text-emerald-700">
-          We'll review your application and send your publisher credentials to {email} within 1 business day.
+          {t("publisher.reviewNotice", { email })}
         </p>
       </div>
     );
@@ -114,24 +117,24 @@ function RegistrationForm() {
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-6 space-y-4">
       <div>
-        <h3 className="text-base font-semibold text-slate-900">Apply to embed Stance Capture</h3>
-        <p className="text-xs text-slate-500 mt-1">Free for all publishers. We'll review and approve within 1 business day.</p>
+        <h3 className="text-base font-semibold text-slate-900">{t("publisher.applyToEmbedStanceCapture")}</h3>
+        <p className="text-xs text-slate-500 mt-1">{t("publisher.freeForAllPublishersWe")}</p>
       </div>
 
       <div className="space-y-3">
         <div>
-          <label className="block text-xs font-medium text-slate-700 mb-1">Publication name</label>
+          <label className="block text-xs font-medium text-slate-700 mb-1">{t("publisher.publicationName")}</label>
           <input
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="The Daily Civic"
+            placeholder={t("publisher.theDailyCivic")}
             className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
             required
           />
         </div>
         <div>
-          <label className="block text-xs font-medium text-slate-700 mb-1">Your domain</label>
+          <label className="block text-xs font-medium text-slate-700 mb-1">{t("publisher.yourDomain")}</label>
           <input
             type="url"
             value={domain}
@@ -142,12 +145,12 @@ function RegistrationForm() {
           />
         </div>
         <div>
-          <label className="block text-xs font-medium text-slate-700 mb-1">Contact email</label>
+          <label className="block text-xs font-medium text-slate-700 mb-1">{t("publisher.contactEmail")}</label>
           <input
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="editor@yourdomain.com"
+            placeholder={t("publisher.editorYourdomainCom")}
             className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
             required
           />
@@ -165,10 +168,13 @@ function RegistrationForm() {
       </button>
 
       <p className="text-[11px] text-slate-400 text-center">
-        By applying you agree to Stance Capture's{" "}
-        <a href="/terms" className="underline">embed terms</a>.
-        Data collected via embeds is subject to our{" "}
-        <a href="/privacy" className="underline">privacy policy</a>.
+        <Trans
+          i18nKey="publisher.legalNotice"
+          components={{
+            terms: <a href="/terms" className="underline" />,
+            privacy: <a href="/privacy" className="underline" />,
+          }}
+        />
       </p>
     </div>
   );
@@ -290,12 +296,13 @@ function StatCard({ icon, label, value, sub }: { icon: React.ReactNode; label: s
 }
 
 function PublisherStats() {
+  const { t } = useTranslation();
   const { data: publisher, isLoading: pubLoading } = usePublisherAccount();
   const { data: stats, isLoading: statsLoading } = usePublisherStats(publisher?.publisher_ref ?? null);
 
   if (pubLoading) return (
     <div className="flex items-center gap-2 py-8 text-sm text-slate-400">
-      <Loader2 className="h-4 w-4 animate-spin" /> Loading your publisher account…
+      <Loader2 className="h-4 w-4 animate-spin" /> {t("publisher.loadingYourPublisherAccount")}
     </div>
   );
 
@@ -304,39 +311,39 @@ function PublisherStats() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-bold text-slate-900">Your embed performance</h2>
+        <h2 className="text-xl font-bold text-slate-900">{t("publisher.yourEmbedPerformance")}</h2>
         <p className="text-sm text-slate-500 mt-0.5">
-          Stats for <span className="font-medium text-slate-700">{publisher.name}</span> ·{" "}
+          {t("publisher.statsFor")} <span className="font-medium text-slate-700">{publisher.name}</span> ·{" "}
           <code className="text-xs bg-slate-100 px-1.5 py-0.5 rounded">{publisher.publisher_ref}</code>
         </p>
       </div>
 
       {statsLoading ? (
         <div className="flex items-center gap-2 py-4 text-sm text-slate-400">
-          <Loader2 className="h-4 w-4 animate-spin" /> Loading stats…
+          <Loader2 className="h-4 w-4 animate-spin" /> {t("publisher.loadingStats")}
         </div>
       ) : (
         <>
           {/* Summary cards */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <StatCard icon={<Eye className="h-4 w-4" />} label="Total impressions" value={(stats?.total_impressions ?? 0).toLocaleString()} sub="Widget loads across all your pages" />
-            <StatCard icon={<Send className="h-4 w-4" />} label="Stances captured" value={(stats?.total_submissions ?? 0).toLocaleString()} sub="Completed responses from your readers" />
-            <StatCard icon={<MousePointerClick className="h-4 w-4" />} label="Conversion rate" value={`${(stats?.rate ?? 0).toFixed(1)}%`} sub="Readers who submitted a stance" />
+            <StatCard icon={<Eye className="h-4 w-4" />} label={t("publisher.totalImpressions")} value={(stats?.total_impressions ?? 0).toLocaleString()} sub="Widget loads across all your pages" />
+            <StatCard icon={<Send className="h-4 w-4" />} label={t("publisher.stancesCaptured")} value={(stats?.total_submissions ?? 0).toLocaleString()} sub="Completed responses from your readers" />
+            <StatCard icon={<MousePointerClick className="h-4 w-4" />} label={t("publisher.conversionRate")} value={`${(stats?.rate ?? 0).toFixed(1)}%`} sub="Readers who submitted a stance" />
           </div>
 
           {/* Per-question breakdown */}
           {stats && stats.by_question.length > 0 ? (
             <div className="rounded-xl border border-slate-200 overflow-hidden">
               <div className="px-4 py-3 border-b border-slate-100 bg-slate-50">
-                <p className="text-sm font-semibold text-slate-700">By question</p>
+                <p className="text-sm font-semibold text-slate-700">{t("publisher.byQuestion")}</p>
               </div>
               <div className="divide-y divide-slate-100">
                 {stats.by_question.map(q => (
                   <div key={q.question_id} className="px-4 py-3 flex items-center gap-4">
                     <p className="flex-1 text-sm text-slate-800 line-clamp-1">{q.question_text}</p>
                     <div className="flex items-center gap-6 text-xs text-slate-500 shrink-0">
-                      <span><span className="font-medium text-slate-700">{q.impressions.toLocaleString()}</span> views</span>
-                      <span><span className="font-medium text-slate-700">{q.submissions.toLocaleString()}</span> stances</span>
+                      <span><span className="font-medium text-slate-700">{q.impressions.toLocaleString()}</span> {t("publisher.views")}</span>
+                      <span><span className="font-medium text-slate-700">{q.submissions.toLocaleString()}</span> {t("proposalDetail.stances")}</span>
                       <span className="w-14 text-right">
                         <span className={`font-medium ${q.rate >= 20 ? "text-emerald-600" : q.rate >= 10 ? "text-amber-600" : "text-slate-500"}`}>
                           {q.rate.toFixed(1)}%
@@ -349,7 +356,7 @@ function PublisherStats() {
             </div>
           ) : (
             <div className="rounded-xl border border-dashed border-slate-200 py-8 text-center text-sm text-slate-400">
-              No embed activity yet. Deploy your first snippet to start seeing stats.
+              {t("publisher.noEmbedActivityYetDeploy")}
             </div>
           )}
         </>
@@ -363,6 +370,7 @@ function PublisherStats() {
 const SAMPLE_QUESTION_ID = "00000000-0000-0000-0000-000000000000"; // Placeholder
 
 export default function PublisherPage() {
+  const { t } = useTranslation();
   return (
     <PageLayout>
       <div className="max-w-4xl mx-auto px-4 py-12 space-y-16">
@@ -371,69 +379,70 @@ export default function PublisherPage() {
         <div className="text-center space-y-4">
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-50 border border-blue-100 text-blue-700 text-xs font-medium">
             <Zap className="h-3.5 w-3.5" />
-            Publisher Embed Program
+            {t("publisher.publisherEmbedProgram")}
           </div>
           <h1 className="text-4xl font-bold text-slate-900 leading-tight">
-            Give your readers a voice.<br />
-            <span className="text-blue-600">In your article.</span>
+            {t("publisher.giveYourReadersAVoice")}<br />
+            <span className="text-blue-600">{t("publisher.inYourArticle")}</span>
           </h1>
           <p className="text-lg text-slate-500 max-w-2xl mx-auto leading-relaxed">
-            Embed civic stance questions directly into your coverage. Readers answer without leaving your page.
-            Their responses become part of a growing community intelligence dataset.
+            {t("publisher.embedCivicStanceQuestionsDirectly")}
           </p>
           <div className="flex items-center justify-center gap-3 pt-2">
             <a
               href="#register"
               className="px-5 py-2.5 rounded-lg bg-blue-600 text-white font-semibold text-sm hover:bg-blue-700 transition-colors"
             >
-              Apply for free access
+              {t("publisher.applyForFreeAccess")}
             </a>
             <a
               href="#how-it-works"
               className="px-5 py-2.5 rounded-lg border border-slate-200 text-slate-700 font-semibold text-sm hover:bg-slate-50 transition-colors"
             >
-              See how it works
+              {t("publisher.seeHowItWorks")}
             </a>
           </div>
         </div>
 
         {/* Features */}
         <div id="how-it-works" className="space-y-6">
-          <h2 className="text-xl font-bold text-slate-900 text-center">Why publishers use Stance Capture</h2>
+          <h2 className="text-xl font-bold text-slate-900 text-center">{t("publisher.whyPublishersUseStanceCapture")}</h2>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
             <FeatureCard
               icon={<Code2 className="h-5 w-5" />}
-              title="Two lines of code"
-              description="Drop a div and a script tag. The widget auto-injects, auto-resizes, and works on any site — WordPress, Ghost, custom HTML."
+              title={t("publisher.twoLinesOfCode")}
+              description={t("publisher.dropADivAndA")}
             />
             <FeatureCard
               icon={<Users className="h-5 w-5" />}
-              title="No signup required"
-              description="Readers answer instantly — no friction, no registration wall. Anonymous responses are still structured and deduplicated."
+              title={t("publisher.noSignupRequired")}
+              description={t("publisher.readersAnswerInstantlyNoFriction")}
             />
             <FeatureCard
               icon={<BarChart3 className="h-5 w-5" />}
-              title="Real-time community bar"
-              description="After answering, readers see the live community stance distribution. Drives engagement and return visits."
+              title={t("publisher.realTimeCommunityBar")}
+              description={t("publisher.afterAnsweringReadersSeeThe")}
             />
             <FeatureCard
               icon={<Zap className="h-5 w-5" />}
-              title="Structured civic data"
-              description="Every response is a structured stance on a specific question — not a tweet, not a comment. Real signal, not noise."
+              title={t("publisher.structuredCivicData")}
+              description={t("publisher.everyResponseIsAStructured")}
             />
           </div>
         </div>
 
         {/* Code example */}
         <div className="space-y-4">
-          <h2 className="text-xl font-bold text-slate-900">As simple as it gets</h2>
+          <h2 className="text-xl font-bold text-slate-900">{t("publisher.asSimpleAsItGets")}</h2>
           <p className="text-sm text-slate-500">
-            Paste this into any article page. The widget finds the question, renders the slider, and handles everything else.
+            {t("publisher.pasteThisIntoAnyArticle")}
           </p>
           <EmbedCodePreview questionId={SAMPLE_QUESTION_ID} />
           <p className="text-xs text-slate-400">
-            Replace the question ID with any active Stance Capture question. Browse questions at{" "}
-            <a href="/#/topics" className="underline text-blue-500">stancecapture.com/topics</a>.
+            <Trans
+              i18nKey="publisher.browseQuestions"
+              components={{ a: <a href="/#/topics" className="underline text-blue-500" /> }}
+            />
           </p>
         </div>
 
