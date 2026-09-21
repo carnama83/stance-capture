@@ -152,7 +152,7 @@ function BarSegment({
       {isUserBucket && (
         <div
           className="absolute -top-1 left-1/2 -translate-x-1/2 h-1.5 w-1.5 rounded-full bg-slate-900 ring-2 ring-white shadow-sm"
-          aria-label={`Your stance: ${label}`}
+          aria-label={i18n.t("stanceDistributionBar.yourStanceAria", { stance: label })}
         />
       )}
     </div>

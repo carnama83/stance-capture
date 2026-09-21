@@ -288,8 +288,8 @@ async function runExport(
     });
 
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: "Unknown error" }));
-      throw new Error(err.error ?? "Export failed");
+      const err = await res.json().catch(() => ({ error: i18n.t("todayQuestionsFeed.unknownError") }));
+      throw new Error(err.error ?? i18n.t("myStances.exportFailed"));
     }
 
     const { url, filename } = await res.json();

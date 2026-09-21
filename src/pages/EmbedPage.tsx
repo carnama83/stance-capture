@@ -10,6 +10,7 @@
 //   ref:   publisher identifier for analytics
 
 import * as React from "react";
+import { STANCE_LABEL_KEYS } from "@/lib/stanceLabelKeys";
 import { useParams, useSearchParams } from "react-router-dom";
 import { getSupabase } from "@/lib/supabaseClient";
 import { CommunityStanceBar } from "@/components/question/CommunityStanceBar";
@@ -57,12 +58,12 @@ async function getDeviceFingerprint(): Promise<string> {
 
 // ─── Stance scale ─────────────────────────────────────────────────────────────
 
-const STANCE_LABELS: Record<number, { short: string; color: string }> = {
-  [-2]: { short: "Strongly disagree", color: "#dc2626" },
-  [-1]: { short: "Disagree", color: "#f97316" },
-  [0]:  { short: "Neutral", color: "#64748b" },
-  [1]:  { short: "Agree", color: "#22c55e" },
-  [2]:  { short: "Strongly agree", color: "#16a34a" },
+const STANCE_COLORS: Record<number, string> = {
+  [-2]: "#dc2626",
+  [-1]: "#f97316",
+  [0]:  "#64748b",
+  [1]:  "#22c55e",
+  [2]:  "#16a34a",
 };
 
 // ─── Stance slider (lightweight, no Radix dependency issues in embed) ─────────
@@ -78,7 +79,7 @@ function EmbedSlider({
 }) {
   const { t } = useTranslation();
   const steps = [-2, -1, 0, 1, 2];
-  const label = STANCE_LABELS[value];
+  const label = { short: t(STANCE_LABEL_KEYS[value]), color: STANCE_COLORS[value] };
 
   return (
     <div className="space-y-3">
@@ -87,7 +88,7 @@ function EmbedSlider({
         <div className="flex items-center justify-between gap-1">
           {steps.map((step) => {
             const isSelected = step === value;
-            const stepLabel = STANCE_LABELS[step];
+            const stepLabel = { short: t(STANCE_LABEL_KEYS[step]), color: STANCE_COLORS[step] };
             return (
               <button
                 key={step}
@@ -383,7 +384,7 @@ export default function EmbedPage() {
         <div className="space-y-4">
           <div className="flex items-center gap-2 text-sm font-medium text-emerald-600">
             <CheckCircle2 className="h-4 w-4" />
-            <span>{t("embed.stanceRecordedAs", { label: STANCE_LABELS[selectedStance]?.short })}</span>
+            <span>{t("embed.stanceRecordedAs", { label: t(STANCE_LABEL_KEYS[selectedStance]) })}</span>
           </div>
 
           <EmbedCommunityBar

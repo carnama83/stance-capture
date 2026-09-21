@@ -133,7 +133,7 @@ function SearchResultCard({ result }: { result: SearchResult }) {
               <span>📁 {result.topic_title}</span>
               {stateConfig && (
                 <span className={`px-2 py-0.5 text-xs rounded border ${stateConfig.color}`}>
-                  {stateConfig.label}
+                  {t(stateConfig.labelKey)}
                 </span>
               )}
             </div>

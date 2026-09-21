@@ -20,6 +20,7 @@
 //   questions + topics — question text and topic title
 
 import * as React from "react";
+import { STANCE_LABEL_KEYS } from "@/lib/stanceLabelKeys";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -50,13 +51,7 @@ type TopicQuestion = {
 
 // ── Labels ────────────────────────────────────────────────────────────────────
 
-const STANCE_LABEL: Record<number, string> = {
-  [-2]: "Strongly disagree",
-  [-1]: "Disagree",
-  [0]:  "Neutral",
-  [1]:  "Agree",
-  [2]:  "Strongly agree",
-};
+
 
 const STANCE_SHORT: Record<number, string> = {
   [-2]: "SD", [-1]: "D", [0]: "N", [1]: "A", [2]: "SA",
@@ -179,7 +174,7 @@ function QuestionRow({ question }: { question: TopicQuestion }) {
             className="text-[10px] font-semibold"
             style={{ color: userColor }}
           >
-            {STANCE_LABEL[question.user_score] ?? question.user_score}
+            {STANCE_LABEL_KEYS[question.user_score] ? t(STANCE_LABEL_KEYS[question.user_score]) : question.user_score}
           </span>
         </div>
 
@@ -190,7 +185,9 @@ function QuestionRow({ question }: { question: TopicQuestion }) {
               className="text-[10px] font-medium"
               style={{ color: communityColor ?? "#888" }}
             >
-              {STANCE_LABEL[Math.round(question.community_avg)] ?? question.community_avg.toFixed(1)}
+              {STANCE_LABEL_KEYS[Math.round(question.community_avg)]
+                ? t(STANCE_LABEL_KEYS[Math.round(question.community_avg)])
+                : question.community_avg.toFixed(1)}
             </span>
             {drift !== null && Math.abs(drift) >= 0.5 && (
               <span className="text-[10px] text-slate-400">
@@ -271,20 +268,20 @@ function QuestionRow({ question }: { question: TopicQuestion }) {
                           className="font-medium"
                           style={{ color: getStanceColorHex(point.new_score) }}
                         >
-                          {STANCE_LABEL[point.new_score]}
+                          {t(STANCE_LABEL_KEYS[point.new_score])}
                         </span>
                       </span>
                     ) : (
                       <span className="flex items-center gap-1">
                         <span style={{ color: getStanceColorHex(point.old_score ?? 0) }}>
-                          {STANCE_LABEL[point.old_score ?? 0]}
+                          {t(STANCE_LABEL_KEYS[point.old_score ?? 0])}
                         </span>
                         <span className="text-slate-300">→</span>
                         <span
                           className="font-medium"
                           style={{ color: getStanceColorHex(point.new_score) }}
                         >
-                          {STANCE_LABEL[point.new_score]}
+                          {t(STANCE_LABEL_KEYS[point.new_score])}
                         </span>
                       </span>
                     )}
@@ -468,7 +465,9 @@ export default function TopicHistoryDrawer({
                 className="text-sm font-semibold"
                 style={{ color: getStanceColorHex(Math.round(avgUserScore)) }}
               >
-                {STANCE_LABEL[Math.round(avgUserScore)] ?? avgUserScore.toFixed(1)}
+                {STANCE_LABEL_KEYS[Math.round(avgUserScore)]
+                  ? t(STANCE_LABEL_KEYS[Math.round(avgUserScore)])
+                  : avgUserScore.toFixed(1)}
               </p>
             </div>
           </div>

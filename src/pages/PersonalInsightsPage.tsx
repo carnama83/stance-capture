@@ -30,19 +30,19 @@ import { useTranslation } from "react-i18next";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function meanStanceLabel(mean: number): string {
-  if (mean >= 1.5)  return "Strongly agreement-leaning";
-  if (mean >= 0.5)  return "Leans toward agreement";
-  if (mean >= -0.5) return "Broadly neutral";
-  if (mean >= -1.5) return "Leans toward disagreement";
-  return "Strongly disagreement-leaning";
+function meanStanceLabelKey(mean: number): string {
+  if (mean >= 1.5)  return "insights.stronglyAgreementLeaning";
+  if (mean >= 0.5)  return "insights.leansTowardAgreement";
+  if (mean >= -0.5) return "insights.broadlyNeutral";
+  if (mean >= -1.5) return "insights.leansTowardDisagreement";
+  return "insights.stronglyDisagreementLeaning";
 }
 
-function consistencyLabel(score: number): string {
-  if (score >= 0.8) return "Highly consistent";
-  if (score >= 0.6) return "Mostly consistent";
-  if (score >= 0.4) return "Somewhat variable";
-  return "Actively evolving";
+function consistencyLabelKey(score: number): string {
+  if (score >= 0.8) return "insights.highlyConsistent";
+  if (score >= 0.6) return "insights.mostlyConsistent";
+  if (score >= 0.4) return "insights.somewhatVariable";
+  return "insights.activelyEvolving";
 }
 
 // ── Profile summary card ──────────────────────────────────────────────────────
@@ -76,7 +76,7 @@ function ProfileSummary({ state }: { state: CognitiveState }) {
         <div className="flex items-center justify-between mb-1.5">
           <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">{t("insights.overallLean")}</p>
           <span className="text-sm font-medium" style={{ color: stanceColor }}>
-            {meanStanceLabel(state.overall_mean_stance)}
+            {t(meanStanceLabelKey(state.overall_mean_stance))}
           </span>
         </div>
         <div className="flex h-2 w-full rounded-full overflow-hidden bg-slate-100">
@@ -97,7 +97,7 @@ function ProfileSummary({ state }: { state: CognitiveState }) {
       <div className="flex items-center justify-between pt-1 border-t border-slate-100">
         <p className="text-xs text-slate-500">{t("insights.opinionConsistency")}</p>
         <span className="text-xs font-medium text-slate-700">
-          {consistencyLabel(state.stance_consistency_score)}
+          {t(consistencyLabelKey(state.stance_consistency_score))}
           <span className="text-slate-400 font-normal ml-1">
             ({Math.round(state.stance_consistency_score * 100)}%)
           </span>

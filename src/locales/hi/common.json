@@ -655,7 +655,9 @@
     "loadingComments": "टिप्पणियाँ लोड हो रही हैं…",
     "showMoreComments": "और टिप्पणियाँ दिखाएँ",
     "editedWhen": "· संपादित {{when}}",
-    "noMoodYet": "अभी कोई भाव नहीं"
+    "noMoodYet": "अभी कोई भाव नहीं",
+    "mostlyCritical": "अधिकतर आलोचनात्मक",
+    "mostlySupportive": "अधिकतर समर्थक"
   },
   "onboarding": {
     "gotIt": "समझ गए"
@@ -777,7 +779,8 @@
     "clearView": "स्पष्ट राय",
     "slightView": "हल्की राय",
     "noStrongView": "कोई मज़बूत राय नहीं",
-    "averagePositionOnTopic": "इस विषय पर आपकी औसत स्थिति"
+    "averagePositionOnTopic": "इस विषय पर आपकी औसत स्थिति",
+    "exportFailed": "निर्यात विफल"
   },
   "quickTakes": {
     "title": "आज के त्वरित सवाल",
@@ -938,7 +941,9 @@
     "mutedCount_one": "{{count}} विषय म्यूट — उस विषय के लिए कोई रुख बदलाव या गतिविधि सूचना नहीं।",
     "mutedCount_other": "{{count}} विषय म्यूट — उन विषयों के लिए कोई रुख बदलाव या गतिविधि सूचना नहीं।",
     "unmute": "फिर चालू करें",
-    "mute": "बंद करें"
+    "mute": "बंद करें",
+    "muteTopicAria": "{{topic}} की सूचनाएँ बंद करें",
+    "unmuteTopicAria": "{{topic}} की सूचनाएँ फिर चालू करें"
   },
   "settingsAccount": {
     "deletionRequestSubmittedYouHave": "हटाने का अनुरोध भेज दिया गया। इसे रद्द करने के लिए आपके पास 14 दिन हैं।",
@@ -1111,7 +1116,8 @@
     "showingUnavailableLanguage": "वे सवाल भी दिखाए जा रहे हैं जो अभी आपकी भाषा में नहीं हैं।",
     "showingOnlyMyLanguage": "केवल आपकी भाषा में उपलब्ध सवाल दिखाए जा रहे हैं।",
     "resetsInDays_one": "({{count}} दिन में रीसेट)",
-    "resetsInDays_other": "({{count}} दिनों में रीसेट)"
+    "resetsInDays_other": "({{count}} दिनों में रीसेट)",
+    "phoneVerification": "फ़ोन सत्यापन"
   },
   "settingsLocation": {
     "chooseYourCountryStateCounty": "अपना देश, राज्य, ज़िला या शहर चुनें ताकि देख सकें कि आपके क्षेत्र के लोग हर सवाल पर क्या सोचते हैं।",
@@ -1184,7 +1190,16 @@
     "startBuildingYourInsights": "अपनी अंतर्दृष्टि बनाना शुरू करें",
     "theMoreQuestionsYouAnswer": "आप जितने ज़्यादा सवालों के उत्तर देंगे, आपकी अंतर्दृष्टि उतनी ही समृद्ध होगी।",
     "beliefProfile": "मान्यता प्रोफ़ाइल",
-    "howYouVeChanged": "आप कैसे बदले"
+    "howYouVeChanged": "आप कैसे बदले",
+    "leansTowardAgreement": "सहमति की ओर झुका",
+    "broadlyNeutral": "मोटे तौर पर तटस्थ",
+    "leansTowardDisagreement": "असहमति की ओर झुका",
+    "highlyConsistent": "अत्यधिक सुसंगत",
+    "mostlyConsistent": "अधिकतर सुसंगत",
+    "somewhatVariable": "कुछ हद तक परिवर्तनशील",
+    "activelyEvolving": "सक्रिय रूप से बदलता",
+    "stronglyAgreementLeaning": "दृढ़ता से सहमति की ओर",
+    "stronglyDisagreementLeaning": "दृढ़ता से असहमति की ओर"
   },
   "proposalDetail": {
     "couldNotLoadThisProposal": "यह प्रस्ताव लोड नहीं हो सका।",
@@ -1270,7 +1285,9 @@
     "demographics": "जनसांख्यिकी",
     "questionsCount": "सवाल ({{count}})",
     "comparingTwoRegionsSideBy": "दो क्षेत्रों की साथ-साथ तुलना।",
-    "distributionAcrossAllQuestionsIn": "इस क्षेत्र के सभी सवालों में वितरण।"
+    "distributionAcrossAllQuestionsIn": "इस क्षेत्र के सभी सवालों में वितरण।",
+    "byAgeGroup": "आयु वर्ग के अनुसार",
+    "byGender": "लिंग के अनुसार"
   },
   "publisher": {
     "htmlSnippet": "HTML स्निपेट",
@@ -1577,7 +1594,8 @@
     "uploadAvatar": "अवतार अपलोड करें",
     "removeAvatar": "अवतार हटाएँ",
     "uploading": "अपलोड हो रहा है…",
-    "uploadTimedOut": "अपलोड का समय समाप्त हो गया। अपना कनेक्शन जाँचकर फिर प्रयास करें।"
+    "uploadTimedOut": "अपलोड का समय समाप्त हो गया। अपना कनेक्शन जाँचकर फिर प्रयास करें।",
+    "avatarOf": "@{{handle}} का अवतार"
   },
   "oAuthCallback": {
     "supabaseClientUnavailableCheckEnvironment": "Supabase क्लाइंट उपलब्ध नहीं। एनवायरनमेंट वेरिएबल जाँचें।",
@@ -1644,7 +1662,9 @@
   },
   "topicDetail": {
     "pleaseTryAgainOrGo": "कृपया फिर से प्रयास करें या विषयों पर वापस जाएँ।",
-    "noStance": "कोई रुख नहीं"
+    "noStance": "कोई रुख नहीं",
+    "youStance": "आप: {{stance}}",
+    "regionAgree": "{{region}}: {{pct}}% सहमत"
   },
   "feedFilters": {
     "active": "सक्रिय",
@@ -1672,7 +1692,9 @@
     "createAnAccountOrLog": "इस सवाल पर अपना रुख दर्ज करने के लिए खाता बनाएँ या लॉग इन करें।",
     "wantToRecordYourStance": "अपना रुख दर्ज करना चाहते हैं?",
     "needToBeLoggedIn": "आपका लॉग इन होना आवश्यक है",
-    "stanceRemoved": "आपने इस सवाल पर अपना रुख हटा दिया है।"
+    "stanceRemoved": "आपने इस सवाल पर अपना रुख हटा दिया है।",
+    "stanceCleared": "रुख हटाया गया",
+    "stanceUpdated": "रुख अपडेट हुआ"
   },
   "sinceLastVisit": {
     "sinceYouLastVisited": "आपकी पिछली विज़िट के बाद से",
@@ -1704,7 +1726,9 @@
     "unmuteNotificationsForThisTopic": "इस विषय की सूचनाएँ फिर चालू करें",
     "muteNotificationsForThisTopic": "इस विषय की सूचनाएँ बंद करें",
     "muted": "बंद",
-    "notify": "सूचित करें"
+    "notify": "सूचित करें",
+    "notificationsMuted": "विषय सूचनाएँ बंद की गईं",
+    "notificationsUnmuted": "विषय सूचनाएँ फिर चालू की गईं"
   },
   "threeTierTrending": {
     "aroundTheWorld": "दुनिया भर में",
@@ -1885,7 +1909,9 @@
     "noChangesYetYouVe": "अभी कोई बदलाव नहीं — आपने इस सवाल का एक बार उत्तर दिया है।",
     "firstAnswer": "पहला उत्तर:",
     "changedFromTo": "बदला",
-    "fromFirstAnswer": "पहले उत्तर से {{delta}}"
+    "fromFirstAnswer": "पहले उत्तर से {{delta}}",
+    "deltaThisWeek": "इस सप्ताह {{delta}}",
+    "deltaThisMonth": "इस महीने {{delta}}"
   },
   "whatsAppSignin": {
     "thisSignInLinkIs": "इस साइन-इन लिंक में उसका टोकन नहीं है। कृपया अपने WhatsApp संदेश वाला लिंक उपयोग करें।",
@@ -2018,7 +2044,8 @@
     "alignGroup": "आप {{pct}}% उत्तरदाताओं से मेल खाते हैं — {{group}} समूह",
     "supportive": "समर्थक",
     "opposed": "विरोधी",
-    "neutral": "तटस्थ"
+    "neutral": "तटस्थ",
+    "yourStanceAria": "आपका रुख: {{stance}}"
   },
   "stanceSubmission": {
     "stanceSubmitted": "रुख भेज दिया गया",
@@ -2053,7 +2080,8 @@
     "dormant": "निष्क्रिय",
     "dormantDescription": "कम भागीदारी, जल्द संग्रहित हो सकता है",
     "archived": "संग्रहित",
-    "archivedDescription": "अब नई प्रतिक्रियाएँ स्वीकार नहीं"
+    "archivedDescription": "अब नई प्रतिक्रियाएँ स्वीकार नहीं",
+    "archivedDescriptionFeed": "अब प्रतिक्रियाएँ स्वीकार नहीं"
   },
   "gender": {
     "male": "पुरुष",
@@ -2075,5 +2103,18 @@
     "marketing": "विपणन संचार",
     "termsOfService": "सेवा की शर्तें",
     "privacyPolicy": "गोपनीयता नीति"
+  },
+  "trendLabel": {
+    "veryHot": "बहुत गर्म",
+    "heatingUp": "ज़ोर पकड़ रहा",
+    "someActivity": "कुछ गतिविधि",
+    "quiet": "शांत",
+    "quietRightNow": "अभी शांत"
+  },
+  "timeAgo": {
+    "justNow": "अभी-अभी",
+    "hours": "{{n}} घं पहले",
+    "days": "{{n}} दिन पहले",
+    "weeks": "{{n}} सप्ताह पहले"
   }
 }
