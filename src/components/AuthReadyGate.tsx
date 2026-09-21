@@ -27,8 +27,10 @@
 import * as React from "react";
 import { getSupabase } from "../lib/supabaseClient";
 import { AuthReadyCtx } from "../auth/AuthContext";
+import { useTranslation } from "react-i18next";
 
 export default function AuthReadyGate({ children }: { children: React.ReactNode }) {
+  const { t } = useTranslation();
   const sb = React.useMemo(getSupabase, []);
   const [ready, setReady] = React.useState(false);
 
@@ -69,7 +71,7 @@ export default function AuthReadyGate({ children }: { children: React.ReactNode 
   if (!ready) {
     return (
       <AuthReadyCtx.Provider value={false}>
-        <div style={{ padding: 12, fontSize: 14, color: "#475569" }}>Loading…</div>
+        <div style={{ padding: 12, fontSize: 14, color: "#475569" }}>{t("common.loading")}</div>
       </AuthReadyCtx.Provider>
     );
   }

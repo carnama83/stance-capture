@@ -15,6 +15,7 @@
 
 import { useState } from "react";
 import { SUPABASE_URL, getJwt, supabaseHeaders } from "@/lib/env";
+import { useTranslation } from "react-i18next";
 
 type Authority = { id: string; name: string; domain: string; jurisdiction_level: string };
 
@@ -36,16 +37,16 @@ function parseAuthorities(raw: unknown): Authority[] {
 // Revisit if that infra ever gets built.
 type PublishChoice = "raw_only" | "raw_plus_overlay";
 
-const OPTIONS: { value: PublishChoice; label: string; description: string }[] = [
+const OPTIONS: { value: PublishChoice; labelKey: string; descriptionKey: string }[] = [
   {
     value: "raw_plus_overlay",
-    label: "Raw video with neutral overlay (recommended)",
-    description: "Your video plays as recorded. A neutral title and question sit alongside it — never gated behind watching the clip.",
+    labelKey: "videoPublishChoice.rawVideoWithNeutralOverlay",
+    descriptionKey: "videoPublishChoice.yourVideoPlaysAsRecorded",
   },
   {
     value: "raw_only",
-    label: "Raw video only",
-    description: "Just your video, exactly as recorded — no overlay text.",
+    labelKey: "videoPublishChoice.rawVideoOnly",
+    descriptionKey: "videoPublishChoice.justYourVideoExactlyAs",
   },
 ];
 
@@ -71,13 +72,14 @@ export function VideoPublishChoice({
   // defaulting to empty for video.
   onPublished: (questionId: string, suggestedAuthorities: Authority[]) => void;
 }) {
+  const { t } = useTranslation();
   const [choice, setChoice] = useState<PublishChoice>("raw_plus_overlay");
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const publish = async () => {
     const jwt = getJwt();
-    if (!jwt) { setError("Please sign in again."); return; }
+    if (!jwt) { setError(t("videoRecorder.pleaseSignInAgain")); return; }
     setPublishing(true);
     setError(null);
     try {
@@ -103,7 +105,7 @@ export function VideoPublishChoice({
           to re-recording if the proposer wants to act on it. */}
       {derogatoryFlagReason && (
         <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-900">
-          <p className="font-medium">Before you publish</p>
+          <p className="font-medium">{t("videoPublishChoice.beforeYouPublish")}</p>
           <p className="mt-0.5">{derogatoryFlagReason}</p>
           {onReRecord && (
             <button
@@ -111,13 +113,13 @@ export function VideoPublishChoice({
               onClick={onReRecord}
               className="mt-2 text-sm font-medium text-amber-900 underline underline-offset-2"
             >
-              Re-record instead
+              {t("videoPublishChoice.reRecordInstead")}
             </button>
           )}
         </div>
       )}
 
-      <p className="text-sm font-medium text-neutral-900">How should this be published?</p>
+      <p className="text-sm font-medium text-neutral-900">{t("videoPublishChoice.howShouldThisBePublished")}</p>
       {error && <div role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
       <div className="flex flex-col gap-2">
         {OPTIONS.map((opt) => (
@@ -134,8 +136,8 @@ export function VideoPublishChoice({
               className="mt-1"
             />
             <span>
-              <span className="block text-sm font-medium text-neutral-900">{opt.label}</span>
-              <span className="block text-sm text-neutral-600">{opt.description}</span>
+              <span className="block text-sm font-medium text-neutral-900">{t(opt.labelKey)}</span>
+              <span className="block text-sm text-neutral-600">{t(opt.descriptionKey)}</span>
             </span>
           </label>
         ))}
@@ -146,7 +148,7 @@ export function VideoPublishChoice({
         disabled={publishing}
         className="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
       >
-        {publishing ? "Publishing…" : "Publish"}
+        {publishing ? t("ugq.publishing") : t("ugq.publish")}
       </button>
     </div>
   );

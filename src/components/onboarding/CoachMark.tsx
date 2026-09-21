@@ -58,7 +58,7 @@ export function CoachMark({
           <button
             onClick={onDismiss}
             className="absolute top-2 right-2 text-white/60 hover:text-white p-0.5"
-            aria-label="Dismiss tip"
+            aria-label={t("coachMark.dismissTip")}
           >
             <X className="h-3.5 w-3.5" />
           </button>
@@ -86,7 +86,7 @@ export function CoachMark({
           <button
             onClick={onDismiss}
             className="absolute top-2 right-2 text-white/60 hover:text-white p-0.5"
-            aria-label="Dismiss tip"
+            aria-label={t("coachMark.dismissTip")}
           >
             <X className="h-3.5 w-3.5" />
           </button>
@@ -115,7 +115,7 @@ export function CoachMark({
         <button
           onClick={onDismiss}
           className="absolute top-2 right-2 text-white/60 hover:text-white p-0.5"
-          aria-label="Dismiss tip"
+          aria-label={t("coachMark.dismissTip")}
         >
           <X className="h-3.5 w-3.5" />
         </button>

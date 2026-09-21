@@ -16,7 +16,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { RegionMultiSelect } from "@/components/admin/RegionMultiSelect";
-import { EXPECTATION_LABELS } from "@/components/question/ExpectationPrompt";
+import { EXPECTATION_LABEL_KEYS } from "@/components/question/ExpectationPrompt";
+import i18n from "@/lib/i18n";
 import { SUPABASE_URL, getJwt, supabaseHeaders } from "@/lib/env";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -348,7 +349,9 @@ function PublishPanel() {
                   {preview.map((row) => (
                     <div key={row.expectation_type} className="flex items-center justify-between text-xs">
                       <span className="text-slate-600">
-                        {EXPECTATION_LABELS[row.expectation_type] ?? row.expectation_type}
+                        {EXPECTATION_LABEL_KEYS[row.expectation_type]
+                          ? i18n.t(EXPECTATION_LABEL_KEYS[row.expectation_type])
+                          : row.expectation_type}
                       </span>
                       <span className="text-slate-400">{row.pct_of_respondents}%</span>
                     </div>

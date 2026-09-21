@@ -200,7 +200,7 @@ export default function TrendingAnsweredCard({ userId }: TrendingAnsweredCardPro
         <CardContent className="py-4">
           <div className="flex items-center gap-2 text-xs text-slate-500">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            Checking your answered questions…
+            {t("trendingAnswered.checkingYourAnsweredQuestions")}
           </div>
         </CardContent>
       </Card>
@@ -213,10 +213,10 @@ export default function TrendingAnsweredCard({ userId }: TrendingAnsweredCardPro
     <Card className="mb-3">
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-semibold text-slate-900">
-          Questions you answered — with updates
+          {t("trendingAnswered.questionsYouAnsweredWithUpdates")}
         </CardTitle>
         <CardDescription className="text-xs text-slate-500 mt-0.5">
-          These questions you've weighed in on are now trending or shifting.
+          {t("trendingAnswered.theseQuestionsYouVeWeighed")}
         </CardDescription>
       </CardHeader>
 
@@ -244,20 +244,20 @@ export default function TrendingAnsweredCard({ userId }: TrendingAnsweredCardPro
 
             <div className="flex items-center gap-3 text-[11px] text-slate-500">
               <span>
-                Your stance:{" "}
+                {t("topicHistoryDrawer.yourStance")}{" "}
                 <span className="font-medium text-slate-700">
                   {STANCE_SHORT[row.user_score] ?? row.user_score}
                 </span>
               </span>
               {row.signal === "shifted" && row.community_avg_score !== null && (
                 <span>
-                  Community now:{" "}
+                  {t("trendingAnswered.communityNow")}{" "}
                   <span className="font-medium text-slate-700">
                     {row.community_avg_score > 0.35
-                      ? "leaning agree"
+                      ? t("trendingAnswered.leaningAgree")
                       : row.community_avg_score < -0.35
-                      ? "leaning disagree"
-                      : "mixed"}
+                      ? t("trendingAnswered.leaningDisagree")
+                      : t("trendingAnswered.mixed")}
                   </span>
                 </span>
               )}

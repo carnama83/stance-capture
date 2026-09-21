@@ -66,8 +66,8 @@ export function FollowTopicButton({
     if (error) {
       console.error(`${rpcName} error`, error);
       toast({
-        title: "Action failed",
-        description: "Please try again.",
+        title: t("followTopicButton.actionFailed"),
+        description: t("topicMuteButton.pleaseTryAgain"),
         variant: "destructive",
       });
       setLoading(false);

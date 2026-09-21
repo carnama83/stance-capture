@@ -562,29 +562,27 @@ export function QuestionStanceSlider({
       {isFirstRespondent && (
         <div className="rounded-md border border-slate-200 bg-white px-3 py-2.5 text-[11px] space-y-1.5">
           <div className="font-semibold text-slate-700">
-            You chose: <span className="text-slate-900">{label}</span>
+            {t("questionStanceSlider.youChose")} <span className="text-slate-900">{label}</span>
           </div>
           <div className="text-slate-500 leading-relaxed">
-            You&#x2019;re the first to weigh in on this. We&#x2019;ll show you how others compare once more stances come in.
+            {t("questionStanceSlider.youReTheFirstTo")}
           </div>
         </div>
       )}
       {showAlignment && (
         <div className="rounded-md border border-slate-200 bg-white px-3 py-2.5 text-[11px] space-y-1.5">
           <div className="font-semibold text-slate-700">
-            You chose: <span className="text-slate-900">{label}</span>
+            {t("questionStanceSlider.youChose")} <span className="text-slate-900">{label}</span>
           </div>
           <div className="space-y-1">
             {alignmentLines.map((line) => (
               <div key={line.label} className="text-slate-600">
-                <span className="font-medium text-slate-800">{line.pct}%</span>
-                {" of "}
-                <span className="capitalize">{line.label}</span>
-                {" "}
-                <span className={line.aligns ? "text-slate-700" : "text-slate-500"}>
-                  {line.aligns ? "agrees" : "disagrees"}
-                </span>
-                {" with you"}
+                {t(
+                  line.aligns
+                    ? "questionStanceSlider.agreeShare"
+                    : "questionStanceSlider.disagreeShare",
+                  { pct: `${line.pct}%`, scope: line.label }
+                )}
               </div>
             ))}
           </div>

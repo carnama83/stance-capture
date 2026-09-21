@@ -16,13 +16,14 @@
 // relationship, which doesn't exist here.
 
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getSupabase } from "@/lib/supabaseClient";
 import { ShareButton } from "@/components/share/ShareButton";
 import { useLanguage } from "@/hooks/useLanguage";
-import { EXPECTATION_LABELS } from "@/components/question/ExpectationPrompt";
-import { STATUS_LABELS, STATUS_COLORS, formatResponseDate } from "@/components/question/AuthorityResponseStatusBlock";
+import { EXPECTATION_LABEL_KEYS } from "@/components/question/ExpectationPrompt";
+import { STATUS_LABEL_KEYS, STATUS_COLORS, formatResponseDate } from "@/components/question/AuthorityResponseStatusBlock";
 import { Loader2, ClipboardCheck } from "lucide-react";
 
 interface SnapshotEntry {
@@ -120,6 +121,7 @@ function useRegionAuthorityResponses(questionId: string, regionId: string) {
 }
 
 export default function PublicLedgerPage() {
+  const { t } = useTranslation();
   const { questionId, regionId } = useParams<{ questionId: string; regionId: string }>();
   // No AppTopBar on this page (see file header — "no chrome" by design), so
   // there's no parent already resolving language. Called directly here,
@@ -145,9 +147,9 @@ export default function PublicLedgerPage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
         <div className="text-center max-w-sm">
-          <p className="text-sm font-medium text-slate-700 mb-1">Ledger not yet published</p>
+          <p className="text-sm font-medium text-slate-700 mb-1">{t("publicLedger.ledgerNotYetPublished")}</p>
           <p className="text-xs text-slate-500">
-            This expectation ledger either doesn't exist yet or hasn't been published.
+            {t("publicLedger.thisExpectationLedgerEitherDoesn")}
           </p>
         </div>
       </div>
@@ -164,7 +166,7 @@ export default function PublicLedgerPage() {
       <div className="max-w-xl mx-auto">
         <div className="rounded-2xl border border-slate-200 bg-white p-6 md:p-8 shadow-sm">
           <p className="text-[11px] font-medium tracking-wide uppercase text-slate-400 mb-3">
-            Public Expectation Ledger
+            {t("publicLedger.publicExpectationLedger")}
           </p>
 
           {ledger.questionText && (
@@ -176,14 +178,15 @@ export default function PublicLedgerPage() {
 
           {ledger.regionName && (
             <p className="text-xs text-slate-500 mb-5">
-              Region: <span className="font-medium text-slate-700">{ledger.regionName}</span>
+              {t("publicLedger.region")} <span className="font-medium text-slate-700">{ledger.regionName}</span>
             </p>
           )}
 
           <div className="space-y-2.5 mb-5">
             {breakdown.map((row) => {
               const isDominant = row.expectation_type === dominant;
-              const label = EXPECTATION_LABELS[row.expectation_type] ?? row.expectation_type;
+              const labelKey = EXPECTATION_LABEL_KEYS[row.expectation_type];
+              const label = labelKey ? t(labelKey) : row.expectation_type;
               return (
                 <div key={row.expectation_type}>
                   <div className="flex items-center justify-between text-xs mb-1">
@@ -209,13 +212,13 @@ export default function PublicLedgerPage() {
             <div className="mb-5">
               <div className="flex items-center gap-1.5 mb-2">
                 <ClipboardCheck className="h-3.5 w-3.5 text-slate-400" />
-                <p className="text-xs font-medium text-slate-600">Response status</p>
+                <p className="text-xs font-medium text-slate-600">{t("publicLedger.responseStatus")}</p>
               </div>
               <div className="space-y-1.5">
                 {responses.map((r) => (
                   <div key={r.id} className="flex items-center justify-between gap-2">
                     <span className="text-xs text-slate-600 truncate">
-                      {r.authority_registry?.name ?? "Authority"}
+                      {r.authority_registry?.name ?? t("publicLedger.authority")}
                     </span>
                     <div className="flex items-center gap-2 shrink-0">
                       <span
@@ -223,7 +226,9 @@ export default function PublicLedgerPage() {
                           STATUS_COLORS[r.response_status] ?? "bg-slate-100 text-slate-600"
                         }`}
                       >
-                        {STATUS_LABELS[r.response_status] ?? r.response_status}
+                        {STATUS_LABEL_KEYS[r.response_status]
+                          ? t(STATUS_LABEL_KEYS[r.response_status])
+                          : r.response_status}
                       </span>
                       <span className="text-[10px] text-slate-400">{formatResponseDate(r.status_updated_at)}</span>
                     </div>
@@ -236,7 +241,7 @@ export default function PublicLedgerPage() {
           {/* Participation count + time window shown as data metadata, not
               social proof (BR-R04 / §6.3 — no "X people signed" language). */}
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500 border-t border-slate-100 pt-4 mb-5">
-            <span>{ledger.participation_count ?? 0} respondents</span>
+            <span>{t("publicLedger.respondentCount", { count: ledger.participation_count ?? 0 })}</span>
             <span>
               {formatDate(ledger.time_window_start)} – {formatDate(ledger.time_window_end)}
             </span>
@@ -253,7 +258,7 @@ export default function PublicLedgerPage() {
           )}
         </div>
 
-        <p className="text-center text-[11px] text-slate-400 mt-4">Data collected by Stance Capture</p>
+        <p className="text-center text-[11px] text-slate-400 mt-4">{t("publicLedger.dataCollectedByStanceCapture")}</p>
       </div>
     </div>
   );

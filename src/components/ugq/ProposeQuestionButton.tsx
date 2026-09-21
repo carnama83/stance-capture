@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { getSupabase } from "@/lib/supabaseClient";
 import { ProposeQuestionModal } from "./ProposeQuestionModal";
+import { useTranslation } from "react-i18next";
 
 type Session = import("@supabase/supabase-js").Session;
 
@@ -36,6 +37,7 @@ export function ProposeQuestionButton({
   defaultLocation = null,
   className,
 }: Props) {
+  const { t } = useTranslation();
   const sb = React.useMemo(getSupabase, []);
   const [session, setSession] = React.useState<Session | null>(null);
   const [open, setOpen] = React.useState(false);
@@ -50,14 +52,18 @@ export function ProposeQuestionButton({
   // Only signed-in users can propose.
   if (!session?.user) return null;
 
-  const text = label ?? (presetTopicTitle ? `Ask about ${presetTopicTitle}` : "Propose a question");
+  const text =
+    label ??
+    (presetTopicTitle
+      ? t("proposeQuestionButton.askAbout", { topic: presetTopicTitle })
+      : t("proposeQuestionButton.proposeAQuestion"));
 
   return (
     <>
       {variant === "fab" ? (
         <Button
           onClick={() => setOpen(true)}
-          aria-label="Propose a question"
+          aria-label={t("ugq.proposeQuestion")}
           className={cn(
             "fixed bottom-6 right-6 z-40 h-14 rounded-full shadow-lg",
             "px-5 gap-2",
@@ -65,7 +71,7 @@ export function ProposeQuestionButton({
           )}
         >
           <Plus className="h-5 w-5" />
-          <span className="hidden sm:inline">Propose</span>
+          <span className="hidden sm:inline">{t("proposeQuestionButton.propose")}</span>
         </Button>
       ) : (
         <Button variant="outline" onClick={() => setOpen(true)} className={cn("gap-2", className)}>

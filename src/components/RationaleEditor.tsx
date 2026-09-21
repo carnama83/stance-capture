@@ -6,6 +6,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getSupabase } from "@/lib/supabaseClient";
 import { Pencil, Check, X, Link as LinkIcon, Plus, Trash2 } from "lucide-react";
 import { useLanguage } from "@/hooks/useLanguage";
+import { useTranslation } from "react-i18next";
 
 interface StanceText {
   rationale: string | null;
@@ -17,6 +18,7 @@ interface RationaleEditorProps {
 }
 
 export function RationaleEditor({ questionId }: RationaleEditorProps) {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   // PR 3.6 — recorded with the rationale; see upsert_stance_text.
   //
@@ -135,7 +137,7 @@ export function RationaleEditor({ questionId }: RationaleEditorProps) {
               className="flex items-center gap-1 text-[10px] text-slate-400 hover:text-slate-600 transition-colors"
             >
               <Pencil className="h-2.5 w-2.5" />
-              Edit rationale
+              {t("rationaleEditor.editRationale")}
             </button>
           </div>
         ) : (
@@ -145,7 +147,7 @@ export function RationaleEditor({ questionId }: RationaleEditorProps) {
             className="flex items-center gap-1 text-[10px] text-slate-400 hover:text-slate-600 transition-colors"
           >
             <Pencil className="h-2.5 w-2.5" />
-            Add rationale
+            {t("rationaleEditor.addRationale")}
           </button>
         )}
       </div>
@@ -157,7 +159,7 @@ export function RationaleEditor({ questionId }: RationaleEditorProps) {
       <textarea
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
-        placeholder="Why do you hold this stance? (optional)"
+        placeholder={t("rationaleEditor.whyDoYouHoldThis")}
         rows={2}
         className="w-full rounded border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-800 resize-none focus:outline-none focus:ring-1 focus:ring-blue-400"
       />
@@ -179,7 +181,7 @@ export function RationaleEditor({ questionId }: RationaleEditorProps) {
             value={newLink}
             onChange={(e) => setNewLink(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && addLink()}
-            placeholder="Add a supporting link…"
+            placeholder={t("rationaleEditor.addASupportingLink")}
             className="flex-1 rounded border border-slate-200 bg-white px-2 py-1 text-[10px] focus:outline-none focus:ring-1 focus:ring-blue-400"
           />
           <button
@@ -202,7 +204,7 @@ export function RationaleEditor({ questionId }: RationaleEditorProps) {
           className="flex items-center gap-1 rounded bg-blue-600 px-2 py-1 text-[10px] font-medium text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
         >
           <Check className="h-2.5 w-2.5" />
-          Save
+          {t("comments.save")}
         </button>
         <button
           type="button"
@@ -210,10 +212,10 @@ export function RationaleEditor({ questionId }: RationaleEditorProps) {
           className="flex items-center gap-1 rounded border px-2 py-1 text-[10px] text-slate-600 hover:bg-slate-100 transition-colors"
         >
           <X className="h-2.5 w-2.5" />
-          Cancel
+          {t("auth.cancel")}
         </button>
         {mutation.isError && (
-          <span className="text-[10px] text-red-500">Failed to save.</span>
+          <span className="text-[10px] text-red-500">{t("rationaleEditor.failedToSave")}</span>
         )}
       </div>
     </div>

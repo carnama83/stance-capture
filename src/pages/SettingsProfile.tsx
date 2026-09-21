@@ -39,6 +39,7 @@ import { useUiLanguage } from "../hooks/useUiLanguage";
 import UsernameField from "../components/UsernameField";
 import AvatarUploader from "../components/AvatarUploader";
 import { DobField } from "../components/DobField";
+import { useTranslation } from "react-i18next";
 
 type DisplayHandleMode = "random_id" | "username";
 
@@ -84,6 +85,7 @@ interface DobCorrectionSectionProps {
 }
 
 function DobCorrectionSection({ sb, onDobCleared }: DobCorrectionSectionProps) {
+  const { t } = useTranslation();
   const [open, setOpen]         = React.useState(false);
   const [step, setStep]         = React.useState<"reauth" | "set_dob">("reauth");
   const [password, setPassword] = React.useState("");
@@ -98,19 +100,19 @@ function DobCorrectionSection({ sb, onDobCleared }: DobCorrectionSectionProps) {
         className="text-xs text-slate-500 underline underline-offset-2 hover:text-slate-700"
         onClick={() => setOpen(true)}
       >
-        Correct my date of birth
+        {t("settingsProfile.correctMyDateOfBirth")}
       </button>
     );
   }
 
   async function handleReauth() {
-    if (!sb || !password) { setErr("Enter your current password."); return; }
+    if (!sb || !password) { setErr(t("settingsProfile.enterYourCurrentPassword")); return; }
     setBusy(true);
     setErr("");
     try {
       const { data: sessionData } = await sb.auth.getSession();
       const email = sessionData.session?.user?.email;
-      if (!email) throw new Error("Could not read your email. Please refresh.");
+      if (!email) throw new Error(t("settingsProfile.couldNotReadEmail"));
       const { error } = await sb.auth.signInWithPassword({ email, password });
       if (error) throw error;
       setStep("set_dob");
@@ -122,7 +124,7 @@ function DobCorrectionSection({ sb, onDobCleared }: DobCorrectionSectionProps) {
   }
 
   async function handleClearAndSet() {
-    if (!sb || !newDob) { setErr("Select a new date of birth."); return; }
+    if (!sb || !newDob) { setErr(t("settingsProfile.selectANewDateOf")); return; }
     setBusy(true);
     setErr("");
     try {
@@ -130,8 +132,7 @@ function DobCorrectionSection({ sb, onDobCleared }: DobCorrectionSectionProps) {
       if (clearErr) {
         if (clearErr.message?.includes("function") || clearErr.code === "PGRST202") {
           throw new Error(
-            "The clear_my_dob function is not yet deployed. " +
-            "Please contact support to correct your date of birth.",
+            t("settingsProfile.clearDobNotDeployed"),
           );
         }
         throw clearErr;
@@ -153,16 +154,16 @@ function DobCorrectionSection({ sb, onDobCleared }: DobCorrectionSectionProps) {
 
   return (
     <div className="rounded border border-slate-200 bg-slate-50 p-4 space-y-3 mt-2">
-      <div className="text-sm font-medium">Correct date of birth</div>
+      <div className="text-sm font-medium">{t("settingsProfile.correctDateOfBirth")}</div>
 
       {step === "reauth" && (
         <>
           <p className="text-xs text-slate-500">
-            For security, please confirm your current password before changing your date of birth.
+            {t("settingsProfile.forSecurityPleaseConfirmYour")}
           </p>
           <input
             type="password"
-            placeholder="Current password"
+            placeholder={t("settingsProfile.currentPassword")}
             className="w-full border rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
             value={password}
             onChange={e => setPassword(e.target.value)}
@@ -175,7 +176,7 @@ function DobCorrectionSection({ sb, onDobCleared }: DobCorrectionSectionProps) {
               className="flex-1 border rounded px-3 py-1.5 text-sm"
               onClick={() => { setOpen(false); setErr(""); setPassword(""); }}
             >
-              Cancel
+              {t("auth.cancel")}
             </button>
             <button
               type="button"
@@ -183,7 +184,7 @@ function DobCorrectionSection({ sb, onDobCleared }: DobCorrectionSectionProps) {
               onClick={handleReauth}
               disabled={busy || !password}
             >
-              {busy ? "Verifying…" : "Confirm identity"}
+              {busy ? t("auth.verifying") : t("settingsProfile.confirmIdentity")}
             </button>
           </div>
         </>
@@ -191,7 +192,7 @@ function DobCorrectionSection({ sb, onDobCleared }: DobCorrectionSectionProps) {
 
       {step === "set_dob" && (
         <>
-          <p className="text-xs text-slate-500">Identity confirmed. Select your correct date of birth.</p>
+          <p className="text-xs text-slate-500">{t("settingsProfile.identityConfirmedSelectYourCorrect")}</p>
           <DobField value={newDob} setValue={setNewDob} />
           {err && <p className="text-xs text-rose-600">{err}</p>}
           <div className="flex gap-2">
@@ -200,7 +201,7 @@ function DobCorrectionSection({ sb, onDobCleared }: DobCorrectionSectionProps) {
               className="flex-1 border rounded px-3 py-1.5 text-sm"
               onClick={() => { setStep("reauth"); setErr(""); }}
             >
-              Back
+              {t("auth.back")}
             </button>
             <button
               type="button"
@@ -208,7 +209,7 @@ function DobCorrectionSection({ sb, onDobCleared }: DobCorrectionSectionProps) {
               onClick={handleClearAndSet}
               disabled={busy || !newDob}
             >
-              {busy ? "Saving…" : "Save new date of birth"}
+              {busy ? t("stance.saving") : t("settingsProfile.saveNewDateOfBirth")}
             </button>
           </div>
         </>
@@ -225,12 +226,13 @@ interface DobSetSectionProps {
 }
 
 function DobSetSection({ sb, onDobSet }: DobSetSectionProps) {
+  const { t } = useTranslation();
   const [dob, setDob]   = React.useState("");
   const [err, setErr]   = React.useState("");
   const [busy, setBusy] = React.useState(false);
 
   async function handleSet() {
-    if (!sb || !dob) { setErr("Please select your date of birth."); return; }
+    if (!sb || !dob) { setErr(t("settingsProfile.pleaseSelectYourDateOf")); return; }
     setBusy(true);
     setErr("");
     try {
@@ -247,7 +249,7 @@ function DobSetSection({ sb, onDobSet }: DobSetSectionProps) {
   return (
     <div className="space-y-3">
       <p className="text-xs text-slate-500">
-        Your date of birth has not been set. It is used for age verification and optional age display.
+        {t("settingsProfile.yourDateOfBirthHas")}
       </p>
       <DobField value={dob} setValue={setDob} />
       {err && <p className="text-xs text-rose-600">{err}</p>}
@@ -257,7 +259,7 @@ function DobSetSection({ sb, onDobSet }: DobSetSectionProps) {
         onClick={handleSet}
         disabled={busy || !dob}
       >
-        {busy ? "Saving…" : "Save date of birth"}
+        {busy ? t("stance.saving") : t("settingsProfile.saveDateOfBirth")}
       </button>
     </div>
   );
@@ -277,6 +279,7 @@ interface WhatsAppPhoneSectionProps {
 }
 
 function WhatsAppPhoneSection({ sb, uid }: WhatsAppPhoneSectionProps) {
+  const { t } = useTranslation();
   const [step, setStep]                     = React.useState<WhatsAppPhoneStep>("idle");
   const [phone, setPhone]                   = React.useState("");
   const [otp, setOtp]                       = React.useState("");
@@ -305,7 +308,7 @@ function WhatsAppPhoneSection({ sb, uid }: WhatsAppPhoneSectionProps) {
   async function handleSendOtp() {
     setErr("");
     if (!isValidE164(phone)) {
-      setErr("Enter a valid number in international format, e.g. +919876543210 or +19787993684");
+      setErr(t("settingsProfile.enterAValidNumberIn"));
       return;
     }
     setBusy(true);
@@ -352,14 +355,14 @@ function WhatsAppPhoneSection({ sb, uid }: WhatsAppPhoneSectionProps) {
         const reason = data.reason ?? data.error ?? data.message ?? "unknown";
         throw new Error(
           data.reason === "opted_out"
-            ? "This number has opted out of WhatsApp messages. Reply START on WhatsApp first."
-            : `Could not send verification message (${reason}). Check the Supabase Edge Function logs for details.`
+            ? t("settingsProfile.numberOptedOut")
+            : t("settingsProfile.couldNotSendVerification", { reason })
         );
       }
       // Store verification token returned by the Edge Function
       setVerificationToken(data.verification_token);
       setStep("enter_otp");
-      setMsg("A 6-digit verification code has been sent to your WhatsApp.");
+      setMsg(t("settingsProfile.a6DigitVerificationCode"));
     } catch (e: any) {
       setErr(e.message ?? "Failed to send verification message.");
     } finally {
@@ -370,11 +373,11 @@ function WhatsAppPhoneSection({ sb, uid }: WhatsAppPhoneSectionProps) {
   async function handleVerifyOtp() {
     setErr("");
     if (!otp || otp.length !== 6) {
-      setErr("Enter the 6-digit code from WhatsApp.");
+      setErr(t("auth.enterSixDigitCodeWhatsApp"));
       return;
     }
     if (!verificationToken) {
-      setErr("Verification session expired. Please request a new code.");
+      setErr(t("auth.verificationExpired"));
       setStep("enter_phone");
       return;
     }
@@ -389,14 +392,14 @@ function WhatsAppPhoneSection({ sb, uid }: WhatsAppPhoneSectionProps) {
         const msg = error.message.toLowerCase();
         throw new Error(
           msg.includes("invalid")
-            ? "Incorrect or expired code. Please try again."
+            ? t("settingsProfile.incorrectOrExpiredCode")
             : msg.includes("duplicate key") || msg.includes("verified_phone_hash")
-            ? "This WhatsApp number is already linked to another account."
+            ? t("settingsProfile.numberAlreadyLinked")
             : error.message
         );
       }
       setStep("verified");
-      setMsg("WhatsApp number verified. You can now send interactive stance questions to contacts.");
+      setMsg(t("settingsProfile.whatsappNumberVerifiedYouCan"));
       setPhone("");
       setOtp("");
       setVerificationToken(null);
@@ -417,7 +420,7 @@ function WhatsAppPhoneSection({ sb, uid }: WhatsAppPhoneSectionProps) {
         .eq("user_id", uid);
       if (error) throw error;
       setStep("idle");
-      setMsg("WhatsApp number removed.");
+      setMsg(t("settingsProfile.whatsappNumberRemoved"));
     } catch (e: any) {
       setErr(e.message ?? "Failed to remove number.");
     } finally {
@@ -427,10 +430,9 @@ function WhatsAppPhoneSection({ sb, uid }: WhatsAppPhoneSectionProps) {
 
   return (
     <div className="rounded border p-3 space-y-3">
-      <div className="text-sm font-medium">WhatsApp number</div>
+      <div className="text-sm font-medium">{t("settingsProfile.whatsappNumber")}</div>
       <p className="text-xs text-slate-500">
-        Add your WhatsApp number to send interactive stance questions directly to your contacts.
-        Your number is stored as a one-way hash — it cannot be read or shared.
+        {t("settingsProfile.addYourWhatsappNumberTo")}
       </p>
 
       {msg && <p className="text-xs text-emerald-600">{msg}</p>}
@@ -441,7 +443,7 @@ function WhatsAppPhoneSection({ sb, uid }: WhatsAppPhoneSectionProps) {
         <div className="flex items-center justify-between rounded border border-emerald-200 bg-emerald-50 px-3 py-2">
           <div className="flex items-center gap-2">
             <span className="text-emerald-600 text-sm">✓</span>
-            <span className="text-sm text-emerald-800 font-medium">WhatsApp number verified</span>
+            <span className="text-sm text-emerald-800 font-medium">{t("settingsProfile.whatsappNumberVerified")}</span>
           </div>
           <button
             type="button"
@@ -449,7 +451,7 @@ function WhatsAppPhoneSection({ sb, uid }: WhatsAppPhoneSectionProps) {
             onClick={handleRemove}
             disabled={busy}
           >
-            Remove
+            {t("settingsProfile.remove")}
           </button>
         </div>
       )}
@@ -461,7 +463,7 @@ function WhatsAppPhoneSection({ sb, uid }: WhatsAppPhoneSectionProps) {
           className="rounded border border-slate-300 px-3 py-1.5 text-sm hover:border-slate-400 transition-colors"
           onClick={() => { setStep("enter_phone"); setErr(""); setMsg(""); }}
         >
-          Add WhatsApp number
+          {t("settingsProfile.addWhatsappNumber")}
         </button>
       )}
 
@@ -477,7 +479,7 @@ function WhatsAppPhoneSection({ sb, uid }: WhatsAppPhoneSectionProps) {
             autoComplete="tel"
           />
           <p className="text-[11px] text-slate-400">
-            Include your country code, e.g. +91 for India, +1 for US.
+            {t("settingsProfile.includeYourCountryCodeE")}
           </p>
           <div className="flex gap-2">
             <button
@@ -485,7 +487,7 @@ function WhatsAppPhoneSection({ sb, uid }: WhatsAppPhoneSectionProps) {
               className="flex-1 border rounded px-3 py-1.5 text-sm"
               onClick={() => { setStep("idle"); setErr(""); setPhone(""); }}
             >
-              Cancel
+              {t("auth.cancel")}
             </button>
             <button
               type="button"
@@ -493,7 +495,7 @@ function WhatsAppPhoneSection({ sb, uid }: WhatsAppPhoneSectionProps) {
               onClick={handleSendOtp}
               disabled={busy || !phone}
             >
-              {busy ? "Sending…" : "Send verification code"}
+              {busy ? t("webOptIn.sending") : t("settingsProfile.sendVerificationCode")}
             </button>
           </div>
         </div>
@@ -503,7 +505,7 @@ function WhatsAppPhoneSection({ sb, uid }: WhatsAppPhoneSectionProps) {
       {step === "enter_otp" && (
         <div className="space-y-2">
           <p className="text-xs text-slate-500">
-            Enter the 6-digit code sent to <span className="font-medium">{phone}</span> on WhatsApp.
+            {t("settingsProfile.enterCodeSentTo", { number: phone })}
           </p>
           <input
             type="text"
@@ -520,7 +522,7 @@ function WhatsAppPhoneSection({ sb, uid }: WhatsAppPhoneSectionProps) {
               className="flex-1 border rounded px-3 py-1.5 text-sm"
               onClick={() => { setStep("enter_phone"); setErr(""); setOtp(""); setVerificationToken(null); }}
             >
-              Back
+              {t("auth.back")}
             </button>
             <button
               type="button"
@@ -528,7 +530,7 @@ function WhatsAppPhoneSection({ sb, uid }: WhatsAppPhoneSectionProps) {
               onClick={handleVerifyOtp}
               disabled={busy || otp.length !== 6}
             >
-              {busy ? "Verifying…" : "Verify"}
+              {busy ? t("auth.verifying") : t("auth.verify")}
             </button>
           </div>
           <button
@@ -537,7 +539,7 @@ function WhatsAppPhoneSection({ sb, uid }: WhatsAppPhoneSectionProps) {
             onClick={handleSendOtp}
             disabled={busy}
           >
-            Resend code
+            {t("settingsProfile.resendCode")}
           </button>
         </div>
       )}
@@ -548,6 +550,7 @@ function WhatsAppPhoneSection({ sb, uid }: WhatsAppPhoneSectionProps) {
 // ── Main page ────────────────────────────────────────────────────────────────
 
 export default function SettingsProfile() {
+  const { t } = useTranslation();
   const sb = React.useMemo(getSupabase, []);
   const queryClient = useQueryClient();
 
@@ -645,8 +648,8 @@ export default function SettingsProfile() {
   React.useEffect(() => {
     let cancelled = false;
     (async () => {
-      if (!sb) return setMsg("Supabase is OFF (check env).");
-      if (!sessionUserId) { setUid(""); setMsg("Please log in."); return; }
+      if (!sb) return setMsg(t("auth.supabaseOff"));
+      if (!sessionUserId) { setUid(""); setMsg(t("settingsProfile.pleaseLogIn")); return; }
       try {
         setMsg(null);
         const { data, error } = await sb
@@ -684,8 +687,8 @@ export default function SettingsProfile() {
   // ── Save bio / avatar / show_age ──
   async function saveProfile() {
     setMsg(null);
-    if (!sb) return setMsg("Supabase is OFF (check env).");
-    if (!uid) return setMsg("Session not ready. Please wait a moment and try again.");
+    if (!sb) return setMsg(t("auth.supabaseOff"));
+    if (!uid) return setMsg(t("settingsProfile.sessionNotReadyPleaseWait"));
     try {
       setBusy(true);
       const update: Record<string, any> = {
@@ -698,7 +701,7 @@ export default function SettingsProfile() {
       }
       const { error } = await sb.from("profiles").update(update).eq("user_id", uid);
       if (error) throw error;
-      setMsg("Profile saved.");
+      setMsg(t("settingsProfile.profileSaved"));
     } catch (e: any) {
       setMsg(e.message || "Could not save profile");
     } finally {
@@ -711,8 +714,8 @@ export default function SettingsProfile() {
   // profile" button, since a language switch should just take effect.
   async function setLanguage(code: string) {
     setMsg(null);
-    if (!sb) return setMsg("Supabase is OFF (check env).");
-    if (!uid) return setMsg("Session not ready. Please wait a moment and try again.");
+    if (!sb) return setMsg(t("auth.supabaseOff"));
+    if (!uid) return setMsg(t("settingsProfile.sessionNotReadyPleaseWait"));
     // Skip ONLY when the profile and the language actually on screen already
     // agree. Comparing against the profile alone made this control inert in
     // precisely the state it exists to repair: profile says Hindi, a stale
@@ -735,7 +738,7 @@ export default function SettingsProfile() {
       // which is exactly what it exists for.
       setUiLanguageCode(code);
       setForm(f => ({ ...f, preferred_language_code: code }));
-      setMsg("Language updated.");
+      setMsg(t("settingsProfile.languageUpdated"));
       // Must match useLanguage's own queryKey (["preferred-language", userId])
       // exactly — otherwise the feed/question pages keep serving the OLD
       // cached preference until an unrelated navigation happens to refetch it.
@@ -755,8 +758,8 @@ export default function SettingsProfile() {
   // their own feed; nobody has it widened for them.
   async function setShowUnavailable(next: boolean) {
     setMsg(null);
-    if (!sb) return setMsg("Supabase is OFF (check env).");
-    if (!uid) return setMsg("Session not ready. Please wait a moment and try again.");
+    if (!sb) return setMsg(t("auth.supabaseOff"));
+    if (!uid) return setMsg(t("settingsProfile.sessionNotReadyPleaseWait"));
     try {
       setBusy(true);
       const { error } = await sb
@@ -765,7 +768,9 @@ export default function SettingsProfile() {
         .eq("user_id", uid);
       if (error) throw error;
       setForm(f => ({ ...f, show_unavailable_language: next }));
-      setMsg(next ? "Showing questions not yet in your language." : "Showing only questions available in your language.");
+      setMsg(next
+        ? t("settingsProfile.showingUnavailableLanguage")
+        : t("settingsProfile.showingOnlyMyLanguage"));
       // Same cache key the feed reads its language preference under; without
       // this the feed keeps serving the previous eligibility until an unrelated
       // navigation refetches.
@@ -782,11 +787,11 @@ export default function SettingsProfile() {
     if (busy) return;
     setMsg(null);
     setLastUsernameError(null);
-    if (!sb) return setMsg("Supabase is OFF (check env).");
+    if (!sb) return setMsg(t("auth.supabaseOff"));
     const desired = (form.username || "").trim().toLowerCase();
     const current = (initialUsername || "").trim().toLowerCase();
-    if (!desired) { setMsg("Enter a username first."); return; }
-    if (desired === current) { setMsg("That's already your current username."); return; }
+    if (!desired) { setMsg(t("settingsProfile.enterAUsernameFirst")); return; }
+    if (desired === current) { setMsg(t("settingsProfile.thatSAlreadyYourCurrent")); return; }
     try {
       setBusy(true);
       const res = await sb.rpc("set_username", { p_username: desired });
@@ -794,15 +799,15 @@ export default function SettingsProfile() {
         setLastUsernameError({ code: res.error.code, message: res.error.message });
         const raw = String(res.error.message || "").trim();
         if (raw.startsWith("ERR_USERNAME_LIMIT") || raw.toLowerCase().includes("username change limit")) {
-          setMsg("You've hit the username change limit (2 changes per 30 days). Try again later.");
+          setMsg(t("settingsProfile.youVeHitTheUsername"));
         } else if (raw.toLowerCase().includes("reserved")) {
-          setMsg("That username is reserved. Please choose another.");
+          setMsg(t("settingsProfile.thatUsernameIsReservedPlease"));
         } else if (raw.toLowerCase().includes("taken") || res.error.code === "23505") {
-          setMsg("That username is already taken.");
+          setMsg(t("settingsProfile.thatUsernameIsAlreadyTaken"));
         } else if (raw.toLowerCase().includes("invalid username")) {
-          setMsg("Invalid username. Use 3–20 characters: a–z, 0–9, underscore.");
+          setMsg(t("settingsProfile.invalidUsernameUse320"));
         } else if (raw.toLowerCase().includes("not authenticated")) {
-          setMsg("Session not detected. Please refresh and try again.");
+          setMsg(t("settingsProfile.sessionNotDetectedPleaseRefresh"));
         } else {
           setMsg(`Username update failed: ${raw}`);
         }
@@ -810,7 +815,7 @@ export default function SettingsProfile() {
       }
       setForm(f => ({ ...f, username: desired }));
       setInitialUsername(desired);
-      setMsg("Username updated.");
+      setMsg(t("settingsProfile.usernameUpdated"));
       queryClient.invalidateQueries({ queryKey: ["profile", uid] });
       if (form.display_handle_mode === "username") setHandle(desired || randomId);
 
@@ -835,9 +840,9 @@ export default function SettingsProfile() {
   // ── Display handle ──
   async function setDisplay(mode: DisplayHandleMode) {
     setMsg(null);
-    if (!sb) return setMsg("Supabase is OFF (check env).");
+    if (!sb) return setMsg(t("auth.supabaseOff"));
     if (mode === "username" && !form.username) {
-      setMsg('Set a username before choosing "username" display mode.');
+      setMsg(t("settingsProfile.setAUsernameBeforeChoosing"));
       return;
     }
     try {
@@ -846,7 +851,7 @@ export default function SettingsProfile() {
       if (error) throw error;
       setForm(f => ({ ...f, display_handle_mode: mode }));
       setHandle(mode === "username" ? (form.username || randomId) : randomId);
-      setMsg("Display handle updated.");
+      setMsg(t("settingsProfile.displayHandleUpdated"));
       queryClient.invalidateQueries({ queryKey: ["profile", uid] });
     } catch (e: any) {
       setMsg(e.message || "Could not update display mode");
@@ -862,13 +867,13 @@ export default function SettingsProfile() {
 
   return (
     <div className="mx-auto max-w-xl p-6 space-y-4">
-      <h1 className="text-2xl font-bold">Profile settings</h1>
+      <h1 className="text-2xl font-bold">{t("settingsProfile.profileSettings")}</h1>
       {msg && <p className="text-sm text-slate-700">{msg}</p>}
 
       {/* Debug: username error */}
       {lastUsernameError && (
         <div className="rounded border p-3 text-xs bg-white">
-          <div className="font-medium mb-1">set_username error (debug)</div>
+          <div className="font-medium mb-1">{t("settingsProfile.setUsernameErrorDebug")}</div>
           <pre className="whitespace-pre-wrap break-words">
             {JSON.stringify(lastUsernameError, null, 2)}
           </pre>
@@ -877,20 +882,20 @@ export default function SettingsProfile() {
 
       {/* Random ID */}
       <div className="rounded border p-3 space-y-1">
-        <div className="text-sm font-medium">Your Random ID (read-only)</div>
+        <div className="text-sm font-medium">{t("settingsProfile.yourRandomIdReadOnly")}</div>
         <div className="text-sm text-slate-700 break-all">
-          {randomId ? randomId : <span className="text-slate-500">Loading…</span>}
+          {randomId ? randomId : <span className="text-slate-500">{t("common.loading")}</span>}
         </div>
         <div className="text-xs text-slate-500">
-          Generated at registration and cannot be changed.
+          {t("settingsProfile.generatedAtRegistrationAndCannot")}
         </div>
       </div>
 
       {/* Username */}
       <div className="rounded border p-3 space-y-2">
-        <div className="text-sm font-medium">Username</div>
+        <div className="text-sm font-medium">{t("settingsPrivacy.username")}</div>
         <div className="text-xs text-slate-500">
-          You can update your username (subject to rules/limits enforced by the server).
+          {t("settingsProfile.youCanUpdateYourUsername")}
         </div>
         <UsernameField
           value={form.username}
@@ -900,11 +905,11 @@ export default function SettingsProfile() {
         {/* M-A05: quota display */}
         {usernameQuota && (
           <p className={"text-xs " + (usernameQuota.used >= usernameQuota.limit ? "text-rose-600 font-medium" : "text-slate-500")}>
-            {usernameQuota.used} of {usernameQuota.limit} username changes used in the last 30 days
+            {t("settingsProfile.usernameQuota", { used: usernameQuota.used, limit: usernameQuota.limit })}
             {usernameQuota.resetsInDays != null
-              ? ` (resets in ${usernameQuota.resetsInDays} day${usernameQuota.resetsInDays === 1 ? "" : "s"})`
+              ? " " + t("settingsProfile.resetsInDays", { count: usernameQuota.resetsInDays })
               : ""}
-            .{usernameQuota.used >= usernameQuota.limit ? " You cannot change your username again until the limit resets." : ""}
+            .{usernameQuota.used >= usernameQuota.limit ? t("settingsProfile.youCannotChangeYourUsername") : ""}
           </p>
         )}
 
@@ -915,16 +920,16 @@ export default function SettingsProfile() {
             onClick={updateUsername}
             disabled={busy || !isUsernameSet || !isUsernameChanged || (!!usernameQuota && usernameQuota.used >= usernameQuota.limit)}
           >
-            {isUsernameSet ? "Update Username" : "Set Username"}
+            {isUsernameSet ? t("settingsProfile.updateUsername") : t("settingsProfile.setUsername")}
           </button>
         </div>
       </div>
 
       {/* Display choice */}
       <div className="rounded border p-3 space-y-2">
-        <div className="text-sm font-medium">Public display</div>
+        <div className="text-sm font-medium">{t("settingsProfile.publicDisplay")}</div>
         <div className="text-xs text-slate-500">
-          Choose what other users see on your stances/comments/posts.
+          {t("settingsProfile.chooseWhatOtherUsersSee")}
         </div>
         <div className="flex flex-wrap gap-2">
           <button
@@ -938,7 +943,7 @@ export default function SettingsProfile() {
             disabled={busy}
             aria-pressed={form.display_handle_mode === "random_id"}
           >
-            Use Random ID {form.display_handle_mode === "random_id" ? "✓" : ""}
+            {t("settingsProfile.useRandomId")} {form.display_handle_mode === "random_id" ? "✓" : ""}
           </button>
           <button
             type="button"
@@ -950,13 +955,13 @@ export default function SettingsProfile() {
             onClick={() => setDisplay("username")}
             disabled={busy || !isUsernameSet}
             aria-pressed={form.display_handle_mode === "username"}
-            title={!isUsernameSet ? "Set a username first" : ""}
+            title={!isUsernameSet ? t("profile.setAUsernameFirst") : ""}
           >
-            Use Username {form.display_handle_mode === "username" ? "✓" : ""}
+            {t("settingsProfile.useUsername")} {form.display_handle_mode === "username" ? "✓" : ""}
           </button>
         </div>
         <div className="text-xs text-slate-600">
-          Currently showing: <span className="font-medium">{handle || "(unknown)"}</span>
+          {t("settingsProfile.currentlyShowing")} <span className="font-medium">{handle || t("settingsProfile.unknown")}</span>
         </div>
       </div>
 
@@ -965,7 +970,7 @@ export default function SettingsProfile() {
         <textarea
           className="w-full border rounded px-3 py-2"
           rows={3}
-          placeholder="Bio"
+          placeholder={t("settingsProfile.bio")}
           maxLength={BIO_MAX}
           value={form.bio}
           onChange={e => setForm(f => ({ ...f, bio: e.target.value }))}
@@ -977,7 +982,7 @@ export default function SettingsProfile() {
 
       {/* M-A07: Age opt-in toggle */}
       <div className="rounded border p-3 space-y-2">
-        <div className="text-sm font-medium">Age display</div>
+        <div className="text-sm font-medium">{t("settingsProfile.ageDisplay")}</div>
         <label className="flex items-center gap-2 cursor-pointer select-none">
           <input
             type="checkbox"
@@ -985,23 +990,21 @@ export default function SettingsProfile() {
             onChange={e => setForm(f => ({ ...f, show_age: e.target.checked }))}
             className="h-4 w-4 rounded border-slate-300"
           />
-          <span className="text-sm text-slate-700">Show my age on my public profile</span>
+          <span className="text-sm text-slate-700">{t("settingsProfile.showMyAgeOnMy")}</span>
         </label>
         <p className="text-xs text-slate-500">
-          When enabled, your age (calculated from your date of birth) is visible on your profile.
+          {t("settingsProfile.whenEnabledYourAgeCalculated")}
         </p>
       </div>
 
       {/* Language preference */}
       <div className="rounded border p-3 space-y-2">
-        <div className="text-sm font-medium">Language</div>
+        <div className="text-sm font-medium">{t("nav.languageToggle")}</div>
         <div className="text-xs text-slate-500">
-          Choose which language questions display in. You will only see questions whose
-          wording has been verified to ask the same thing in that language — everyone
-          answering a question answers the same question, whichever language they read it in.
+          {t("settingsProfile.chooseWhichLanguageQuestionsDisplay")}
         </div>
         {activeLanguages.length === 0 ? (
-          <div className="text-xs text-slate-400 italic">No additional languages available yet.</div>
+          <div className="text-xs text-slate-400 italic">{t("settingsProfile.noAdditionalLanguagesAvailableYet")}</div>
         ) : (
           <div className="flex flex-wrap gap-2">
             {activeLanguages.map(lang => (
@@ -1031,9 +1034,9 @@ export default function SettingsProfile() {
             disabled={busy}
           />
           <span className="text-xs text-slate-600">
-            Also show questions not yet available in my language
+            {t("settingsProfile.alsoShowQuestionsNotYet")}
             <span className="block text-slate-400">
-              They appear in their original language. Off by default.
+              {t("settingsProfile.theyAppearInTheirOriginal")}
             </span>
           </span>
         </label>
@@ -1041,21 +1044,21 @@ export default function SettingsProfile() {
 
       {/* M-A06: DOB — set if unset, greyed out if already set */}
       <div className="rounded border p-3 space-y-2">
-        <div className="text-sm font-medium">Date of birth</div>
+        <div className="text-sm font-medium">{t("settingsProfile.dateOfBirth")}</div>
         {dobSet ? (
           <>
             <p className="text-xs text-slate-500">
-              Your date of birth is set and encrypted. It cannot be viewed, only corrected.
+              {t("settingsProfile.yourDateOfBirthIs")}
             </p>
             <div className="flex items-center gap-2 rounded border border-slate-200 bg-slate-50 px-3 py-2 opacity-60 cursor-not-allowed select-none">
               <span className="text-sm text-slate-500">••••-••-••</span>
-              <span className="text-xs text-slate-400 ml-auto">Locked</span>
+              <span className="text-xs text-slate-400 ml-auto">{t("settingsProfile.locked")}</span>
             </div>
             <DobCorrectionSection
               sb={sb}
               onDobCleared={() => {
                 setDobSet(false);
-                setMsg("Date of birth updated successfully.");
+                setMsg(t("settingsProfile.dateOfBirthUpdatedSuccessfully"));
               }}
             />
           </>
@@ -1064,7 +1067,7 @@ export default function SettingsProfile() {
             sb={sb}
             onDobSet={() => {
               setDobSet(true);
-              setMsg("Date of birth saved.");
+              setMsg(t("settingsProfile.dateOfBirthSaved"));
             }}
           />
         )}
@@ -1089,7 +1092,7 @@ export default function SettingsProfile() {
         onClick={saveProfile}
         disabled={busy}
       >
-        {busy ? "Saving…" : "Save changes"}
+        {busy ? t("stance.saving") : t("settingsProfile.saveChanges")}
       </button>
     </div>
   );

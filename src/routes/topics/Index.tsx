@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { getSupabase } from "@/lib/supabaseClient";
 import PageLayout from "@/components/PageLayout";
 import { FollowTopicButton } from "@/components/FollowTopicButton";
+import { useTranslation } from "react-i18next";
 
 type Session = import("@supabase/supabase-js").Session;
 
@@ -85,6 +86,7 @@ function trendLabel(score?: number | null, activity?: number | null) {
 type TabKey = "trending" | "all" | "following";
 
 export default function TopicsIndex() {
+  const { t: tr } = useTranslation();
   const supabase = getSupabase()!;
   const navigate = useNavigate();
   const session = useSupabaseSession();
@@ -276,13 +278,13 @@ export default function TopicsIndex() {
   const emptyState =
     !isLoading &&
     (tab === "following" && !isAuthed
-      ? "Log in to see topics you follow."
+      ? "index.logInToSeeFollowed"
       : filtered.length === 0
       ? tab === "trending"
-        ? "No trending topics yet."
+        ? "index.noTrendingTopicsYet"
         : tab === "following"
-        ? "You aren’t following any topics yet."
-        : "No topics yet."
+        ? "index.notFollowingAnyTopics"
+        : "index.noTopicsYet"
       : null);
 
   return (
@@ -291,16 +293,16 @@ export default function TopicsIndex() {
         {/* Header */}
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h1 className="text-xl font-semibold text-slate-900">Explore Topics</h1>
+            <h1 className="text-xl font-semibold text-slate-900">{tr("index.exploreTopics")}</h1>
             <p className="text-sm text-slate-600">
-              Browse what’s happening, follow topics, and dive into the questions inside each topic.
+              {tr("index.browseWhatSHappeningFollow")}
             </p>
           </div>
           <button
             className="rounded border px-3 py-1.5 text-sm hover:bg-slate-50"
             onClick={() => navigate("/")}
           >
-            ← Back to Home
+            {tr("index.backToHome")}
           </button>
         </div>
 
@@ -314,7 +316,7 @@ export default function TopicsIndex() {
               onClick={() => setTab("trending")}
               type="button"
             >
-              Trending
+              {tr("trending.badgeSteady")}
             </button>
             <button
               className={`px-3 py-1.5 text-sm border-l ${
@@ -323,7 +325,7 @@ export default function TopicsIndex() {
               onClick={() => setTab("all")}
               type="button"
             >
-              All
+              {tr("common.all")}
             </button>
             <button
               className={`px-3 py-1.5 text-sm border-l ${
@@ -332,9 +334,9 @@ export default function TopicsIndex() {
               onClick={() => setTab("following")}
               type="button"
               disabled={!isAuthed}
-              title={!isAuthed ? "Log in to view followed topics" : undefined}
+              title={!isAuthed ? tr("index.logInToViewFollowed") : undefined}
             >
-              Following
+              {tr("question.following")}
             </button>
           </div>
 
@@ -342,7 +344,7 @@ export default function TopicsIndex() {
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search topics…"
+              placeholder={tr("index.searchTopics")}
               className="w-full rounded-lg border px-3 py-2 text-sm bg-white"
             />
           </div>
@@ -350,9 +352,9 @@ export default function TopicsIndex() {
 
         {/* Body */}
         {isLoading ? (
-          <div className="text-sm text-slate-500">Loading…</div>
+          <div className="text-sm text-slate-500">{tr("common.loading")}</div>
         ) : emptyState ? (
-          <div className="text-sm text-slate-500">{emptyState}</div>
+          <div className="text-sm text-slate-500">{tr(emptyState as string)}</div>
         ) : (
           <>
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -392,7 +394,7 @@ export default function TopicsIndex() {
                     {t.summary ? (
                       <p className="text-sm text-slate-600 line-clamp-3">{t.summary}</p>
                     ) : (
-                      <p className="text-sm text-slate-400 italic">No summary yet.</p>
+                      <p className="text-sm text-slate-400 italic">{tr("index.noSummaryYet")}</p>
                     )}
 
                     {t.tags && t.tags.length > 0 && (
@@ -413,7 +415,7 @@ export default function TopicsIndex() {
 
                     <div className="pt-2 border-t flex items-center justify-between gap-2">
                       <div className="text-[11px] text-slate-500">
-                        {dateText ? <>Updated {dateText}</> : <>&nbsp;</>}
+                        {dateText ? <>{tr("common.updated")} {dateText}</> : <>&nbsp;</>}
                       </div>
 
                       {showTrending && (
@@ -433,7 +435,7 @@ export default function TopicsIndex() {
                         to={`/topics/${t.id}`}
                         className="inline-flex items-center justify-center w-full rounded bg-slate-900 text-white px-3 py-2 text-sm hover:bg-slate-800"
                       >
-                        View topic
+                        {tr("stance.viewTopic")}
                       </Link>
                     </div>
                   </div>
@@ -453,7 +455,7 @@ export default function TopicsIndex() {
                     allPageQ.refetch();
                   }}
                 >
-                  Load more
+                  {tr("index.loadMore")}
                 </button>
               </div>
             )}

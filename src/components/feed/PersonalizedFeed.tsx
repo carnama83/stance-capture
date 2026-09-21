@@ -20,6 +20,7 @@ import { MessageSquare, TrendingUp, Sparkles } from 'lucide-react';
 import { useEffect } from 'react';
 import { QuestionPhaseBadge } from '@/components/question/QuestionPhaseBadge'; // ✨ NEW IMPORT
 import { QuestionCoverImage } from '@/components/question/QuestionCoverImage';
+import { useTranslation } from "react-i18next";
 
 // ✨ Extended type with phase information (already has phase and is_new_phase)
 interface FeedQuestion {
@@ -43,6 +44,7 @@ interface FeedQuestion {
 }
 
 export function PersonalizedFeed() {
+  const { t } = useTranslation();
   const supabase = getSupabase();
   const queryClient = useQueryClient();
   
@@ -144,10 +146,10 @@ export function PersonalizedFeed() {
     return (
       <Alert variant="destructive">
         <AlertDescription>
-          Failed to load your personalized feed. 
+          {t("personalizedFeed.failedToLoadYourPersonalized")} 
           {error instanceof Error && (
             <div className="mt-2 text-xs">
-              Error: {error.message}
+              {t("personalizedFeed.error")} {error.message}
             </div>
           )}
           <div className="mt-2">
@@ -155,7 +157,7 @@ export function PersonalizedFeed() {
               onClick={() => window.location.reload()} 
               className="text-sm underline"
             >
-              Try refreshing the page
+              {t("personalizedFeed.tryRefreshingThePage")}
             </button>
           </div>
         </AlertDescription>
@@ -170,10 +172,10 @@ export function PersonalizedFeed() {
           <MessageSquare className="h-12 w-12 mx-auto mb-2" />
         </div>
         <h3 className="text-lg font-medium text-slate-700 mb-2">
-          No questions available
+          {t("personalizedFeed.noQuestionsAvailable")}
         </h3>
         <p className="text-sm text-slate-500">
-          Check back later for new questions tailored to your interests.
+          {t("personalizedFeed.checkBackLaterForNew")}
         </p>
       </Card>
     );
@@ -220,14 +222,14 @@ export function PersonalizedFeed() {
                 {q.is_new_phase && (
                   <Badge variant="default" className="bg-blue-600 text-xs">
                     <Sparkles className="h-3 w-3 mr-1" />
-                    New Update
+                    {t("personalizedFeed.newUpdate")}
                   </Badge>
                 )}
                 
                 {/* State Badge */}
                 {q.state === 'new' && (
                   <Badge variant="secondary" className="text-xs">
-                    🆕 New
+                    {t("personalizedFeed.new")}
                   </Badge>
                 )}
                 
@@ -235,7 +237,7 @@ export function PersonalizedFeed() {
                 {q.is_trending && (
                   <Badge variant="outline" className="border-orange-300 text-orange-700 text-xs">
                     <TrendingUp className="h-3 w-3 mr-1" />
-                    Trending
+                    {t("trending.badgeSteady")}
                   </Badge>
                 )}
               </div>
@@ -267,10 +269,10 @@ export function PersonalizedFeed() {
               <div className="flex items-center gap-4">
                 <span className="flex items-center gap-1">
                   <MessageSquare className="h-3.5 w-3.5" />
-                  {q.response_count} {q.response_count === 1 ? 'stance recorded' : 'stances recorded'}
+                  {t("common.stancesRecordedCount", { count: q.response_count })}
                 </span>
                 {q.user_has_answered && (
-                  <span className="text-blue-600">✓ You answered</span>
+                  <span className="text-blue-600">{t("personalizedFeed.youAnswered")}</span>
                 )}
               </div>
               <span>

@@ -82,12 +82,12 @@ export function IncidentSummaryCard({
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-amber-700">
             {dateLabel && (
               <span>
-                <span className="font-medium">When:</span> {dateLabel}
+                <span className="font-medium">{t("incidentSummary.when")}</span> {dateLabel}
               </span>
             )}
             {institutionCategories.length > 0 && (
               <span className="capitalize">
-                <span className="font-medium">Category:</span>{" "}
+                <span className="font-medium">{t("incidentSummary.category")}</span>{" "}
                 {institutionCategories.join(", ")}
               </span>
             )}

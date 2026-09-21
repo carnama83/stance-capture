@@ -9,6 +9,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Share2, ExternalLink, TrendingUp } from "lucide-react";
 import { Link } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 
 interface ShareStat {
   question_id: string;
@@ -31,6 +32,7 @@ function useMyShareStats() {
 }
 
 export function ShareStatsCard() {
+  const { t } = useTranslation();
   const { data: stats, isLoading } = useMyShareStats();
 
   // Only show if user has shared something
@@ -44,8 +46,8 @@ export function ShareStatsCard() {
       {/* Header */}
       <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
         <Share2 className="h-4 w-4 text-slate-400" />
-        <h3 className="text-sm font-semibold text-slate-800">Your shares</h3>
-        <span className="ml-auto text-xs text-slate-400">{totalShares} share{totalShares !== 1 ? "s" : ""} · {totalClicks} view{totalClicks !== 1 ? "s" : ""}</span>
+        <h3 className="text-sm font-semibold text-slate-800">{t("shareStats.yourShares")}</h3>
+        <span className="ml-auto text-xs text-slate-400">{t("shareStats.shareCount", { count: totalShares })} · {t("shareStats.viewCount", { count: totalClicks })}</span>
       </div>
 
       {/* Stats rows */}
@@ -59,18 +61,18 @@ export function ShareStatsCard() {
               </p>
               <p className="text-xs text-slate-400 mt-1">
                 {stat.total_clicks > 0 ? (
-                  <span className="text-emerald-600 font-medium">{stat.total_clicks} view{stat.total_clicks !== 1 ? "s" : ""}</span>
+                  <span className="text-emerald-600 font-medium">{t("shareStats.viewCount", { count: stat.total_clicks })}</span>
                 ) : (
-                  <span>No clicks yet</span>
+                  <span>{t("shareStats.noClicksYet")}</span>
                 )}
                 {" · "}
-                {stat.total_shares} share{stat.total_shares !== 1 ? "s" : ""}
+                {t("shareStats.shareCount", { count: stat.total_shares })}
               </p>
             </div>
             <Link
               to={`/q/${stat.question_id}`}
               className="shrink-0 p-1 text-slate-300 hover:text-slate-500 transition-colors"
-              title="View question"
+              title={t("shareStats.viewQuestion")}
             >
               <ExternalLink className="h-3.5 w-3.5" />
             </Link>
@@ -80,7 +82,7 @@ export function ShareStatsCard() {
 
       {stats.length > 5 && (
         <div className="px-4 py-2 border-t border-slate-100">
-          <p className="text-xs text-slate-400 text-center">+{stats.length - 5} more shared questions</p>
+          <p className="text-xs text-slate-400 text-center">{t("shareStats.moreShared", { n: stats.length - 5 })}</p>
         </div>
       )}
     </div>

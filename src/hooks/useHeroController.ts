@@ -602,7 +602,7 @@ export function useHeroController({
 
     if (allQuestions.length === 0) {
       setStatus("hero_error");
-      setErrorMessage("No questions available right now.");
+      setErrorMessage("hero.noQuestionsAvailable");
       return;
     }
 
@@ -748,7 +748,7 @@ export function useHeroController({
         console.error("[hero] submitHeroStance failed", err);
         if (!isResubmit) {
           setStatus("hero_error");
-          setErrorMessage("Failed to submit stance. Please try again.");
+          setErrorMessage("hero.failedToSubmitStance");
           setSubmittedStance(null);
         }
       }

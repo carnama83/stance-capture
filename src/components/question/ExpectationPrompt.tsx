@@ -21,6 +21,7 @@
 // PostStanceSharePrompt.tsx and TradeoffExplorer.tsx.
 
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 import {
   Search,
   Banknote,
@@ -55,34 +56,34 @@ export type ExpectationType =
   | "administrative_transfer"
   | "no_accountability_expected";
 
-const EXPECTATION_TYPES: { type: ExpectationType; label: string; icon: React.ElementType }[] = [
-  { type: "investigation", label: "Investigation", icon: Search },
-  { type: "compensation", label: "Compensation", icon: Banknote },
-  { type: "policy_reform", label: "Policy reform", icon: FileText },
-  { type: "transparency", label: "Transparency", icon: Eye },
-  { type: "infrastructure_fix", label: "Infrastructure fix", icon: Wrench },
-  { type: "accountability", label: "Accountability", icon: ShieldCheck },
-  { type: "legal_action", label: "Legal action", icon: Scale },
-  { type: "no_action", label: "No action needed", icon: Ban },
-  { type: "unsure", label: "Unsure", icon: HelpCircle },
+const EXPECTATION_TYPES: { type: ExpectationType; labelKey: string; icon: React.ElementType }[] = [
+  { type: "investigation", labelKey: "expectationPrompt.investigation", icon: Search },
+  { type: "compensation", labelKey: "expectationPrompt.compensation", icon: Banknote },
+  { type: "policy_reform", labelKey: "expectationPrompt.policyReform", icon: FileText },
+  { type: "transparency", labelKey: "expectationPrompt.transparency", icon: Eye },
+  { type: "infrastructure_fix", labelKey: "expectationPrompt.infrastructureFix", icon: Wrench },
+  { type: "accountability", labelKey: "expectationPrompt.accountability", icon: ShieldCheck },
+  { type: "legal_action", labelKey: "expectationPrompt.legalAction", icon: Scale },
+  { type: "no_action", labelKey: "expectationPrompt.noActionNeeded", icon: Ban },
+  { type: "unsure", labelKey: "expectationPrompt.unsure", icon: HelpCircle },
 ];
 
 // US-R13 — shown instead of EXPECTATION_TYPES when content_type='incident'.
-const ACCOUNTABILITY_LEVELS: { type: ExpectationType; label: string; icon: React.ElementType }[] = [
-  { type: "criminal_prosecution", label: "Criminal prosecution", icon: Gavel },
-  { type: "departmental_suspension", label: "Departmental suspension", icon: UserX },
-  { type: "independent_investigation", label: "Independent investigation", icon: Search },
-  { type: "compensation_only", label: "Compensation only", icon: Banknote },
-  { type: "administrative_transfer", label: "Administrative transfer", icon: ArrowRightLeft },
-  { type: "no_accountability_expected", label: "No accountability expected", icon: Ban },
-  { type: "unsure", label: "Unsure", icon: HelpCircle },
+const ACCOUNTABILITY_LEVELS: { type: ExpectationType; labelKey: string; icon: React.ElementType }[] = [
+  { type: "criminal_prosecution", labelKey: "expectationPrompt.criminalProsecution", icon: Gavel },
+  { type: "departmental_suspension", labelKey: "expectationPrompt.departmentalSuspension", icon: UserX },
+  { type: "independent_investigation", labelKey: "expectationPrompt.independentInvestigation", icon: Search },
+  { type: "compensation_only", labelKey: "expectationPrompt.compensationOnly", icon: Banknote },
+  { type: "administrative_transfer", labelKey: "expectationPrompt.administrativeTransfer", icon: ArrowRightLeft },
+  { type: "no_accountability_expected", labelKey: "expectationPrompt.noAccountabilityExpected", icon: Ban },
+  { type: "unsure", labelKey: "expectationPrompt.unsure", icon: HelpCircle },
 ];
 
 // Epic R — M-R03: shared slug→label lookup for both vocabularies, so the
 // signal display block (ExpectationSignalBlock) shows the exact same
 // wording used here rather than maintaining a second, driftable copy.
-export const EXPECTATION_LABELS: Record<string, string> = Object.fromEntries(
-  [...EXPECTATION_TYPES, ...ACCOUNTABILITY_LEVELS].map((o) => [o.type, o.label])
+export const EXPECTATION_LABEL_KEYS: Record<string, string> = Object.fromEntries(
+  [...EXPECTATION_TYPES, ...ACCOUNTABILITY_LEVELS].map((o) => [o.type, o.labelKey])
 );
 
 const DISMISS_KEY_PREFIX = "sc_expectation_handled_";
@@ -95,6 +96,7 @@ interface ExpectationPromptProps {
 }
 
 export function ExpectationPrompt({ questionId, isIncident, onConfirm, onSkip }: ExpectationPromptProps) {
+  const { t } = useTranslation();
   const [visible, setVisible] = React.useState(false);
   const [selected, setSelected] = React.useState<Set<ExpectationType>>(new Set());
   const [submitting, setSubmitting] = React.useState(false);
@@ -152,15 +154,15 @@ export function ExpectationPrompt({ questionId, isIncident, onConfirm, onSkip }:
     <div className="rounded-xl border border-slate-200 bg-white p-4 mt-3">
       <p className="text-xs font-medium text-slate-700 mb-0.5">
         {isIncident
-          ? "This is a civic incident. What level of accountability do you expect?"
-          : "What do you think should happen next?"}
+          ? t("expectationPrompt.thisIsACivicIncident")
+          : t("expectationPrompt.whatDoYouThinkShould")}
       </p>
       <p className="text-[11px] text-slate-400 mb-3">
-        Optional — separate from your stance. Select as many as apply.
+        {t("expectationPrompt.optionalSeparateFromYourStance")}
       </p>
 
       <div className="grid grid-cols-3 gap-1.5 mb-3">
-        {options.map(({ type, label, icon: Icon }) => {
+        {options.map(({ type, labelKey, icon: Icon }) => {
           const isSelected = selected.has(type);
           return (
             <button
@@ -177,7 +179,7 @@ export function ExpectationPrompt({ questionId, isIncident, onConfirm, onSkip }:
               ].join(" ")}
             >
               <Icon className="h-4 w-4" />
-              <span className="text-[10px] leading-tight font-medium">{label}</span>
+              <span className="text-[10px] leading-tight font-medium">{t(labelKey)}</span>
             </button>
           );
         })}
@@ -190,7 +192,7 @@ export function ExpectationPrompt({ questionId, isIncident, onConfirm, onSkip }:
           disabled={submitting}
           className="text-[11px] text-slate-400 hover:text-slate-600 underline underline-offset-2"
         >
-          Skip for now
+          {t("quickTakes.skip")}
         </button>
         <button
           type="button"
@@ -198,7 +200,7 @@ export function ExpectationPrompt({ questionId, isIncident, onConfirm, onSkip }:
           disabled={selected.size === 0 || submitting}
           className="text-xs font-medium rounded-lg px-3 py-1.5 bg-slate-900 text-white disabled:opacity-30 disabled:cursor-not-allowed hover:bg-slate-800 transition-colors"
         >
-          {submitting ? "Saving…" : "Confirm"}
+          {submitting ? t("stance.saving") : t("expectationPrompt.confirm")}
         </button>
       </div>
     </div>

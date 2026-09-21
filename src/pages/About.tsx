@@ -15,58 +15,52 @@
 
 import { CSSProperties } from "react";
 import PageLayout from "@/components/PageLayout";
+import { useTranslation } from "react-i18next";
 
 export default function About() {
+  const { t } = useTranslation();
   return (
     <PageLayout>
       <div style={styles.page}>
         <article style={styles.card}>
-          <p style={styles.eyebrow}>About</p>
-          <h1 style={styles.h1}>Stance Capture</h1>
+          <p style={styles.eyebrow}>{t("footer.about")}</p>
+          <h1 style={styles.h1}>{t("about.stanceCapture")}</h1>
 
           <p style={styles.lead}>
-            Stance Capture is a civic-technology platform where people take a
-            position on the issues shaping public life &mdash; and instantly see
-            how their views compare with others across their region, country, and
-            the world.
+            {t("about.stanceCaptureIsACivic")}
           </p>
 
           <p style={styles.body}>
-            Public opinion is usually scattered, anecdotal, and hard to read. We
-            turn it into something clear and structured: a way for individuals to
-            understand where they stand, and a way for communities to see how
-            collective sentiment forms and shifts over time.
+            {t("about.publicOpinionIsUsuallyScattered")}
           </p>
 
-          <h2 style={styles.h2}>What we do</h2>
+          <h2 style={styles.h2}>{t("about.whatWeDo")}</h2>
           <ul style={styles.list}>
             <li style={styles.li}>
-              Let you weigh in on real issues and questions, one stance at a time.
+              {t("about.letYouWeighInOn")}
             </li>
             <li style={styles.li}>
-              Show how your view compares with your region, your country, and the
-              world.
+              {t("about.showHowYourViewCompares")}
             </li>
             <li style={styles.li}>
-              Track how opinions move over time, so shifts in sentiment become
-              visible.
+              {t("about.trackHowOpinionsMoveOver")}
             </li>
             <li style={styles.li}>
-              Help you build a personal stance profile that is yours to revisit.
+              {t("about.helpYouBuildAPersonal")}
             </li>
           </ul>
 
-          <h2 style={styles.h2}>Contact</h2>
+          <h2 style={styles.h2}>{t("footer.contact")}</h2>
           <p style={styles.body}>
-            For questions, feedback, or press enquiries, reach us at{" "}
+            {t("about.forQuestionsFeedbackOrPress")}{" "}
             <a style={styles.link} href="mailto:no-reply@stance-capture.com">
-              no-reply@stance-capture.com
+              {t("about.noReplyStanceCaptureCom")}
             </a>
             .
           </p>
 
           <hr style={styles.rule} />
-          <p style={styles.meta}>Stance Capture &middot; Bhopal, India</p>
+          <p style={styles.meta}>{t("about.stanceCaptureBhopalIndia")}</p>
         </article>
       </div>
     </PageLayout>

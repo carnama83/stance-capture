@@ -46,6 +46,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SUPABASE_URL, SUPABASE_ANON_KEY, getJwt, supabaseHeaders } from "@/lib/env";
 import { useDisplayIdentity } from "@/hooks/useDisplayIdentity";
+import { useTranslation } from "react-i18next";
 
 const MAX_DURATION_SECONDS = 120;
 
@@ -91,6 +92,7 @@ type Props = {
 type Stage = "idle" | "recording" | "processing" | "review" | "submitting" | "resubmit";
 
 export function VideoRecorderPanel({ transcribeAudio, sourceUrl = null, locationLabel = null, resubmitProposalId, onSubmitted, onCancel }: Props) {
+  const { t } = useTranslation();
   const [stage, setStage] = useState<Stage>("idle");
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -158,7 +160,7 @@ export function VideoRecorderPanel({ transcribeAudio, sourceUrl = null, location
         });
       }, 1000);
     } catch (e) {
-      setError("Couldn't access your camera and microphone. Check permissions and try again.");
+      setError(t("videoRecorder.couldnTAccessYourCamera"));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -184,7 +186,7 @@ export function VideoRecorderPanel({ transcribeAudio, sourceUrl = null, location
         setEditedTranscript(transcript);
         setStage("review");
       } catch (e) {
-        setError("Couldn't transcribe your recording. You can try again.");
+        setError(t("videoRecorder.couldnTTranscribeYourRecording"));
         setStage("idle");
       }
     }, 300);
@@ -192,12 +194,12 @@ export function VideoRecorderPanel({ transcribeAudio, sourceUrl = null, location
 
   const submit = useCallback(async () => {
     if (editedTranscript.trim().length < 20) {
-      setError("Question must be at least 20 characters once transcribed/edited.");
+      setError(t("videoRecorder.questionMustBeAtLeast"));
       return;
     }
     const jwt = getJwt();
     if (!jwt) {
-      setError("Please sign in again.");
+      setError(t("videoRecorder.pleaseSignInAgain"));
       return;
     }
     setStage("submitting");
@@ -336,7 +338,7 @@ export function VideoRecorderPanel({ transcribeAudio, sourceUrl = null, location
         <div className="flex flex-col gap-3">
           {identity?.isAnonymous && (
             <div className="rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-600">
-              You're posting anonymously — your video won't be shown to anyone. We'll use it to write out your question as text, same as a voice recording.
+              {t("videoRecorder.youRePostingAnonymouslyYour")}
             </div>
           )}
           <video
@@ -357,7 +359,7 @@ export function VideoRecorderPanel({ transcribeAudio, sourceUrl = null, location
                 onClick={startRecording}
                 className="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white"
               >
-                Start recording
+                {t("ugq.startRecording")}
               </button>
             ) : (
               <button
@@ -365,24 +367,24 @@ export function VideoRecorderPanel({ transcribeAudio, sourceUrl = null, location
                 onClick={stopRecording}
                 className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white"
               >
-                Stop recording
+                {t("ugq.stopRecording")}
               </button>
             )}
             <button type="button" onClick={onCancel} className="rounded-md px-4 py-2 text-sm text-neutral-600">
-              Cancel
+              {t("auth.cancel")}
             </button>
           </div>
         </div>
       )}
 
       {stage === "processing" && (
-        <p className="text-sm text-neutral-600">Transcribing your question…</p>
+        <p className="text-sm text-neutral-600">{t("videoRecorder.transcribingYourQuestion")}</p>
       )}
 
       {stage === "review" && (
         <div className="flex flex-col gap-3">
           <label className="text-sm font-medium text-neutral-900">
-            Here's what we heard — edit if needed
+            {t("videoRecorder.hereSWhatWeHeard")}
           </label>
           <textarea
             value={editedTranscript}
@@ -392,8 +394,8 @@ export function VideoRecorderPanel({ transcribeAudio, sourceUrl = null, location
           />
           <p className="text-xs text-neutral-500">
             {identity?.isAnonymous
-              ? "This is what shows as your question text. Your video is never published — only this text goes out, same as if you'd used voice input."
-              : "This is what shows as your question text. Your original video and voice stay exactly as recorded either way."}
+              ? t("videoRecorder.thisIsWhatShowsAs")
+              : t("videoRecorder.thisIsWhatShowsAs2")}
           </p>
           <div className="flex gap-2">
             <button
@@ -401,16 +403,16 @@ export function VideoRecorderPanel({ transcribeAudio, sourceUrl = null, location
               onClick={submit}
               className="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white"
             >
-              Submit question
+              {t("videoRecorder.submitQuestion")}
             </button>
             <button type="button" onClick={reRecord} className="rounded-md px-4 py-2 text-sm text-neutral-600">
-              Re-record
+              {t("videoRecorder.reRecord")}
             </button>
           </div>
         </div>
       )}
 
-      {stage === "submitting" && <p className="text-sm text-neutral-600">Submitting…</p>}
+      {stage === "submitting" && <p className="text-sm text-neutral-600">{t("comments.submitting")}</p>}
 
       {stage === "resubmit" && (
         <div className="flex flex-col gap-3">
@@ -422,7 +424,7 @@ export function VideoRecorderPanel({ transcribeAudio, sourceUrl = null, location
             onClick={reRecord}
             className="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white"
           >
-            Re-record
+            {t("videoRecorder.reRecord")}
           </button>
         </div>
       )}

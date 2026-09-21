@@ -16,6 +16,7 @@ import { QuestionPhaseBadge } from "@/components/question/QuestionPhaseBadge";
 import { QuestionStateBadge } from "@/components/question/QuestionStateBadge";
 import { TrendingBadge } from "@/components/question/TrendingBadge";
 import type { QuestionState } from "@/types/questionLifecycleTypes";
+import { useTranslation } from "react-i18next";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -88,6 +89,7 @@ function useLatestQuestions({ limit = 20, userId }: UseFeedOptions) {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function LatestQuestionsSection() {
+  const { t } = useTranslation();
   const { user } = useAuth() ?? { user: null };
   const { data: questions = [], isLoading, isError, error } =
     useLatestQuestions({ userId: user?.id ?? null, limit: 20 });
@@ -95,7 +97,7 @@ export function LatestQuestionsSection() {
   if (isLoading) {
     return (
       <section className="mt-8">
-        <h2 className="text-xl font-semibold mb-4">Latest Questions</h2>
+        <h2 className="text-xl font-semibold mb-4">{t("latestQuestions.latestQuestions")}</h2>
         <div className="space-y-3">
           {Array.from({ length: 4 }).map((_, i) => (
             <div key={i} className="h-20 rounded-lg bg-muted animate-pulse" />
@@ -108,9 +110,9 @@ export function LatestQuestionsSection() {
   if (isError) {
     return (
       <section className="mt-8">
-        <h2 className="text-xl font-semibold mb-2">Latest Questions</h2>
+        <h2 className="text-xl font-semibold mb-2">{t("latestQuestions.latestQuestions")}</h2>
         <p className="text-sm text-red-600">
-          Something went wrong loading questions: {error?.message}
+          {t("latestQuestions.somethingWentWrongLoadingQuestions")} {error?.message}
         </p>
       </section>
     );
@@ -119,10 +121,9 @@ export function LatestQuestionsSection() {
   if (!questions.length) {
     return (
       <section className="mt-8">
-        <h2 className="text-xl font-semibold mb-2">Latest Questions</h2>
+        <h2 className="text-xl font-semibold mb-2">{t("latestQuestions.latestQuestions")}</h2>
         <p className="text-sm text-muted-foreground">
-          No questions are live yet. Once you publish questions from the
-          admin area, they'll appear here.
+          {t("latestQuestions.noQuestionsAreLiveYet")}
         </p>
       </section>
     );
@@ -131,7 +132,7 @@ export function LatestQuestionsSection() {
   return (
     <section className="mt-8">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-semibold">Latest Questions</h2>
+        <h2 className="text-xl font-semibold">{t("latestQuestions.latestQuestions")}</h2>
       </div>
 
       <div className="space-y-4">

@@ -8,8 +8,10 @@ import {
 } from '@/components/ui/popover';
 import { useUnreadNotificationCount } from '@/hooks/useUnreadNotificationCount';
 import { NotificationsPanel } from './NotificationsPanel';
+import { useTranslation } from "react-i18next";
 
 export function NotificationsBell() {
+  const { t } = useTranslation();
   const [open, setOpen] = React.useState(false);
   const { count } = useUnreadNotificationCount();
 
@@ -21,7 +23,7 @@ export function NotificationsBell() {
       <PopoverTrigger asChild>
         <button
           type="button"
-          aria-label={count > 0 ? `${count} unread notifications` : 'Notifications'}
+          aria-label={count > 0 ? `${count} unread notifications` : t("settingsNotif.notifications")}
           className="relative flex items-center justify-center w-9 h-9 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <Bell className="h-5 w-5" />

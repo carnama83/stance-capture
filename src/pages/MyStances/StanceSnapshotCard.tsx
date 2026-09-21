@@ -2,11 +2,13 @@
 // Phase 3 — Q1: Natural-language category sentences using topic tags.
 
 import * as React from "react";
+import i18n from "@/lib/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { getSupabase } from "@/lib/supabaseClient";
 import {
   Card, CardContent, CardDescription, CardHeader, CardTitle,
 } from "@/components/ui/card";
+import { useTranslation } from "react-i18next";
 
 type SnapshotTopic = {
   topic_title: string;
@@ -37,84 +39,86 @@ function topicSentence(tag: string | null | undefined, avgScore: number | null):
   const t = (tag ?? "").toLowerCase();
 
   if (!tag) {
-    if (agreeStrong)    return "tend to strongly support this area.";
-    if (agreeLean)      return "tend to lean in favour of this area.";
-    if (disagreeStrong) return "tend to strongly oppose this area.";
-    if (disagreeLean)   return "tend to lean against this area.";
-    return "have mixed views in this area.";
+    if (agreeStrong)    return "snapshotSentence.genericStrongSupport";
+    if (agreeLean)      return "snapshotSentence.genericLeanSupport";
+    if (disagreeStrong) return "snapshotSentence.genericStrongOppose";
+    if (disagreeLean)   return "snapshotSentence.genericLeanOppose";
+    return "snapshotSentence.genericMixed";
   }
   if (t.match(/environ|climate|energy|carbon|green/)) {
-    if (agreeStrong)    return "tend to strongly support stronger environmental regulation.";
-    if (agreeLean)      return "tend to support action on environmental issues.";
-    if (disagreeStrong) return "tend to strongly oppose current environmental policy direction.";
-    if (disagreeLean)   return "tend to be cautious about environmental regulation.";
-    return "have a mixed view on environmental policy.";
+    if (agreeStrong)    return "snapshotSentence.envStrongSupport";
+    if (agreeLean)      return "snapshotSentence.envLeanSupport";
+    if (disagreeStrong) return "snapshotSentence.envStrongOppose";
+    if (disagreeLean)   return "snapshotSentence.envLeanOppose";
+    return "snapshotSentence.envMixed";
   }
   if (t.match(/hous|property|rent|zoning/)) {
-    if (agreeStrong)    return "tend to strongly support housing reform.";
-    if (agreeLean)      return "tend to lean toward more housing intervention.";
-    if (disagreeStrong) return "tend to strongly oppose current housing policy direction.";
-    if (disagreeLean)   return "are generally cautious about housing policy changes.";
-    return "have mixed views on housing policy.";
+    if (agreeStrong)    return "snapshotSentence.housingStrongSupport";
+    if (agreeLean)      return "snapshotSentence.housingLeanSupport";
+    if (disagreeStrong) return "snapshotSentence.housingStrongOppose";
+    if (disagreeLean)   return "snapshotSentence.housingLeanOppose";
+    return "snapshotSentence.housingMixed";
   }
   if (t.match(/econom|tax|fiscal|budget|trade/)) {
-    if (agreeStrong)    return "tend to strongly support economic intervention.";
-    if (agreeLean)      return "generally lean toward economic reform.";
-    if (disagreeStrong) return "tend to strongly oppose the current economic direction.";
-    if (disagreeLean)   return "tend to favour a more conservative economic approach.";
-    return "have a balanced view on economic policy.";
+    if (agreeStrong)    return "snapshotSentence.econStrongSupport";
+    if (agreeLean)      return "snapshotSentence.econLeanSupport";
+    if (disagreeStrong) return "snapshotSentence.econStrongOppose";
+    if (disagreeLean)   return "snapshotSentence.econLeanOppose";
+    return "snapshotSentence.econMixed";
   }
   if (t.match(/tech|ai|digital|data|cyber/)) {
-    if (agreeStrong)    return "tend to strongly support technology regulation and oversight.";
-    if (agreeLean)      return "are generally in favour of more technology oversight.";
-    if (disagreeStrong) return "tend to strongly oppose increased tech regulation.";
-    if (disagreeLean)   return "tend to be cautious about technology regulation.";
-    return "have nuanced views on technology policy.";
+    if (agreeStrong)    return "snapshotSentence.techStrongSupport";
+    if (agreeLean)      return "snapshotSentence.techLeanSupport";
+    if (disagreeStrong) return "snapshotSentence.techStrongOppose";
+    if (disagreeLean)   return "snapshotSentence.techLeanOppose";
+    return "snapshotSentence.techMixed";
   }
   if (t.match(/health|medical|nhs|pharma/)) {
-    if (agreeStrong)    return "tend to strongly support investment in public health.";
-    if (agreeLean)      return "generally lean toward stronger healthcare provision.";
-    if (disagreeStrong) return "tend to strongly oppose the current healthcare direction.";
-    if (disagreeLean)   return "tend to favour market-led approaches to healthcare.";
-    return "have mixed views on healthcare policy.";
+    if (agreeStrong)    return "snapshotSentence.healthStrongSupport";
+    if (agreeLean)      return "snapshotSentence.healthLeanSupport";
+    if (disagreeStrong) return "snapshotSentence.healthStrongOppose";
+    if (disagreeLean)   return "snapshotSentence.healthLeanOppose";
+    return "snapshotSentence.healthMixed";
   }
   if (t.match(/educat|school|universit|student/)) {
-    if (agreeStrong)    return "tend to strongly support increased education investment.";
-    if (agreeLean)      return "generally lean toward more investment in education.";
-    if (disagreeStrong) return "tend to strongly oppose the current education direction.";
-    if (disagreeLean)   return "tend to favour more choice and autonomy in education.";
-    return "have mixed views on education policy.";
+    if (agreeStrong)    return "snapshotSentence.eduStrongSupport";
+    if (agreeLean)      return "snapshotSentence.eduLeanSupport";
+    if (disagreeStrong) return "snapshotSentence.eduStrongOppose";
+    if (disagreeLean)   return "snapshotSentence.eduLeanOppose";
+    return "snapshotSentence.eduMixed";
   }
   if (t.match(/immigra|border|asylum|migrant/)) {
-    if (agreeStrong)    return "tend to strongly support more open immigration policy.";
-    if (agreeLean)      return "generally lean toward more welcoming immigration policy.";
-    if (disagreeStrong) return "tend to strongly support stricter immigration controls.";
-    if (disagreeLean)   return "tend to favour tighter immigration policy.";
-    return "have a nuanced view on immigration.";
+    if (agreeStrong)    return "snapshotSentence.immStrongSupport";
+    if (agreeLean)      return "snapshotSentence.immLeanSupport";
+    if (disagreeStrong) return "snapshotSentence.immStrongOppose";
+    if (disagreeLean)   return "snapshotSentence.immLeanOppose";
+    return "snapshotSentence.immMixed";
   }
   if (t.match(/crime|justice|police|prison/)) {
-    if (agreeStrong)    return "tend to strongly support reform of the justice system.";
-    if (agreeLean)      return "generally lean toward criminal justice reform.";
-    if (disagreeStrong) return "tend to strongly support tougher law enforcement.";
-    if (disagreeLean)   return "tend to favour a more traditional approach to law and order.";
-    return "have mixed views on criminal justice.";
+    if (agreeStrong)    return "snapshotSentence.justiceStrongSupport";
+    if (agreeLean)      return "snapshotSentence.justiceLeanSupport";
+    if (disagreeStrong) return "snapshotSentence.justiceStrongOppose";
+    if (disagreeLean)   return "snapshotSentence.justiceLeanOppose";
+    return "snapshotSentence.justiceMixed";
   }
+  // An unrecognised tag keeps its own name inside the sentence, so these
+  // carry the tag as a value rather than being pre-built in English.
   const tagLabel = tag.charAt(0).toUpperCase() + tag.slice(1).toLowerCase();
-  if (agreeStrong)    return `tend to strongly support the direction on ${tagLabel} issues.`;
-  if (agreeLean)      return `generally lean toward agreement on ${tagLabel} questions.`;
-  if (disagreeStrong) return `tend to strongly oppose the current ${tagLabel} direction.`;
-  if (disagreeLean)   return `tend to lean against current ${tagLabel} policy.`;
-  return `have a mixed view on ${tagLabel} issues.`;
+  if (agreeStrong)    return i18n.t("snapshotSentence.tagStrongSupport", { tag: tagLabel });
+  if (agreeLean)      return i18n.t("snapshotSentence.tagLeanSupport", { tag: tagLabel });
+  if (disagreeStrong) return i18n.t("snapshotSentence.tagStrongOppose", { tag: tagLabel });
+  if (disagreeLean)   return i18n.t("snapshotSentence.tagLeanOppose", { tag: tagLabel });
+  return i18n.t("snapshotSentence.tagMixed", { tag: tagLabel });
 }
 
 function categoryLabel(tag: string | null | undefined, topicTitle: string): string {
   if (!tag) return topicTitle;
   const t = tag.toLowerCase();
-  if (t.match(/environ|climate/)) return "Environment & climate";
-  if (t.match(/hous/))            return "Housing";
-  if (t.match(/econom|tax/))      return "Economy";
-  if (t.match(/tech|ai|digital/)) return "Technology";
-  if (t.match(/health/))          return "Health";
+  if (t.match(/environ|climate/)) return i18n.t("snapshotCategory.environment");
+  if (t.match(/hous/))            return i18n.t("snapshotCategory.housing");
+  if (t.match(/econom|tax/))      return i18n.t("snapshotCategory.economy");
+  if (t.match(/tech|ai|digital/)) return i18n.t("snapshotCategory.technology");
+  if (t.match(/health/))          return i18n.t("snapshotCategory.health");
   if (t.match(/educat/))          return "Education";
   if (t.match(/immigra/))         return "Immigration";
   if (t.match(/crime|justice/))   return "Justice & law";
@@ -122,6 +126,7 @@ function categoryLabel(tag: string | null | undefined, topicTitle: string): stri
 }
 
 export default function StanceSnapshotCard() {
+  const { t: tr } = useTranslation();
   const sb = React.useMemo(getSupabase, []);
 
   const { data, isLoading, isError } = useQuery<StanceSnapshot>({
@@ -144,18 +149,18 @@ export default function StanceSnapshotCard() {
     <Card className="mb-3">
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-semibold text-slate-900">
-          Your stance snapshot
+          {tr("stanceSnapshot.yourStanceSnapshot")}
         </CardTitle>
         <CardDescription className="text-xs text-slate-500 mt-0.5">
-          This is a reflection of how you've responded so far. It's not a score — just a snapshot in time.
+          {tr("stanceSnapshot.thisIsAReflectionOf")}
         </CardDescription>
       </CardHeader>
       <CardContent className="pt-0">
-        {isLoading && <div className="text-xs text-slate-500">Loading your snapshot…</div>}
-        {isError && <div className="text-xs text-slate-500">Could not load snapshot right now.</div>}
+        {isLoading && <div className="text-xs text-slate-500">{tr("stanceSnapshot.loadingYourSnapshot")}</div>}
+        {isError && <div className="text-xs text-slate-500">{tr("stanceSnapshot.couldNotLoadSnapshotRight")}</div>}
         {!isLoading && !isError && (!data || data.total_answered === 0) && (
           <div className="text-xs text-slate-500">
-            As you answer more questions, patterns will begin to appear here.
+            {tr("stanceSnapshot.asYouAnswerMoreQuestions")}
           </div>
         )}
         {!isLoading && !isError && data && data.total_answered > 0 && (
@@ -173,7 +178,7 @@ export default function StanceSnapshotCard() {
                         {label}
                       </div>
                       <div className="text-sm text-slate-800">
-                        On these questions, you {sentence}
+                        {tr("stanceSnapshot.onTheseQuestionsYou", { sentence: tr(sentence) })}
                       </div>
                     </div>
                   );

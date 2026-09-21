@@ -8,6 +8,7 @@ import * as React from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { getMyForwardRef, getDeviceId } from "@/lib/webStance";
 import { buildWaHref } from "@/lib/whatsapp";
+import { Trans, useTranslation } from "react-i18next";
 
 const PENDING_ATTACH_KEY = "sc_pending_attach_ref";
 
@@ -18,6 +19,7 @@ export function WebOptInCard({
   questionId: string;
   stanceLabel?: string | null; // e.g. "Strongly oppose" — shown back to them
 }) {
+  const { t } = useTranslation();
   const [email, setEmail] = React.useState("");
   const [emailSent, setEmailSent] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
@@ -41,7 +43,7 @@ export function WebOptInCard({
 
   async function sendMagicLink() {
     setError(null);
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { setError("Enter a valid email address."); return; }
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { setError(t("auth.enterValidEmail")); return; }
     setBusy(true);
     try {
       const ref = getMyForwardRef(questionId);
@@ -65,7 +67,7 @@ export function WebOptInCard({
       if (error) throw error;
       setEmailSent(true);
     } catch {
-      setError("Couldn't send the link. Check the address and try again.");
+      setError(t("webOptIn.couldnTSendTheLink"));
     } finally { setBusy(false); }
   }
 
@@ -82,36 +84,44 @@ export function WebOptInCard({
       {/* Recorded → not yet counted */}
       <div>
         <p className="text-sm font-semibold text-slate-800">
-          ✓ Your stance{stanceLabel ? <> — <span className="text-violet-700">{stanceLabel}</span></> : null} is recorded
+          {stanceLabel ? (
+            <Trans
+              i18nKey="webOptIn.stanceRecordedLabeled"
+              values={{ label: stanceLabel }}
+              components={{ v: <span className="text-violet-700" /> }}
+            />
+          ) : (
+            t("webOptIn.stanceRecorded")
+          )}
         </p>
         <p className="mt-1 text-sm text-slate-600">
-          It's not in the community total yet. Add your voice to make it count.
+          {t("webOptIn.itSNotInThe")}
         </p>
       </div>
 
       {/* Why join */}
       <ul className="space-y-1.5 text-[13px] text-slate-600">
-        <li className="flex gap-2"><span>📈</span><span><b className="text-slate-700">Track how your view evolves</b> — see your stance change over time as the issue develops.</span></li>
-        <li className="flex gap-2"><span>🌍</span><span><b className="text-slate-700">Compare to your community</b> — your city, state, and country, not just the global number.</span></li>
-        <li className="flex gap-2"><span>🔔</span><span><b className="text-slate-700">Get notified when consensus shifts</b> — know when the community moves.</span></li>
-        <li className="flex gap-2"><span>📣</span><span><b className="text-slate-700">Strengthen the signal</b> — verified voices make the collective stance harder to ignore.</span></li>
+        <li className="flex gap-2"><span>📈</span><span><b className="text-slate-700">{t("webOptIn.trackHowYourViewEvolves")}</b> {t("webOptIn.seeYourStanceChangeOver")}</span></li>
+        <li className="flex gap-2"><span>🌍</span><span><b className="text-slate-700">{t("webOptIn.compareToYourCommunity")}</b> {t("webOptIn.yourCityStateAndCountry")}</span></li>
+        <li className="flex gap-2"><span>🔔</span><span><b className="text-slate-700">{t("webOptIn.getNotifiedWhenConsensusShifts")}</b> {t("webOptIn.knowWhenTheCommunityMoves")}</span></li>
+        <li className="flex gap-2"><span>📣</span><span><b className="text-slate-700">{t("webOptIn.strengthenTheSignal")}</b> {t("webOptIn.verifiedVoicesMakeTheCollective")}</span></li>
       </ul>
 
       {/* Track 1 — email magic-link */}
       {emailSent ? (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
-          ✅ Check your email for a sign-in link. Open it on this device to add your voice.
+          {t("webOptIn.checkYourEmailForA")}
         </div>
       ) : (
         <div className="space-y-2">
           <input
-            type="email" inputMode="email" placeholder="you@email.com" value={email}
+            type="email" inputMode="email" placeholder={t("webOptIn.youEmailCom")} value={email}
             onChange={(e) => setEmail(e.target.value)}
             className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
           />
           <button type="button" disabled={busy} onClick={sendMagicLink}
             className="w-full rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">
-            {busy ? "Sending…" : "Add my voice — email me a link"}
+            {busy ? t("webOptIn.sending") : t("webOptIn.addMyVoiceEmailMe")}
           </button>
         </div>
       )}
@@ -119,17 +129,17 @@ export function WebOptInCard({
       {/* Track 2 — WhatsApp click-to-chat */}
       <div className="flex items-center gap-3">
         <div className="h-px flex-1 bg-slate-200" />
-        <span className="text-xs text-slate-400">or</span>
+        <span className="text-xs text-slate-400">{t("webOptIn.or")}</span>
         <div className="h-px flex-1 bg-slate-200" />
       </div>
       <a
         href={waHref} target="_blank" rel="noopener noreferrer"
         className="flex w-full items-center justify-center gap-2 rounded-lg border border-emerald-500 px-3 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-50"
       >
-        💬 Add my voice on WhatsApp
+        {t("webOptIn.addMyVoiceOnWhatsapp")}
       </a>
       <p className="text-[11px] leading-snug text-slate-400">
-        Opens WhatsApp with a pre-filled "SUBSCRIBE" message. Send it to count your stance and get updates. Reply STOP anytime.
+        {t("webOptIn.opensWhatsappWithAPre")}
       </p>
 
       {error && <p className="text-xs text-rose-600">{error}</p>}

@@ -27,13 +27,17 @@ import { Navigate, useLocation } from "react-router-dom";
 import { getSupabase } from "../lib/supabaseClient";
 import { ROUTES } from "@/routes/paths";
 import { SUPABASE_AUTH_STORAGE_KEY } from "@/lib/env";
+import { useTranslation } from "react-i18next";
 
 /** Tiny loading UI to avoid layout jumpiness while auth resolves. */
-const Spinner = () => (
-  <div className="p-6 text-sm text-muted-foreground" role="status" aria-live="polite">
-    Loading…
-  </div>
-);
+const Spinner = () => {
+  const { t } = useTranslation();
+  return (
+    <div className="p-6 text-sm text-muted-foreground" role="status" aria-live="polite">
+      {t("common.loading")}
+    </div>
+  );
+};
 
 // ── localStorage fast-path (bypass auth mutex) ────────────────────────────────
 // getSession() acquires an async lock during background token refresh.

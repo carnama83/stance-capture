@@ -1,3 +1,4 @@
+import i18n from "@/lib/i18n";
 /**
  * Question Lifecycle System - TypeScript Types (CORRECTED)
  * 
@@ -22,39 +23,39 @@ export type QuestionState = typeof QUESTION_STATES[keyof typeof QUESTION_STATES]
 
 // State display configuration
 export const STATE_CONFIG: Record<QuestionState, {
-  label: string;
+  labelKey: string;
   color: string;
   bgColor: string;
   icon: string;
-  description: string;
+  descriptionKey: string;
 }> = {
   [QUESTION_STATES.NEW]: {
-    label: 'New',
+    labelKey: 'questionState.new',
     color: 'text-blue-700',
     bgColor: 'bg-blue-100',
     icon: '🆕',
-    description: 'Posted in the last 24 hours',
+    descriptionKey: 'questionState.newDescription',
   },
   [QUESTION_STATES.ACTIVE]: {
-    label: 'Active',
+    labelKey: 'questionState.active',
     color: 'text-green-700',
     bgColor: 'bg-green-100',
     icon: '✅',
-    description: 'Currently receiving responses',
+    descriptionKey: 'questionState.activeDescription',
   },
   [QUESTION_STATES.DORMANT]: {
-    label: 'Dormant',
+    labelKey: 'questionState.dormant',
     color: 'text-gray-700',
     bgColor: 'bg-gray-100',
     icon: '💤',
-    description: 'Low engagement, may archive soon',
+    descriptionKey: 'questionState.dormantDescription',
   },
   [QUESTION_STATES.ARCHIVED]: {
-    label: 'Archived',
+    labelKey: 'questionState.archived',
     color: 'text-gray-600',
     bgColor: 'bg-gray-50',
     icon: '📦',
-    description: 'No longer accepting new responses',
+    descriptionKey: 'questionState.archivedDescription',
   },
 };
 
@@ -355,8 +356,9 @@ export function shouldShowTrendingBadge(question: Pick<QuestionWithLifecycle, 'i
 
 export function getStateDescription(state: QuestionState, ageDays?: number): string {
   const config = STATE_CONFIG[state];
+  const text = i18n.t(config.descriptionKey);
   if (ageDays !== undefined) {
-    return `${config.description} (${formatAgeDays(ageDays)})`;
+    return `${text} (${formatAgeDays(ageDays)})`;
   }
-  return config.description;
+  return text;
 }

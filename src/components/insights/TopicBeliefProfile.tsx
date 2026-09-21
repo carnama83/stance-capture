@@ -10,43 +10,44 @@ import * as React from "react";
 import { type CognitiveState } from "@/hooks/useCognitiveState";
 import { getStanceColorHex } from "@/lib/stanceColors";
 import { ChevronRight } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 type TopicProfile = CognitiveState["cognitive_profile"]["topic_profiles"][string];
 
 function stabilityLabel(score: number): {
-  label: string;
-  description: string;
+  labelKey: string;
+  descriptionKey: string;
   bg: string;
   text: string;
 } {
   if (score >= 0.8) return {
-    label: "Stable conviction",
-    description: "Your answers on this topic are highly consistent.",
+    labelKey: "topicBeliefProfile.stableConviction",
+    descriptionKey: "topicBeliefProfile.yourAnswersOnThisTopic",
     bg: "#EAF3DE", text: "#27500A",
   };
   if (score >= 0.6) return {
-    label: "Mostly consistent",
-    description: "You have a clear lean, with some variation.",
+    labelKey: "topicBeliefProfile.mostlyConsistent",
+    descriptionKey: "topicBeliefProfile.youHaveAClearLean",
     bg: "#E6F1FB", text: "#0C447C",
   };
   if (score >= 0.4) return {
-    label: "Evolving view",
-    description: "Your stance on this topic has shifted over time.",
+    labelKey: "topicBeliefProfile.evolvingView",
+    descriptionKey: "topicBeliefProfile.yourStanceOnThisTopic",
     bg: "#FAEEDA", text: "#633806",
   };
   return {
-    label: "Exploring",
-    description: "You're working through different perspectives here.",
+    labelKey: "topicBeliefProfile.exploring",
+    descriptionKey: "topicBeliefProfile.youReWorkingThroughDifferent",
     bg: "#F1EFE8", text: "#5F5E5A",
   };
 }
 
-function meanStanceLabel(mean: number): string {
-  if (mean >= 1.5)  return "Strongly agree";
-  if (mean >= 0.5)  return "Agree";
-  if (mean >= -0.5) return "Neutral";
-  if (mean >= -1.5) return "Disagree";
-  return "Strongly disagree";
+function meanStanceLabelKey(mean: number): string {
+  if (mean >= 1.5)  return "stance.stronglyAgree";
+  if (mean >= 0.5)  return "stance.agree";
+  if (mean >= -0.5) return "stance.neutral";
+  if (mean >= -1.5) return "stance.disagree";
+  return "stance.stronglyDisagree";
 }
 
 interface TopicBeliefProfileProps {
@@ -62,6 +63,7 @@ export default function TopicBeliefProfile({
   onTopicClick,
   activeTopic,
 }: TopicBeliefProfileProps) {
+  const { t } = useTranslation();
   const topics = Object.entries(topicProfiles)
     .map(([id, p]) => ({ id, ...p }))
     .sort((a, b) => b.question_count - a.question_count);
@@ -69,7 +71,7 @@ export default function TopicBeliefProfile({
   if (topics.length === 0) {
     return (
       <p className="text-xs text-slate-500 py-4">
-        Answer questions across multiple topics to see your belief profile here.
+        {t("topicBeliefProfile.answerQuestionsAcrossMultipleTopics")}
       </p>
     );
   }
@@ -109,10 +111,10 @@ export default function TopicBeliefProfile({
                   {topic.topic_name}
                 </p>
                 <p className="text-[11px] text-slate-400 mt-0.5">
-                  {topic.question_count} question{topic.question_count !== 1 ? "s" : ""}
+                  {t("topicBeliefProfile.questionCount", { count: topic.question_count })}
                   {isClickable && (
                     <span className="ml-1 text-blue-500">
-                      · {isActive ? "Close history" : "View history"}
+                      · {isActive ? t("topicBeliefProfile.closeHistory") : t("topicBeliefProfile.viewHistory")}
                     </span>
                   )}
                 </p>
@@ -124,7 +126,7 @@ export default function TopicBeliefProfile({
                   className="text-[10px] font-medium px-2 py-0.5 rounded-full"
                   style={{ background: stability.bg, color: stability.text }}
                 >
-                  {stability.label}
+                  {t(stability.labelKey)}
                 </span>
                 {/* Chevron when clickable */}
                 {isClickable && (
@@ -142,7 +144,7 @@ export default function TopicBeliefProfile({
             {/* Mean stance + distribution bar */}
             <div className="flex items-center gap-3 mb-1.5">
               <span className="text-xs font-medium flex-shrink-0" style={{ color: stanceColor }}>
-                {meanStanceLabel(topic.mean_stance)}
+                {t(meanStanceLabelKey(topic.mean_stance))}
               </span>
               <div className="flex-1 flex h-1.5 rounded-full overflow-hidden bg-slate-100">
                 {(["strong_disagree","disagree","neutral","agree","strong_agree"] as const).map((key, i) => {
@@ -157,7 +159,7 @@ export default function TopicBeliefProfile({
             </div>
 
             {/* Stability description */}
-            <p className="text-[11px] text-slate-400">{stability.description}</p>
+            <p className="text-[11px] text-slate-400">{t(stability.descriptionKey)}</p>
           </div>
         );
       })}

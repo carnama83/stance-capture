@@ -5,6 +5,7 @@ import * as React from "react";
 import { useNavigate } from "react-router-dom";
 import { TrendingUp, MessageSquare, ArrowRight, X, Loader2 } from "lucide-react";
 import { useMyLatestWeeklyDigest } from "@/hooks/useMyLatestWeeklyDigest";
+import { useTranslation } from "react-i18next";
 
 interface WeeklyDigestCardProps {
   onClose: () => void;
@@ -18,6 +19,7 @@ function formatDateRange(start: string, end: string): string {
 }
 
 export function WeeklyDigestCard({ onClose }: WeeklyDigestCardProps) {
+  const { t } = useTranslation();
   const { data: digest, isLoading } = useMyLatestWeeklyDigest();
   const navigate = useNavigate();
 
@@ -37,7 +39,7 @@ export function WeeklyDigestCard({ onClose }: WeeklyDigestCardProps) {
   if (!digest) {
     return (
       <div className="px-4 py-8 text-center text-sm text-slate-500">
-        No digest available yet.
+        {t("weeklyDigest.noDigestAvailableYet")}
       </div>
     );
   }
@@ -52,14 +54,14 @@ export function WeeklyDigestCard({ onClose }: WeeklyDigestCardProps) {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm font-semibold text-slate-900">Weekly Digest</p>
+          <p className="text-sm font-semibold text-slate-900">{t("weeklyDigest.weeklyDigest")}</p>
           <p className="text-xs text-slate-500">{formatDateRange(weekStart, weekEnd)}</p>
         </div>
         <button
           type="button"
           onClick={onClose}
           className="p-1 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
-          aria-label="Close digest"
+          aria-label={t("weeklyDigest.closeDigest")}
         >
           <X className="h-4 w-4" />
         </button>
@@ -70,7 +72,7 @@ export function WeeklyDigestCard({ onClose }: WeeklyDigestCardProps) {
         <div className="space-y-2">
           <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
             <TrendingUp className="h-3.5 w-3.5" />
-            Topics you follow
+            {t("weeklyDigest.topicsYouFollow")}
           </p>
           <div className="space-y-1">
             {summary.followedTopicUpdates.map((t) => (
@@ -96,7 +98,7 @@ export function WeeklyDigestCard({ onClose }: WeeklyDigestCardProps) {
         <div className="space-y-2">
           <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
             <MessageSquare className="h-3.5 w-3.5" />
-            Questions you answered
+            {t("weeklyDigest.questionsYouAnswered")}
           </p>
           <div className="space-y-1">
             {summary.answeredQuestionShifts.map((q) => (
@@ -121,7 +123,7 @@ export function WeeklyDigestCard({ onClose }: WeeklyDigestCardProps) {
       {hasRecommended && (
         <div className="space-y-2">
           <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-            Recommended for you
+            {t("weeklyDigest.recommendedForYou")}
           </p>
           <div className="space-y-1">
             {summary.recommendedQuestions.map((q) => (

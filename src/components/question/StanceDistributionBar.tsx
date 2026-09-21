@@ -14,6 +14,8 @@
 
 import * as React from "react";
 import { resolvePoleLabels, distinctPoleLabels } from "@/lib/poleLabels";
+import { useTranslation } from "react-i18next";
+import i18n from "@/lib/i18n";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -94,17 +96,17 @@ function deriveAlignmentText(
   // Pole-relative phrasing when the question supplied real poles.
   if (poles?.hasPoles && (bucket === "support" || bucket === "oppose")) {
     const pole = bucket === "support" ? poles.posFull : poles.negFull;
-    return `You align with ${pct}% of respondents — those leaning toward "${pole}"`;
+    return i18n.t("stanceDistributionBar.alignPole", { pct, pole });
   }
   if (poles?.hasPoles && bucket === "neutral") {
-    return `You align with ${pct}% of respondents — those in the middle`;
+    return i18n.t("stanceDistributionBar.alignMiddle", { pct });
   }
   // Generic fallback (no poles / pre-QF questions).
   const bucketLabel =
-    bucket === "support" ? "supportive"
-    : bucket === "oppose" ? "opposed"
-    : "neutral";
-  return `You align with ${pct}% of respondents — the ${bucketLabel} group`;
+    bucket === "support" ? i18n.t("stanceDistributionBar.supportive")
+    : bucket === "oppose" ? i18n.t("stanceDistributionBar.opposed")
+    : i18n.t("stanceDistributionBar.neutral");
+  return i18n.t("stanceDistributionBar.alignGroup", { pct, group: bucketLabel });
 }
 
 // ─── Segmented bar segment ────────────────────────────────────────────────────
@@ -169,6 +171,7 @@ export function StanceDistributionBar({
   lowLabel,
   highLabel,
 }: StanceDistributionBarProps) {
+  const { t } = useTranslation();
   const { support_pct, neutral_pct, oppose_pct, responses } = distribution;
 
   // Pole-aware labels (negative/red → low label, positive/green → high label).
@@ -210,7 +213,7 @@ export function StanceDistributionBar({
           <BarSegment
             pct={neutral_pct ?? 0}
             color="bg-slate-300"
-            label="Neutral"
+            label={t("ugq.neutralLabel")}
             isUserBucket={bucket === "neutral"}
             size={size}
             position={
@@ -247,7 +250,7 @@ export function StanceDistributionBar({
         </span>
         <span className="flex items-center gap-1">
           <span className="inline-block h-1.5 w-1.5 rounded-full bg-slate-300" />
-          Neutral {hasData ? formatPct(neutral_pct) : "—"}
+          {t("ugq.neutralLabel")} {hasData ? formatPct(neutral_pct) : "—"}
         </span>
         <span className="flex items-center gap-1" title={poles.posFull}>
           <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400" />
@@ -258,7 +261,7 @@ export function StanceDistributionBar({
       {/* ── Response count ── */}
       {showCount && responses != null && responses > 0 && (
         <p className={`mt-1 ${labelSize} text-slate-400`}>
-          {formatNum(responses)} response{responses === 1 ? "" : "s"}
+          {t("stanceDistributionBar.responseCount", { count: responses, shown: formatNum(responses) })}
         </p>
       )}
 

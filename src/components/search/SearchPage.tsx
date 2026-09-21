@@ -11,8 +11,10 @@ import { Card } from '@/components/ui/card';
 import { Search, Loader2, MessageSquare } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { STATE_LABELS, formatTimeAgo, type SearchResult } from '@/types/feedTypes';
+import { useTranslation } from "react-i18next";
 
 export function SearchPage() {
+  const { t } = useTranslation();
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   
@@ -46,14 +48,14 @@ export function SearchPage() {
   
   return (
     <div className="container mx-auto px-4 py-8 max-w-4xl">
-      <h1 className="text-3xl font-bold mb-6">Search Questions</h1>
+      <h1 className="text-3xl font-bold mb-6">{t("search.searchQuestions")}</h1>
       
       {/* Search Input */}
       <div className="relative mb-8">
         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
         <Input
           type="text"
-          placeholder="Search questions..."
+          placeholder={t("search.searchQuestions2")}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           className="pl-10 text-lg py-6"
@@ -67,7 +69,7 @@ export function SearchPage() {
       {/* Results Count */}
       {!isLoading && results && results.length > 0 && (
         <p className="text-sm text-gray-600 mb-4">
-          Found {results.length} result{results.length !== 1 ? 's' : ''} for "{debouncedQuery}"
+          {t("search.foundResults", { count: results.length, q: debouncedQuery })}
         </p>
       )}
       
@@ -84,10 +86,10 @@ export function SearchPage() {
       {!isLoading && debouncedQuery.length >= 2 && (!results || results.length === 0) && (
         <Card className="p-8 text-center">
           <p className="text-gray-600 mb-2">
-            No questions found for "{debouncedQuery}"
+            {t("search.noResultsFor", { q: debouncedQuery })}
           </p>
           <p className="text-sm text-gray-500">
-            Try different keywords or browse topics instead
+            {t("search.tryDifferentKeywordsOrBrowse")}
           </p>
         </Card>
       )}
@@ -97,10 +99,10 @@ export function SearchPage() {
         <Card className="p-12 text-center">
           <Search className="h-16 w-16 text-gray-300 mx-auto mb-4" />
           <h2 className="text-xl font-semibold text-gray-700 mb-2">
-            Search for Questions
+            {t("search.searchForQuestions")}
           </h2>
           <p className="text-gray-500">
-            Start typing to search across all questions and topics
+            {t("search.startTypingToSearchAcross")}
           </p>
         </Card>
       )}
@@ -109,7 +111,7 @@ export function SearchPage() {
       {query.length > 0 && query.length < 2 && (
         <Card className="p-8 text-center">
           <p className="text-gray-600">
-            Type at least 2 characters to search
+            {t("search.typeAtLeast2Characters")}
           </p>
         </Card>
       )}
@@ -118,6 +120,7 @@ export function SearchPage() {
 }
 
 function SearchResultCard({ result }: { result: SearchResult }) {
+  const { t } = useTranslation();
   const stateConfig = STATE_LABELS[result.state as keyof typeof STATE_LABELS];
   
   return (
@@ -151,7 +154,7 @@ function SearchResultCard({ result }: { result: SearchResult }) {
             <div className="flex items-center gap-4 text-sm text-gray-600">
               <span className="flex items-center gap-1">
                 <MessageSquare className="h-4 w-4" />
-                {result.response_count} {result.response_count === 1 ? 'stance recorded' : 'stances recorded'}
+                {t("search.stancesRecordedCount", { count: result.response_count })}
               </span>
               
               <span>

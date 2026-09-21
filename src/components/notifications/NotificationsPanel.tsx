@@ -8,12 +8,14 @@ import { useMyNotifications } from "@/hooks/useMyNotifications";
 import { useMarkNotificationRead, useMarkAllNotificationsRead } from "@/hooks/useMarkNotificationRead";
 import { NotificationListItem } from "./NotificationListItem";
 import { WeeklyDigestCard } from "./WeeklyDigestCard";
+import { useTranslation } from "react-i18next";
 
 interface NotificationsPanelProps {
   onClose: () => void;
 }
 
 export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { data: notifications, isLoading, isError } = useMyNotifications({ limit: 15 });
   const { markRead } = useMarkNotificationRead();
@@ -49,7 +51,7 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
     <div className="flex flex-col" style={{ width: 360, maxWidth: "100vw" }}>
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-        <span className="text-sm font-semibold text-foreground">Notifications</span>
+        <span className="text-sm font-semibold text-foreground">{t("settingsNotif.notifications")}</span>
         <div className="flex items-center gap-1">
           {hasUnread && (
             <Button
@@ -60,7 +62,7 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
               disabled={isMarkingAll}
             >
               <CheckCheck className="h-3.5 w-3.5" />
-              Mark all read
+              {t("notifications.markAllRead")}
             </Button>
           )}
           <Button
@@ -68,7 +70,7 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
             size="sm"
             className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
             onClick={() => { onClose(); navigate("/settings/notifications"); }}
-            aria-label="Notification settings"
+            aria-label={t("notifications.notificationSettings")}
           >
             <Settings className="h-3.5 w-3.5" />
           </Button>
@@ -85,22 +87,22 @@ export function NotificationsPanel({ onClose }: NotificationsPanelProps) {
 
         {isError && (
           <div className="px-4 py-10 text-center text-sm text-muted-foreground">
-            Couldn't load notifications.
+            {t("notifications.couldnTLoadNotifications")}
           </div>
         )}
 
         {!isLoading && !isError && notifications.length === 0 && (
           <div className="px-6 py-10 text-center space-y-3">
-            <p className="text-sm font-medium text-foreground">You're all caught up.</p>
+            <p className="text-sm font-medium text-foreground">{t("notifications.youReAllCaughtUp")}</p>
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Follow topics to get activity updates, or answer more questions to receive stance shift alerts.
+              {t("notifications.followTopicsToGetActivity")}
             </p>
             <button
               type="button"
               onClick={() => { onClose(); navigate("/topics"); }}
               className="text-xs text-blue-600 hover:underline font-medium"
             >
-              Browse topics →
+              {t("notifications.browseTopics")}
             </button>
           </div>
         )}

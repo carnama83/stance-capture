@@ -146,11 +146,11 @@ type ThreadSentimentRow = {
 };
 
 const STANCE_SCALE = [
-  { value: -2, labelShort: "Strongly oppose", label: "Strongly oppose" },
-  { value: -1, labelShort: "Lean oppose", label: "Lean oppose" },
-  { value: 0, labelShort: "Neutral", label: "Neutral" },
-  { value: 1, labelShort: "Lean support", label: "Lean support" },
-  { value: 2, labelShort: "Strongly support", label: "Strongly support" },
+  { value: -2, labelShort: "Strongly oppose", labelKey: "questionDetail.stronglyOppose" },
+  { value: -1, labelShort: "Lean oppose", labelKey: "stance.leanOppose" },
+  { value: 0, labelShort: "Neutral", labelKey: "ugq.neutralLabel" },
+  { value: 1, labelShort: "Lean support", labelKey: "stance.leanSupport" },
+  { value: 2, labelShort: "Strongly support", labelKey: "questionDetail.stronglySupport" },
 ];
 
 // ---------- Session hook ----------
@@ -668,7 +668,7 @@ function RegionComparison({ stats }: { stats: QuestionStats | null }) {
                     i === 0 ? [el] : [...acc, <span key={`sep-${i}`} className="text-slate-300">·</span>, el], []
                   );
                 })()}
-                <span className="text-[10px] text-slate-400">({r.total_responses} {r.total_responses === 1 ? "stance" : "stances"})</span>
+                <span className="text-[10px] text-slate-400">({t("common.stanceCount", { count: r.total_responses })})</span>
               </div>
             </div>
           );
@@ -961,6 +961,7 @@ function StanceCard({
 
 // ---------- Main component ----------
 export default function QuestionDetailPage() {
+  const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const questionId = id ?? "";
   const [showSharePrompt, setShowSharePrompt] = React.useState(false);
@@ -976,7 +977,6 @@ export default function QuestionDetailPage() {
   const userId = session?.user?.id ?? null;
   const isAuthed = !!session;
   const { languageCode, isLoading: languageLoading } = useLanguage(userId);
-  const { t } = useTranslation();
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -1481,8 +1481,8 @@ export default function QuestionDetailPage() {
     content = (
       <div className="rounded-xl border border-red-200 bg-red-50 px-6 py-8">
         <p className="text-sm text-red-900">
-          Failed to load question:{" "}
-          {error instanceof Error ? error.message : "Unknown error"}
+          {t("questionDetail.failedToLoadQuestion")}{" "}
+          {error instanceof Error ? error.message : t("todayQuestionsFeed.unknownError")}
         </p>
       </div>
     );
@@ -1541,7 +1541,7 @@ export default function QuestionDetailPage() {
                   </span>
                 ))}
                 {question.tags.length > 6 && (
-                  <span className="text-[11px] text-slate-400">+{question.tags.length - 6} more</span>
+                  <span className="text-[11px] text-slate-400">{t("common.plusMore", { n: question.tags.length - 6 })}</span>
                 )}
               </div>
             )}

@@ -1427,27 +1427,27 @@ export default function Signup() {
         {debugEnabled && (
           <div className="rounded-lg border p-3 space-y-2">
             <div className="flex items-center justify-between">
-              <div className="text-sm font-semibold">Signup Debug</div>
+              <div className="text-sm font-semibold">{t("signup.signupDebug")}</div>
               <div className="flex gap-2">
                 <button
                   type="button"
                   className="rounded-md border px-2 py-1 text-xs"
                   onClick={() => setDebugLogs([])}
                 >
-                  Clear
+                  {t("stance.clear")}
                 </button>
                 <button
                   type="button"
                   className="rounded-md border px-2 py-1 text-xs"
                   onClick={copyDebug}
                 >
-                  Copy logs
+                  {t("signup.copyLogs")}
                 </button>
               </div>
             </div>
             <p className="text-xs text-muted-foreground">
-              Debug enabled via <code>?debug=1</code> (HashRouter supported) or{" "}
-              <code>localStorage.auth_debug=1</code>. Password is never logged.
+              {t("signup.debugEnabledVia")} <code>{t("signup.debug1")}</code> {t("signup.hashrouterSupportedOr")}{" "}
+              <code>localStorage.auth_debug=1</code>{t("signup.passwordIsNeverLogged")}
             </p>
             <div className="max-h-64 overflow-auto rounded border bg-slate-50 p-2">
               <pre className="text-[11px] leading-4 whitespace-pre-wrap">
@@ -1462,7 +1462,7 @@ export default function Signup() {
                           }`
                       )
                       .join("\n")
-                  : "No logs yet."}
+                  : t("signup.noLogsYet")}
               </pre>
             </div>
           </div>
