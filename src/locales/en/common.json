@@ -2127,7 +2127,7 @@
     "s1.account": "<b>Account information</b> — if you create an account, details such as your name, email address, and login credentials.",
     "s1.messages": "<b>Messages</b> — when you interact with us through WhatsApp or other messaging channels, the content of those interactions.",
     "s1.automatic": "Information collected automatically",
-    "s1.usage": "<b>Usage and device data</b> — pages viewed, actions taken, approximate location (such as region or country), browser and device type, and similar log data.",
+    "s1.usage": "<b>Usage and device data</b> — pages viewed, actions taken, browser and device type, and similar log data.",
     "s1.cookies": "<b>Cookies and similar technologies</b> — used to keep you signed in and to understand how the service is used.",
     "s2.heading": "2. How we use information",
     "s2.operate": "To operate the service — recording your stance and showing how it compares with others.",
@@ -2161,6 +2161,7 @@
     "s13.heading": "13. Contact us",
     "s13.org": "Stance Capture",
     "s13.address": "Bhopal, India",
-    "s13.emailLabel": "Email:"
+    "s13.emailLabel": "Email:",
+    "s1.location": "<b>Approximate location</b> — so we can show questions and comparisons relevant to your area, your browser contacts a third-party geolocation service, which uses your IP address to return an approximate region or country. We receive only that approximate location, not your IP address. If you create an account, the country is saved as your default region, and you can change it in your settings at any time."
   }
 }
