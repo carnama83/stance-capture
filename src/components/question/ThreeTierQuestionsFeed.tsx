@@ -12,6 +12,7 @@ import { QuestionPhaseBadge } from "./QuestionPhaseBadge"; // ✨ NEW IMPORT
 import { MessageSquare } from "lucide-react";
 import { formatAgeDays, calculateAgeDays } from "@/types/questionLifecycleTypes";
 import type { QuestionState } from "@/types/questionLifecycleTypes";
+import { Trans, useTranslation } from "react-i18next";
 
 type Session = import("@supabase/supabase-js").Session;
 
@@ -104,6 +105,7 @@ function useIPLocation() {
 }
 
 export function ThreeTierQuestionsFeed() {
+  const { t } = useTranslation();
   const session = useSupabaseSession();
   const supabase = React.useMemo(getSupabase, []);
   const userId = session?.user?.id;
@@ -267,7 +269,7 @@ export function ThreeTierQuestionsFeed() {
     if (grouped.global.length > 0) {
       result.push({
         tier: 'global',
-        label: 'Global',
+        label: t("home.globalTab"),
         emoji: '🌍',
         questions: grouped.global,
       });
@@ -297,7 +299,7 @@ export function ThreeTierQuestionsFeed() {
     return (
       <div className="rounded-lg border border-red-200 bg-red-50 p-4">
         <p className="text-sm text-red-800">
-          Failed to load curated questions. Please try refreshing.
+          {t("threeTierQuestionsFeed.failedToLoadCuratedQuestions")}
         </p>
       </div>
     );
@@ -307,7 +309,7 @@ export function ThreeTierQuestionsFeed() {
     return (
       <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
         <p className="text-sm text-slate-600">
-          No questions available yet. Check back soon!
+          {t("threeTierQuestionsFeed.noQuestionsAvailableYetCheck")}
         </p>
       </div>
     );
@@ -324,20 +326,20 @@ export function ThreeTierQuestionsFeed() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-semibold text-slate-900">
-            Today's Questions
+            {t("threeTierQuestionsFeed.todaySQuestions")}
           </h2>
           <p className="text-sm text-slate-600 mt-1">
-            {totalQuestions} curated questions across {sections.length} region{sections.length !== 1 ? 's' : ''}
+            {t("threeTierQuestionsFeed.curatedAcross", { total: totalQuestions, count: sections.length })}
             {trendingCount > 0 && (
               <span className="ml-2 text-orange-600 font-medium">
-                • {trendingCount} trending 🔥
+                {t("threeTierQuestionsFeed.trendingCount", { n: trendingCount })}
               </span>
             )}
           </p>
         </div>
         <div className="text-right">
           <div className="text-2xl font-bold text-slate-900">{totalQuestions}</div>
-          <div className="text-xs text-slate-600">questions</div>
+          <div className="text-xs text-slate-600">{t("threeTierQuestionsFeed.questions")}</div>
         </div>
       </div>
 
@@ -348,10 +350,17 @@ export function ThreeTierQuestionsFeed() {
             <span className="text-blue-600">📍</span>
             <div className="flex-1">
               <p className="text-blue-900">
-                Showing questions for <strong>{ipLocation.country}</strong> based on your location.
+                <Trans
+                  i18nKey="threeTierQuestionsFeed.showingForCountry"
+                  values={{ country: ipLocation.country }}
+                  components={{ b: <strong /> }}
+                />
               </p>
               <p className="text-blue-700 text-xs mt-1">
-                <Link to="/signup" className="underline font-medium">Sign up</Link> to customize your feed and track your stances over time.
+                <Trans
+                  i18nKey="threeTierQuestionsFeed.signUpToCustomize"
+                  components={{ a: <Link to="/signup" className="underline font-medium" /> }}
+                />
               </p>
             </div>
           </div>
@@ -371,7 +380,7 @@ export function ThreeTierQuestionsFeed() {
                 {section.label}
               </h3>
               <p className="text-xs text-slate-600">
-                {section.questions.length} question{section.questions.length !== 1 ? 's' : ''}
+                {t("threeTierQuestionsFeed.questionCount", { count: section.questions.length })}
               </p>
             </div>
           </div>
@@ -388,7 +397,7 @@ export function ThreeTierQuestionsFeed() {
       {/* Footer */}
       <div className="text-center pt-4 border-t border-slate-200">
         <p className="text-xs text-slate-500">
-          Questions refreshed daily at 6:00 AM
+          {t("threeTierQuestionsFeed.questionsRefreshedDailyAt6")}
         </p>
       </div>
     </div>
@@ -397,6 +406,7 @@ export function ThreeTierQuestionsFeed() {
 
 // Enhanced Question Card Component with Lifecycle Features
 function QuestionCard({ question }: { question: ThreeTierQuestion }) {
+  const { t } = useTranslation();
   const ageDays = question.published_at ? calculateAgeDays(question.published_at) : null;
   
   // DEBUG: Log engagement data
@@ -440,14 +450,14 @@ function QuestionCard({ question }: { question: ThreeTierQuestion }) {
           {/* Featured Badge */}
           {question.is_featured && (
             <span className="inline-flex items-center rounded-full bg-purple-100 text-purple-700 px-2 py-0.5 text-xs font-medium">
-              ⭐ Featured
+              {t("threeTierQuestionsFeed.featured")}
             </span>
           )}
           
           {/* Resolved Badge */}
           {question.is_resolved && (
             <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 px-2 py-0.5 text-xs font-medium">
-              ✅ Resolved
+              {t("threeTierQuestionsFeed.resolved")}
             </span>
           )}
         </div>
@@ -520,7 +530,7 @@ function QuestionCard({ question }: { question: ThreeTierQuestion }) {
             
             {question.response_rate_24h && question.response_rate_24h > 0 ? (
               <div className="text-blue-600 font-medium">
-                +{Math.round(question.response_rate_24h)} today
+                +{Math.round(question.response_rate_24h)} {t("threeTierQuestionsFeed.today")}
               </div>
             ) : null}
           </div>

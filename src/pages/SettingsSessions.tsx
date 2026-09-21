@@ -2,10 +2,12 @@
 import * as React from "react";
 import PageLayout from "../components/PageLayout";
 import { getSupabase } from "../lib/supabaseClient";
+import { useTranslation } from "react-i18next";
 
 type Session = import("@supabase/supabase-js").Session;
 
 export default function SettingsSessions() {
+  const { t } = useTranslation();
   const sb = React.useMemo(getSupabase, []);
   const [ready, setReady] = React.useState(false);
   const [session, setSession] = React.useState<Session | null>(null);
@@ -90,31 +92,30 @@ export default function SettingsSessions() {
     <PageLayout>
       <div className="mx-auto max-w-2xl space-y-4">
         <header className="space-y-1">
-          <h1 className="text-2xl font-semibold">Sessions</h1>
+          <h1 className="text-2xl font-semibold">{t("settingsSessions.sessions")}</h1>
           <p className="text-sm text-slate-600">
-            Manage where you’re signed in. Use “Other devices” to invalidate sessions on phones,
-            tablets, or laptops you’re not using anymore.
+            {t("settingsSessions.manageWhereYouReSigned")}
           </p>
         </header>
 
         {!ready ? (
           // Always render something while initializing
-          <div className="text-sm text-slate-500">Loading sessions…</div>
+          <div className="text-sm text-slate-500">{t("settingsSessions.loadingSessions")}</div>
         ) : !session ? (
           // Friendly unauth state (instead of returning null/blank)
           <div className="rounded border bg-slate-50 p-4 text-slate-700">
-            You’re not logged in. Please sign in to manage sessions.
+            {t("settingsSessions.youReNotLoggedIn")}
           </div>
         ) : (
           <>
             {/* Current session info (best-effort; client can't list all sessions) */}
             <section className="rounded-lg border p-4">
-              <div className="font-medium mb-1">This device</div>
+              <div className="font-medium mb-1">{t("settingsSessions.thisDevice")}</div>
               <div className="text-sm text-slate-600">
-                Signed in as <span className="font-medium">{session.user.email}</span>
+                {t("profile.signedInAs")} <span className="font-medium">{session.user.email}</span>
               </div>
               <div className="text-xs text-slate-500 mt-1">
-                Session ID: <code className="break-all">{session.access_token?.slice(0, 32) || "(hidden)"}</code>
+                {t("settingsSessions.sessionId")} <code className="break-all">{session.access_token?.slice(0, 32) || t("settingsSessions.hidden")}</code>
               </div>
 
               <div className="mt-3 flex flex-wrap gap-2">
@@ -123,33 +124,33 @@ export default function SettingsSessions() {
                   onClick={signOutLocal}
                   disabled={busy !== null}
                 >
-                  {busy === "local" ? "Signing out…" : "Sign out on this device"}
+                  {busy === "local" ? t("settingsSessions.signingOut") : t("settingsSessions.signOutOnThisDevice")}
                 </button>
               </div>
             </section>
 
             {/* Global controls */}
             <section className="rounded-lg border p-4">
-              <div className="font-medium mb-1">Other devices</div>
+              <div className="font-medium mb-1">{t("settingsSessions.otherDevices")}</div>
               <p className="text-sm text-slate-600">
-                You can invalidate sessions on other devices without signing out here.
+                {t("settingsSessions.youCanInvalidateSessionsOn")}
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <button
                   className="rounded border px-3 py-1.5 text-sm hover:bg-slate-50 disabled:opacity-60"
                   onClick={signOutOthers}
                   disabled={busy !== null}
-                  title="Keep this device signed in; log out everywhere else."
+                  title={t("settingsSessions.keepThisDeviceSignedIn")}
                 >
-                  {busy === "others" ? "Signing out…" : "Sign out on other devices"}
+                  {busy === "others" ? t("settingsSessions.signingOut") : t("settingsSessions.signOutOnOtherDevices")}
                 </button>
                 <button
                   className="rounded border px-3 py-1.5 text-sm hover:bg-slate-50 disabled:opacity-60"
                   onClick={signOutGlobal}
                   disabled={busy !== null}
-                  title="Sign out on all devices including this one."
+                  title={t("settingsSessions.signOutOnAllDevices")}
                 >
-                  {busy === "global" ? "Signing out…" : "Sign out everywhere"}
+                  {busy === "global" ? t("settingsSessions.signingOut") : t("settingsSessions.signOutEverywhere")}
                 </button>
               </div>
             </section>

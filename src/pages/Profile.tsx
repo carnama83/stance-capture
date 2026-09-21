@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { getSupabase } from "../lib/supabaseClient";
 import { ROUTES } from "@/routes/paths";
 import { Button } from "@/components/ui/button";
+import { useTranslation } from "react-i18next";
 
 type ProfileRow = {
   user_id?: string;
@@ -22,6 +23,7 @@ type ProfileRow = {
 };
 
 export default function Profile() {
+  const { t } = useTranslation();
   const sb = React.useMemo(getSupabase, []);
   const [session, setSession] = React.useState<
     import("@supabase/supabase-js").Session | null | undefined
@@ -166,23 +168,23 @@ export default function Profile() {
     <div className="mx-auto max-w-2xl p-6 space-y-4">
       {/* Header with Home */}
       <div className="mb-2 flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Profile</h1>
+        <h1 className="text-xl font-semibold">{t("nav.profile")}</h1>
         <Button asChild variant="outline">
-          <Link to={ROUTES.home}>Home</Link>
+          <Link to={ROUTES.home}>{t("common.home")}</Link>
         </Button>
       </div>
 
       {session === undefined ? (
-        <div className="text-slate-600">Loading session…</div>
+        <div className="text-slate-600">{t("profile.loadingSession")}</div>
       ) : !session ? (
         <div className="rounded border p-4">
-          <div className="text-slate-700">You are not logged in.</div>
+          <div className="text-slate-700">{t("profile.youAreNotLoggedIn")}</div>
           <div className="mt-3 flex gap-2">
             <Button asChild>
-              <Link to={ROUTES.login}>Log in</Link>
+              <Link to={ROUTES.login}>{t("auth.logIn")}</Link>
             </Button>
             <Button asChild variant="outline">
-              <Link to={ROUTES.signup}>Sign up</Link>
+              <Link to={ROUTES.signup}>{t("auth.signUp")}</Link>
             </Button>
           </div>
         </div>
@@ -200,23 +202,23 @@ export default function Profile() {
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={row.avatar_url}
-                  alt="avatar"
+                  alt={t("profile.avatar")}
                   className="h-full w-full object-cover"
                 />
               ) : (
-                <span className="text-slate-600 text-sm">No<br />Avatar</span>
+                <span className="text-slate-600 text-sm">{t("profile.noAvatar")}</span>
               )}
             </div>
 
             <div className="flex-1">
-              <div className="text-sm text-slate-600">Signed in as</div>
+              <div className="text-sm text-slate-600">{t("profile.signedInAs")}</div>
               <div className="font-medium">{session.user.email}</div>
 
               <div className="mt-2 text-sm">
-                <span className="text-slate-600">Your handle: </span>
+                <span className="text-slate-600">{t("profile.yourHandle")} </span>
                 <span className="font-medium">{handle}</span>
               </div>
-              <div className="text-sm text-slate-600">{row?.bio || "No bio yet."}</div>
+              <div className="text-sm text-slate-600">{row?.bio || t("profile.noBioYet")}</div>
             </div>
           </div>
 
@@ -224,7 +226,7 @@ export default function Profile() {
           {row && (
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm text-slate-600">
-                Display handle:&nbsp;
+                {t("profile.displayHandle")}
                 <strong>{row.display_handle_mode ?? "random_id"}</strong>
               </span>
 
@@ -234,7 +236,7 @@ export default function Profile() {
                 className="rounded bg-slate-200 px-3 py-1 text-slate-900 text-sm disabled:opacity-60"
                 disabled={switchingHandle === "random_id"}
               >
-                {switchingHandle === "random_id" ? "Switching…" : "Use Random ID"}
+                {switchingHandle === "random_id" ? t("profile.switching") : t("settingsProfile.useRandomId")}
               </button>
 
               <button
@@ -242,9 +244,9 @@ export default function Profile() {
                 onClick={() => setHandleMode("username")}
                 className="rounded bg-slate-200 px-3 py-1 text-slate-900 text-sm disabled:opacity-60"
                 disabled={switchingHandle === "username" || !row.username}
-                title={!row.username ? "Set a username first" : ""}
+                title={!row.username ? t("profile.setAUsernameFirst") : ""}
               >
-                {switchingHandle === "username" ? "Switching…" : "Use Username"}
+                {switchingHandle === "username" ? t("profile.switching") : t("settingsProfile.useUsername")}
               </button>
             </div>
           )}
@@ -258,31 +260,31 @@ export default function Profile() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
               {row?.dob && (
                 <div>
-                  <span className="text-slate-600">DOB: </span>
+                  <span className="text-slate-600">{t("profile.dob")} </span>
                   <span>{row.dob}</span>
                 </div>
               )}
               {row?.city_name && (
                 <div>
-                  <span className="text-slate-600">City: </span>
+                  <span className="text-slate-600">{t("settingsLocation.city")} </span>
                   <span>{row.city_name}</span>
                 </div>
               )}
               {row?.county_name && (
                 <div>
-                  <span className="text-slate-600">County: </span>
+                  <span className="text-slate-600">{t("settingsLocation.county")} </span>
                   <span>{row.county_name}</span>
                 </div>
               )}
               {row?.state_code && (
                 <div>
-                  <span className="text-slate-600">State: </span>
+                  <span className="text-slate-600">{t("settingsLocation.state")} </span>
                   <span>{row.state_code}</span>
                 </div>
               )}
               {row?.country_code && (
                 <div>
-                  <span className="text-slate-600">Country: </span>
+                  <span className="text-slate-600">{t("settingsLocation.country")} </span>
                   <span>{row.country_code}</span>
                 </div>
               )}
@@ -295,7 +297,7 @@ export default function Profile() {
               onClick={() => session?.user?.id && refreshProfile(session.user.id)}
               disabled={busy}
             >
-              {busy ? "Loading…" : "Refresh"}
+              {busy ? t("common.loading") : t("profile.refresh")}
             </Button>
           </div>
         </div>

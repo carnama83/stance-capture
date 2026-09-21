@@ -185,7 +185,7 @@ function DobCorrectionSection({ sb, onDobCleared }: DobCorrectionSectionProps) {
               onClick={handleReauth}
               disabled={busy || !password}
             >
-              {busy ? "Verifying…" : "Confirm identity"}
+              {busy ? t("auth.verifying") : t("settingsProfile.confirmIdentity")}
             </button>
           </div>
         </>
@@ -210,7 +210,7 @@ function DobCorrectionSection({ sb, onDobCleared }: DobCorrectionSectionProps) {
               onClick={handleClearAndSet}
               disabled={busy || !newDob}
             >
-              {busy ? "Saving…" : "Save new date of birth"}
+              {busy ? t("stance.saving") : t("settingsProfile.saveNewDateOfBirth")}
             </button>
           </div>
         </>
@@ -260,7 +260,7 @@ function DobSetSection({ sb, onDobSet }: DobSetSectionProps) {
         onClick={handleSet}
         disabled={busy || !dob}
       >
-        {busy ? "Saving…" : "Save date of birth"}
+        {busy ? t("stance.saving") : t("settingsProfile.saveDateOfBirth")}
       </button>
     </div>
   );
@@ -496,7 +496,7 @@ function WhatsAppPhoneSection({ sb, uid }: WhatsAppPhoneSectionProps) {
               onClick={handleSendOtp}
               disabled={busy || !phone}
             >
-              {busy ? "Sending…" : "Send verification code"}
+              {busy ? t("webOptIn.sending") : t("settingsProfile.sendVerificationCode")}
             </button>
           </div>
         </div>
@@ -531,7 +531,7 @@ function WhatsAppPhoneSection({ sb, uid }: WhatsAppPhoneSectionProps) {
               onClick={handleVerifyOtp}
               disabled={busy || otp.length !== 6}
             >
-              {busy ? "Verifying…" : "Verify"}
+              {busy ? t("auth.verifying") : t("auth.verify")}
             </button>
           </div>
           <button
@@ -908,7 +908,7 @@ export default function SettingsProfile() {
             {usernameQuota.resetsInDays != null
               ? ` (resets in ${usernameQuota.resetsInDays} day${usernameQuota.resetsInDays === 1 ? "" : "s"})`
               : ""}
-            .{usernameQuota.used >= usernameQuota.limit ? " You cannot change your username again until the limit resets." : ""}
+            .{usernameQuota.used >= usernameQuota.limit ? t("settingsProfile.youCannotChangeYourUsername") : ""}
           </p>
         )}
 
@@ -919,7 +919,7 @@ export default function SettingsProfile() {
             onClick={updateUsername}
             disabled={busy || !isUsernameSet || !isUsernameChanged || (!!usernameQuota && usernameQuota.used >= usernameQuota.limit)}
           >
-            {isUsernameSet ? "Update Username" : "Set Username"}
+            {isUsernameSet ? t("settingsProfile.updateUsername") : t("settingsProfile.setUsername")}
           </button>
         </div>
       </div>
@@ -954,13 +954,13 @@ export default function SettingsProfile() {
             onClick={() => setDisplay("username")}
             disabled={busy || !isUsernameSet}
             aria-pressed={form.display_handle_mode === "username"}
-            title={!isUsernameSet ? "Set a username first" : ""}
+            title={!isUsernameSet ? t("profile.setAUsernameFirst") : ""}
           >
             {t("settingsProfile.useUsername")} {form.display_handle_mode === "username" ? "✓" : ""}
           </button>
         </div>
         <div className="text-xs text-slate-600">
-          {t("settingsProfile.currentlyShowing")} <span className="font-medium">{handle || "(unknown)"}</span>
+          {t("settingsProfile.currentlyShowing")} <span className="font-medium">{handle || t("settingsProfile.unknown")}</span>
         </div>
       </div>
 
@@ -1091,7 +1091,7 @@ export default function SettingsProfile() {
         onClick={saveProfile}
         disabled={busy}
       >
-        {busy ? "Saving…" : "Save changes"}
+        {busy ? t("stance.saving") : t("settingsProfile.saveChanges")}
       </button>
     </div>
   );
