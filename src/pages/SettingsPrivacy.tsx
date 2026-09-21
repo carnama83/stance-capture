@@ -34,6 +34,7 @@ import { useToast } from "@/hooks/use-toast";
 // sections (L-03) and are no longer used.
 import { Loader2, MessageSquare, User, Share2, MessageCircleOff } from "lucide-react";
 import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_PROJECT_REF, getJwt, supabaseHeaders } from "@/lib/env";
+import { useTranslation, Trans } from "react-i18next";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -119,6 +120,7 @@ function useSavePrivacy() {
 // We update it directly and also write to whatsapp_optouts via Edge Function.
 
 function useSaveWhatsAppOptOut() {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -169,7 +171,7 @@ function useSaveWhatsAppOptOut() {
       // Revert optimistic update on error
       onOptimisticUpdate(!enabled);
       toast({
-        title: "Failed to update WhatsApp setting. Please try again.",
+        title: t("settingsPrivacy.failedToUpdateWhatsappSetting"),
         variant: "destructive",
       });
     }
@@ -262,6 +264,7 @@ function RadioGroup<T extends string>({
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function SettingsPrivacy() {
+  const { t } = useTranslation();
   const { data: prefs, isLoading } = usePrivacySettings();
   const { mutate: save, isPending } = useSavePrivacy();
   const { toast } = useToast();
@@ -278,10 +281,10 @@ export default function SettingsPrivacy() {
     const updated = { ...local!, ...patch };
     setLocal(updated);
     save(patch, {
-      onSuccess: () => toast({ title: "Privacy settings saved." }),
+      onSuccess: () => toast({ title: t("settingsPrivacy.privacySettingsSaved") }),
       onError: () => {
         setLocal(local);
-        toast({ title: "Failed to save. Please try again.", variant: "destructive" });
+        toast({ title: t("settingsPrivacy.failedToSavePleaseTry"), variant: "destructive" });
       },
     });
   };
@@ -296,7 +299,7 @@ export default function SettingsPrivacy() {
     return (
       <div className="flex items-center gap-2 py-16 text-slate-400">
         <Loader2 className="h-4 w-4 animate-spin" />
-        <span className="text-sm">Loading privacy settings…</span>
+        <span className="text-sm">{t("settingsPrivacy.loadingPrivacySettings")}</span>
       </div>
     );
   }
@@ -304,17 +307,17 @@ export default function SettingsPrivacy() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold text-slate-900">Privacy & Visibility</h2>
+        <h2 className="text-lg font-semibold text-slate-900">{t("settingsPrivacy.privacyVisibility")}</h2>
         <p className="text-sm text-slate-500 mt-1">
-          Control how you appear on Stance Capture. All defaults are set to maximum privacy.
+          {t("settingsPrivacy.controlHowYouAppearOn")}
         </p>
       </div>
 
       {/* L1a: Display identity */}
       <SectionCard
         icon={User}
-        title="Display identity"
-        description="How your name appears on comments and public-facing activity."
+        title={t("settingsPrivacy.displayIdentity")}
+        description={t("settingsPrivacy.howYourNameAppearsOn")}
       >
         <RadioGroup
           name="display-identity"
@@ -324,20 +327,18 @@ export default function SettingsPrivacy() {
           options={[
             {
               value: "anonymous",
-              label: "Anonymous (recommended)",
-              description:
-                "You appear as a random ID (e.g. User #A4F2). Your identity is never revealed.",
+              label: t("settingsPrivacy.anonymousRecommended"),
+              description: t("settingsPrivacy.youAppearAsARandom"),
             },
             {
               value: "username",
-              label: "Username",
-              description:
-                "Your username is shown on comments and replies. Requires a username set in Profile settings.",
+              label: t("settingsPrivacy.username"),
+              description: t("settingsPrivacy.yourUsernameIsShownOn"),
             },
           ]}
         />
         <p className="text-[11px] text-slate-400 pt-1">
-          This also controls how your name appears in comment threads.
+          {t("settingsPrivacy.thisAlsoControlsHowYour")}
         </p>
       </SectionCard>
 
@@ -346,8 +347,8 @@ export default function SettingsPrivacy() {
       {/* L1c: Comment visibility */}
       <SectionCard
         icon={MessageSquare}
-        title="Comment identity"
-        description="How your identity appears specifically on comments you post."
+        title={t("settingsPrivacy.commentIdentity")}
+        description={t("settingsPrivacy.howYourIdentityAppearsSpecifically")}
       >
         <RadioGroup
           name="comment-identity"
@@ -357,15 +358,13 @@ export default function SettingsPrivacy() {
           options={[
             {
               value: "display_mode",
-              label: "Follow display identity setting",
-              description:
-                "Uses whatever you chose above — anonymous ID or username.",
+              label: t("settingsPrivacy.followDisplayIdentitySetting"),
+              description: t("settingsPrivacy.usesWhateverYouChoseAbove"),
             },
             {
               value: "always_anonymous",
-              label: "Always anonymous on comments",
-              description:
-                "Even if your display identity is set to username, comments always show your anonymous ID.",
+              label: t("settingsPrivacy.alwaysAnonymousOnComments"),
+              description: t("settingsPrivacy.evenIfYourDisplayIdentity"),
             },
           ]}
         />
@@ -376,8 +375,8 @@ export default function SettingsPrivacy() {
       {/* W5: Social stance ingestion */}
       <SectionCard
         icon={Share2}
-        title="Social stance ingestion"
-        description="Whether replies you post on X (Twitter) to shared Stance Capture questions can be attributed to your account."
+        title={t("settingsPrivacy.socialStanceIngestion")}
+        description={t("settingsPrivacy.whetherRepliesYouPostOn")}
       >
         <RadioGroup
           name="social-ingestion"
@@ -387,24 +386,21 @@ export default function SettingsPrivacy() {
           options={[
             {
               value: "on",
-              label: "Allow (default)",
-              description:
-                "If you reply to a question shared on X and your X account is connected, your reply may be captured as a stance on Stance Capture.",
+              label: t("settingsPrivacy.allowDefault"),
+              description: t("settingsPrivacy.ifYouReplyToA"),
             },
             {
               value: "off",
-              label: "Do not attribute my X replies",
-              description:
-                "Replies you make on X will not be linked to your Stance Capture account. Your replies may still contribute anonymously to aggregate data.",
+              label: t("settingsPrivacy.doNotAttributeMyX"),
+              description: t("settingsPrivacy.repliesYouMakeOnX"),
             },
           ]}
         />
         <p className="text-[11px] text-slate-400 pt-1">
-          Only replies with a high confidence score are ever attributed. Manage your connected
-          X account in{" "}
-          <a href="/settings/account" className="underline hover:text-slate-600">
-            Account settings
-          </a>
+          <Trans
+            i18nKey="settingsPrivacy.manageXAccount"
+            components={{ a: <a href="/settings/account" className="underline hover:text-slate-600" /> }}
+          />
           .
         </p>
       </SectionCard>
@@ -412,8 +408,8 @@ export default function SettingsPrivacy() {
       {/* AA5: WhatsApp messages */}
       <SectionCard
         icon={MessageCircleOff}
-        title="WhatsApp messages"
-        description="Whether you receive Stance Capture questions via WhatsApp."
+        title={t("settingsPrivacy.whatsappMessages")}
+        description={t("settingsPrivacy.whetherYouReceiveStanceCapture")}
       >
         <RadioGroup
           name="whatsapp-messages"
@@ -423,30 +419,28 @@ export default function SettingsPrivacy() {
           options={[
             {
               value: "on",
-              label: "Enabled (default)",
-              description:
-                "You may receive stance questions via WhatsApp when someone shares a question with you or an admin broadcasts to your number.",
+              label: t("settingsPrivacy.enabledDefault"),
+              description: t("settingsPrivacy.youMayReceiveStanceQuestions"),
             },
             {
               value: "off",
-              label: "Disable WhatsApp messages",
-              description:
-                "You will no longer receive Stance Capture questions on WhatsApp. You can re-enable at any time, or reply START to any Stance Capture WhatsApp message.",
+              label: t("settingsPrivacy.disableWhatsappMessages"),
+              description: t("settingsPrivacy.youWillNoLongerReceive"),
             },
           ]}
         />
         <p className="text-[11px] text-slate-400 pt-1">
-          You can also opt out at any time by replying <span className="font-mono">STOP</span> to
-          any Stance Capture WhatsApp message.
+          <Trans
+            i18nKey="settingsPrivacy.optOutStop"
+            components={{ code: <span className="font-mono" /> }}
+          />
         </p>
       </SectionCard>
 
       {/* Info footer */}
       <div className="rounded-lg bg-slate-50 border border-slate-100 px-4 py-3">
         <p className="text-xs text-slate-500 leading-relaxed">
-          Your stance data is always used in aggregate to power community insights — this cannot be
-          turned off as it is core to how Stance Capture works. These settings control whether your
-          individual responses are attributable to you.
+          {t("settingsPrivacy.yourStanceDataIsAlways")}
         </p>
       </div>
     </div>

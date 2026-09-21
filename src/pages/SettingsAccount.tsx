@@ -15,6 +15,7 @@ import {
   Loader2, Trash2, RotateCcw, Download, Shield, AlertTriangle, CheckCircle2, XCircle
 } from "lucide-react";
 import ConnectedAccountsSection from "@/auth/ConnectedAccountsSection";
+import { useTranslation, Trans } from "react-i18next";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -137,6 +138,7 @@ function Section({
 // ── N1: Deletion section ───────────────────────────────────────────────────────
 
 function DeletionSection() {
+  const { t } = useTranslation();
   const { data: request, isLoading } = useDeletionRequest();
   const { mutate: requestDeletion, isPending: requesting, reset: resetRequest } = useRequestDeletion();
   const { mutate: cancelDeletion, isPending: cancelling, reset: resetCancel } = useCancelDeletion();
@@ -152,9 +154,9 @@ function DeletionSection() {
       onSuccess: () => {
         setConfirmOpen(false);
         setConfirmText("");
-        toast({ title: "Deletion request submitted. You have 14 days to cancel." });
+        toast({ title: t("settingsAccount.deletionRequestSubmittedYouHave") });
       },
-      onError: () => toast({ title: "Failed to submit request.", variant: "destructive" }),
+      onError: () => toast({ title: t("settingsAccount.failedToSubmitRequest"), variant: "destructive" }),
     });
   };
 
@@ -165,9 +167,9 @@ function DeletionSection() {
         resetCancel();
         setConfirmOpen(false);
         setConfirmText("");
-        toast({ title: "Deletion request cancelled. Your account is safe." });
+        toast({ title: t("settingsAccount.deletionRequestCancelledYourAccount") });
       },
-      onError: () => toast({ title: "Failed to cancel request.", variant: "destructive" }),
+      onError: () => toast({ title: t("settingsAccount.failedToCancelRequest"), variant: "destructive" }),
     });
   };
 
@@ -175,7 +177,7 @@ function DeletionSection() {
     return (
       <div className="flex items-center gap-2 text-slate-400 text-xs">
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        Loading…
+        {t("common.loading")}
       </div>
     );
   }
@@ -189,13 +191,18 @@ function DeletionSection() {
             <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
             <div>
               <p className="text-sm font-medium text-amber-900">
-                Account deletion scheduled
+                {t("settingsAccount.accountDeletionScheduled")}
               </p>
               <p className="text-xs text-amber-800 mt-0.5">
-                Requested on {formatDate(request.requested_at)}. Your account and all data
-                will be permanently deleted on{" "}
-                <span className="font-medium">{formatDate(request.execute_after)}</span>{" "}
-                ({daysUntil(request.execute_after)} days remaining).
+                <Trans
+                  i18nKey="settingsAccount.deletionScheduledDetail"
+                  values={{
+                    requested: formatDate(request.requested_at),
+                    execute: formatDate(request.execute_after),
+                    days: daysUntil(request.execute_after),
+                  }}
+                  components={{ b: <span className="font-medium" /> }}
+                />
               </p>
             </div>
           </div>
@@ -210,22 +217,20 @@ function DeletionSection() {
             ) : (
               <RotateCcw className="h-3.5 w-3.5" />
             )}
-            Cancel deletion request
+            {t("settingsAccount.cancelDeletionRequest")}
           </button>
         </div>
       ) : (
         // No active request
         <>
           <p className="text-xs text-slate-600 leading-relaxed">
-            Deleting your account permanently removes your profile, all stances,
-            comments, and activity history. You have a 14-day grace period to
-            change your mind after requesting deletion.
+            {t("settingsAccount.deletingYourAccountPermanentlyRemoves")}
           </p>
           <ul className="text-xs text-slate-500 space-y-1 pl-4 list-disc">
-            <li>Profile and username are immediately hidden</li>
-            <li>Stances are removed from community aggregates after 14 days</li>
-            <li>All personal data is permanently wiped after the grace period</li>
-            <li>This action cannot be undone after the grace period</li>
+            <li>{t("settingsAccount.profileAndUsernameAreImmediately")}</li>
+            <li>{t("settingsAccount.stancesAreRemovedFromCommunity")}</li>
+            <li>{t("settingsAccount.allPersonalDataIsPermanently")}</li>
+            <li>{t("settingsAccount.thisActionCannotBeUndone")}</li>
           </ul>
 
           {!confirmOpen ? (
@@ -235,12 +240,15 @@ function DeletionSection() {
               className="flex items-center gap-2 rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 transition-colors"
             >
               <Trash2 className="h-3.5 w-3.5" />
-              Request account deletion
+              {t("settingsAccount.requestAccountDeletion")}
             </button>
           ) : (
             <div className="rounded-lg border border-red-200 bg-red-50 p-4 space-y-3">
               <p className="text-xs font-medium text-red-900">
-                Type <span className="font-mono font-bold">DELETE</span> to confirm
+                <Trans
+                  i18nKey="settingsAccount.typeDeleteToConfirm"
+                  components={{ code: <span className="font-mono font-bold" /> }}
+                />
               </p>
               <input
                 type="text"
@@ -255,7 +263,7 @@ function DeletionSection() {
                   onClick={() => { setConfirmOpen(false); setConfirmText(""); }}
                   className="flex-1 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
                 >
-                  Cancel
+                  {t("auth.cancel")}
                 </button>
                 <button
                   type="button"
@@ -264,7 +272,7 @@ function DeletionSection() {
                   className="flex-1 flex items-center justify-center gap-1.5 rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
                 >
                   {requesting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                  Request deletion
+                  {t("settingsAccount.requestDeletion")}
                 </button>
               </div>
             </div>
@@ -278,13 +286,14 @@ function DeletionSection() {
 // ── N2: Consent log section ────────────────────────────────────────────────────
 
 function ConsentLogsSection() {
+  const { t } = useTranslation();
   const { data: logs, isLoading } = useConsentLogs();
 
   if (isLoading) {
     return (
       <div className="flex items-center gap-2 text-slate-400 text-xs">
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        Loading consent logs…
+        {t("settingsAccount.loadingConsentLogs")}
       </div>
     );
   }
@@ -292,8 +301,7 @@ function ConsentLogsSection() {
   if (!logs || logs.length === 0) {
     return (
       <p className="text-xs text-slate-500">
-        No consent events recorded yet. Logs appear here when you grant or
-        withdraw consent for data processing activities.
+        {t("settingsAccount.noConsentEventsRecordedYet")}
       </p>
     );
   }
@@ -301,8 +309,7 @@ function ConsentLogsSection() {
   return (
     <div className="space-y-2">
       <p className="text-xs text-slate-500">
-        These are the data processing activities you have consented to or
-        withdrawn consent from.
+        {t("settingsAccount.theseAreTheDataProcessing")}
       </p>
       <div className="divide-y divide-slate-100 rounded-lg border border-slate-200 overflow-hidden">
         {logs.map((log) => (
@@ -335,59 +342,58 @@ function ConsentLogsSection() {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function SettingsAccount() {
+  const { t } = useTranslation();
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold text-slate-900">Account & Data</h2>
+        <h2 className="text-lg font-semibold text-slate-900">{t("settingsAccount.accountData")}</h2>
         <p className="text-sm text-slate-500 mt-1">
-          Manage your account, review consent history, and export or delete your data.
+          {t("settingsAccount.manageYourAccountReviewConsent")}
         </p>
       </div>
 
       {/* V4: Connected social accounts */}
       <Section
-        title="Connected social accounts"
-        description="Sign in faster using Google, Facebook, or Apple."
+        title={t("settingsAccount.connectedSocialAccounts")}
+        description={t("settingsAccount.signInFasterUsingGoogle")}
       >
         <ConnectedAccountsSection />
       </Section>
 
       {/* N3: Data export — delegates to My Stances which has the full export UI */}
       <Section
-        title="Export your data"
-        description="Download a copy of your stances, history, and activity."
+        title={t("settingsAccount.exportYourData")}
+        description={t("settingsAccount.downloadACopyOfYour")}
       >
         <div className="flex items-start gap-3">
           <p className="text-xs text-slate-600 leading-relaxed flex-1">
-            Your data export includes all questions you've answered, your stance
-            history, change log, and any rationale you've written. Available as
-            CSV or JSON.
+            {t("settingsAccount.yourDataExportIncludesAll")}
           </p>
           <Link
             to="/me/stances"
             className="flex items-center gap-2 shrink-0 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
           >
             <Download className="h-3.5 w-3.5" />
-            Go to My Stances
+            {t("settingsAccount.goToMyStances")}
           </Link>
         </div>
         <p className="text-[11px] text-slate-400">
-          The export option is in the top-right of the My Stances page.
+          {t("settingsAccount.theExportOptionIsIn")}
         </p>
       </Section>
 
       {/* N2: Consent logs */}
       <Section
-        title="Consent history"
-        description="A transparent log of what data processing you have consented to."
+        title={t("settingsAccount.consentHistory")}
+        description={t("settingsAccount.aTransparentLogOfWhat")}
       >
         <ConsentLogsSection />
       </Section>
 
       {/* N1: Account deletion */}
       <Section
-        title="Delete account"
-        description="Permanently delete your account and all associated data."
+        title={t("settingsAccount.deleteAccount")}
+        description={t("settingsAccount.permanentlyDeleteYourAccountAnd")}
       >
         <DeletionSection />
       </Section>
