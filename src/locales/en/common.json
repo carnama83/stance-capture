@@ -1758,7 +1758,10 @@
     "continueWithGoogle": "Continue with Google",
     "continueWithFacebook": "Continue with Facebook",
     "continueWithApple": "Continue with Apple",
-    "legalNote": "By continuing, you agree to our <terms>Terms</terms> and <privacy>Privacy Policy</privacy>."
+    "legalNote": "By continuing, you agree to our <terms>Terms</terms> and <privacy>Privacy Policy</privacy>.",
+    "orSignUpWith": "or sign up with",
+    "orLogInWith": "or log in with",
+    "oauthFailed": "OAuth sign-in failed."
   },
   "notifications": {
     "markAllRead": "Mark all read",

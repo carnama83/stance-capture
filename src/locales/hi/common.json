@@ -1758,7 +1758,10 @@
     "continueWithGoogle": "Google से जारी रखें",
     "continueWithFacebook": "Facebook से जारी रखें",
     "continueWithApple": "Apple से जारी रखें",
-    "legalNote": "जारी रखकर आप हमारी <terms>शर्तों</terms> और <privacy>गोपनीयता नीति</privacy> से सहमत होते हैं।"
+    "legalNote": "जारी रखकर आप हमारी <terms>शर्तों</terms> और <privacy>गोपनीयता नीति</privacy> से सहमत होते हैं।",
+    "orSignUpWith": "या इससे साइन अप करें",
+    "orLogInWith": "या इससे लॉग इन करें",
+    "oauthFailed": "OAuth साइन-इन विफल रहा।"
   },
   "notifications": {
     "markAllRead": "सभी पढ़ा हुआ चिह्नित करें",

@@ -176,12 +176,14 @@ export default function SocialAuthButtons({ mode, onError }: SocialAuthButtonsPr
       }
       // On success: Supabase redirects the browser — no further action needed here
     } catch (e: any) {
-      onError?.(e?.message ?? "OAuth sign-in failed.");
+      onError?.(e?.message ?? i18n.t("socialAuthButtons.oauthFailed"));
       setLoadingProvider(null);
     }
   }
 
-  const dividerText = mode === "signup" ? "or sign up with" : "or log in with";
+  const dividerText = mode === "signup"
+    ? t("socialAuthButtons.orSignUpWith")
+    : t("socialAuthButtons.orLogInWith");
 
   return (
     <div className="space-y-3">

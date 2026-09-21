@@ -3,11 +3,14 @@
 // consistent cross-browser, cross-locale rendering.
 import * as React from "react";
 import { useTranslation } from "react-i18next";
+import { localeFor } from "@/lib/intlFormat";
 
-const MONTHS = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
+// Month names come from Intl, not the catalogue: the platform already
+// knows them in every locale, and a hand-translated list would drift.
+function monthNames(locale: string): string[] {
+  const fmt = new Intl.DateTimeFormat(locale, { month: "long", timeZone: "UTC" });
+  return Array.from({ length: 12 }, (_, i) => fmt.format(new Date(Date.UTC(2000, i, 1))));
+}
 
 function daysInMonth(month: number, year: number): number {
   return new Date(year, month, 0).getDate();
@@ -30,7 +33,7 @@ interface DobFieldProps {
 }
 
 export function DobField({ value, setValue, error: externalError, containerRef }: DobFieldProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const parsed = React.useMemo(() => {
     if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return { y: "", m: "", d: "" };
     const [y, m, d] = value.split("-");
@@ -84,7 +87,7 @@ export function DobField({ value, setValue, error: externalError, containerRef }
         <select aria-label={t("dobField.month")} className={`${sel} flex-1`} value={month}
           onChange={(e) => update(year, e.target.value, day)}>
           <option value="">{t("dobField.month")}</option>
-          {MONTHS.map((name, i) => (
+          {monthNames(localeFor(i18n.language)).map((name, i) => (
             <option key={i + 1} value={String(i + 1)}>{name}</option>
           ))}
         </select>
