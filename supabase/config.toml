@@ -86,6 +86,36 @@ enabled = true
 verify_jwt = true
 entrypoint = "./functions/notify-election-updates/index.ts"
 
+# Sep 2026 (Epic I QA pass): the five notification jobs below MUST keep verify_jwt = true.
+# Their H-04b in-body check accepts a service_role JWT by reading its claims WITHOUT
+# verifying the signature - which is only sound because the platform validates the
+# credential first. Setting any of these to false makes those claims forgeable.
+
+[functions.notify-weekly-digest]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/notify-weekly-digest/index.ts"
+
+[functions.notify-stance-changes]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/notify-stance-changes/index.ts"
+
+[functions.notify-topic-follows]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/notify-topic-follows/index.ts"
+
+[functions.notify-reminders]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/notify-reminders/index.ts"
+
+[functions.notify-new-local-topics]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/notify-new-local-topics/index.ts"
+
 [functions.ugq-screen]
 verify_jwt = false
 
