@@ -453,7 +453,11 @@
     "trendSupportUp": "Support up {{pp}}pp this week",
     "trendSupportDown": "Support down {{pp}}pp this week",
     "trendSteady": "Sentiment steady this week",
-    "earlyData": "(early data)"
+    "earlyData": "(early data)",
+    "agree": "Agree",
+    "disagree": "Disagree",
+    "stronglyAgree": "Strongly agree",
+    "stronglyDisagree": "Strongly disagree"
   },
   "share": {
     "button": "Share",
@@ -632,5 +636,42 @@
     "reasonGaining": "Community engagement accelerating",
     "reasonStable": "Sustained community engagement",
     "reasonRecent": "Recent activity"
+  },
+  "common": {
+    "loading": "Loading…",
+    "logIn": "Log in",
+    "back": "← Back",
+    "all": "All",
+    "to": "to",
+    "cancel": "Cancel"
+  },
+  "myStances": {
+    "title": "My stances",
+    "subtitle": "See where {{name}} stands, and revisit questions you've already answered.",
+    "historyTip": "This is your stance history — see how your thinking has shifted over time.",
+    "signInRequired": "Sign in required",
+    "signInBody": "You need to be logged in to see and manage your stances.",
+    "downloadCsv": "Download CSV",
+    "downloadJson": "Download JSON",
+    "viewAll": "View all {{n}} stances →",
+    "showing": "Showing <b>{{visible}} of {{total}}</b> stances",
+    "sort": "Sort",
+    "sortRecent": "Most recent",
+    "sortOldest": "Oldest first",
+    "sortStrongest": "Strongest opinions",
+    "stanceFilter": "Stance",
+    "strongOnly": "Strong only (±2)",
+    "allTopics": "All topics",
+    "dateRange": "Date range",
+    "loadingStances": "Loading your stances…",
+    "failedToLoad": "Failed to load: {{msg}}",
+    "emptyNoStances": "You haven't taken a stance on any question yet.",
+    "emptyNoMatch": "No stances match your filters.",
+    "directionTitle": "Direction of last stance change",
+    "questionUnavailable": "[Question unavailable]",
+    "revise": "Revise",
+    "updated": "Updated: {{date}}",
+    "exportFailedTitle": "Export failed",
+    "exportFailedBody": "Export failed. Please try again."
   }
 }

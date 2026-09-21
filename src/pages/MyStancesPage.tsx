@@ -22,7 +22,8 @@ import { QuestionPhaseBadge } from "@/components/question/QuestionPhaseBadge";
 import { StanceSparkline } from "@/components/StanceSparkline";
 import { RationaleEditor } from "@/components/RationaleEditor";
 import { Link, useNavigate } from "react-router-dom";
-import { useTranslation } from "react-i18next";
+import { useTranslation, Trans } from "react-i18next";
+import i18n from "@/lib/i18n";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getSupabase } from "../lib/supabaseClient";
 import PageLayout from "../components/PageLayout";
@@ -304,8 +305,8 @@ async function runExport(
   } catch (err: any) {
     console.error("Export failed:", err);
     toast({
-      title: "Export failed",
-      description: "Export failed. Please try again.",
+      title: i18n.t("myStances.exportFailedTitle"),
+      description: i18n.t("myStances.exportFailedBody"),
       variant: "destructive",
     });
   } finally {
@@ -315,6 +316,7 @@ async function runExport(
 
 
 export default function MyStancesPage() {
+  const { t } = useTranslation();
   const { session, ready } = useSupabaseSession();
   const navigate = useNavigate();
   const isAuthed = !!session;
@@ -416,7 +418,7 @@ export default function MyStancesPage() {
     return (
       <PageLayout>
         <div className="max-w-3xl mx-auto py-4">
-          <div className="text-xs text-slate-500">Loading…</div>
+          <div className="text-xs text-slate-500">{t("common.loading")}</div>
         </div>
       </PageLayout>
     );
@@ -427,10 +429,10 @@ export default function MyStancesPage() {
       <PageLayout>
         <div className="max-w-3xl mx-auto py-4">
           <div className="rounded-lg border p-4 text-sm text-slate-700">
-            <div className="font-medium mb-1">Sign in required</div>
-            <p className="mb-2">You need to be logged in to see and manage your stances.</p>
+            <div className="font-medium mb-1">{t("myStances.signInRequired")}</div>
+            <p className="mb-2">{t("myStances.signInBody")}</p>
             <button type="button" className="rounded bg-slate-900 text-white px-3 py-1.5 text-xs" onClick={() => navigate("/login")}>
-              Log in
+              {t("common.logIn")}
             </button>
           </div>
         </div>
@@ -453,13 +455,13 @@ export default function MyStancesPage() {
         {/* Header */}
         <div className="flex items-center justify-between gap-2">
           <div className="relative">
-            <h1 className="text-base font-semibold text-slate-900">My stances</h1>
+            <h1 className="text-base font-semibold text-slate-900">{t("myStances.title")}</h1>
             <p className="text-xs text-slate-600">
-              See where {displayName} stands, and revisit questions you've already answered.
+              {t("myStances.subtitle", { name: displayName })}
             </p>
             {tips.isVisible("my_stances") && (
               <CoachMark
-                text="This is your stance history — see how your thinking has shifted over time."
+                text={t("myStances.historyTip")}
                 placement="below"
                 onDismiss={() => tips.dismiss("my_stances")}
               />
@@ -482,15 +484,15 @@ export default function MyStancesPage() {
               {exportOpen && !exportLoading && (
                 <div className="absolute right-0 top-full mt-1 z-20 rounded-md border bg-white shadow-md text-xs overflow-hidden">
                   <button type="button" className="block w-full px-4 py-2 text-left hover:bg-slate-50 text-slate-700" onClick={() => { setExportOpen(false); runExport("csv", toast, setExportLoading); }}>
-                    Download CSV
+                    {t("myStances.downloadCsv")}
                   </button>
                   <button type="button" className="block w-full px-4 py-2 text-left hover:bg-slate-50 text-slate-700" onClick={() => { setExportOpen(false); runExport("json", toast, setExportLoading); }}>
-                    Download JSON
+                    {t("myStances.downloadJson")}
                   </button>
                 </div>
               )}
             </div>
-            <Link to="/" className="text-xs text-slate-600 hover:underline">← Back</Link>
+            <Link to="/" className="text-xs text-slate-600 hover:underline">{t("common.back")}</Link>
           </div>
         </div>
 
@@ -531,7 +533,7 @@ export default function MyStancesPage() {
                 onClick={() => setActiveTab("stances")}
                 className="w-full rounded-lg border border-slate-200 px-4 py-3 text-xs text-slate-600 hover:bg-slate-50 transition-colors text-center"
               >
-                View all {totalCount} stances →
+                {t("myStances.viewAll", { n: totalCount })}
               </button>
             )}
           </>
@@ -544,41 +546,45 @@ export default function MyStancesPage() {
             <section className="rounded-lg border p-3 space-y-3">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div className="text-xs text-slate-700">
-                  Showing <span className="font-medium">{visibleCount} of {totalCount}</span> stances
+                  <Trans
+                    i18nKey="myStances.showing"
+                    values={{ visible: visibleCount, total: totalCount }}
+                    components={{ b: <span className="font-medium" /> }}
+                  />
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <label className="flex items-center gap-1 text-[11px] text-slate-600">
-                    <span>Sort</span>
+                    <span>{t("myStances.sort")}</span>
                     <select value={sortBy} onChange={(e) => setSortBy(e.target.value as SortBy)} className="rounded border px-2 py-1 text-[11px]">
-                      <option value="recent">Most recent</option>
-                      <option value="oldest">Oldest first</option>
-                      <option value="strongest">Strongest opinions</option>
+                      <option value="recent">{t("myStances.sortRecent")}</option>
+                      <option value="oldest">{t("myStances.sortOldest")}</option>
+                      <option value="strongest">{t("myStances.sortStrongest")}</option>
                     </select>
                   </label>
 
                   <label className="flex items-center gap-1 text-[11px] text-slate-600">
-                    <span>Stance</span>
+                    <span>{t("myStances.stanceFilter")}</span>
                     <select value={filterBy} onChange={(e) => setFilterBy(e.target.value as FilterBy)} className="rounded border px-2 py-1 text-[11px]">
-                      <option value="all">All</option>
-                      <option value="sa">Strongly agree</option>
-                      <option value="a">Agree</option>
-                      <option value="n">Neutral</option>
-                      <option value="d">Disagree</option>
-                      <option value="sd">Strongly disagree</option>
-                      <option value="strong">Strong only (±2)</option>
+                      <option value="all">{t("common.all")}</option>
+                      <option value="sa">{t("stance.stronglyAgree")}</option>
+                      <option value="a">{t("stance.agree")}</option>
+                      <option value="n">{t("stance.neutral")}</option>
+                      <option value="d">{t("stance.disagree")}</option>
+                      <option value="sd">{t("stance.stronglyDisagree")}</option>
+                      <option value="strong">{t("myStances.strongOnly")}</option>
                     </select>
                   </label>
 
                   {/* Topic filter — now also opens the drawer */}
                   {topics.length > 0 && (
                     <label className="flex items-center gap-1 text-[11px] text-slate-600">
-                      <span>Topic</span>
+                      <span>{t("stance.topic")}</span>
                       <select
                         value={topicFilter}
                         onChange={(e) => handleTopicFilterChange(e.target.value)}
                         className="rounded border px-2 py-1 text-[11px] max-w-[140px]"
                       >
-                        <option value="all">All topics</option>
+                        <option value="all">{t("myStances.allTopics")}</option>
                         {topics.map((t) => <option key={t} value={t}>{t}</option>)}
                       </select>
                     </label>
@@ -605,21 +611,21 @@ export default function MyStancesPage() {
               </div>
 
               <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
-                <span>Date range</span>
+                <span>{t("myStances.dateRange")}</span>
                 <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="rounded border px-2 py-1 text-[11px]" />
-                <span>to</span>
+                <span>{t("common.to")}</span>
                 <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="rounded border px-2 py-1 text-[11px]" />
                 {(dateFrom || dateTo) && (
                   <button type="button" onClick={() => { setDateFrom(""); setDateTo(""); }} className="text-slate-400 hover:text-slate-600 underline">
-                    Clear
+                    {t("stance.clear")}
                   </button>
                 )}
               </div>
 
-              {isLoading && <p className="text-xs text-slate-500">Loading your stances…</p>}
-              {isError && !isLoading && <p className="text-xs text-red-600">Failed to load: {(error as Error)?.message}</p>}
+              {isLoading && <p className="text-xs text-slate-500">{t("myStances.loadingStances")}</p>}
+              {isError && !isLoading && <p className="text-xs text-red-600">{t("myStances.failedToLoad", { msg: (error as Error)?.message })}</p>}
               {!isLoading && !isError && totalCount === 0 && (
-                <p className="text-xs text-slate-500">You haven't taken a stance on any question yet.</p>
+                <p className="text-xs text-slate-500">{t("myStances.emptyNoStances")}</p>
               )}
             </section>
 
@@ -635,7 +641,7 @@ export default function MyStancesPage() {
             {/* E-01: filters excluded every stance — §6.1 requires this message.
                 Previously the list was simply suppressed, leaving a blank page. */}
             {!isLoading && !isError && totalCount > 0 && visibleCount === 0 && (
-              <p className="text-xs text-slate-500">No stances match your filters.</p>
+              <p className="text-xs text-slate-500">{t("myStances.emptyNoMatch")}</p>
             )}
 
             {/* Stance list */}
@@ -655,12 +661,12 @@ export default function MyStancesPage() {
 
 // ── Card ─────────────────────────────────────────────────────────────────────
 
-const SCORE_OPTIONS: { value: number; label: string; tone: "pos" | "neg" | "neu" }[] = [
-  { value:  2, label: "Strongly agree",    tone: "pos" },
-  { value:  1, label: "Agree",             tone: "pos" },
-  { value:  0, label: "Neutral",           tone: "neu" },
-  { value: -1, label: "Disagree",          tone: "neg" },
-  { value: -2, label: "Strongly disagree", tone: "neg" },
+const SCORE_OPTIONS: { value: number; labelKey: string; tone: "pos" | "neg" | "neu" }[] = [
+  { value:  2, labelKey: "stance.stronglyAgree",    tone: "pos" },
+  { value:  1, labelKey: "stance.agree",            tone: "pos" },
+  { value:  0, labelKey: "stance.neutral",          tone: "neu" },
+  { value: -1, labelKey: "stance.disagree",         tone: "neg" },
+  { value: -2, labelKey: "stance.stronglyDisagree", tone: "neg" },
 ];
 
 // M-E02: score → hex colour, mirrors StanceSparkline's SCORE_COLOR map.
@@ -794,7 +800,7 @@ function MyStanceCard({ row, userId }: { row: MyStanceRow; userId: string }) {
               <span
                 className="text-[11px] font-semibold leading-none"
                 style={{ color: trendBadge.color }}
-                title="Direction of last stance change"
+                title={t("myStances.directionTitle")}
               >
                 {trendBadge.arrow}
               </span>
@@ -804,7 +810,7 @@ function MyStanceCard({ row, userId }: { row: MyStanceRow; userId: string }) {
                 {q.question}
               </Link>
             ) : (
-              <div className="text-sm font-semibold text-slate-900">[Question unavailable]</div>
+              <div className="text-sm font-semibold text-slate-900">{t("myStances.questionUnavailable")}</div>
             )}
           </div>
 
@@ -834,7 +840,7 @@ function MyStanceCard({ row, userId }: { row: MyStanceRow; userId: string }) {
             <div className="mt-2 space-y-2">
               <div className="flex flex-wrap gap-1.5">
                 {SCORE_OPTIONS.map((opt) => {
-                  const optLabel = stanceLabels[opt.value] ?? opt.label;
+                  const optLabel = stanceLabels[opt.value] ?? t(opt.labelKey);
                   return (
                     <button
                       key={opt.value}
@@ -868,7 +874,7 @@ function MyStanceCard({ row, userId }: { row: MyStanceRow; userId: string }) {
                   onClick={() => { setEditing(false); setSelectedScore(row.score); }}
                   className="rounded-md border px-3 py-1 text-[11px] text-slate-600 hover:bg-slate-50 transition-colors"
                 >
-                  Cancel
+                  {t("common.cancel")}
                 </button>
               </div>
             </div>
@@ -898,7 +904,7 @@ function MyStanceCard({ row, userId }: { row: MyStanceRow; userId: string }) {
               onClick={() => setEditing(true)}
               className="text-[10px] text-slate-400 hover:text-slate-700 underline transition-colors"
             >
-              Revise
+              {t("myStances.revise")}
             </button>
           )}
           {q?.location_label && (
@@ -911,7 +917,7 @@ function MyStanceCard({ row, userId }: { row: MyStanceRow; userId: string }) {
               Q: {new Date(q.published_at).toLocaleDateString(undefined, { dateStyle: "medium" })}
             </span>
           )}
-          <span className="text-[10px] text-slate-500">Updated: {dateLabel}</span>
+          <span className="text-[10px] text-slate-500">{t("myStances.updated", { date: dateLabel })}</span>
         </div>
       </div>
     </article>

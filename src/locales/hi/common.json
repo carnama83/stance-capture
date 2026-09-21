@@ -453,7 +453,11 @@
     "trendSupportUp": "इस सप्ताह समर्थन {{pp}}pp बढ़ा",
     "trendSupportDown": "इस सप्ताह समर्थन {{pp}}pp घटा",
     "trendSteady": "इस सप्ताह भावना स्थिर",
-    "earlyData": "(शुरुआती डेटा)"
+    "earlyData": "(शुरुआती डेटा)",
+    "agree": "सहमत",
+    "disagree": "असहमत",
+    "stronglyAgree": "पूर्णतः सहमत",
+    "stronglyDisagree": "पूर्णतः असहमत"
   },
   "share": {
     "button": "शेयर करें",
@@ -632,5 +636,42 @@
     "reasonGaining": "सामुदायिक भागीदारी तेज़ हो रही है",
     "reasonStable": "लगातार सामुदायिक भागीदारी",
     "reasonRecent": "हाल की गतिविधि"
+  },
+  "common": {
+    "loading": "लोड हो रहा है…",
+    "logIn": "लॉग इन करें",
+    "back": "← वापस",
+    "all": "सभी",
+    "to": "से",
+    "cancel": "रद्द करें"
+  },
+  "myStances": {
+    "title": "मेरे रुख",
+    "subtitle": "देखें {{name}} का रुख क्या है, और पहले दिए गए जवाब फिर से देखें।",
+    "historyTip": "यह आपका रुख इतिहास है — देखें कि समय के साथ आपकी सोच कैसे बदली।",
+    "signInRequired": "साइन इन आवश्यक है",
+    "signInBody": "अपने रुख देखने और प्रबंधित करने के लिए लॉग इन करना आवश्यक है।",
+    "downloadCsv": "CSV डाउनलोड करें",
+    "downloadJson": "JSON डाउनलोड करें",
+    "viewAll": "सभी {{n}} रुख देखें →",
+    "showing": "कुल {{total}} में से <b>{{visible}}</b> रुख दिखाए जा रहे हैं",
+    "sort": "क्रमबद्ध करें",
+    "sortRecent": "सबसे नए",
+    "sortOldest": "सबसे पुराने पहले",
+    "sortStrongest": "सबसे प्रबल राय",
+    "stanceFilter": "रुख",
+    "strongOnly": "केवल प्रबल (±2)",
+    "allTopics": "सभी विषय",
+    "dateRange": "तिथि सीमा",
+    "loadingStances": "आपके रुख लोड हो रहे हैं…",
+    "failedToLoad": "लोड नहीं हो सका: {{msg}}",
+    "emptyNoStances": "आपने अभी तक किसी सवाल पर रुख नहीं लिया है।",
+    "emptyNoMatch": "आपके फ़िल्टर से कोई रुख मेल नहीं खाता।",
+    "directionTitle": "पिछले रुख परिवर्तन की दिशा",
+    "questionUnavailable": "[सवाल उपलब्ध नहीं]",
+    "revise": "बदलें",
+    "updated": "अपडेट: {{date}}",
+    "exportFailedTitle": "एक्सपोर्ट विफल",
+    "exportFailedBody": "एक्सपोर्ट विफल रहा। कृपया फिर से प्रयास करें।"
   }
 }
