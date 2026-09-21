@@ -6,6 +6,7 @@ import { getSupabase } from "@/lib/supabaseClient";
 import PageLayout from "@/components/PageLayout";
 import { ProposeQuestionButton } from "@/components/ugq/ProposeQuestionButton";
 import { Loader2, Sparkles } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 type ForYouQuestion = {
   id: string;
@@ -38,6 +39,7 @@ async function getForYouFeed(limit: number = 20): Promise<ForYouFeed> {
 }
 
 export default function ForYouFeedPage() {
+  const { t } = useTranslation();
   const { data, isLoading, isError, error } = useQuery<ForYouFeed>({
     queryKey: ["for-you-feed"],
     queryFn: () => getForYouFeed(20),
@@ -50,10 +52,10 @@ export default function ForYouFeedPage() {
         {/* Header */}
         <div className="flex items-center gap-2">
           <Sparkles className="h-6 w-6 text-blue-600" />
-          <h1 className="text-2xl font-bold text-slate-900">For You</h1>
+          <h1 className="text-2xl font-bold text-slate-900">{t("nav.forYou")}</h1>
         </div>
         <p className="text-sm text-slate-600">
-          Questions tailored to your interests and location
+          {t("forYouFeed.questionsTailoredToYourInterests")}
         </p>
 
         {/* Loading */}
@@ -61,7 +63,7 @@ export default function ForYouFeedPage() {
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
             <span className="ml-2 text-sm text-slate-600">
-              Loading your feed...
+              {t("forYouFeed.loadingYourFeed")}
             </span>
           </div>
         )}
@@ -70,7 +72,7 @@ export default function ForYouFeedPage() {
         {isError && (
           <div className="rounded-lg border border-red-200 bg-red-50 p-4">
             <p className="text-sm text-red-800">
-              Failed to load feed: {(error as Error).message}
+              {t("forYouFeed.failedToLoadFeed")} {(error as Error).message}
             </p>
           </div>
         )}
@@ -116,23 +118,23 @@ export default function ForYouFeedPage() {
             ) : (
               <div className="text-center py-12 space-y-4">
                 <p className="text-slate-600">
-                  No personalized questions yet.
+                  {t("forYouFeed.noPersonalizedQuestionsYet")}
                 </p>
                 <p className="text-sm text-slate-500">
-                  Follow some topics or answer questions in your area to get personalized recommendations.
+                  {t("forYouFeed.followSomeTopicsOrAnswer")}
                 </p>
                 <div className="flex gap-3 justify-center">
                   <Link
                     to="/topics"
                     className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-700 transition-colors"
                   >
-                    Explore Topics
+                    {t("index.exploreTopics")}
                   </Link>
                   <Link
                     to="/"
                     className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm hover:bg-slate-50 transition-colors"
                   >
-                    Browse All Questions
+                    {t("forYouFeed.browseAllQuestions")}
                   </Link>
                 </div>
               </div>

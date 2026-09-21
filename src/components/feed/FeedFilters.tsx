@@ -10,6 +10,7 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet';
 import { Filter, X } from 'lucide-react';
+import { useTranslation } from "react-i18next";
 
 interface FilterState {
   tags: string[];
@@ -24,6 +25,7 @@ interface FeedFiltersProps {
 }
 
 export function FeedFilters({ filters, onChange }: FeedFiltersProps) {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
 
   const availableTags = [
@@ -32,9 +34,9 @@ export function FeedFilters({ filters, onChange }: FeedFiltersProps) {
   ];
 
   const availableStates = [
-    { value: 'active', label: 'Active' },
-    { value: 'cooling', label: 'Cooling' },
-    { value: 'dormant', label: 'Dormant' },
+    { value: 'active', label: t("feedFilters.active") },
+    { value: 'cooling', label: t("feedFilters.cooling") },
+    { value: 'dormant', label: t("feedFilters.dormant") },
   ];
 
   const toggleTag = (tag: string) => {
@@ -66,7 +68,7 @@ export function FeedFilters({ filters, onChange }: FeedFiltersProps) {
       <SheetTrigger asChild>
         <Button variant="outline" size="sm">
           <Filter className="h-4 w-4 mr-2" />
-          Filters
+          {t("feedFilters.filters")}
           {activeFilterCount > 0 && (
             <span className="ml-2 bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded-full">
               {activeFilterCount}
@@ -78,14 +80,14 @@ export function FeedFilters({ filters, onChange }: FeedFiltersProps) {
       <SheetContent>
         <SheetHeader>
           <div className="flex items-center justify-between">
-            <SheetTitle>Filter Questions</SheetTitle>
+            <SheetTitle>{t("feedFilters.filterQuestions")}</SheetTitle>
             {activeFilterCount > 0 && (
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={clearFilters}
               >
-                Clear all
+                {t("feedFilters.clearAll")}
               </Button>
             )}
           </div>
@@ -94,7 +96,7 @@ export function FeedFilters({ filters, onChange }: FeedFiltersProps) {
         <div className="mt-6 space-y-6">
           {/* Tags */}
           <div>
-            <h3 className="font-medium mb-3">Topics</h3>
+            <h3 className="font-medium mb-3">{t("search.topics")}</h3>
             <div className="space-y-2">
               {availableTags.map((tag) => (
                 <div key={tag} className="flex items-center space-x-2">
@@ -111,7 +113,7 @@ export function FeedFilters({ filters, onChange }: FeedFiltersProps) {
 
           {/* Question State */}
           <div>
-            <h3 className="font-medium mb-3">Question Status</h3>
+            <h3 className="font-medium mb-3">{t("feedFilters.questionStatus")}</h3>
             <div className="space-y-2">
               {availableStates.map((state) => (
                 <div key={state.value} className="flex items-center space-x-2">
@@ -144,7 +146,7 @@ export function FeedFilters({ filters, onChange }: FeedFiltersProps) {
                 }
               />
               <Label htmlFor="show-answered">
-                Show questions I've already answered
+                {t("feedFilters.showQuestionsIVeAlready")}
               </Label>
             </div>
           </div>

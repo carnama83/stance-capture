@@ -4,6 +4,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { getSupabase } from '@/lib/supabaseClient';
 import { useToast } from '@/hooks/use-toast';
+import i18n from "@/lib/i18n";
 import { getCampaignAttribution } from '@/lib/campaignAttribution';
 
 interface UseStanceSubmissionOptions {
@@ -62,7 +63,7 @@ export function useStanceSubmission({
       const userId = sessionData?.session?.user?.id;
 
       if (!userId) {
-        throw new Error('You must be logged in to submit a stance');
+        throw new Error(i18n.t('stanceSubmission.mustBeLoggedIn'));
       }
 
       // Epic EL-6: Election silence gate — check before ANY write
@@ -142,8 +143,8 @@ export function useStanceSubmission({
 
     onSuccess: () => {
       toast({
-        title: 'Stance submitted',
-        description: 'Your response has been recorded.',
+        title: i18n.t('stanceSubmission.stanceSubmitted'),
+        description: i18n.t('stanceSubmission.yourResponseRecorded'),
       });
 
       queryClient.invalidateQueries({ queryKey: ['question', questionId] });
@@ -164,8 +165,8 @@ export function useStanceSubmission({
 
       if (isInvalidated) {
         toast({
-          title: 'A newer version of this question is available',
-          description: 'Please read it and give your stance again.',
+          title: i18n.t('stanceSubmission.newerVersionAvailable'),
+          description: i18n.t('stanceSubmission.readItAndAnswerAgain'),
         });
         onRenditionInvalidated?.();
         return;
@@ -177,7 +178,9 @@ export function useStanceSubmission({
         error.message?.includes('polling');
 
       toast({
-        title: isSilence ? 'Submission paused' : 'Failed to submit stance',
+        title: isSilence
+          ? i18n.t('stanceSubmission.submissionPaused')
+          : i18n.t('stanceSubmission.failedToSubmitStance'),
         description: error.message,
         variant: 'destructive',
       });

@@ -16,6 +16,7 @@ import * as React from "react";
 import { Vote, User, MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ElectionMeta } from "@/hooks/useElectionMeta";
+import { useTranslation } from "react-i18next";
 
 // Mirrors formatIssueTag in ElectionQuestionCard / ElectionDisclosure.
 function formatIssueTag(tag: string | null | undefined): string {
@@ -30,6 +31,7 @@ export function ElectionCardChrome({
   meta: ElectionMeta | undefined;
   className?: string;
 }) {
+  const { t } = useTranslation();
   if (!meta) return null;
 
   const colour = meta.election_party_colour ?? "#94a3b8";
@@ -42,7 +44,7 @@ export function ElectionCardChrome({
         style={{ backgroundColor: colour }}
       >
         <Vote className="h-3 w-3" />
-        Election
+        {t("electionQuestion.election")}
       </span>
 
       {meta.election_party_abbreviation && (

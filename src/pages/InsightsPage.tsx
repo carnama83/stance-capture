@@ -7,15 +7,17 @@ import { Link } from "react-router-dom";
 import PageLayout from "../components/PageLayout";
 import { Card } from "@/components/ui/card";
 import { BarChart3, TrendingUp, Users, MapPin, ArrowRight, Brain } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 export default function InsightsPage() {
+  const { t } = useTranslation();
   return (
     <PageLayout>
       <div className="max-w-4xl mx-auto py-8 space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 mb-2">Insights</h1>
+          <h1 className="text-3xl font-bold text-slate-900 mb-2">{t("nav.insights")}</h1>
           <p className="text-slate-600">
-            Discover how your views align with your community and how they've evolved over time.
+            {t("insights.discoverHowYourViewsAlign")}
           </p>
         </div>
 
@@ -31,13 +33,13 @@ export default function InsightsPage() {
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
                     <h3 className="font-semibold text-slate-900 flex items-center gap-1">
-                      Your opinion profile
+                      {t("insights.yourOpinionProfile")}
                       <ArrowRight className="h-4 w-4 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
                     </h3>
-                    <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">New</span>
+                    <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">{t("insights.new")}</span>
                   </div>
                   <p className="text-sm text-slate-600">
-                    See how your beliefs have evolved, which views are stable convictions, and how you've changed your mind over time.
+                    {t("insights.seeHowYourBeliefsHave")}
                   </p>
                 </div>
               </div>
@@ -52,11 +54,11 @@ export default function InsightsPage() {
                 </div>
                 <div className="flex-1">
                   <h3 className="font-semibold text-slate-900 mb-1 flex items-center gap-1">
-                    My Stances
+                    {t("nav.myStances")}
                     <ArrowRight className="h-4 w-4 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
                   </h3>
                   <p className="text-sm text-slate-600">
-                    See how your positions have changed over time. View stance history, edit rationale, and export your data.
+                    {t("insights.seeHowYourPositionsHave")}
                   </p>
                 </div>
               </div>
@@ -71,11 +73,11 @@ export default function InsightsPage() {
                 </div>
                 <div className="flex-1">
                   <h3 className="font-semibold text-slate-900 mb-1 flex items-center gap-1">
-                    Community Pulse
+                    {t("pulsePage.communityPulse")}
                     <ArrowRight className="h-4 w-4 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
                   </h3>
                   <p className="text-sm text-slate-600">
-                    Explore aggregated community sentiment across questions, regions, and time with macro trend charts.
+                    {t("insights.exploreAggregatedCommunitySentimentAcross")}
                   </p>
                 </div>
               </div>
@@ -90,11 +92,11 @@ export default function InsightsPage() {
                 </div>
                 <div className="flex-1">
                   <h3 className="font-semibold text-slate-900 mb-1 flex items-center gap-1">
-                    Regional Comparisons
+                    {t("insights.regionalComparisons")}
                     <ArrowRight className="h-4 w-4 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
                   </h3>
                   <p className="text-sm text-slate-600">
-                    Compare stance distributions across city, state, country, and global — side by side.
+                    {t("insights.compareStanceDistributionsAcrossCity")}
                   </p>
                 </div>
               </div>
@@ -109,11 +111,11 @@ export default function InsightsPage() {
                 </div>
                 <div className="flex-1">
                   <h3 className="font-semibold text-slate-900 mb-1 flex items-center gap-1">
-                    Demographic Breakdown
+                    {t("insights.demographicBreakdown")}
                     <ArrowRight className="h-4 w-4 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
                   </h3>
                   <p className="text-sm text-slate-600">
-                    See how stance distributions vary by gender across questions.
+                    {t("insights.seeHowStanceDistributionsVary")}
                   </p>
                 </div>
               </div>
@@ -124,16 +126,16 @@ export default function InsightsPage() {
 
         <Card className="p-8 text-center bg-gradient-to-br from-slate-50 to-white">
           <h2 className="text-xl font-semibold text-slate-900 mb-2">
-            Start Building Your Insights
+            {t("insights.startBuildingYourInsights")}
           </h2>
           <p className="text-slate-600 mb-4">
-            The more questions you answer, the richer your insights become.
+            {t("insights.theMoreQuestionsYouAnswer")}
           </p>
           <Link
             to="/topics"
             className="inline-flex items-center justify-center px-6 py-3 bg-slate-900 text-white rounded-md hover:bg-slate-800 transition-colors font-medium"
           >
-            Answer Questions
+            {t("insights.answerQuestions")}
           </Link>
         </Card>
 

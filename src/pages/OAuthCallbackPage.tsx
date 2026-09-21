@@ -25,6 +25,8 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_PROJECT_REF, getJwt } from "@
 import { runBootstrap, rpcPost, restGet, restPatch } from "@/hooks/useBootstrapUser";
 import { fetchIPLocation } from "@/lib/ipLocation";
 import { getDeviceId } from "@/lib/webStance";
+import { useTranslation } from "react-i18next";
+import i18n from "@/lib/i18n";
 
 function extractAuthParams(): URLSearchParams | null {
   const href = window.location.href;
@@ -95,9 +97,10 @@ function seedSessionToStorage(accessToken: string, refreshToken: string, expires
 }
 
 export default function OAuthCallbackPage() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [error, setError] = React.useState<string | null>(null);
-  const [status, setStatus] = React.useState("Completing sign-in…");
+  const [status, setStatus] = React.useState(i18n.t("oAuthCallback.completingSignIn"));
   const ranRef = React.useRef(false);
 
   React.useEffect(() => {
@@ -106,13 +109,13 @@ export default function OAuthCallbackPage() {
 
     const sb = getSupabase();
     if (!sb) {
-      setError("Supabase client unavailable. Check environment variables.");
+      setError(t("oAuthCallback.supabaseClientUnavailableCheckEnvironment"));
       return;
     }
 
     async function handleCallback() {
       const params = extractAuthParams();
-      if (!params) { setError("No authentication data found. Please try signing in again."); return; }
+      if (!params) { setError(t("oAuthCallback.noAuthenticationDataFoundPlease")); return; }
 
       const oauthError = params.get("error_description") || params.get("error");
       if (oauthError) { setError(decodeURIComponent(oauthError)); return; }
@@ -123,7 +126,7 @@ export default function OAuthCallbackPage() {
       const tokenHash = params.get("token_hash");
       const otpType = params.get("type");
       if (tokenHash && otpType) {
-        setStatus("Confirming your email…");
+        setStatus(t("oAuthCallback.confirmingYourEmail"));
         try {
           const { data, error: err } = await sb!.auth.verifyOtp({
             token_hash: tokenHash,
@@ -154,7 +157,7 @@ export default function OAuthCallbackPage() {
 
       // PKCE code flow (used by X/Twitter OAuth 2.0 and newer Google/Apple flows)
       if (code && !accessToken) {
-        setStatus("Exchanging authorization code…");
+        setStatus(t("oAuthCallback.exchangingAuthorizationCode"));
         try {
           const { data, error: err } = await sb!.auth.exchangeCodeForSession(window.location.href);
           if (err || !data?.session) { setError(err?.message ?? "Code exchange failed."); return; }
@@ -164,14 +167,14 @@ export default function OAuthCallbackPage() {
       }
 
       if (!accessToken || !refreshToken) {
-        setError("Incomplete authentication response. Please try again.");
+        setError(t("oAuthCallback.incompleteAuthenticationResponsePleaseTry"));
         return;
       }
 
       // Seed session directly into localStorage, then let Supabase read it back
-      setStatus("Verifying your account…");
+      setStatus(t("oAuthCallback.verifyingYourAccount"));
       const seeded = seedSessionToStorage(accessToken, refreshToken, expiresAt);
-      if (!seeded) { setError("Could not establish session. Please try again."); return; }
+      if (!seeded) { setError(t("oAuthCallback.couldNotEstablishSessionPlease")); return; }
 
       // Give localStorage a tick to settle, then call getSession
       await new Promise(r => setTimeout(r, 100));
@@ -207,10 +210,10 @@ export default function OAuthCallbackPage() {
       <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
         <div className="max-w-md w-full rounded-xl border border-red-200 bg-white p-8 space-y-4 text-center shadow-sm">
           <div className="text-red-400 text-5xl">&times;</div>
-          <h1 className="text-lg font-semibold text-slate-900">Sign-in failed</h1>
+          <h1 className="text-lg font-semibold text-slate-900">{t("oAuthCallback.signInFailed")}</h1>
           <p className="text-sm text-slate-600">{error}</p>
           <a href="/#/login" className="inline-block mt-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 transition-colors">
-            Back to login
+            {t("oAuthCallback.backToLogin")}
           </a>
         </div>
       </div>
@@ -228,7 +231,7 @@ export default function OAuthCallbackPage() {
 }
 
 async function finalize(sb: any, session: any, navigate: any, setStatus: (s: string) => void) {
-  setStatus("Setting up your profile…");
+  setStatus(i18n.t("oAuthCallback.settingUpYourProfile"));
   // FIX: previously this relied entirely on useBootstrapUser's
   // onAuthStateChange listener to call bootstrap_user_after_login() (which
   // creates public.users/public.profiles). That listener never fires for
@@ -246,7 +249,7 @@ async function finalize(sb: any, session: any, navigate: any, setStatus: (s: str
     );
   }
   await bootstrapSocialProfile(sb, session);
-  setStatus("Saving account connection…");
+  setStatus(i18n.t("oAuthCallback.savingAccountConnection"));
   await persistProviderToken(sb, session);
 
   // BUG FIX: commit any web stances staged before login (WebOptInCard's

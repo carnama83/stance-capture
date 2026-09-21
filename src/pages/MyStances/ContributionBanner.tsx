@@ -3,12 +3,14 @@ import * as React from "react";
 import { X } from "lucide-react";
 import { useContributionAcknowledgement } from "@/hooks/useContributionAcknowledgement";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { useTranslation } from "react-i18next";
 
 /**
  * Inline banner version - shows on the My Stances page
  * This is less intrusive than a toast and fits the Epic Q tone better
  */
 export default function ContributionBanner() {
+  const { t } = useTranslation();
   const { acknowledgement, dismiss } = useContributionAcknowledgement();
 
   if (!acknowledgement || !acknowledgement.should_show) {
@@ -31,7 +33,7 @@ export default function ContributionBanner() {
         <button
           onClick={() => dismiss()}
           className="shrink-0 text-slate-400 hover:text-slate-600 transition-colors -mt-0.5"
-          aria-label="Dismiss"
+          aria-label={t("auth.dismiss")}
         >
           <X className="h-4 w-4" />
         </button>

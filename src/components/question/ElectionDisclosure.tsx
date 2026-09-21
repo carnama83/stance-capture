@@ -20,6 +20,7 @@ import { Vote, User, MapPin } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { SUPABASE_URL, getJwt, supabaseHeaders } from "@/lib/env";
+import { useTranslation } from "react-i18next";
 
 type ElectionRow = {
   is_election_question: boolean | null;
@@ -53,6 +54,7 @@ type Props = {
 };
 
 export function ElectionDisclosure({ questionId, className }: Props) {
+  const { t } = useTranslation();
   const { data } = useQuery<ElectionRow | null>({
     queryKey: ["question-election", questionId],
     enabled: !!questionId,
@@ -89,7 +91,7 @@ export function ElectionDisclosure({ questionId, className }: Props) {
       <div className="flex flex-wrap items-center gap-2">
         <Badge variant="secondary" className="gap-1 text-xs">
           <Vote className="h-3.5 w-3.5" />
-          Election
+          {t("electionQuestion.election")}
         </Badge>
 
         {data.election_party_abbreviation && (

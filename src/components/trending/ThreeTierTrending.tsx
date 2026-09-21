@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { getSupabase } from "@/lib/supabaseClient";
 import { Flame, MapPin, Flag, Globe } from "lucide-react";
+import { Trans, useTranslation } from "react-i18next";
 
 type Session = import("@supabase/supabase-js").Session;
 
@@ -47,6 +48,7 @@ function useSupabaseSession() {
 }
 
 export function ThreeTierTrending() {
+  const { t } = useTranslation();
   const session = useSupabaseSession();
   const supabase = React.useMemo(getSupabase, []);
   const userId = session?.user?.id;
@@ -94,7 +96,9 @@ export function ThreeTierTrending() {
     if (grouped.local.length > 0) {
       result.push({
         tier: 'local',
-        label: `In Your Area${grouped.local[0].tier_label ? ` (${grouped.local[0].tier_label})` : ''}`,
+        label: grouped.local[0].tier_label
+          ? t("threeTierTrending.inYourAreaTier", { tier: grouped.local[0].tier_label })
+          : t("threeTierTrending.inYourArea"),
         icon: <MapPin className="w-5 h-5" />,
         emoji: '📍',
         topics: grouped.local,
@@ -116,7 +120,7 @@ export function ThreeTierTrending() {
     if (grouped.global.length > 0) {
       result.push({
         tier: 'global',
-        label: 'Around the World',
+        label: t("threeTierTrending.aroundTheWorld"),
         icon: <Globe className="w-5 h-5" />,
         emoji: '🌍',
         topics: grouped.global,
@@ -131,7 +135,7 @@ export function ThreeTierTrending() {
       <div className="rounded-lg border p-6 bg-white">
         <div className="flex items-center gap-2 mb-4">
           <Flame className="w-5 h-5 text-orange-500" />
-          <h2 className="text-xl font-semibold">Trending Now</h2>
+          <h2 className="text-xl font-semibold">{t("threeTierTrending.trendingNow")}</h2>
         </div>
         <div className="animate-pulse space-y-3">
           <div className="h-4 bg-slate-200 rounded w-3/4"></div>
@@ -146,7 +150,7 @@ export function ThreeTierTrending() {
     return (
       <div className="rounded-lg border border-orange-200 bg-orange-50 p-4">
         <p className="text-sm text-orange-800">
-          Unable to load trending topics right now.
+          {t("threeTierTrending.unableToLoadTrendingTopics")}
         </p>
       </div>
     );
@@ -157,7 +161,7 @@ export function ThreeTierTrending() {
       <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
         <Flame className="w-12 h-12 text-slate-300 mx-auto mb-3" />
         <p className="text-sm text-slate-600">
-          No trending topics yet. Check back soon!
+          {t("threeTierTrending.noTrendingTopicsYetCheck")}
         </p>
       </div>
     );
@@ -168,7 +172,7 @@ export function ThreeTierTrending() {
       {/* Header */}
       <div className="flex items-center gap-2">
         <Flame className="w-5 h-5 text-orange-500" />
-        <h2 className="text-xl font-semibold text-slate-900">Trending Now</h2>
+        <h2 className="text-xl font-semibold text-slate-900">{t("threeTierTrending.trendingNow")}</h2>
       </div>
 
       {/* Sections */}
@@ -180,10 +184,10 @@ export function ThreeTierTrending() {
       {!userId && sections.length === 1 && sections[0].tier === 'global' && (
         <div className="text-center pt-2 border-t border-slate-200">
           <p className="text-xs text-slate-500">
-            <Link to="/signup" className="text-blue-600 hover:underline">
-              Sign up
-            </Link>{' '}
-            to see trending topics in your area
+            <Trans
+              i18nKey="threeTierTrending.signUpToSeeLocal"
+              components={{ a: <Link to="/signup" className="text-blue-600 hover:underline" /> }}
+            />
           </p>
         </div>
       )}
@@ -220,6 +224,7 @@ function TrendingSection({ section }: { section: TrendingSection }) {
 
 // Trending Topic Card
 function TrendingTopicCard({ topic }: { topic: TrendingTopic }) {
+  const { t } = useTranslation();
   return (
     <Link
       to={`/topics/${topic.topic_id}`}
@@ -264,7 +269,7 @@ function TrendingTopicCard({ topic }: { topic: TrendingTopic }) {
           </div>
           {topic.activity_7d > 0 && (
             <span className="text-xs text-slate-500">
-              {topic.activity_7d} this week
+              {topic.activity_7d} {t("threeTierTrending.thisWeek")}
             </span>
           )}
         </div>

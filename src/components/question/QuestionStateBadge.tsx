@@ -1,4 +1,5 @@
 import { Badge } from '@/components/ui/badge';
+import { useTranslation } from 'react-i18next';
 import { STATE_CONFIG, type QuestionState } from '@/types/questionLifecycleTypes';
 
 interface QuestionStateBadgeProps {
@@ -14,6 +15,7 @@ export function QuestionStateBadge({
   size = 'md',
   className = '',
 }: QuestionStateBadgeProps) {
+  const { t } = useTranslation();
   const config = STATE_CONFIG[state];
   
   const sizeClasses = {
@@ -33,7 +35,7 @@ export function QuestionStateBadge({
       `}
     >
       {showIcon && <span className="mr-1">{config.icon}</span>}
-      {config.label}
+      {t(config.labelKey)}
     </Badge>
   );
 }

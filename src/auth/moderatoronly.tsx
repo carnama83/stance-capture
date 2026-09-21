@@ -1,11 +1,13 @@
 import * as React from "react";
 import { getSupabase } from "../lib/supabaseClient";
+import { useTranslation } from "react-i18next";
 
 // Gate for routes accessible to admins OR moderators.
 // Checks is_admin_me() OR is_moderator() — passes if either is true.
 // Used for /admin/moderation so moderators can triage reports
 // without accessing the full admin area.
 export default function ModeratorOnly({ children }: { children: React.ReactNode }) {
+  const { t } = useTranslation();
   const sb = React.useMemo(getSupabase, []);
   const [loading, setLoading] = React.useState(true);
   const [allowed, setAllowed] = React.useState(false);
@@ -36,7 +38,7 @@ export default function ModeratorOnly({ children }: { children: React.ReactNode 
   if (err) {
     return (
       <div className="mx-auto max-w-lg p-6 text-sm text-slate-700">
-        <h2 className="text-base font-semibold mb-2">Error</h2>
+        <h2 className="text-base font-semibold mb-2">{t("moderatoronly.error")}</h2>
         <p>{err}</p>
       </div>
     );
@@ -44,8 +46,8 @@ export default function ModeratorOnly({ children }: { children: React.ReactNode 
   if (!allowed) {
     return (
       <div className="mx-auto max-w-lg p-6 text-sm text-slate-700">
-        <h2 className="text-base font-semibold mb-2">No access</h2>
-        <p>You need moderator or administrator access to view this page.</p>
+        <h2 className="text-base font-semibold mb-2">{t("moderatoronly.noAccess")}</h2>
+        <p>{t("moderatoronly.youNeedModeratorOrAdministrator")}</p>
       </div>
     );
   }

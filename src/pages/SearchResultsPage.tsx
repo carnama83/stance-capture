@@ -6,6 +6,7 @@ import { getSupabase } from "@/lib/supabaseClient";
 import PageLayout from "@/components/PageLayout";
 import { Loader2, Search, X, MessageSquare, Layers } from "lucide-react";
 import { QuestionPhaseBadge } from "@/components/question/QuestionPhaseBadge";
+import { useTranslation, Trans } from "react-i18next";
 
 type SearchQuestion = {
   id: string;
@@ -61,6 +62,7 @@ async function searchContent(
 }
 
 export default function SearchResultsPage() {
+  const { t } = useTranslation();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const query = searchParams.get("q") || "";
@@ -99,9 +101,9 @@ export default function SearchResultsPage() {
 
         {/* Header */}
         <div className="space-y-1">
-          <h1 className="text-2xl font-bold text-foreground">Search</h1>
+          <h1 className="text-2xl font-bold text-foreground">{t("search.title")}</h1>
           <p className="text-sm text-muted-foreground">
-            Find questions and topics across the platform
+            {t("search.subtitle")}
           </p>
         </div>
 
@@ -112,7 +114,7 @@ export default function SearchResultsPage() {
             type="text"
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
-            placeholder="Search questions and topics..."
+            placeholder={t("search.placeholder")}
             autoFocus={!query}
             className="w-full pl-11 pr-24 py-3 text-sm border border-border rounded-xl bg-card focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors"
           />
@@ -122,7 +124,7 @@ export default function SearchResultsPage() {
                 type="button"
                 onClick={handleClear}
                 className="p-1 text-muted-foreground hover:text-foreground transition-colors"
-                aria-label="Clear"
+                aria-label={t("stance.clear")}
               >
                 <X className="h-4 w-4" />
               </button>
@@ -132,7 +134,7 @@ export default function SearchResultsPage() {
               disabled={!inputValue.trim()}
               className="px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
-              Search
+              {t("search.button")}
             </button>
           </div>
         </form>
@@ -141,7 +143,7 @@ export default function SearchResultsPage() {
         {!query && (
           <div className="text-center py-16 text-muted-foreground">
             <Search className="h-10 w-10 mx-auto mb-3 opacity-30" />
-            <p className="text-sm">Type a keyword and press Search or Enter</p>
+            <p className="text-sm">{t("search.prompt")}</p>
           </div>
         )}
 
@@ -149,7 +151,7 @@ export default function SearchResultsPage() {
         {query && isLoading && (
           <div className="flex items-center justify-center py-16 gap-2 text-muted-foreground">
             <Loader2 className="h-5 w-5 animate-spin" />
-            <span className="text-sm">Searching for &quot;{query}&quot;…</span>
+            <span className="text-sm">{t("search.searchingFor", { query })}</span>
           </div>
         )}
 
@@ -157,7 +159,7 @@ export default function SearchResultsPage() {
         {query && isError && (
           <div className="rounded-xl border border-red-200 bg-red-50 p-4">
             <p className="text-sm text-red-800">
-              Search failed: {(error as Error).message}
+              {t("search.failed", { msg: (error as Error).message })}
             </p>
           </div>
         )}
@@ -168,9 +170,11 @@ export default function SearchResultsPage() {
 
             {/* Summary line */}
             <p className="text-xs text-muted-foreground">
-              {data.total_questions} question{data.total_questions !== 1 ? "s" : ""} and{" "}
-              {data.total_topics} topic{data.total_topics !== 1 ? "s" : ""} for{" "}
-              <span className="font-medium text-foreground">&quot;{query}&quot;</span>
+              <Trans
+                i18nKey="search.resultSummary"
+                values={{ questions: data.total_questions, topics: data.total_topics, query }}
+                components={{ q: <span className="font-medium text-foreground" /> }}
+              />
             </p>
 
             {/* Questions */}
@@ -179,7 +183,7 @@ export default function SearchResultsPage() {
                 <div className="flex items-center gap-2">
                   <MessageSquare className="h-4 w-4 text-primary" />
                   <h2 className="text-sm font-semibold text-foreground uppercase tracking-wide">
-                    Questions
+                    {t("search.questions")}
                   </h2>
                   <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
                     {data.total_questions}
@@ -235,7 +239,7 @@ export default function SearchResultsPage() {
                 <div className="flex items-center gap-2">
                   <Layers className="h-4 w-4 text-primary" />
                   <h2 className="text-sm font-semibold text-foreground uppercase tracking-wide">
-                    Topics
+                    {t("search.topics")}
                   </h2>
                   <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
                     {data.total_topics}
@@ -259,7 +263,7 @@ export default function SearchResultsPage() {
                         )}
                       </div>
                       <span className="shrink-0 text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full whitespace-nowrap">
-                        {topic.question_count} question{topic.question_count !== 1 ? "s" : ""}
+                        {t("search.questionCount", { count: topic.question_count })}
                       </span>
                     </Link>
                   ))}
@@ -273,8 +277,8 @@ export default function SearchResultsPage() {
         {query && !isLoading && !isError && noResults && (
           <div className="text-center py-16 text-muted-foreground">
             <Search className="h-10 w-10 mx-auto mb-3 opacity-30" />
-            <p className="font-medium text-foreground">No results for &quot;{query}&quot;</p>
-            <p className="text-sm mt-1">Try different keywords or check your spelling.</p>
+            <p className="font-medium text-foreground">{t("search.noResults", { query })}</p>
+            <p className="text-sm mt-1">{t("search.tryDifferent")}</p>
           </div>
         )}
 

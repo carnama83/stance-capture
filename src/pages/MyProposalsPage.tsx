@@ -24,6 +24,7 @@ import { ProposeQuestionButton } from "@/components/ugq/ProposeQuestionButton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SUPABASE_URL, getJwt, supabaseHeaders } from "@/lib/env";
+import { useTranslation } from "react-i18next";
 
 // Shape of user_question_proposals.preview_reframe — same as
 // ProposeQuestionModal's PreviewReframe, duplicated here rather than shared
@@ -82,11 +83,12 @@ function hostnameOf(url: string): string {
 // track height, thumb border/size) so this doesn't look like a different
 // component. Thumb centered at Neutral — no real position exists yet.
 function StanceScalePreview({ low, high }: { low: string | null; high: string | null }) {
+  const { t } = useTranslation();
   if (!low && !high) return null;
   return (
     <div>
       <p className="text-[10.5px] text-slate-500 mb-2">
-        Here&#x2019;s how the stance scale will appear to users:
+        {t("proposals.scalePreview")}
       </p>
       <div className="relative py-1.5">
         <div
@@ -103,9 +105,9 @@ function StanceScalePreview({ low, high }: { low: string | null; high: string | 
         />
       </div>
       <div className="flex items-start justify-between gap-2 text-[11px] text-slate-600">
-        <span className="max-w-[42%] leading-tight">{low ?? "Oppose"}</span>
-        <span className="text-slate-400 shrink-0">Neutral</span>
-        <span className="max-w-[42%] text-right leading-tight">{high ?? "Support"}</span>
+        <span className="max-w-[42%] leading-tight">{low ?? t("ugq.opposeDefault")}</span>
+        <span className="text-slate-400 shrink-0">{t("stance.neutral")}</span>
+        <span className="max-w-[42%] text-right leading-tight">{high ?? t("ugq.supportDefault")}</span>
       </div>
     </div>
   );
@@ -142,30 +144,31 @@ async function fetchMyReputation(): Promise<Reputation | null> {
   return Array.isArray(rows) && rows.length ? rows[0] : null;
 }
 
-const STATUS_STYLE: Record<string, { label: string; cls: string }> = {
-  proposed:           { label: "Under review",    cls: "bg-amber-500 hover:bg-amber-500" },
-  screening:          { label: "Under review",    cls: "bg-amber-500 hover:bg-amber-500" },
-  in_review:          { label: "Under review",    cls: "bg-amber-500 hover:bg-amber-500" },
+const STATUS_STYLE: Record<string, { labelKey: string; cls: string }> = {
+  proposed:           { labelKey: "proposals.statusUnderReview",  cls: "bg-amber-500 hover:bg-amber-500" },
+  screening:          { labelKey: "proposals.statusUnderReview",  cls: "bg-amber-500 hover:bg-amber-500" },
+  in_review:          { labelKey: "proposals.statusUnderReview",  cls: "bg-amber-500 hover:bg-amber-500" },
   // Sep 2026, NEW: video-only (ugq-screen's leading-framing gate) — was
   // previously unhandled here, falling through to the raw status string.
-  resubmit_requested: { label: "Needs re-record", cls: "bg-orange-500 hover:bg-orange-500" },
-  approved:           { label: "Approved",        cls: "bg-blue-600 hover:bg-blue-600" },
-  reframing:          { label: "Preparing",       cls: "bg-blue-600 hover:bg-blue-600" },
-  published:          { label: "Live",            cls: "bg-emerald-600 hover:bg-emerald-600" },
-  rejected:           { label: "Not published",   cls: "bg-slate-400 hover:bg-slate-400" },
-  withdrawn:          { label: "Withdrawn",       cls: "bg-slate-400 hover:bg-slate-400" },
+  resubmit_requested: { labelKey: "proposals.statusNeedsRerecord", cls: "bg-orange-500 hover:bg-orange-500" },
+  approved:           { labelKey: "proposals.statusApproved",      cls: "bg-blue-600 hover:bg-blue-600" },
+  reframing:          { labelKey: "proposals.statusPreparing",     cls: "bg-blue-600 hover:bg-blue-600" },
+  published:          { labelKey: "proposals.statusLive",          cls: "bg-emerald-600 hover:bg-emerald-600" },
+  rejected:           { labelKey: "proposals.statusNotPublished",  cls: "bg-slate-400 hover:bg-slate-400" },
+  withdrawn:          { labelKey: "proposals.statusWithdrawn",     cls: "bg-slate-400 hover:bg-slate-400" },
 };
 
-function tierLabel(tier: string) {
-  if (tier === "verified") return "Verified proposer";
-  if (tier === "trusted") return "Trusted proposer";
-  return "New proposer";
+function tierLabelKey(tier: string) {
+  if (tier === "verified") return "proposals.tierVerified";
+  if (tier === "trusted") return "proposals.tierTrusted";
+  return "proposals.tierNew";
 }
 
 // Inline preview + Publish action for an 'in_review' proposal with a ready
 // preview. Mirrors ProposeQuestionModal's review card, just embedded rather
 // than in a dialog, and calls the same ugq-confirm-publish endpoint.
 function InlinePublishCard({ proposal, onPublished }: { proposal: Proposal; onPublished: () => void }) {
+  const { t } = useTranslation();
   const [publishing, setPublishing] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const preview = proposal.preview_reframe;
@@ -190,7 +193,7 @@ function InlinePublishCard({ proposal, onPublished }: { proposal: Proposal; onPu
       // Deliberately not resetting `publishing` — the row re-renders as
       // 'published' once the list refetches, so this component unmounts.
     } catch (_e) {
-      setError("Network error. Please try again.");
+      setError(t("ugq.networkErrorShort"));
       setPublishing(false);
     }
   }
@@ -203,13 +206,13 @@ function InlinePublishCard({ proposal, onPublished }: { proposal: Proposal; onPu
     <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 space-y-2" onClick={(e) => e.stopPropagation()}>
       <div className="flex items-center gap-1.5 text-xs font-medium text-amber-700">
         <Sparkles className="h-3.5 w-3.5" />
-        Ready to publish
+        {t("proposals.readyToPublish")}
       </div>
       <p className="text-sm text-slate-800 leading-snug">{preview.question}</p>
       <StanceScalePreview low={preview.slider_low_label} high={preview.slider_high_label} />
       {preview.context_summary && (
         <div className="pt-1.5 mt-0.5 border-t border-amber-200/70 space-y-1">
-          <p className="text-[11px] font-medium text-amber-700">Background</p>
+          <p className="text-[11px] font-medium text-amber-700">{t("question.background")}</p>
           <p className="text-xs text-slate-700 leading-relaxed">{preview.context_summary}</p>
           {preview.supporting_links.length > 0 && (
             <div className="flex flex-wrap gap-x-3 gap-y-1">
@@ -226,7 +229,7 @@ function InlinePublishCard({ proposal, onPublished }: { proposal: Proposal; onPu
       {error && <p className="text-xs text-red-600">{error}</p>}
       <div className="flex justify-end pt-0.5">
         <Button size="sm" disabled={publishing} onClick={handlePublish}>
-          {publishing ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Publishing&#x2026;</> : "Publish"}
+          {publishing ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> {t("proposals.publishing")}</> : t("ugq.publish")}
         </Button>
       </div>
     </div>
@@ -234,6 +237,7 @@ function InlinePublishCard({ proposal, onPublished }: { proposal: Proposal; onPu
 }
 
 export default function MyProposalsPage() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: proposals, isLoading, isError } = useQuery<Proposal[]>({
@@ -260,45 +264,46 @@ export default function MyProposalsPage() {
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <Lightbulb className="h-6 w-6 text-amber-500" />
-            <h1 className="text-2xl font-bold text-slate-900">My Proposals</h1>
+            <h1 className="text-2xl font-bold text-slate-900">{t("proposals.title")}</h1>
           </div>
           {/* Epic UGQ — propose entry point. Inline variant, not fab: this
               page already has a focused single-column layout, a floating
               button would be redundant with the header action here. */}
-          <ProposeQuestionButton variant="inline" label="Propose a question" />
+          <ProposeQuestionButton variant="inline" label={t("proposals.proposeCta")} />
         </div>
 
         {/* Reputation summary */}
         <div className="rounded-lg border border-slate-200 bg-white p-4 flex flex-wrap items-center gap-x-6 gap-y-2">
           <div>
             <div className="text-3xl font-bold text-slate-900">{rep?.score ?? 0}</div>
-            <div className="text-xs text-slate-500">reputation</div>
+            <div className="text-xs text-slate-500">{t("proposals.reputation")}</div>
           </div>
-          <Badge className="bg-blue-600 hover:bg-blue-600">{tierLabel(rep?.tier ?? "new")}</Badge>
+          <Badge className="bg-blue-600 hover:bg-blue-600">{t(tierLabelKey(rep?.tier ?? "new"))}</Badge>
           <div className="text-sm text-slate-500 ml-auto">
-            {rep?.total_published ?? 0} live · {rep?.total_proposed ?? 0} proposed
+            {t("proposals.liveProposed", { live: rep?.total_published ?? 0, proposed: rep?.total_proposed ?? 0 })}
           </div>
         </div>
 
         {isLoading && (
           <div className="flex items-center justify-center py-12 text-slate-500">
-            <Loader2 className="h-5 w-5 animate-spin mr-2" /> Loading…
+            <Loader2 className="h-5 w-5 animate-spin mr-2" /> {t("common.loading")}
           </div>
         )}
         {isError && (
           <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-            Could not load your proposals.
+            {t("proposals.loadFailed")}
           </div>
         )}
         {!isLoading && !isError && rows.length === 0 && (
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">
-            You haven&#x2019;t proposed any questions yet. Use the “Propose a question” button above to submit your first one.
+            {t("proposals.empty")}
           </div>
         )}
 
         <div className="space-y-2">
           {rows.map((p) => {
-            const style = STATUS_STYLE[p.status] ?? { label: p.status, cls: "bg-slate-400" };
+            const meta = STATUS_STYLE[p.status];
+            const style = { label: meta ? t(meta.labelKey) : p.status, cls: meta?.cls ?? "bg-slate-400" };
             const readyToPublish = p.status === "in_review" && !!p.preview_reframe;
             return (
               // Sep 2026, NEW: every card now opens the full detail view
@@ -322,20 +327,20 @@ export default function MyProposalsPage() {
                   <Badge className={style.cls}>{style.label}</Badge>
                   {readyToPublish && (
                     <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 border border-amber-300">
-                      Ready to publish
+                      {t("proposals.readyToPublish")}
                     </Badge>
                   )}
                   {p.status === "rejected" && p.rejection_reason && (
-                    <span className="text-slate-400">reason: {p.rejection_reason}</span>
+                    <span className="text-slate-400">{t("proposals.reason", { reason: p.rejection_reason })}</span>
                   )}
                   {p.status === "published" && (
                     <span className="inline-flex items-center gap-1">
-                      <MessageSquare className="h-3 w-3" /> {p.response_count} stances
+                      <MessageSquare className="h-3 w-3" /> {t("proposals.stancesCount", { count: p.response_count })}
                     </span>
                   )}
                   {p.status === "published" && p.reframed_question_id && (
                     <span className="inline-flex items-center gap-1 text-blue-600">
-                      <ExternalLink className="h-3 w-3" /> View live
+                      <ExternalLink className="h-3 w-3" /> {t("proposals.viewLive")}
                     </span>
                   )}
                   <span className="ml-auto">

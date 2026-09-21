@@ -5,8 +5,10 @@ import { useCalculateCognitiveState, useShouldRecalculateCognitiveState } from '
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { RefreshCw, Info } from 'lucide-react';
+import { useTranslation } from "react-i18next";
 
 export default function CognitiveInsightsPage() {
+  const { t } = useTranslation();
   const { mutate: calculateState, isPending } = useCalculateCognitiveState();
   const { data: shouldRecalculate } = useShouldRecalculateCognitiveState();
 
@@ -15,9 +17,9 @@ export default function CognitiveInsightsPage() {
       {/* Header */}
       <div className="flex justify-between items-start">
         <div>
-          <h1 className="text-3xl font-bold">Your Cognitive Insights</h1>
+          <h1 className="text-3xl font-bold">{t("cognitiveinsights.yourCognitiveInsights")}</h1>
           <p className="text-muted-foreground mt-1">
-            Understanding your stance patterns and engagement
+            {t("cognitiveinsights.understandingYourStancePatternsAnd")}
           </p>
         </div>
         <Button
@@ -26,7 +28,7 @@ export default function CognitiveInsightsPage() {
           variant="outline"
         >
           <RefreshCw className={`h-4 w-4 mr-2 ${isPending ? 'animate-spin' : ''}`} />
-          Recalculate
+          {t("cognitiveinsights.recalculate")}
         </Button>
       </div>
 
@@ -35,14 +37,14 @@ export default function CognitiveInsightsPage() {
         <Alert>
           <Info className="h-4 w-4" />
           <AlertDescription>
-            Your cognitive profile can be updated based on your recent activity.
+            {t("cognitiveinsights.yourCognitiveProfileCanBe")}
             <Button
               variant="link"
               className="ml-2 p-0 h-auto"
               onClick={() => calculateState()}
               disabled={isPending}
             >
-              Update now
+              {t("cognitiveinsights.updateNow")}
             </Button>
           </AlertDescription>
         </Alert>
@@ -52,11 +54,9 @@ export default function CognitiveInsightsPage() {
       <Alert>
         <Info className="h-4 w-4" />
         <AlertDescription>
-          <strong>What is a Cognitive Profile?</strong>
+          <strong>{t("cognitiveinsights.whatIsACognitiveProfile")}</strong>
           <br />
-          Your cognitive profile is automatically calculated from your responses to questions.
-          It shows your overall stance patterns, consistency across topics, and engagement trends.
-          This helps you understand your own thinking and see how it evolves over time.
+          {t("cognitiveinsights.yourCognitiveProfileIsAutomatically")}
         </AlertDescription>
       </Alert>
 

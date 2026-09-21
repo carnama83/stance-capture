@@ -3638,7 +3638,7 @@ export default function IndexPage() {
         // point of failure while diagnosing this. Surface the real error and
         // let the person retry instead of silently misdirecting them.
         console.error("[stageStance] recordWebStance failed:", err);
-        toast.error("Couldn't save your answer — check your connection and try again.");
+        toast.error(t("home.couldNotSaveAnswer"));
       }
     },
     // renditionByQuestionId must be listed: it is a memo that is empty on first
@@ -3990,14 +3990,13 @@ export default function IndexPage() {
                     {answeredHereToday > 0 && (
                       <>
                         <span>
-                          You answered {answeredHereToday} question
-                          {answeredHereToday === 1 ? "" : "s"} today
+                          {t("index.answeredTodayCount", { count: answeredHereToday })}
                         </span>
                         <span className="h-3 w-px" style={{ background: C.line }} />
                       </>
                     )}
                     <Link to="/my-stances" className="font-semibold" style={{ color: C.brand }}>
-                      See all {myStanceSnapshotQuery.data?.totalAnswered} in My stances →
+                      {t("index.seeAllInMyStances", { count: myStanceSnapshotQuery.data?.totalAnswered })}
                     </Link>
                   </div>
                 )}

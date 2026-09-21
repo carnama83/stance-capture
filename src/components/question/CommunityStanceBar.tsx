@@ -78,20 +78,20 @@ function convictionLabel(
   opposePct: number | null,
   neutralPct: number | null,
   responses: number,
-): { label: string; color: string } | null {
+): { labelKey: string; color: string } | null {
   if (responses < 10) return null; // not enough data to classify
   const s = supportPct ?? 0;
   const o = opposePct  ?? 0;
   const n = neutralPct ?? 0;
   const dominant = Math.max(s, o);
   if (dominant >= 65 && n < 20) {
-    return { label: "Strong conviction", color: "#27500A" };
+    return { labelKey: "communityStanceBar.strongConviction", color: "#27500A" };
   }
   if (s >= 30 && o >= 30 && n < 25) {
-    return { label: "Strongly polarised", color: "#791F1F" };
+    return { labelKey: "communityStanceBar.stronglyPolarised", color: "#791F1F" };
   }
   if (n >= 40) {
-    return { label: "Genuinely uncertain", color: "#633806" };
+    return { labelKey: "communityStanceBar.genuinelyUncertain", color: "#633806" };
   }
   return null; // default — no label needed
 }
@@ -330,7 +330,7 @@ export function CommunityStanceBar({
 
       {hasGhost && !myStanceCounted && (
         <p className={`${compact ? "text-[10px]" : "text-[11px]"} text-violet-600`}>
-          ▲ Your stance isn't counted yet — opt in below to add it.
+          {t("communityStanceBar.yourStanceIsnTCounted")}
         </p>
       )}
 
@@ -345,7 +345,7 @@ export function CommunityStanceBar({
             className="text-[10px] font-medium"
             style={{ color: conviction.color }}
           >
-            {conviction.label}
+            {t(conviction.labelKey)}
           </span>
         </div>
       )}
@@ -356,12 +356,13 @@ export function CommunityStanceBar({
 // ── Ghost marker (viewer's own staged stance, not counted) ───────────────────
 
 function GhostMarker({ pos, counted, compact }: { pos: number; counted: boolean; compact?: boolean }) {
+  const { t } = useTranslation();
   const color = counted ? "#059669" : "#7C3AED"; // emerald if counted, violet if staged
   return (
     <div
       className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 flex flex-col items-center pointer-events-none"
       style={{ left: `${pos}%` }}
-      title={counted ? "Your stance (counted)" : "Your stance — not counted yet"}
+      title={counted ? t("communityStanceBar.yourStanceCounted") : t("communityStanceBar.yourStanceNotCountedYet")}
     >
       <span
         className="block rounded-full ring-2 ring-white"
@@ -377,7 +378,7 @@ function GhostMarker({ pos, counted, compact }: { pos: number; counted: boolean;
         // the first fix (mb-3) falling short by a few pixels.
         style={{ top: compact ? 10 : 12, fontSize: compact ? 9 : 10, lineHeight: compact ? "10px" : "12px", color }}
       >
-        you
+        {t("communityStanceBar.you")}
       </span>
     </div>
   );
@@ -410,12 +411,12 @@ function Header({
           onClick={onRefresh}
           disabled={isLoading}
           className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-slate-600 transition-colors disabled:opacity-50"
-          aria-label="Refresh community stance"
+          aria-label={t("communityStanceBar.refreshCommunityStance")}
         >
           <RefreshCw
             className={`h-3 w-3 ${isLoading ? "animate-spin" : ""}`}
           />
-          <span>Refresh</span>
+          <span>{t("profile.refresh")}</span>
         </button>
       )}
     </div>

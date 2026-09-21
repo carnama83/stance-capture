@@ -8,6 +8,7 @@ import {
 import { getSupabase } from "../lib/supabaseClient";
 import { useOnboardingTips } from "@/hooks/useOnboardingTips";
 import { CoachMark } from "@/components/onboarding/CoachMark";
+import { useTranslation } from "react-i18next";
 
 type Session = import("@supabase/supabase-js").Session;
 
@@ -113,6 +114,7 @@ async function setUserLocationByIso(
 }
 
 export default function SettingsLocation() {
+  const { t } = useTranslation();
   const session = useSupabaseSession();
   const queryClient = useQueryClient();
   const userId = session?.user?.id ?? null;
@@ -266,14 +268,13 @@ export default function SettingsLocation() {
   return (
     <div className="space-y-4">
       <header className="relative">
-        <h2 className="text-base font-semibold text-slate-900">Location</h2>
+        <h2 className="text-base font-semibold text-slate-900">{t("nav.location")}</h2>
         <p className="text-xs text-slate-600">
-          Choose your country, state, county, or city to see how people in your
-          region think about each question.
+          {t("settingsLocation.chooseYourCountryStateCounty")}
         </p>
         {tips.isVisible("settings_location") && (
           <CoachMark
-            text="Set your location to see questions and results near you."
+            text={t("settingsLocation.setYourLocationToSee")}
             placement="below"
             onDismiss={() => tips.dismiss("settings_location")}
           />
@@ -283,34 +284,34 @@ export default function SettingsLocation() {
       {/* Current region */}
       <section className="rounded-lg border p-3 space-y-2">
         <h3 className="text-xs font-medium text-slate-900">
-          Your current region
+          {t("settingsLocation.yourCurrentRegion")}
         </h3>
         {regionLoading && (
-          <p className="text-xs text-slate-500">Loading…</p>
+          <p className="text-xs text-slate-500">{t("common.loading")}</p>
         )}
         {!regionLoading && region && (
           <div className="text-xs text-slate-700 space-y-0.5">
             {region.city_label && (
               <div>
-                <span className="font-medium">City: </span>
+                <span className="font-medium">{t("settingsLocation.city")} </span>
                 {region.city_label}
               </div>
             )}
             {region.county_label && (
               <div>
-                <span className="font-medium">County: </span>
+                <span className="font-medium">{t("settingsLocation.county")} </span>
                 {region.county_label}
               </div>
             )}
             {region.state_label && (
               <div>
-                <span className="font-medium">State: </span>
+                <span className="font-medium">{t("settingsLocation.state")} </span>
                 {region.state_label}
               </div>
             )}
             {region.country_label && (
               <div>
-                <span className="font-medium">Country: </span>
+                <span className="font-medium">{t("settingsLocation.country")} </span>
                 {region.country_label}
               </div>
             )}
@@ -319,15 +320,14 @@ export default function SettingsLocation() {
               !region.state_label &&
               !region.country_label && (
                 <div className="text-xs text-slate-500">
-                  No location set yet. Choose a country, state, county, or city
-                  below to get started.
+                  {t("settingsLocation.noLocationSetYetChoose")}
                 </div>
               )}
           </div>
         )}
         {!regionLoading && !region && (
           <p className="text-xs text-slate-500">
-            No location data available yet.
+            {t("settingsLocation.noLocationDataAvailableYet")}
           </p>
         )}
       </section>
@@ -335,7 +335,7 @@ export default function SettingsLocation() {
       {/* Country selection */}
       <section className="rounded-lg border p-3 space-y-2">
         <h3 className="text-xs font-medium text-slate-900">
-          Choose your country
+          {t("settingsLocation.chooseYourCountry")}
         </h3>
         <form
           onSubmit={handleCountrySearchSubmit}
@@ -345,23 +345,23 @@ export default function SettingsLocation() {
             type="text"
             value={countrySearchInput}
             onChange={(e) => setCountrySearchInput(e.target.value)}
-            placeholder="Search for a country (e.g., United States)"
+            placeholder={t("settingsLocation.searchForACountryE")}
             className="flex-1 rounded border px-2 py-1.5 text-xs"
           />
           <button
             type="submit"
             className="rounded bg-slate-900 text-white px-3 py-1.5 text-xs"
           >
-            Search
+            {t("nav.searchLabel")}
           </button>
         </form>
         {countryTouched && countrySearch.trim().length < 2 && (
           <p className="text-[11px] text-slate-500">
-            Type at least 2 characters to search.
+            {t("settingsLocation.typeAtLeast2Characters")}
           </p>
         )}
         {countryLoading && countrySearch.trim().length >= 2 && (
-          <p className="text-xs text-slate-500 mt-1">Searching…</p>
+          <p className="text-xs text-slate-500 mt-1">{t("settingsLocation.searching")}</p>
         )}
         {!countryLoading && countryResults && countryResults.length > 0 && (
           <div className="mt-2 max-h-64 overflow-y-auto border rounded">
@@ -395,7 +395,7 @@ export default function SettingsLocation() {
           countrySearch.trim().length >= 2 &&
           (!countryResults || countryResults.length === 0) && (
             <p className="text-xs text-slate-500 mt-1">
-              No matching countries found.
+              {t("settingsLocation.noMatchingCountriesFound")}
             </p>
           )}
       </section>
@@ -403,7 +403,7 @@ export default function SettingsLocation() {
       {/* State selection */}
       <section className="rounded-lg border p-3 space-y-2">
         <h3 className="text-xs font-medium text-slate-900">
-          Choose your state
+          {t("settingsLocation.chooseYourState")}
         </h3>
         <form
           onSubmit={handleStateSearchSubmit}
@@ -413,23 +413,23 @@ export default function SettingsLocation() {
             type="text"
             value={stateSearchInput}
             onChange={(e) => setStateSearchInput(e.target.value)}
-            placeholder="Search for a state (e.g., Massachusetts)"
+            placeholder={t("settingsLocation.searchForAStateE")}
             className="flex-1 rounded border px-2 py-1.5 text-xs"
           />
           <button
             type="submit"
             className="rounded bg-slate-900 text-white px-3 py-1.5 text-xs"
           >
-            Search
+            {t("nav.searchLabel")}
           </button>
         </form>
         {stateTouched && stateSearch.trim().length < 2 && (
           <p className="text-[11px] text-slate-500">
-            Type at least 2 characters to search.
+            {t("settingsLocation.typeAtLeast2Characters")}
           </p>
         )}
         {stateLoading && stateSearch.trim().length >= 2 && (
-          <p className="text-xs text-slate-500 mt-1">Searching…</p>
+          <p className="text-xs text-slate-500 mt-1">{t("settingsLocation.searching")}</p>
         )}
         {!stateLoading && stateResults && stateResults.length > 0 && (
           <div className="mt-2 max-h-64 overflow-y-auto border rounded">
@@ -462,7 +462,7 @@ export default function SettingsLocation() {
           stateSearch.trim().length >= 2 &&
           (!stateResults || stateResults.length === 0) && (
             <p className="text-xs text-slate-500 mt-1">
-              No matching states found.
+              {t("settingsLocation.noMatchingStatesFound")}
             </p>
           )}
       </section>
@@ -470,7 +470,7 @@ export default function SettingsLocation() {
       {/* County selection */}
       <section className="rounded-lg border p-3 space-y-2">
         <h3 className="text-xs font-medium text-slate-900">
-          Choose your county <span className="font-normal">(optional)</span>
+          {t("settingsLocation.chooseYourCounty")} <span className="font-normal">{t("ugq.optional")}</span>
         </h3>
         <form
           onSubmit={handleCountySearchSubmit}
@@ -480,23 +480,23 @@ export default function SettingsLocation() {
             type="text"
             value={countySearchInput}
             onChange={(e) => setCountySearchInput(e.target.value)}
-            placeholder="Search for a county (e.g., Middlesex County)"
+            placeholder={t("settingsLocation.searchForACountyE")}
             className="flex-1 rounded border px-2 py-1.5 text-xs"
           />
           <button
             type="submit"
             className="rounded bg-slate-900 text-white px-3 py-1.5 text-xs"
           >
-            Search
+            {t("nav.searchLabel")}
           </button>
         </form>
         {countyTouched && countySearch.trim().length < 2 && (
           <p className="text-[11px] text-slate-500">
-            Type at least 2 characters to search.
+            {t("settingsLocation.typeAtLeast2Characters")}
           </p>
         )}
         {countyLoading && countySearch.trim().length >= 2 && (
-          <p className="text-xs text-slate-500 mt-1">Searching…</p>
+          <p className="text-xs text-slate-500 mt-1">{t("settingsLocation.searching")}</p>
         )}
         {!countyLoading && countyResults && countyResults.length > 0 && (
           <div className="mt-2 max-h-64 overflow-y-auto border rounded">
@@ -528,7 +528,7 @@ export default function SettingsLocation() {
           countySearch.trim().length >= 2 &&
           (!countyResults || countyResults.length === 0) && (
             <p className="text-xs text-slate-500 mt-1">
-              No matching counties found.
+              {t("settingsLocation.noMatchingCountiesFound")}
             </p>
           )}
       </section>
@@ -536,10 +536,10 @@ export default function SettingsLocation() {
       {/* City selection */}
       <section className="rounded-lg border p-3 space-y-2">
         <h3 className="text-xs font-medium text-slate-900">
-          Choose your city <span className="font-normal">(optional)</span>
+          {t("settingsLocation.chooseYourCity")} <span className="font-normal">{t("ugq.optional")}</span>
         </h3>
         <p className="text-[11px] text-slate-500">
-          Setting a city or county gives you more precise stats, when available.
+          {t("settingsLocation.settingACityOrCounty")}
         </p>
         <form
           onSubmit={handleCitySearchSubmit}
@@ -549,23 +549,23 @@ export default function SettingsLocation() {
             type="text"
             value={citySearchInput}
             onChange={(e) => setCitySearchInput(e.target.value)}
-            placeholder="Search for a city (e.g., Boston)"
+            placeholder={t("settingsLocation.searchForACityE")}
             className="flex-1 rounded border px-2 py-1.5 text-xs"
           />
           <button
             type="submit"
             className="rounded bg-slate-900 text-white px-3 py-1.5 text-xs"
           >
-            Search
+            {t("nav.searchLabel")}
           </button>
         </form>
         {cityTouched && citySearch.trim().length < 2 && (
           <p className="text-[11px] text-slate-500">
-            Type at least 2 characters to search.
+            {t("settingsLocation.typeAtLeast2Characters")}
           </p>
         )}
         {cityLoading && citySearch.trim().length >= 2 && (
-          <p className="text-xs text-slate-500 mt-1">Searching…</p>
+          <p className="text-xs text-slate-500 mt-1">{t("settingsLocation.searching")}</p>
         )}
         {!cityLoading && cityResults && cityResults.length > 0 && (
           <div className="mt-2 max-h-64 overflow-y-auto border rounded">
@@ -597,18 +597,18 @@ export default function SettingsLocation() {
           citySearch.trim().length >= 2 &&
           (!cityResults || cityResults.length === 0) && (
             <p className="text-xs text-slate-500 mt-1">
-              No matching cities found.
+              {t("settingsLocation.noMatchingCitiesFound")}
             </p>
           )}
 
         {setLocationMutation.isPending && (
           <p className="text-[11px] text-slate-500 mt-1">
-            Saving your location…
+            {t("settingsLocation.savingYourLocation")}
           </p>
         )}
         {setLocationMutation.isSuccess && (
           <p className="text-[11px] text-emerald-600 mt-1">
-            Location updated. Your regional stats will refresh shortly.
+            {t("settingsLocation.locationUpdatedYourRegionalStats")}
           </p>
         )}
       </section>

@@ -18,6 +18,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Link2, Unlink, CheckCircle2 } from "lucide-react";
 import { getSupabase } from "@/lib/supabaseClient";
+import { useTranslation } from "react-i18next";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -34,31 +35,31 @@ interface LinkedProvider {
 
 const PROVIDER_META: Record<
   Provider,
-  { label: string; color: string; iconBg: string; description: string }
+  { labelKey: string; color: string; iconBg: string; descriptionKey: string }
 > = {
   google: {
-    label: "Google",
+    labelKey: "account.google",
     color: "text-slate-700",
     iconBg: "bg-white border border-slate-200",
-    description: "Sign in with your Google account",
+    descriptionKey: "account.signInWithYourGoogle",
   },
   facebook: {
-    label: "Facebook",
+    labelKey: "share.facebook",
     color: "text-[#1877F2]",
     iconBg: "bg-[#1877F2]",
-    description: "Sign in with your Facebook account",
+    descriptionKey: "account.signInWithYourFacebook",
   },
   apple: {
-    label: "Apple",
+    labelKey: "account.apple",
     color: "text-slate-900",
     iconBg: "bg-black",
-    description: "Sign in with your Apple ID",
+    descriptionKey: "account.signInWithYourApple",
   },
   twitter: {
-    label: "X (Twitter)",
+    labelKey: "account.xTwitter",
     color: "text-slate-900",
     iconBg: "bg-black",
-    description: "Required for direct posting to X",
+    descriptionKey: "account.requiredForDirectPostingTo",
   },
 };
 
@@ -130,6 +131,7 @@ function useDisconnectProvider() {
 // ─── Connect button ───────────────────────────────────────────────────────────
 
 function ConnectButton({ provider }: { provider: Provider }) {
+  const { t, i18n } = useTranslation();
   const sb = React.useMemo(getSupabase, []);
   const [loading, setLoading] = React.useState(false);
   const { toast } = useToast();
@@ -152,7 +154,7 @@ function ConnectButton({ provider }: { provider: Provider }) {
         },
       });
       if (error) {
-        toast({ title: "Connection failed", description: error.message, variant: "destructive" });
+        toast({ title: t("account.connectionFailed"), description: error.message, variant: "destructive" });
         setLoading(false);
       }
       // On success: browser redirects to OAuth; setLoading stays true
@@ -169,7 +171,7 @@ function ConnectButton({ provider }: { provider: Provider }) {
       },
     });
     if (error) {
-      toast({ title: "Connection failed", description: error.message, variant: "destructive" });
+      toast({ title: t("account.connectionFailed"), description: error.message, variant: "destructive" });
       setLoading(false);
     }
     // On success: browser redirects to OAuth; setLoading stays true
@@ -185,7 +187,7 @@ function ConnectButton({ provider }: { provider: Provider }) {
       className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors disabled:opacity-50"
     >
       {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}
-      Connect {meta.label}
+      {t("account.connect")} {t(meta.labelKey)}
     </button>
   );
 }
@@ -205,6 +207,7 @@ function ProviderRow({
   disconnecting: boolean;
   isLastMethod: boolean;
 }) {
+  const { t, i18n } = useTranslation();
   const meta = PROVIDER_META[provider];
 
   return (
@@ -221,16 +224,17 @@ function ProviderRow({
 
       {/* Info */}
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-slate-800">{meta.label}</p>
+        <p className="text-sm font-medium text-slate-800">{t(meta.labelKey)}</p>
         {linked ? (
           <p className="text-xs text-slate-400 mt-0.5">
-            Connected ·{" "}
-            {new Date(linked.connected_at).toLocaleDateString(undefined, {
-              dateStyle: "medium",
+            {t("account.connectedOn", {
+              date: new Date(linked.connected_at).toLocaleDateString(i18n.language, {
+                dateStyle: "medium",
+              }),
             })}
           </p>
         ) : (
-          <p className="text-xs text-slate-400 mt-0.5">{meta.description}</p>
+          <p className="text-xs text-slate-400 mt-0.5">{t(meta.descriptionKey)}</p>
         )}
       </div>
 
@@ -244,8 +248,8 @@ function ProviderRow({
             disabled={disconnecting || isLastMethod}
             title={
               isLastMethod
-                ? "Can't disconnect your only login method"
-                : `Disconnect ${meta.label}`
+                ? t("account.canTDisconnectYourOnly")
+                : t("account.disconnectProvider", { provider: t(meta.labelKey) })
             }
             className="flex items-center gap-1.5 rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-500 hover:border-red-200 hover:text-red-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
@@ -254,7 +258,7 @@ function ProviderRow({
             ) : (
               <Unlink className="h-3 w-3" />
             )}
-            Disconnect
+            {t("account.disconnect")}
           </button>
         </div>
       ) : (
@@ -272,6 +276,7 @@ function ProviderRow({
 const LOGIN_PROVIDERS: Provider[] = ["google", "facebook", "apple"];
 
 export default function ConnectedAccountsSection() {
+  const { t, i18n } = useTranslation();
   const { data: linked, isLoading } = useLinkedProviders();
   const { mutate: disconnect, isPending: disconnecting, variables: disconnectingProvider } =
     useDisconnectProvider();
@@ -289,10 +294,10 @@ export default function ConnectedAccountsSection() {
   function handleDisconnect(provider: Provider) {
     disconnect(provider, {
       onSuccess: () =>
-        toast({ title: `${PROVIDER_META[provider].label} disconnected.` }),
+        toast({ title: t("account.providerDisconnected", { provider: t(PROVIDER_META[provider].labelKey) }) }),
       onError: (e: any) =>
         toast({
-          title: "Couldn't disconnect",
+          title: t("account.couldnTDisconnect"),
           description: e?.message,
           variant: "destructive",
         }),
@@ -303,7 +308,7 @@ export default function ConnectedAccountsSection() {
     return (
       <div className="flex items-center gap-2 text-slate-400 text-xs py-2">
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        Loading connected accounts…
+        {t("account.loadingConnectedAccounts")}
       </div>
     );
   }
@@ -311,8 +316,7 @@ export default function ConnectedAccountsSection() {
   return (
     <div className="space-y-1">
       <p className="text-xs text-slate-500 pb-2">
-        Connect social accounts to sign in without a password. You can connect
-        multiple providers to the same account.
+        {t("account.connectSocialAccountsToSign")}
       </p>
 
       <div className="divide-y divide-slate-100">
@@ -330,10 +334,9 @@ export default function ConnectedAccountsSection() {
 
       {/* X / Twitter — separate section, different purpose */}
       <div className="mt-4 pt-4 border-t border-slate-100">
-        <p className="text-xs font-medium text-slate-600 mb-1">X (Twitter) for sharing</p>
+        <p className="text-xs font-medium text-slate-600 mb-1">{t("account.xTwitterForSharing")}</p>
         <p className="text-xs text-slate-400 mb-2">
-          Connect X to post your stances directly from Stance Capture.
-          Requires write permission to your X account.
+          {t("account.connectXToPostYour")}
         </p>
         <ProviderRow
           provider="twitter"

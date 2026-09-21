@@ -2,6 +2,7 @@
 import * as React from "react";
 import { Search, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 
 interface SearchBarProps {
   onSearch?: (query: string) => void;
@@ -12,10 +13,11 @@ interface SearchBarProps {
 
 export function SearchBar({
   onSearch,
-  placeholder = "Search questions and topics...",
+  placeholder,
   autoFocus = false,
   className = "",
 }: SearchBarProps) {
+  const { t } = useTranslation();
   const [query, setQuery] = React.useState("");
   const navigate = useNavigate();
 
@@ -43,7 +45,7 @@ export function SearchBar({
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder={placeholder}
+          placeholder={placeholder ?? t("searchBar.searchQuestionsAndTopics")}
           autoFocus={autoFocus}
           className="w-full pl-10 pr-10 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         />
@@ -52,7 +54,7 @@ export function SearchBar({
             type="button"
             onClick={handleClear}
             className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-            aria-label="Clear search"
+            aria-label={t("searchBar.clearSearch")}
           >
             <X className="h-4 w-4" />
           </button>

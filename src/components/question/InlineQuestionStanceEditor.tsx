@@ -7,6 +7,7 @@ import { getSupabase } from "@/lib/supabaseClient";
 import { getStanceColorHex } from "@/lib/stanceColors";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/use-toast";
+import { useTranslation } from "react-i18next";
 
 type Session = import("@supabase/supabase-js").Session;
 
@@ -44,6 +45,7 @@ export function InlineQuestionStanceEditor({
   initialScore = null,
   className,
 }: Props) {
+  const { t } = useTranslation();
   const sb = React.useMemo(getSupabase, []);
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -92,7 +94,7 @@ export function InlineQuestionStanceEditor({
     mutationKey: ["set-stance-inline", questionId],
     mutationFn: async (newScore: number | null) => {
       if (!sb) throw new Error("Supabase not ready");
-      if (!session?.user) throw new Error("You need to be logged in");
+      if (!session?.user) throw new Error(t("inlineQuestionStanceEditor.needToBeLoggedIn"));
 
       const { data, error } = await sb.rpc("set_question_stance", {
         p_question_id: questionId,
@@ -141,14 +143,14 @@ export function InlineQuestionStanceEditor({
             : "Stance updated",
         description:
           newScore === null || newScore === undefined
-            ? "You've removed your stance on this question."
-            : "Your stance has been recorded.",
+            ? t("inlineQuestionStanceEditor.stanceRemoved")
+            : t("stanceSubmission.yourResponseRecorded"),
       });
     },
     onError: (error: any) => {
       toast({
         variant: "destructive",
-        title: "Couldn't update your stance",
+        title: t("inlineQuestionStanceEditor.couldnTUpdateYourStance"),
         description:
           error?.message ??
           "Something went wrong while saving. Please try again.",
@@ -160,9 +162,9 @@ export function InlineQuestionStanceEditor({
     if (!isAuthed) {
       // you can also navigate to login here if you like
       toast({
-        title: "Log in to answer",
+        title: t("inlineQuestionStanceEditor.logInToAnswer"),
         description:
-          "Create an account or log in to record your stance on this question.",
+          t("inlineQuestionStanceEditor.createAnAccountOrLog"),
       });
       return;
     }
@@ -184,8 +186,8 @@ export function InlineQuestionStanceEditor({
           className
         )}
       >
-        <span>Want to record your stance?</span>
-        <span className="underline">Log in</span>
+        <span>{t("inlineQuestionStanceEditor.wantToRecordYourStance")}</span>
+        <span className="underline">{t("auth.logIn")}</span>
       </div>
     );
   }
@@ -197,7 +199,7 @@ export function InlineQuestionStanceEditor({
         className
       )}
     >
-      <span className="text-slate-500">Your stance:</span>
+      <span className="text-slate-500">{t("topicHistoryDrawer.yourStance")}</span>
       {STANCE_VALUES.map((v) => {
         const isActive = currentScore === v;
         const color = getStanceColorHex(v);
@@ -231,13 +233,13 @@ export function InlineQuestionStanceEditor({
           onClick={() => mutation.mutate(null)}
           className="ml-1 text-[10px] text-slate-500 underline"
         >
-          Clear
+          {t("stance.clear")}
         </button>
       )}
 
       {mutation.isPending && (
         <span className="text-[10px] text-slate-400 ml-1">
-          Saving…
+          {t("stance.saving")}
         </span>
       )}
     </div>

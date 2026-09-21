@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
 import { Loader2, MapPin, CheckCircle2, Info, Vote } from "lucide-react";
+import { Trans, useTranslation } from "react-i18next";
 
 type Constituency = {
   id: string;
@@ -56,6 +57,7 @@ function getRpcFetchHeaders() {
 }
 
 export default function ConstituencySetupPage() {
+  const { t } = useTranslation();
   const sb = getSupabase()!;
   const { toast } = useToast();
 
@@ -155,11 +157,11 @@ export default function ConstituencySetupPage() {
       setCurrentConstituencyId(selectedConstituencyId);
       setSaved(true);
       toast({
-        title: "Constituency saved",
+        title: t("constituency.constituencySaved"),
         description: `Election questions for ${selectedConstituency?.name} will appear in your feed.`,
       });
     } catch (e: any) {
-      toast({ title: "Failed to save", description: e.message, variant: "destructive" });
+      toast({ title: t("settingsNotif.failedToSave"), description: e.message, variant: "destructive" });
     } finally { setSaving(false); }
   };
 
@@ -173,10 +175,10 @@ export default function ConstituencySetupPage() {
       <div>
         <h2 className="text-base font-semibold flex items-center gap-2">
           <Vote className="h-4 w-4 text-muted-foreground" />
-          Election Constituency
+          {t("constituency.electionConstituency")}
         </h2>
         <p className="text-sm text-muted-foreground mt-1">
-          Set your Assembly Constituency to see election questions and community stances relevant to your area.
+          {t("constituency.setYourAssemblyConstituencyTo")}
         </p>
       </div>
 
@@ -185,19 +187,25 @@ export default function ConstituencySetupPage() {
         <div className="flex items-center gap-2 rounded bg-green-50 border border-green-200 px-3 py-2 text-sm text-green-800">
           <CheckCircle2 className="h-4 w-4 shrink-0" />
           <span>
-            Your constituency is set. Election questions for{" "}
-            <strong>{constituencies.find((c) => c.id === currentConstituencyId)?.name ?? "your constituency"}</strong>{" "}
-            will appear in your feed.
+            <Trans
+              i18nKey="constituency.constituencySetNotice"
+              values={{
+                name:
+                  constituencies.find((c) => c.id === currentConstituencyId)?.name ??
+                  t("constituency.yourConstituency"),
+              }}
+              components={{ b: <strong /> }}
+            />
           </span>
         </div>
       )}
 
       {/* State selector */}
       <div className="space-y-2">
-        <Label>State</Label>
+        <Label>{t("pulsePage.state")}</Label>
         <Select value={selectedState} onValueChange={(v) => { setSelectedState(v); setSelectedConstituencyId(""); setSearch(""); }}>
           <SelectTrigger className="w-64">
-            <SelectValue placeholder="Select state" />
+            <SelectValue placeholder={t("signup.selectState")} />
           </SelectTrigger>
           <SelectContent>
             {SUPPORTED_STATES.map((s) => (
@@ -206,16 +214,16 @@ export default function ConstituencySetupPage() {
           </SelectContent>
         </Select>
         <p className="text-xs text-muted-foreground">
-          More states will be added as elections are scheduled.
+          {t("constituency.moreStatesWillBeAdded")}
         </p>
       </div>
 
       {/* Constituency search + picker */}
       <div className="space-y-3">
-        <Label>Assembly Constituency</Label>
+        <Label>{t("constituency.assemblyConstituency")}</Label>
 
         <Input
-          placeholder="Search by name, district, or AC number…"
+          placeholder={t("constituency.searchByNameDistrictOr")}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="max-w-sm"
@@ -223,13 +231,13 @@ export default function ConstituencySetupPage() {
 
         {loadingConstituencies ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
-            <Loader2 className="h-4 w-4 animate-spin" /> Loading constituencies…
+            <Loader2 className="h-4 w-4 animate-spin" /> {t("constituency.loadingConstituencies")}
           </div>
         ) : (
           <div className="rounded border divide-y max-h-64 overflow-y-auto">
             {filtered.length === 0 ? (
               <div className="px-3 py-4 text-sm text-muted-foreground text-center">
-                No constituencies match "{search}"
+                {t("constituency.noMatch", { q: search })}
               </div>
             ) : (
               filtered.map((c) => (
@@ -251,7 +259,7 @@ export default function ConstituencySetupPage() {
                     </div>
                     <div className="flex items-center gap-2 mt-0.5 text-xs text-muted-foreground">
                       <span>{c.constituency_code}</span>
-                      {c.district_name && <span>· {c.district_name} district</span>}
+                      {c.district_name && <span>{t("constituency.districtLabel", { district: c.district_name })}</span>}
                     </div>
                   </div>
                   {selectedConstituencyId === c.id && (
@@ -277,15 +285,13 @@ export default function ConstituencySetupPage() {
             />
             <div>
               <Label htmlFor="postal_voter" className="cursor-pointer text-sm">
-                I am a postal / absentee voter
+                {t("constituency.iAmAPostalAbsentee")}
               </Label>
               {postalVoter && (
                 <div className="flex items-start gap-1.5 mt-1.5 text-xs text-amber-700">
                   <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" />
                   <span>
-                    Your registered constituency may differ from where you currently live.
-                    The constituency above is your <strong>registered</strong> voting constituency
-                    for election purposes — not your current physical location (EL-QA-G08).
+                    <Trans i18nKey="constituency.registeredNotice" components={{ b: <strong /> }} />
                   </span>
                 </div>
               )}
@@ -304,7 +310,7 @@ export default function ConstituencySetupPage() {
           className="h-4 w-4 rounded border-gray-300"
         />
         <Label htmlFor="election_notifications" className="cursor-pointer text-sm">
-          Notify me when new election questions are added for my constituency
+          {t("constituency.notifyMeWhenNewElection")}
         </Label>
       </div>
 
@@ -312,9 +318,7 @@ export default function ConstituencySetupPage() {
       <div className="flex items-start gap-2 rounded bg-blue-50 border border-blue-200 px-3 py-2.5 text-xs text-blue-800">
         <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" />
         <span>
-          Stance Capture is a neutral civic intelligence platform. We are not affiliated with any
-          political party, candidate, or electoral body. Your constituency is used only to
-          geo-target relevant election questions — it is never shared with third parties.
+          {t("constituency.stanceCaptureIsANeutral")}
         </span>
       </div>
 
@@ -331,10 +335,10 @@ export default function ConstituencySetupPage() {
           ) : (
             <MapPin className="h-4 w-4 mr-2" />
           )}
-          {saved ? "Saved" : "Save Constituency"}
+          {saved ? t("common.saved") : t("constituency.saveConstituency")}
         </Button>
         {!selectedConstituencyId && (
-          <p className="text-xs text-muted-foreground">Select a constituency above to save.</p>
+          <p className="text-xs text-muted-foreground">{t("constituency.selectAConstituencyAboveTo")}</p>
         )}
       </div>
     </div>

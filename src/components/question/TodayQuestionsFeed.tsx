@@ -21,6 +21,7 @@ import { QuestionPhaseBadge } from "@/components/question/QuestionPhaseBadge";
 import { QuestionStateBadge } from "@/components/question/QuestionStateBadge";
 import { TrendingBadge } from "@/components/question/TrendingBadge";
 import type { QuestionState } from "@/types/questionLifecycleTypes";
+import { useTranslation } from "react-i18next";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -57,6 +58,7 @@ export function TodayQuestionsFeed({
   limit = 7,
   buildQuestionLink = (id) => `/q/${id}`,
 }: TodayQuestionsFeedProps) {
+  const { t } = useTranslation();
   const sb = React.useMemo(getSupabase, []);
 
   // Step 1: fetch curated question list
@@ -116,16 +118,16 @@ export function TodayQuestionsFeed({
       <CardHeader className="flex flex-row items-center justify-between gap-4">
         <div>
           <CardTitle className="text-base sm:text-lg">
-            Today's {data?.length || limit} Questions
+            {t("todayQuestionsFeed.todaysNQuestions", { n: data?.length || limit })}
           </CardTitle>
           <CardDescription className="text-xs sm:text-sm">
-            {isCurated && "Curated by our editorial team"}
-            {isFallback && "High-impact questions selected by AI"}
-            {!data?.length && "A curated set of stance-worthy questions"}
+            {isCurated && t("todayQuestionsFeed.curatedByOurEditorialTeam")}
+            {isFallback && t("todayQuestionsFeed.highImpactQuestionsSelectedBy")}
+            {!data?.length && t("todayQuestionsFeed.aCuratedSetOfStance")}
           </CardDescription>
         </div>
         <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isLoading}>
-          Refresh
+          {t("profile.refresh")}
         </Button>
       </CardHeader>
 
@@ -143,15 +145,14 @@ export function TodayQuestionsFeed({
 
         {isError && (
           <p className="text-xs text-destructive">
-            Error loading Today's Questions:{" "}
-            {(error as any)?.message ?? "Unknown error"}
+            {t("todayQuestionsFeed.errorLoadingTodaySQuestions")}{" "}
+            {(error as any)?.message ?? t("todayQuestionsFeed.unknownError")}
           </p>
         )}
 
         {!isLoading && !isError && (!data || data.length === 0) && (
           <p className="text-xs text-muted-foreground">
-            No curated questions are available yet for today. Run the Bootstrap
-            function in the Impact Dashboard to generate today's questions.
+            {t("todayQuestionsFeed.noCuratedQuestionsAreAvailable")}
           </p>
         )}
 
@@ -160,12 +161,12 @@ export function TodayQuestionsFeed({
             {/* Source indicator */}
             <div className="flex items-center gap-2">
               <div className="text-[11px] text-muted-foreground uppercase tracking-wide">
-                {isCurated && "📰 Curated Set"}
-                {isFallback && "⚡ Auto-Selected"}
+                {isCurated && t("todayQuestionsFeed.curatedSet")}
+                {isFallback && t("todayQuestionsFeed.autoSelected")}
               </div>
               {data[0]?.composite_score && (
                 <Badge variant="outline" className="text-[10px]">
-                  Impact Score: {data[0].composite_score.toFixed(1)}
+                  {t("todayQuestionsFeed.impactScore")} {data[0].composite_score.toFixed(1)}
                 </Badge>
               )}
             </div>
@@ -204,7 +205,7 @@ export function TodayQuestionsFeed({
                           to={href}
                           className="text-sm font-medium leading-snug line-clamp-2 hover:underline"
                         >
-                          {q.question_text ?? "(Untitled question)"}
+                          {q.question_text ?? t("todayQuestionsFeed.untitledQuestion")}
                         </Link>
                         {q.question_summary && (
                           <p className="text-xs text-muted-foreground line-clamp-2">

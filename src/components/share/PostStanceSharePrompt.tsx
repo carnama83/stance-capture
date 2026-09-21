@@ -8,6 +8,7 @@
 import * as React from "react";
 import { Share2, X } from "lucide-react";
 import { ShareButton } from "./ShareButton";
+import { useTranslation } from "react-i18next";
 
 interface PostStanceSharePromptProps {
   questionId: string;
@@ -24,6 +25,7 @@ export function PostStanceSharePrompt({
   onDismiss,
   languageCode,
 }: PostStanceSharePromptProps) {
+  const { t } = useTranslation();
   const [visible, setVisible] = React.useState(false);
 
   React.useEffect(() => {
@@ -47,9 +49,9 @@ export function PostStanceSharePrompt({
       </div>
 
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-blue-900">Want to see what others think?</p>
+        <p className="text-sm font-medium text-blue-900">{t("postStanceSharePrompt.wantToSeeWhatOthers")}</p>
         <p className="text-xs text-blue-700 mt-0.5">
-          Share this question and help grow the conversation.
+          {t("postStanceSharePrompt.shareThisQuestionAndHelp")}
         </p>
         <div className="mt-3">
           <ShareButton
@@ -66,7 +68,7 @@ export function PostStanceSharePrompt({
         type="button"
         onClick={dismiss}
         className="shrink-0 p-1 rounded text-blue-400 hover:text-blue-600 hover:bg-blue-100 transition-colors"
-        aria-label="Dismiss"
+        aria-label={t("auth.dismiss")}
       >
         <X className="h-4 w-4" />
       </button>

@@ -15,6 +15,7 @@ import { getSupabase } from "@/lib/supabaseClient";
 import { CommunityStanceBar } from "@/components/question/CommunityStanceBar";
 import { Loader2, CheckCircle2, ExternalLink } from "lucide-react";
 import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_PROJECT_REF, getJwt } from "@/lib/env";
+import { useTranslation } from "react-i18next";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -75,6 +76,7 @@ function EmbedSlider({
   onChange: (v: number) => void;
   disabled?: boolean;
 }) {
+  const { t } = useTranslation();
   const steps = [-2, -1, 0, 1, 2];
   const label = STANCE_LABELS[value];
 
@@ -112,9 +114,9 @@ function EmbedSlider({
 
       {/* Legend */}
       <div className="flex justify-between text-[11px] text-slate-400 px-0.5">
-        <span>Strongly disagree</span>
+        <span>{t("home.stanceStronglyDisagree")}</span>
         <span style={{ color: label.color }} className="font-medium">{label.short}</span>
-        <span>Strongly agree</span>
+        <span>{t("home.stanceStronglyAgree")}</span>
       </div>
     </div>
   );
@@ -131,6 +133,7 @@ function EmbedCommunityBar({
   lowLabel?: string | null;
   highLabel?: string | null;
 }) {
+  const { t } = useTranslation();
   if (!stats) return null;
 
   const totalCount = stats.total_count ?? 0;
@@ -141,7 +144,7 @@ function EmbedCommunityBar({
   return (
     <div className="mt-4 pt-4 border-t border-slate-100">
       <p className="text-xs text-slate-400 font-medium uppercase tracking-wide mb-2">
-        Community stance · {totalCount.toLocaleString()} {totalCount === 1 ? "response" : "responses"}
+        {t("embed.communityStanceCount", { count: totalCount })}
       </p>
       <CommunityStanceBar
         responses={totalCount}
@@ -159,6 +162,7 @@ function EmbedCommunityBar({
 // ─── Main embed page ──────────────────────────────────────────────────────────
 
 export default function EmbedPage() {
+  const { t } = useTranslation();
   const { questionId } = useParams<{ questionId: string }>();
   const [searchParams] = useSearchParams();
   const theme = (searchParams.get("theme") ?? "light") as Theme;
@@ -200,7 +204,7 @@ export default function EmbedPage() {
       .eq("id", questionId)
       .single()
       .then(({ data, error: err }) => {
-        if (err || !data) { setError("Question not found."); setLoading(false); return; }
+        if (err || !data) { setError(t("stance.questionNotFound")); setLoading(false); return; }
         setQuestion(data as EmbedQuestion);
         setLoading(false);
       });
@@ -312,7 +316,7 @@ export default function EmbedPage() {
   if (error || !question) {
     return (
       <div className={`p-4 text-center text-sm text-slate-400 ${bgClass}`}>
-        {error ?? "Question not available."}
+        {error ?? t("embed.questionNotAvailable")}
       </div>
     );
   }
@@ -322,10 +326,10 @@ export default function EmbedPage() {
       {/* Brand header */}
       <div className="flex items-center justify-between mb-3">
         <span className={`text-[10px] font-semibold uppercase tracking-widest ${isDark ? "text-slate-400" : "text-slate-400"}`}>
-          Stance Capture
+          {t("about.stanceCapture")}
         </span>
         {authUser && (
-          <span className="text-[11px] text-blue-500">✓ Signed in</span>
+          <span className="text-[11px] text-blue-500">{t("embed.signedIn")}</span>
         )}
       </div>
 
@@ -367,10 +371,10 @@ export default function EmbedPage() {
           >
             {submitting ? (
               <span className="flex items-center justify-center gap-2">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…
+                <Loader2 className="h-3.5 w-3.5 animate-spin" /> {t("stance.saving")}
               </span>
             ) : (
-              "Submit stance"
+              t("embed.submitStance")
             )}
           </button>
         </div>
@@ -379,7 +383,7 @@ export default function EmbedPage() {
         <div className="space-y-4">
           <div className="flex items-center gap-2 text-sm font-medium text-emerald-600">
             <CheckCircle2 className="h-4 w-4" />
-            <span>Stance recorded — {STANCE_LABELS[selectedStance]?.short}</span>
+            <span>{t("embed.stanceRecordedAs", { label: STANCE_LABELS[selectedStance]?.short })}</span>
           </div>
 
           <EmbedCommunityBar
@@ -406,14 +410,14 @@ export default function EmbedPage() {
 
       {/* Branding footer */}
       <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
-        <span className="text-[10px] text-slate-300">Powered by</span>
+        <span className="text-[10px] text-slate-300">{t("embed.poweredBy")}</span>
         <a
           href={`${window.location.origin}`}
           target="_blank"
           rel="noopener noreferrer"
           className="text-[10px] text-blue-400 hover:text-blue-600 font-medium"
         >
-          Stance Capture
+          {t("about.stanceCapture")}
         </a>
       </div>
     </div>

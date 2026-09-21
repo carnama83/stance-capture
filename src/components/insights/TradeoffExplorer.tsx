@@ -11,6 +11,7 @@
 // on mount to avoid unbounded localStorage growth.
 
 import * as React from "react";
+import i18n from "@/lib/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2, ChevronDown, ChevronUp, Scale } from "lucide-react";
@@ -30,9 +31,9 @@ type TradeoffResponse = {
 
 function communityLeaning(avgScore: number | null): string | null {
   if (avgScore === null) return null;
-  if (avgScore >= 0.5)  return "Most people lean toward agreement";
-  if (avgScore <= -0.5) return "Most people lean toward disagreement";
-  return "Community is fairly split";
+  if (avgScore >= 0.5)  return "youVsCommunityPhrase.mostLeanAgree";
+  if (avgScore <= -0.5) return "youVsCommunityPhrase.mostLeanDisagree";
+  return "youVsCommunityPhrase.fairlySplit";
 }
 
 function deriveOutcomeSummary(
@@ -49,11 +50,15 @@ function deriveOutcomeSummary(
     else              balanced.push(t.label);
   });
   if (dominated.length === 0) {
-    return "You're weighing the trade-offs evenly — your stance will reflect a balanced view.";
+    return i18n.t("tradeoffExplorer.weighingEvenly");
   }
-  const prioritised = dominated.slice(0, 2).join(" and ");
-  const qualifier   = balanced.length > 0 ? ", with some nuance" : "";
-  return `Your priorities suggest you lean toward ${prioritised}${qualifier}. Consider how that shapes your stance below.`;
+  const prioritised = dominated.slice(0, 2).join(i18n.t("tradeoffExplorer.and"));
+  return i18n.t(
+    balanced.length > 0
+      ? "tradeoffExplorer.prioritiesWithNuance"
+      : "tradeoffExplorer.priorities",
+    { priorities: prioritised }
+  );
 }
 
 // ── localStorage weight persistence ──────────────────────────────────────────
@@ -273,7 +278,7 @@ export default function TradeoffExplorer({
           {/* Community lean hint */}
           {leaning && (
             <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-50 border border-slate-100">
-              <span className="text-[11px] text-slate-500">{leaning} on this question.</span>
+              <span className="text-[11px] text-slate-500">{t("tradeoffExplorer.leaningOnThisQuestion", { leaning: t(leaning) })}</span>
             </div>
           )}
 
@@ -281,14 +286,14 @@ export default function TradeoffExplorer({
           {isLoading && (
             <div className="flex items-center gap-2 py-3 text-xs text-slate-400">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              Analysing trade-offs…
+              {t("tradeoffExplorer.analysingTradeOffs")}
             </div>
           )}
 
           {/* No data */}
           {!isLoading && tradeoffs.length === 0 && (
             <p className="text-xs text-slate-400 py-2">
-              Could not extract trade-offs for this question.
+              {t("tradeoffExplorer.couldNotExtractTradeOffs")}
             </p>
           )}
 
@@ -296,8 +301,7 @@ export default function TradeoffExplorer({
           {!isLoading && tradeoffs.length > 0 && (
             <>
               <p className="text-xs text-slate-500 leading-snug">
-                Adjust the sliders to reflect what matters most to you,
-                then record your stance below.
+                {t("tradeoffExplorer.adjustTheSlidersToReflect")}
               </p>
               {tradeoffs.map((t, i) => (
                 <PrioritySlider
@@ -319,8 +323,7 @@ export default function TradeoffExplorer({
 
               {/* Persistence note */}
               <p className="text-[10px] text-slate-400">
-                Your priority weights are saved privately and will be here when
-                you return to this question.
+                {t("tradeoffExplorer.yourPriorityWeightsAreSaved")}
               </p>
             </>
           )}

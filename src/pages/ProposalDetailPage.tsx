@@ -31,6 +31,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SUPABASE_URL, getJwt, supabaseHeaders } from "@/lib/env";
 import { VideoRecorderPanel } from "@/components/ugq/VideoRecorderPanel";
+import { useTranslation } from "react-i18next";
 
 // Same shape as MyProposalsPage/ProposeQuestionModal's PreviewReframe,
 // duplicated rather than shared — matches this codebase's existing
@@ -125,26 +126,27 @@ async function fetchProposal(id: string): Promise<ProposalDetail | null> {
   };
 }
 
-const STATUS_STYLE: Record<string, { label: string; cls: string }> = {
-  proposed:            { label: "Under review",   cls: "bg-amber-500 hover:bg-amber-500" },
-  screening:           { label: "Under review",   cls: "bg-amber-500 hover:bg-amber-500" },
-  in_review:           { label: "Under review",   cls: "bg-amber-500 hover:bg-amber-500" },
-  resubmit_requested:  { label: "Needs re-record", cls: "bg-orange-500 hover:bg-orange-500" },
-  approved:            { label: "Approved",       cls: "bg-blue-600 hover:bg-blue-600" },
-  reframing:           { label: "Preparing",      cls: "bg-blue-600 hover:bg-blue-600" },
-  published:           { label: "Live",           cls: "bg-emerald-600 hover:bg-emerald-600" },
-  rejected:            { label: "Not published",  cls: "bg-slate-400 hover:bg-slate-400" },
-  withdrawn:           { label: "Withdrawn",      cls: "bg-slate-400 hover:bg-slate-400" },
+const STATUS_STYLE: Record<string, { labelKey: string; cls: string }> = {
+  proposed:            { labelKey: "proposals.statusUnderReview",   cls: "bg-amber-500 hover:bg-amber-500" },
+  screening:           { labelKey: "proposals.statusUnderReview",   cls: "bg-amber-500 hover:bg-amber-500" },
+  in_review:           { labelKey: "proposals.statusUnderReview",   cls: "bg-amber-500 hover:bg-amber-500" },
+  resubmit_requested:  { labelKey: "proposals.statusNeedsRerecord", cls: "bg-orange-500 hover:bg-orange-500" },
+  approved:            { labelKey: "proposals.statusApproved",       cls: "bg-blue-600 hover:bg-blue-600" },
+  reframing:           { labelKey: "proposals.statusPreparing",      cls: "bg-blue-600 hover:bg-blue-600" },
+  published:           { labelKey: "proposals.statusLive",           cls: "bg-emerald-600 hover:bg-emerald-600" },
+  rejected:            { labelKey: "proposals.statusNotPublished",  cls: "bg-slate-400 hover:bg-slate-400" },
+  withdrawn:           { labelKey: "proposals.statusWithdrawn",      cls: "bg-slate-400 hover:bg-slate-400" },
 };
 
 // Same static preview as MyProposalsPage/ProposeQuestionModal — duplicated
 // per this codebase's existing convention (see MyProposalsPage's header).
 function StanceScalePreview({ low, high }: { low: string | null; high: string | null }) {
+  const { t } = useTranslation();
   if (!low && !high) return null;
   return (
     <div>
       <p className="text-[10.5px] text-slate-500 mb-2">
-        Here&#x2019;s how the stance scale will appear to users:
+        {t("proposals.scalePreview")}
       </p>
       <div className="relative py-1.5">
         <div
@@ -155,9 +157,9 @@ function StanceScalePreview({ low, high }: { low: string | null; high: string | 
         <div className="absolute left-1/2 top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-slate-400 bg-white" aria-hidden />
       </div>
       <div className="flex items-start justify-between gap-2 text-[11px] text-slate-600">
-        <span className="max-w-[42%] leading-tight">{low ?? "Oppose"}</span>
-        <span className="text-slate-400 shrink-0">Neutral</span>
-        <span className="max-w-[42%] text-right leading-tight">{high ?? "Support"}</span>
+        <span className="max-w-[42%] leading-tight">{low ?? t("ugq.opposeDefault")}</span>
+        <span className="text-slate-400 shrink-0">{t("ugq.neutralLabel")}</span>
+        <span className="max-w-[42%] text-right leading-tight">{high ?? t("ugq.supportDefault")}</span>
       </div>
     </div>
   );
@@ -169,6 +171,7 @@ function StanceScalePreview({ low, high }: { low: string | null; high: string | 
 function ReadyToPublishCard({ proposalId, preview, onPublished }: {
   proposalId: string; preview: PreviewReframe; onPublished: () => void;
 }) {
+  const { t } = useTranslation();
   const [publishing, setPublishing] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -189,7 +192,7 @@ function ReadyToPublishCard({ proposalId, preview, onPublished }: {
       }
       onPublished();
     } catch (_e) {
-      setError("Network error. Please try again.");
+      setError(t("ugq.networkErrorShort"));
       setPublishing(false);
     }
   }
@@ -197,13 +200,13 @@ function ReadyToPublishCard({ proposalId, preview, onPublished }: {
   return (
     <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 space-y-2">
       <div className="flex items-center gap-1.5 text-xs font-medium text-amber-700">
-        <Sparkles className="h-3.5 w-3.5" /> Ready to publish
+        <Sparkles className="h-3.5 w-3.5" /> {t("proposals.readyToPublish")}
       </div>
       <p className="text-sm text-slate-800 leading-snug">{preview.question}</p>
       <StanceScalePreview low={preview.slider_low_label} high={preview.slider_high_label} />
       {preview.context_summary && (
         <div className="pt-1.5 mt-0.5 border-t border-amber-200/70 space-y-1">
-          <p className="text-[11px] font-medium text-amber-700">Background</p>
+          <p className="text-[11px] font-medium text-amber-700">{t("ugq.background")}</p>
           <p className="text-xs text-slate-700 leading-relaxed">{preview.context_summary}</p>
           {preview.supporting_links.length > 0 && (
             <div className="flex flex-wrap gap-x-3 gap-y-1">
@@ -220,7 +223,7 @@ function ReadyToPublishCard({ proposalId, preview, onPublished }: {
       {error && <p className="text-xs text-red-600">{error}</p>}
       <div className="flex justify-end pt-0.5">
         <Button size="sm" disabled={publishing} onClick={handlePublish}>
-          {publishing ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Publishing&#x2026;</> : "Publish"}
+          {publishing ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> {t("ugq.publishing")}</> : t("ugq.publish")}
         </Button>
       </div>
     </div>
@@ -228,6 +231,7 @@ function ReadyToPublishCard({ proposalId, preview, onPublished }: {
 }
 
 export default function ProposalDetailPage() {
+  const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const queryClient = useQueryClient();
   const [reRecording, setReRecording] = React.useState(false);
@@ -267,29 +271,31 @@ export default function ProposalDetailPage() {
     <PageLayout>
       <div className="max-w-2xl mx-auto py-6 space-y-4">
         <Link to="/profile/proposals" className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800">
-          <ArrowLeft className="h-4 w-4" /> My Proposals
+          <ArrowLeft className="h-4 w-4" /> {t("nav.myProposals")}
         </Link>
 
         {isLoading && (
           <div className="flex items-center justify-center py-16 text-slate-500">
-            <Loader2 className="h-5 w-5 animate-spin mr-2" /> Loading…
+            <Loader2 className="h-5 w-5 animate-spin mr-2" /> {t("common.loading")}
           </div>
         )}
 
         {isError && (
           <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-            Could not load this proposal.
+            {t("proposalDetail.couldNotLoadThisProposal")}
           </div>
         )}
 
         {!isLoading && !isError && !proposal && (
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">
-            This proposal doesn&#x2019;t exist, or isn&#x2019;t yours to view.
+            {t("proposalDetail.thisProposalDoesnTExist")}
           </div>
         )}
 
         {proposal && (() => {
-          const style = STATUS_STYLE[proposal.status] ?? { label: proposal.status, cls: "bg-slate-400" };
+  const { t } = useTranslation();
+          const meta = STATUS_STYLE[proposal.status];
+          const style = { label: meta ? t(meta.labelKey) : proposal.status, cls: meta?.cls ?? "bg-slate-400" };
           const readyToPublish = proposal.status === "in_review" && !!proposal.preview_reframe;
           const isVideo = proposal.input_mode === "video";
           const displayText = proposal.status === "published" && proposal.live_question
@@ -303,13 +309,13 @@ export default function ProposalDetailPage() {
                   <Badge className={style.cls}>{style.label}</Badge>
                   {isVideo && (
                     <span className="inline-flex items-center gap-1 text-xs text-slate-500">
-                      <Video className="h-3.5 w-3.5" /> Video question
+                      <Video className="h-3.5 w-3.5" /> {t("proposalDetail.videoQuestion")}
                     </span>
                   )}
                   <span className="ml-auto text-xs text-slate-400">
-                    Submitted {(() => { try { return formatDistanceToNow(new Date(proposal.created_at), { addSuffix: true }); } catch { return ""; } })()}
+                    {t("proposalDetail.submitted")} {(() => { try { return formatDistanceToNow(new Date(proposal.created_at), { addSuffix: true }); } catch { return ""; } })()}
                     {proposal.updated_at && proposal.updated_at !== proposal.created_at ? (
-                      <> · updated {(() => { try { return formatDistanceToNow(new Date(proposal.updated_at as string), { addSuffix: true }); } catch { return ""; } })()}</>
+                      <> {t("proposalDetail.updated")} {(() => { try { return formatDistanceToNow(new Date(proposal.updated_at as string), { addSuffix: true }); } catch { return ""; } })()}</>
                     ) : null}
                   </span>
                 </div>
@@ -323,7 +329,7 @@ export default function ProposalDetailPage() {
                   </div>
                 )}
                 {proposal.status === "published" && !proposal.hindi_rendition_text && (
-                  <p className="text-[11px] text-slate-400">Hindi version is still being prepared.</p>
+                  <p className="text-[11px] text-slate-400">{t("proposalDetail.hindiVersionIsStillBeing")}</p>
                 )}
 
                 {(proposal.location_label || proposal.source_url) && (
@@ -343,12 +349,12 @@ export default function ProposalDetailPage() {
                 {proposal.status === "published" && (
                   <div className="flex items-center justify-between pt-1">
                     <span className="inline-flex items-center gap-1 text-xs text-slate-500">
-                      <MessageSquare className="h-3.5 w-3.5" /> {proposal.response_count} stances
+                      <MessageSquare className="h-3.5 w-3.5" /> {proposal.response_count} {t("proposalDetail.stances")}
                     </span>
                     {proposal.reframed_question_id && (
                       <Button asChild size="sm" variant="outline">
                         <Link to={`/q/${proposal.reframed_question_id}`}>
-                          View live <ExternalLink className="h-3.5 w-3.5 ml-1.5" />
+                          {t("proposals.viewLive")} <ExternalLink className="h-3.5 w-3.5 ml-1.5" />
                         </Link>
                       </Button>
                     )}
@@ -357,7 +363,7 @@ export default function ProposalDetailPage() {
 
                 {proposal.status === "rejected" && proposal.rejection_reason && (
                   <p className="text-xs text-slate-500">
-                    Reason: {proposal.rejection_reason}
+                    {t("proposalDetail.reason")} {proposal.rejection_reason}
                     {proposal.rejection_note ? ` — ${proposal.rejection_note}` : ""}
                   </p>
                 )}
@@ -372,16 +378,16 @@ export default function ProposalDetailPage() {
                   <div className="flex gap-2 text-sm text-orange-900">
                     <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
                     <p>
-                      {proposal.framing_flag_reason ?? "This reads as leading — try asking more neutrally, without suggesting an answer."}
+                      {proposal.framing_flag_reason ?? t("proposalDetail.thisReadsAsLeadingTry")}
                     </p>
                   </div>
                   <p className="text-xs text-orange-800/80">
-                    Editing the caption above won&#x2019;t clear this — the check looks at what&#x2019;s actually said in your video, not the caption. Recording again is the only way to resubmit.
+                    {t("proposalDetail.editingTheCaptionAboveWon")}
                     {proposal.video_resubmit_count > 0 ? ` (${proposal.video_resubmit_count} re-record${proposal.video_resubmit_count === 1 ? "" : "s"} so far.)` : ""}
                   </p>
                   {!reRecording ? (
                     <Button size="sm" onClick={() => setReRecording(true)}>
-                      <Video className="h-3.5 w-3.5 mr-1.5" /> Re-record video
+                      <Video className="h-3.5 w-3.5 mr-1.5" /> {t("proposalDetail.reRecordVideo")}
                     </Button>
                   ) : (
                     <VideoRecorderPanel
@@ -399,13 +405,13 @@ export default function ProposalDetailPage() {
 
               {(proposal.status === "in_review" || proposal.status === "proposed" || proposal.status === "screening") && !readyToPublish && (
                 <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 flex items-center gap-2 text-sm text-slate-500">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Still being reviewed — we&#x2019;ll let you know once it&#x2019;s ready.
+                  <Loader2 className="h-4 w-4 animate-spin" /> {t("proposalDetail.stillBeingReviewedWeLl")}
                 </div>
               )}
 
               {proposal.status === "published" && (
                 <p className="text-xs text-emerald-700 flex items-center gap-1.5">
-                  <CheckCircle2 className="h-3.5 w-3.5" /> This question is live.
+                  <CheckCircle2 className="h-3.5 w-3.5" /> {t("proposalDetail.thisQuestionIsLive")}
                 </p>
               )}
             </div>

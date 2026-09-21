@@ -1,4 +1,5 @@
 import * as React from "react";
+import i18n from "@/lib/i18n";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getSupabase } from "../lib/supabaseClient";
@@ -7,6 +8,7 @@ import { FollowTopicButton } from "@/components/FollowTopicButton";
 import { TopicMuteButton } from "@/components/TopicMuteButton";
 import TopicMomentumTimeline from "@/components/insights/TopicMomentumTimeline";
 import { QuestionPhaseBadge } from "@/components/question/QuestionPhaseBadge";
+import { useTranslation, Trans } from "react-i18next";
 
 type Session = import("@supabase/supabase-js").Session;
 
@@ -100,7 +102,7 @@ function stanceLabelShort(score: number | null | undefined): string {
   if (score === 0) return "Neutral";
   if (score === -1) return "Disagree";
   if (score === -2) return "Strongly disagree";
-  return "No stance";
+  return i18n.t("topicDetail.noStance");
 }
 
 async function fetchQuestionStatsForCard(
@@ -135,6 +137,7 @@ function QuestionStancePill({
   questionId: string;
   isAuthed: boolean;
 }) {
+  const { t } = useTranslation();
   const { data, isLoading } = useQuery<QuestionStatsCard | null, Error>({
     enabled: !!questionId,
     queryKey: ["question-stats-card", questionId],
@@ -145,7 +148,7 @@ function QuestionStancePill({
   if (isLoading) {
     return (
       <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] text-slate-500 bg-slate-50">
-        Loading…
+        {t("common.loading")}
       </span>
     );
   }
@@ -217,7 +220,7 @@ function QuestionStancePill({
             <div className="bg-slate-400" style={{ width: `${neutralPct}%` }} />
             <div className="bg-emerald-500" style={{ width: `${agreePct}%` }} />
           </div>
-          <span>{Math.round(regionRow.pct_agree ?? 0)}% agree</span>
+          <span>{t("topicPage.pctAgree", { pct: Math.round(regionRow.pct_agree ?? 0) })}</span>
         </div>
       )}
     </div>
@@ -395,6 +398,7 @@ function getTrendLabel(
 
 // ----- Page -----
 export default function TopicDetailPage() {
+  const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const session = useSupabaseSession();
@@ -488,7 +492,7 @@ export default function TopicDetailPage() {
   if (!id) {
     content = (
       <div className="rounded-lg border p-4 text-sm text-slate-700">
-        No topic id provided.
+        {t("topicPage.noId")}
       </div>
     );
   } else if (canonicalLoading || topicLoading) {
@@ -502,33 +506,33 @@ export default function TopicDetailPage() {
   } else if (topicError) {
     content = (
       <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-        <div className="font-medium mb-1">Couldn&apos;t load topic</div>
+        <div className="font-medium mb-1">{t("topicPage.loadFailed")}</div>
         <div>
           {(topicErrorObj as Error)?.message ??
-            "Please try again or go back to topics."}
+            t("topicDetail.pleaseTryAgainOrGo")}
         </div>
         <button
           type="button"
           onClick={handleBack}
           className="mt-2 text-xs underline"
         >
-          ← Back
+          {t("common.back")}
         </button>
       </div>
     );
   } else if (!topic) {
     content = (
       <div className="rounded-lg border p-4 text-sm text-slate-700">
-        <div className="font-medium mb-1">Topic not found</div>
+        <div className="font-medium mb-1">{t("topicPage.notFound")}</div>
         <p className="mb-2">
-          This topic may have been removed or is not yet available.
+          {t("topicPage.notFoundBody")}
         </p>
         <button
           type="button"
           onClick={handleBack}
           className="text-xs text-slate-900 underline"
         >
-          ← Back to topics
+          {t("topicPage.backToTopics")}
         </button>
       </div>
     );
@@ -543,15 +547,16 @@ export default function TopicDetailPage() {
         {/* Merge banner (when URL id != canonical id) */}
         {isMerged && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-            <div className="font-semibold mb-1">Merged topic</div>
+            <div className="font-semibold mb-1">{t("topicPage.mergedTitle")}</div>
             <div>
-              This topic was merged into{" "}
-              <span className="font-medium">{topic.title}</span>. You’re viewing
-              the canonical version, which combines activity and questions across
-              similar topics.
+              <Trans
+                i18nKey="topicPage.mergedInto"
+                values={{ title: topic.title }}
+                components={{ b: <span className="font-medium" /> }}
+              />
             </div>
             <div className="mt-1 text-[10px] text-amber-900/80">
-              Original topic id: <code>{id}</code>
+              {t("topicPage.originalTopicId")} <code>{id}</code>
             </div>
           </div>
         )}
@@ -579,15 +584,15 @@ export default function TopicDetailPage() {
                   {topic.tier && (
                     <span className="text-[10px] uppercase tracking-wide">
                       {topic.tier === "city"
-                        ? "City"
+                        ? t("pulsePage.city")
                         : topic.tier === "county"
-                        ? "County"
+                        ? t("signup.countyLabel")
                         : topic.tier === "state"
-                        ? "State"
+                        ? t("pulsePage.state")
                         : topic.tier === "country"
-                        ? "Country"
+                        ? t("signup.countryLabel")
                         : topic.tier === "global"
-                        ? "Global"
+                        ? t("home.globalTab")
                         : topic.tier}
                     </span>
                   )}
@@ -602,7 +607,7 @@ export default function TopicDetailPage() {
 
               {topic.updated_at && (
                 <div className="mt-1 text-[11px] text-slate-500">
-                  Updated{" "}
+                  {t("common.updated")}{" "}
                   {new Date(topic.updated_at).toLocaleString(undefined, {
                     dateStyle: "medium",
                     timeStyle: "short",
@@ -613,7 +618,7 @@ export default function TopicDetailPage() {
               {topic.tags && topic.tags.length > 0 && (
                 <div className="pt-2 border-t mt-2">
                   <div className="text-[11px] font-medium text-slate-700 mb-1">
-                    Tags
+                    {t("topicPage.tags")}
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     {topic.tags.map((tag) => (
@@ -632,13 +637,13 @@ export default function TopicDetailPage() {
             {/* Topic Trends widget */}
             <div className="w-44 shrink-0 rounded-lg border bg-slate-50 px-3 py-2 text-[11px] text-slate-700 flex flex-col gap-1.5">
               <div className="flex items-center justify-between gap-1">
-                <span className="font-semibold text-slate-900">Topic trends</span>
+                <span className="font-semibold text-slate-900">{t("topicPage.trends")}</span>
                 <button
                   type="button"
                   onClick={handleBack}
                   className="text-[10px] text-slate-500 hover:underline"
                 >
-                  ← Back
+                  {t("common.back")}
                 </button>
               </div>
               <div className="text-[11px]">
@@ -646,19 +651,23 @@ export default function TopicDetailPage() {
                 {topic.location_label && (
                   <>
                     {" "}
-                    in <span className="font-medium">{topic.location_label}</span>
+                    <Trans
+                      i18nKey="topicPage.inLocation"
+                      values={{ location: topic.location_label }}
+                      components={{ b: <span className="font-medium" /> }}
+                    />
                   </>
                 )}
               </div>
               <div className="flex items-center justify-between gap-2">
                 <div className="flex flex-col">
-                  <span className="text-[10px] text-slate-500">Trend index</span>
+                  <span className="text-[10px] text-slate-500">{t("topicPage.trendIndex")}</span>
                   <span className="text-xs font-semibold">{score.toFixed(0)}</span>
                 </div>
                 <div className="flex flex-col items-end">
-                  <span className="text-[10px] text-slate-500">7-day activity</span>
+                  <span className="text-[10px] text-slate-500">{t("topicPage.sevenDayActivity")}</span>
                   <span className="text-xs font-semibold">
-                    {activity} {activity === 1 ? "stance recorded" : "stances recorded"}
+                    {t("common.stancesRecordedCount", { count: activity })}
                   </span>
                 </div>
               </div>
@@ -680,23 +689,23 @@ export default function TopicDetailPage() {
           <div className="rounded-lg border bg-white p-3 text-xs">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <div className="text-[11px] text-slate-600">Topic score</div>
+                <div className="text-[11px] text-slate-600">{t("topicPage.topicScore")}</div>
                 <div className="text-lg font-semibold text-slate-900 leading-tight">
                   {topicScoreTop5.toFixed(2)}
                 </div>
                 <div className="text-[11px] text-slate-500">
-                  Sum of top 5 question impact scores
+                  {t("topicPage.topicScoreHint")}
                 </div>
               </div>
 
               <div className="text-right text-[11px] text-slate-600">
                 {impactLoading ? (
-                  <span>Loading impact…</span>
+                  <span>{t("topicPage.loadingImpact")}</span>
                 ) : impactError ? (
-                  <span className="text-amber-700">Impact unavailable</span>
+                  <span className="text-amber-700">{t("topicPage.impactUnavailable")}</span>
                 ) : (
                   <span>
-                    {formatCompactNumber((impactRows ?? []).length)} scored question
+                    {t("topicPage.scoredQuestions", { count: (impactRows ?? []).length })}
                     {(impactRows ?? []).length === 1 ? "" : "s"}
                   </span>
                 )}
@@ -706,7 +715,7 @@ export default function TopicDetailPage() {
             {top5Contributors.length > 0 && (
               <div className="mt-2 border-t pt-2">
                 <div className="text-[11px] font-medium text-slate-700 mb-1">
-                  Top contributors
+                  {t("topicPage.topContributors")}
                 </div>
                 <div className="space-y-1">
                   {top5Contributors.map((r) => (
@@ -737,7 +746,7 @@ export default function TopicDetailPage() {
             <div className="flex items-center gap-1.5 mb-3">
               <span className="h-1.5 w-1.5 rounded-full bg-violet-400 animate-pulse" />
               <h2 className="text-[11px] font-semibold uppercase tracking-widest text-violet-500">
-                Trending in this topic
+                {t("topicPage.trendingInTopic")}
               </h2>
             </div>
             <div className="space-y-2">
@@ -761,7 +770,7 @@ export default function TopicDetailPage() {
                     </span>
                     {typeof r.response_count === "number" && r.response_count > 0 && (
                       <p className="text-[10px] text-slate-400 mt-0.5">
-                        {r.response_count} {r.response_count === 1 ? "stance" : "stances"}
+                        {t("common.stanceCount", { count: r.response_count })}
                       </p>
                     )}
                   </div>
@@ -775,28 +784,27 @@ export default function TopicDetailPage() {
         <section className="rounded-lg border p-4">
           <div className="flex items-center justify-between mb-2">
             <h2 className="text-sm font-medium text-slate-900">
-              Questions in this topic
+              {t("topicPage.questionsInTopic")}
             </h2>
             {isAuthed && (
               <Link
                 to="/me/stances"
                 className="text-xs text-slate-600 hover:underline"
               >
-                View your stances
+                {t("topicPage.viewYourStances")}
               </Link>
             )}
           </div>
 
           {questionsLoading && (
             <p className="text-xs text-slate-500">
-              Loading questions for this topic…
+              {t("topicPage.loadingQuestions")}
             </p>
           )}
 
           {!questionsLoading && !questionsError && (!questions || questions.length === 0) && (
             <p className="text-xs text-slate-500">
-              No live questions yet for this topic. Once questions are published
-              from the admin area, they&apos;ll appear here.
+              {t("topicPage.noQuestions")}
             </p>
           )}
 
@@ -841,12 +849,12 @@ export default function TopicDetailPage() {
                           <div className="mt-1 flex flex-wrap gap-1.5 items-center">
                             {qScore != null && (
                               <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] text-slate-700 bg-slate-50">
-                                Impact {qScore.toFixed(2)}
+                                {t("topicPage.impact")} {qScore.toFixed(2)}
                               </span>
                             )}
                             {respCount != null && (
                               <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] text-slate-700 bg-slate-50">
-                                {formatCompactNumber(respCount)} responses
+                                {t("topicPage.responsesCount", { count: respCount })}
                               </span>
                             )}
                           </div>
@@ -897,14 +905,14 @@ export default function TopicDetailPage() {
         <div className="flex items-center justify-between text-xs text-slate-600">
           <div className="flex items-center gap-1">
             <Link to="/" className="hover:underline">
-              Home
+              {t("common.home")}
             </Link>
             <span>/</span>
             <Link to="/topics" className="hover:underline">
-              Topics
+              {t("search.topics")}
             </Link>
             <span>/</span>
-            <span className="text-slate-900 font-medium">Topic detail</span>
+            <span className="text-slate-900 font-medium">{t("topicPage.breadcrumb")}</span>
           </div>
         </div>
         {content}

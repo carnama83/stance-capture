@@ -2,6 +2,7 @@
 // Displays phase badges (Update, Resolution, Follow-up) for questions
 
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
@@ -16,45 +17,45 @@ interface QuestionPhaseBadgeProps {
 const PHASE_CONFIG: Record<
   Exclude<QuestionPhase, "initial">,
   {
-    label: string;
+    labelKey: string;
     icon: string;
     colors: {
       bg: string;
       text: string;
       border: string;
     };
-    description: string;
+    descriptionKey: string;
   }
 > = {
   update: {
-    label: "Update",
+    labelKey: "stance.phaseUpdate",
     icon: "🔄",
     colors: {
       bg: "bg-blue-100",
       text: "text-blue-800",
       border: "border-blue-300",
     },
-    description: "New developments on this issue",
+    descriptionKey: "questionPhaseBadge.newDevelopmentsOnThisIssue",
   },
   resolution: {
-    label: "Resolution",
+    labelKey: "questionPhaseBadge.resolution",
     icon: "✅",
     colors: {
       bg: "bg-green-100",
       text: "text-green-800",
       border: "border-green-300",
     },
-    description: "This issue has been resolved",
+    descriptionKey: "questionPhaseBadge.thisIssueHasBeenResolved",
   },
   follow_up: {
-    label: "Follow-up",
+    labelKey: "stance.phaseFollowUp",
     icon: "↩️",
     colors: {
       bg: "bg-purple-100",
       text: "text-purple-800",
       border: "border-purple-300",
     },
-    description: "Continued discussion of this topic",
+    descriptionKey: "questionPhaseBadge.continuedDiscussionOfThisTopic",
   },
 };
 
@@ -91,6 +92,8 @@ export function QuestionPhaseBadge({
   className,
   size = "md",
 }: QuestionPhaseBadgeProps) {
+  const { t } = useTranslation();
+
   // Don't show badge for initial phase
   if (phase === "initial") {
     return null;
@@ -116,12 +119,12 @@ export function QuestionPhaseBadge({
         sizeClasses.badge,
         className
       )}
-      title={config.description}
+      title={t(config.descriptionKey)}
     >
       <span className={cn("leading-none", sizeClasses.icon)}>
         {config.icon}
       </span>
-      <span className="leading-none">{config.label}</span>
+      <span className="leading-none">{t(config.labelKey)}</span>
     </Badge>
   );
 }
@@ -133,6 +136,8 @@ export function QuestionPhaseBadgeIcon({
   phase,
   className,
 }: Omit<QuestionPhaseBadgeProps, "size">) {
+  const { t } = useTranslation();
+
   if (phase === "initial") {
     return null;
   }
@@ -151,7 +156,7 @@ export function QuestionPhaseBadgeIcon({
         config.colors.text,
         className
       )}
-      title={`${config.label}: ${config.description}`}
+      title={`${t(config.labelKey)}: ${t(config.descriptionKey)}`}
     >
       {config.icon}
     </span>
@@ -161,9 +166,9 @@ export function QuestionPhaseBadgeIcon({
 /**
  * Helper function to get phase label without rendering
  */
-export function getPhaseLabel(phase: string): string | null {
+export function getPhaseLabelKey(phase: string): string | null {
   if (phase === "initial") return null;
-  return PHASE_CONFIG[phase as Exclude<QuestionPhase, "initial">]?.label ?? null;
+  return PHASE_CONFIG[phase as Exclude<QuestionPhase, "initial">]?.labelKey ?? null;
 }
 
 /**

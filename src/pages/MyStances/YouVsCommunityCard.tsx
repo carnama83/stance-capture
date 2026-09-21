@@ -7,6 +7,7 @@ import { getSupabase } from "@/lib/supabaseClient";
 import {
   Card, CardContent, CardDescription, CardHeader, CardTitle,
 } from "@/components/ui/card";
+import { useTranslation } from "react-i18next";
 
 type YouVsCommunityTopic = {
   topic_id: string;
@@ -30,40 +31,41 @@ function overallPhrase(summary: YouVsCommunitySummary): string {
   const p = summary?.overall?.percentile;
   const topics = summary?.overall?.topics_compared ?? 0;
   if (p === null || p === undefined || Number.isNaN(p) || topics <= 0) {
-    return "Answer a few more questions to see how your views compare.";
+    return "youVsCommunityPhrase.answerMore";
   }
   const pct = Math.round(Math.max(0, Math.min(1, p)) * 100);
   if (pct >= 65) {
-    return `On the topics you've answered, your views tend to lean more toward agreement than most respondents.`;
+    return "youVsCommunityPhrase.overallAgree";
   }
   if (pct <= 35) {
-    return `On the topics you've answered, your views tend to lean more toward disagreement than most respondents.`;
+    return "youVsCommunityPhrase.overallDisagree";
   }
-  return `On the topics you've answered, your views are broadly in line with the overall community.`;
+  return "youVsCommunityPhrase.overallInLine";
 }
 
 function topicDeltaPhrase(your: number | null, community: number | null): string {
   if (your === null || community === null) return "";
   const d = your - community;
-  if (d >= 0.6)  return "You lean noticeably more toward agreement here than others.";
-  if (d >= 0.35) return "You lean somewhat more toward agreement here.";
-  if (d <= -0.6) return "You lean noticeably more toward disagreement here than others.";
-  if (d <= -0.35) return "You lean somewhat more toward disagreement here.";
-  return "Your view is close to the community average here.";
+  if (d >= 0.6)  return "youVsCommunityPhrase.deltaStrongAgree";
+  if (d >= 0.35) return "youVsCommunityPhrase.deltaLeanAgree";
+  if (d <= -0.6) return "youVsCommunityPhrase.deltaStrongDisagree";
+  if (d <= -0.35) return "youVsCommunityPhrase.deltaLeanDisagree";
+  return "youVsCommunityPhrase.deltaClose";
 }
 
 // Derives an approximate community direction % from community_avg (-2..+2).
 // avg=±2 → ~95%, avg=±1 → ~70%, avg=0 → split.
-function communityDirectionLabel(communityAvg: number | null): string | null {
+function communityDirectionLabel(communityAvg: number | null): { key: string; pct?: number } | null {
   if (communityAvg === null || communityAvg === undefined) return null;
   const avg = Math.max(-2, Math.min(2, communityAvg));
   const absPct = Math.round(50 + (Math.abs(avg) / 2) * 45);
-  if (avg > 0.35)  return `~${absPct}% lean toward agreement`;
-  if (avg < -0.35) return `~${absPct}% lean toward disagreement`;
-  return "Community is fairly split";
+  if (avg > 0.35)  return { key: "youVsCommunityPhrase.leanAgreePct", pct: absPct };
+  if (avg < -0.35) return { key: "youVsCommunityPhrase.leanDisagreePct", pct: absPct };
+  return { key: "youVsCommunityPhrase.fairlySplit" };
 }
 
 export default function YouVsCommunityCard() {
+  const { t: tr } = useTranslation();
   const sb = React.useMemo(getSupabase, []);
 
   const { data, isLoading, isError } = useQuery<YouVsCommunitySummary>({
@@ -85,24 +87,24 @@ export default function YouVsCommunityCard() {
     <Card className="mb-3">
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-semibold text-slate-900">
-          Your perspective in context
+          {tr("youVsCommunity.yourPerspectiveInContext")}
         </CardTitle>
         <CardDescription className="text-xs text-slate-500 mt-0.5">
-          How your views compare across the topics you've answered.
+          {tr("youVsCommunity.howYourViewsCompareAcross")}
         </CardDescription>
       </CardHeader>
       <CardContent className="pt-0">
         {isLoading && (
-          <div className="text-xs text-slate-500">Loading your comparison…</div>
+          <div className="text-xs text-slate-500">{tr("youVsCommunity.loadingYourComparison")}</div>
         )}
         {!isLoading && (isError || !data || (data.overall?.topics_compared ?? 0) === 0) && (
           <div className="text-xs text-slate-500">
-            Answer a few questions to see how your views compare to others.
+            {tr("youVsCommunity.answerAFewQuestionsTo")}
           </div>
         )}
         {!isLoading && !isError && data && (data.overall?.topics_compared ?? 0) > 0 && (
           <div className="space-y-3">
-            <div className="text-sm text-slate-800">{overallPhrase(data)}</div>
+            <div className="text-sm text-slate-800">{tr(overallPhrase(data))}</div>
 
             {(data.topics ?? []).length > 0 && (
               <div className="space-y-2">
@@ -115,15 +117,18 @@ export default function YouVsCommunityCard() {
                       </div>
                       {directionLabel && (
                         <div className="text-sm font-medium text-slate-800 mb-0.5">
-                          {directionLabel}
+                          {tr(directionLabel.key, { pct: directionLabel.pct })}
                         </div>
                       )}
                       <div className="text-xs text-slate-500">
-                        {topicDeltaPhrase(t.your_avg, t.community_avg)}
+                        {(() => {
+                          const k = topicDeltaPhrase(t.your_avg, t.community_avg);
+                          return k ? tr(k) : null;
+                        })()}
                       </div>
                       {t.respondents && (
                         <div className="text-[11px] text-slate-400 mt-0.5">
-                          Based on {t.respondents.toLocaleString()} respondents.
+                          {tr("youVsCommunity.basedOnRespondents", { count: t.respondents })}
                         </div>
                       )}
                     </div>
@@ -133,7 +138,7 @@ export default function YouVsCommunityCard() {
             )}
 
             <p className="text-[11px] text-slate-400">
-              This reflects aggregate patterns, not right or wrong answers.
+              {tr("youVsCommunity.thisReflectsAggregatePatternsNot")}
             </p>
           </div>
         )}

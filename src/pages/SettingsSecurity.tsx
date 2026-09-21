@@ -1,10 +1,12 @@
 // src/pages/SettingsSecurity.tsx
 import * as React from "react";
 import { getSupabase } from "../lib/supabaseClient";
+import { Trans, useTranslation } from "react-i18next";
 
 type TotpFactor = { id: string; created_at?: string; friendly_name?: string };
 
 export default function SettingsSecurity() {
+  const { t } = useTranslation();
   const sb = React.useMemo(getSupabase, []);
   const [factors, setFactors] = React.useState<TotpFactor[]>([]);
   const [enrolling, setEnrolling] = React.useState<{ factorId: string; qr: string } | null>(null);
@@ -14,9 +16,9 @@ export default function SettingsSecurity() {
 
   React.useEffect(() => {
     (async () => {
-      if (!sb) return setMsg("Supabase is OFF (check env).");
+      if (!sb) return setMsg(t("auth.supabaseOff"));
       const u = await sb.auth.getUser();
-      if (!u.data.user) return setMsg("Please log in.");
+      if (!u.data.user) return setMsg(t("settingsProfile.pleaseLogIn"));
       await refresh();
     })();
   }, [sb]);
@@ -69,7 +71,7 @@ export default function SettingsSecurity() {
       });
       if (vr.error) throw vr.error;
 
-      setMsg("Authenticator enabled.");
+      setMsg(t("settingsSecurity.authenticatorEnabled"));
       setEnrolling(null);
       setVerifyCode("");
       await refresh();
@@ -86,7 +88,7 @@ export default function SettingsSecurity() {
     try {
       const { error } = await sb!.auth.mfa.unenroll({ factorId: id });
       if (error) throw error;
-      setMsg("Removed authenticator.");
+      setMsg(t("settingsSecurity.removedAuthenticator"));
       await refresh();
     } catch (e: any) {
       setMsg(e.message || "Could not remove authenticator");
@@ -95,32 +97,32 @@ export default function SettingsSecurity() {
     }
   }
 
-  if (!sb) return <div className="p-6">Supabase is OFF (check env).</div>;
+  if (!sb) return <div className="p-6">{t("auth.supabaseOff")}</div>;
 
   return (
     <div className="mx-auto max-w-xl p-6 space-y-4">
-      <h1 className="text-2xl font-semibold">Security</h1>
+      <h1 className="text-2xl font-semibold">{t("settingsSecurity.security")}</h1>
       {msg && <div className="text-sm text-slate-700">{msg}</div>}
 
       <section className="rounded-xl border p-4 space-y-3">
-        <h2 className="font-medium">Two-Factor Auth (TOTP)</h2>
+        <h2 className="font-medium">{t("settingsSecurity.twoFactorAuthTotp")}</h2>
 
         {/* Enroll flow */}
         {!enrolling ? (
           <div className="space-y-2">
             {factors.length === 0 ? (
-              <p className="text-sm text-slate-600">No authenticators yet.</p>
+              <p className="text-sm text-slate-600">{t("settingsSecurity.noAuthenticatorsYet")}</p>
             ) : (
               <ul className="text-sm space-y-1">
                 {factors.map((f) => (
                   <li key={f.id} className="flex items-center justify-between">
-                    <span>Authenticator • <span className="text-slate-500">{f.id.slice(-6)}</span></span>
+                    <span>{t("settingsSecurity.authenticator")} <span className="text-slate-500">{f.id.slice(-6)}</span></span>
                     <button
                       className="text-red-600 hover:underline"
                       onClick={() => removeFactor(f.id)}
                       disabled={busy}
                     >
-                      Remove
+                      {t("settingsProfile.remove")}
                     </button>
                   </li>
                 ))}
@@ -133,19 +135,18 @@ export default function SettingsSecurity() {
                 onClick={startEnroll}
                 disabled={busy}
               >
-                {busy ? "Starting…" : "Enable authenticator"}
+                {busy ? t("settingsSecurity.starting") : t("settingsSecurity.enableAuthenticator")}
               </button>
               <p className="mt-2 text-xs text-slate-500">
-                Tip: You can enroll **more than one** authenticator (e.g., a backup device) —
-                Supabase doesn’t use recovery codes; multiple factors act as recovery. 
+                <Trans i18nKey="settingsSecurity.tipYouCanEnrollMore" components={{ b: <b /> }} />
               </p>
             </div>
           </div>
         ) : (
           <div className="space-y-3">
-            <div className="text-sm">Scan this QR in your authenticator app, then enter the 6-digit code:</div>
+            <div className="text-sm">{t("settingsSecurity.scanThisQrInYour")}</div>
             {/* Supabase returns an SVG string; put it directly as the image source */}
-            <img alt="TOTP QR" src={enrolling.qr} className="w-48 h-48 border rounded" />
+            <img alt={t("settingsSecurity.totpQr")} src={enrolling.qr} className="w-48 h-48 border rounded" />
             <input
               inputMode="numeric"
               maxLength={8}
@@ -156,10 +157,10 @@ export default function SettingsSecurity() {
             />
             <div className="flex gap-2">
               <button className="rounded bg-slate-900 text-white px-3 py-1" onClick={verifyEnroll} disabled={busy}>
-                {busy ? "Verifying…" : "Enable"}
+                {busy ? t("auth.verifying") : t("settingsSecurity.enable")}
               </button>
               <button className="rounded border px-3 py-1" onClick={cancelEnroll} disabled={busy}>
-                Cancel
+                {t("auth.cancel")}
               </button>
             </div>
           </div>

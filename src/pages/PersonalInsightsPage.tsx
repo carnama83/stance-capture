@@ -26,6 +26,7 @@ import StanceEvolutionTimeline from "@/components/insights/StanceEvolutionTimeli
 import TopicBeliefProfile from "@/components/insights/TopicBeliefProfile";
 import TopicHistoryDrawer from "@/components/insights/TopicHistoryDrawer";
 import { Loader2, RefreshCw, ArrowLeft, MapPin, RotateCcw } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -47,6 +48,7 @@ function consistencyLabel(score: number): string {
 // ── Profile summary card ──────────────────────────────────────────────────────
 
 function ProfileSummary({ state }: { state: CognitiveState }) {
+  const { t } = useTranslation();
   const p = state.cognitive_profile;
   const stanceColor = getStanceColorHex(Math.round(state.overall_mean_stance));
   const total = Object.values(p.stance_distribution).reduce((s, v) => s + v, 0);
@@ -55,15 +57,15 @@ function ProfileSummary({ state }: { state: CognitiveState }) {
     <div className="rounded-xl border border-slate-200 bg-white px-5 py-4 space-y-4">
       <div className="grid grid-cols-3 gap-4">
         <div className="bg-slate-50 rounded-lg px-3 py-2.5">
-          <p className="text-[11px] text-slate-400 mb-0.5">Questions answered</p>
+          <p className="text-[11px] text-slate-400 mb-0.5">{t("insights.questionsAnswered")}</p>
           <p className="text-2xl font-medium text-slate-900">{state.total_questions_answered}</p>
         </div>
         <div className="bg-slate-50 rounded-lg px-3 py-2.5">
-          <p className="text-[11px] text-slate-400 mb-0.5">Topics engaged</p>
+          <p className="text-[11px] text-slate-400 mb-0.5">{t("insights.topicsEngaged")}</p>
           <p className="text-2xl font-medium text-slate-900">{state.active_topic_count}</p>
         </div>
         <div className="bg-slate-50 rounded-lg px-3 py-2.5">
-          <p className="text-[11px] text-slate-400 mb-0.5">Per week</p>
+          <p className="text-[11px] text-slate-400 mb-0.5">{t("insights.perWeek")}</p>
           <p className="text-2xl font-medium text-slate-900">
             {p.engagement_patterns.questions_per_week.toFixed(1)}
           </p>
@@ -72,7 +74,7 @@ function ProfileSummary({ state }: { state: CognitiveState }) {
 
       <div>
         <div className="flex items-center justify-between mb-1.5">
-          <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Overall lean</p>
+          <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">{t("insights.overallLean")}</p>
           <span className="text-sm font-medium" style={{ color: stanceColor }}>
             {meanStanceLabel(state.overall_mean_stance)}
           </span>
@@ -86,14 +88,14 @@ function ProfileSummary({ state }: { state: CognitiveState }) {
           })}
         </div>
         <div className="flex justify-between text-[10px] text-slate-400 mt-1 px-0.5">
-          <span>Strongly disagree</span>
-          <span>Neutral</span>
-          <span>Strongly agree</span>
+          <span>{t("home.stanceStronglyDisagree")}</span>
+          <span>{t("ugq.neutralLabel")}</span>
+          <span>{t("home.stanceStronglyAgree")}</span>
         </div>
       </div>
 
       <div className="flex items-center justify-between pt-1 border-t border-slate-100">
-        <p className="text-xs text-slate-500">Opinion consistency</p>
+        <p className="text-xs text-slate-500">{t("insights.opinionConsistency")}</p>
         <span className="text-xs font-medium text-slate-700">
           {consistencyLabel(state.stance_consistency_score)}
           <span className="text-slate-400 font-normal ml-1">
@@ -103,7 +105,7 @@ function ProfileSummary({ state }: { state: CognitiveState }) {
       </div>
 
       <p className="text-[10px] text-slate-400">
-        Profile last updated {new Date(state.evaluated_at).toLocaleDateString(undefined, { dateStyle: "medium" })}
+        {t("insights.profileLastUpdated")} {new Date(state.evaluated_at).toLocaleDateString(undefined, { dateStyle: "medium" })}
       </p>
     </div>
   );
@@ -211,12 +213,13 @@ function useRevisitQuestions() {
 }
 
 function RevisitSection() {
+  const { t } = useTranslation();
   const { data: rows, isLoading } = useRevisitQuestions();
 
   if (isLoading) {
     return (
       <div className="flex items-center gap-2 py-4 text-xs text-slate-400">
-        <Loader2 className="h-3.5 w-3.5 animate-spin" /> Checking for questions to revisit…
+        <Loader2 className="h-3.5 w-3.5 animate-spin" /> {t("insights.checkingForQuestionsToRevisit")}
       </div>
     );
   }
@@ -225,17 +228,16 @@ function RevisitSection() {
     return (
       <div className="rounded-xl border border-slate-200 bg-slate-50 px-5 py-4 flex items-start justify-between gap-4">
         <div>
-          <p className="text-sm font-medium text-slate-900 mb-0.5">Revisit old answers</p>
+          <p className="text-sm font-medium text-slate-900 mb-0.5">{t("insights.revisitOldAnswers")}</p>
           <p className="text-xs text-slate-500 leading-relaxed">
-            Your views may have changed. Go back to questions you answered a while ago
-            and see if you still feel the same way.
+            {t("insights.yourViewsMayHaveChanged")}
           </p>
         </div>
         <Link
           to="/me/stances"
           className="flex-shrink-0 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 transition-colors whitespace-nowrap"
         >
-          My stances →
+          {t("home.myStancesArrow")}
         </Link>
       </div>
     );
@@ -246,14 +248,14 @@ function RevisitSection() {
       <div className="flex items-center justify-between mb-1">
         <div className="flex items-center gap-1.5">
           <RotateCcw className="h-3.5 w-3.5 text-slate-400" />
-          <p className="text-xs font-medium text-slate-700">Questions to revisit</p>
+          <p className="text-xs font-medium text-slate-700">{t("insights.questionsToRevisit")}</p>
         </div>
         <Link to="/me/stances" className="text-[11px] text-slate-400 hover:text-slate-600 hover:underline">
-          See all →
+          {t("insights.seeAll")}
         </Link>
       </div>
       <p className="text-[11px] text-slate-400 mb-2">
-        You answered these 30+ days ago. The community's view has since shifted away from yours.
+        {t("insights.youAnsweredThese30Days")}
       </p>
       {rows.map((row) => {
         const userColor = getStanceColorHex(row.user_score);
@@ -280,7 +282,7 @@ function RevisitSection() {
                     <div className="h-full rounded-full bg-amber-400" style={{ width: `${driftPct}%` }} />
                   </div>
                   <span className="text-[10px] text-slate-400 flex-shrink-0">
-                    {row.drift.toFixed(1)} drift
+                    {row.drift.toFixed(1)} {t("insights.drift")}
                   </span>
                 </div>
               )}
@@ -386,6 +388,7 @@ function useRegionDivergence() {
 }
 
 function RegionDivergenceAlert() {
+  const { t } = useTranslation();
   const { data: rows, isLoading } = useRegionDivergence();
 
   if (isLoading || !rows?.length) return null;
@@ -394,10 +397,10 @@ function RegionDivergenceAlert() {
     <div className="space-y-2">
       <div className="flex items-center gap-1.5 mb-1">
         <MapPin className="h-3.5 w-3.5 text-amber-500" />
-        <p className="text-xs font-medium text-slate-700">Your region thinks differently</p>
+        <p className="text-xs font-medium text-slate-700">{t("insights.yourRegionThinksDifferently")}</p>
       </div>
       <p className="text-[11px] text-slate-400 mb-2">
-        On these questions, your region's view diverges significantly from the global average.
+        {t("insights.onTheseQuestionsYourRegion")}
       </p>
       {rows.map((row) => {
         const regionColor = getStanceColorHex(Math.round(row.region_avg));
@@ -413,20 +416,20 @@ function RegionDivergenceAlert() {
             </p>
             <div className="flex items-center gap-4 text-[11px]">
               <span>
-                <span className="text-slate-400">Your region </span>
+                <span className="text-slate-400">{t("insights.yourRegion")} </span>
                 <span className="font-medium" style={{ color: regionColor }}>
                   {row.region_avg > 0 ? "+" : ""}{row.region_avg.toFixed(1)}
                 </span>
               </span>
-              <span className="text-slate-300">vs</span>
+              <span className="text-slate-300">{t("insights.vs")}</span>
               <span>
-                <span className="text-slate-400">Global </span>
+                <span className="text-slate-400">{t("home.globalTab")} </span>
                 <span className="font-medium" style={{ color: globalColor }}>
                   {row.global_avg > 0 ? "+" : ""}{row.global_avg.toFixed(1)}
                 </span>
               </span>
               <span className="text-[10px] text-amber-600 font-medium ml-auto">
-                {row.divergence.toFixed(1)} gap
+                {row.divergence.toFixed(1)} {t("insights.gap")}
               </span>
             </div>
           </Link>
@@ -439,6 +442,7 @@ function RegionDivergenceAlert() {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function PersonalInsightsPage() {
+  const { t } = useTranslation();
   const { data: cognitiveState, isLoading } = useCognitiveState();
   const { mutate: recalculate, isPending: isRecalculating } = useCalculateCognitiveState();
   const { data: shouldRecalculate } = useShouldRecalculateCognitiveState();
@@ -460,9 +464,9 @@ export default function PersonalInsightsPage() {
         {/* Header */}
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h1 className="text-base font-semibold text-slate-900">Your opinion profile</h1>
+            <h1 className="text-base font-semibold text-slate-900">{t("insights.yourOpinionProfile")}</h1>
             <p className="text-xs text-slate-500 mt-0.5">
-              How your views look across topics, and how they've changed over time.
+              {t("insights.howYourViewsLookAcross")}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -474,7 +478,7 @@ export default function PersonalInsightsPage() {
                 className="flex items-center gap-1.5 rounded-md border border-slate-200 px-2.5 py-1.5 text-xs text-slate-600 hover:bg-slate-50 transition-colors"
               >
                 <RefreshCw className={`h-3.5 w-3.5 ${isRecalculating ? "animate-spin" : ""}`} />
-                Update profile
+                {t("insights.updateProfile")}
               </button>
             )}
             <Link
@@ -482,7 +486,7 @@ export default function PersonalInsightsPage() {
               className="text-xs text-slate-500 hover:underline flex items-center gap-1"
             >
               <ArrowLeft className="h-3 w-3" />
-              Back
+              {t("auth.back")}
             </Link>
           </div>
         </div>
@@ -491,22 +495,22 @@ export default function PersonalInsightsPage() {
         {isLoading && (
           <div className="flex items-center gap-2 py-8 text-xs text-slate-500">
             <Loader2 className="h-4 w-4 animate-spin" />
-            Loading your profile…
+            {t("insights.loadingYourProfile")}
           </div>
         )}
 
         {/* Empty state */}
         {!isLoading && !cognitiveState && (
           <div className="rounded-xl border border-slate-100 bg-slate-50 px-5 py-8 text-center">
-            <p className="text-sm font-medium text-slate-900 mb-1">No profile yet</p>
+            <p className="text-sm font-medium text-slate-900 mb-1">{t("insights.noProfileYet")}</p>
             <p className="text-xs text-slate-500 mb-4">
-              Answer at least 3 questions to generate your opinion profile.
+              {t("insights.answerAtLeast3Questions")}
             </p>
             <Link
               to="/"
               className="inline-flex items-center rounded-md bg-slate-900 px-4 py-2 text-xs font-medium text-white hover:bg-slate-800 transition-colors"
             >
-              Answer questions
+              {t("insights.answerQuestions")}
             </Link>
           </div>
         )}
@@ -514,7 +518,7 @@ export default function PersonalInsightsPage() {
         {/* Content */}
         {!isLoading && cognitiveState && (
           <>
-            <Section title="Overview">
+            <Section title={t("insights.overview")}>
               <ProfileSummary state={cognitiveState} />
             </Section>
 
@@ -532,7 +536,7 @@ export default function PersonalInsightsPage() {
                       : "border-transparent text-slate-500 hover:text-slate-700",
                   ].join(" ")}
                 >
-                  {tab === "profile" ? "Belief profile" : "How you've changed"}
+                  {tab === "profile" ? t("insights.beliefProfile") : t("insights.howYouVeChanged")}
                 </button>
               ))}
             </div>
@@ -541,8 +545,8 @@ export default function PersonalInsightsPage() {
             {activeTab === "profile" && (
               <>
                 <Section
-                  title="Your stance by topic"
-                  description="Click a topic to explore your full history on it. Stability labels show how consistent your views have been."
+                  title={t("insights.yourStanceByTopic")}
+                  description={t("insights.clickATopicToExplore")}
                 >
                   {/* S1 FIX B: Pass onTopicClick so TopicBeliefProfile can open the drawer */}
                   <TopicBeliefProfile
@@ -568,15 +572,15 @@ export default function PersonalInsightsPage() {
             {/* Evolution timeline tab */}
             {activeTab === "evolution" && (
               <Section
-                title="Stance changes over time"
-                description="Questions where you changed your mind, most recent first."
+                title={t("insights.stanceChangesOverTime")}
+                description={t("insights.questionsWhereYouChangedYour")}
               >
                 <StanceEvolutionTimeline limit={30} />
               </Section>
             )}
 
             {/* Revisit — fixed batch query */}
-            <Section title="Questions to revisit">
+            <Section title={t("insights.questionsToRevisit")}>
               <RevisitSection />
             </Section>
 

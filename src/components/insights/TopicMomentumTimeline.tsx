@@ -165,7 +165,10 @@ export default function TopicMomentumTimeline({ topicId }: TopicMomentumTimeline
       {/* Peak annotation */}
       {isMediaSpike && (
         <p className="text-[10px] text-amber-700 mt-1.5">
-          Peak driven by {mediaSurge!.outlets_24h} news outlets — {mediaSurge!.cluster_title.slice(0, 60)}.
+          {t("topicMomentumTimeline.peakDriven", {
+            count: mediaSurge!.outlets_24h,
+            title: mediaSurge!.cluster_title.slice(0, 60),
+          })}
         </p>
       )}
     </div>
