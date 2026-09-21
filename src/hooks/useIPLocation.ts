@@ -1,5 +1,6 @@
 // src/hooks/useIPLocation.ts
-// Detects a visitor's country via IP geolocation (ipapi.co). General-purpose —
+// Detects a visitor's country from Vercel's edge geolocation headers via our
+// own /api/geo — no third party sees the IP. General-purpose —
 // `enabled` is caller-controlled, not hardcoded to any one auth state.
 //
 // - Cached for 24 hours in TanStack Query (single request per day per visitor)
@@ -12,7 +13,7 @@
 // profile has confirmed it has no location set — to decide whether the
 // EN/Hindi toggle should render at all.
 //
-// The actual ipapi.co fetch lives in src/lib/ipLocation.ts, shared with
+// The actual /api/geo fetch lives in src/lib/ipLocation.ts, shared with
 // OAuthCallbackPage.tsx's claim_oauth_ip_location() fallback — this hook's
 // own caching/enabled behavior is unchanged.
 

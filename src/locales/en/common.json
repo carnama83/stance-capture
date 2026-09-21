@@ -2162,6 +2162,6 @@
     "s13.org": "Stance Capture",
     "s13.address": "Bhopal, India",
     "s13.emailLabel": "Email:",
-    "s1.location": "<b>Approximate location</b> — so we can show questions and comparisons relevant to your area, your browser contacts a third-party geolocation service, which uses your IP address to return an approximate region or country. We receive only that approximate location, not your IP address. If you create an account, the country is saved as your default region, and you can change it in your settings at any time."
+    "s1.location": "<b>Approximate location</b> — so we can show questions and comparisons relevant to your area, our servers read the approximate region or country that our hosting provider derives from your connection. Your IP address is not sent to any third party for this, and we do not store it. If you create an account, the country is saved as your default region, and you can change it in your settings at any time."
   }
 }

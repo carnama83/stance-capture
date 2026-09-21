@@ -343,7 +343,7 @@ async function bootstrapSocialProfile(sb: any, session: any) {
     // fallback below, DESPITE that call already correctly using rpcPost.
     // Confirmed live: a freshly-created account had zero rows in
     // user_location_settings even though claim_oauth_ip_location's own
-    // logic and the ipapi.co fetch were both fine in isolation.
+    // logic and the geolocation fetch were both fine in isolation.
     const { data: profileRows } = await restGet<{ username: string | null; avatar_url: string | null }[]>(
       `profiles?select=username,avatar_url&user_id=eq.${user.id}&limit=1`,
       session.access_token
@@ -395,7 +395,7 @@ async function bootstrapSocialProfile(sb: any, session: any) {
     // resolution always misses for OAuth users — leaving zero rows in
     // user_location_settings and the user stuck seeing only "Global"
     // instead of their own country tab. Fall back to the same client-side
-    // IP geolocation already used for anonymous users (ipapi.co, see
+    // IP geolocation already used for anonymous users (/api/geo, see
     // src/lib/ipLocation.ts) and claim a country-level location from it.
     // Gated on an existence check first so returning users — who already
     // have a location, from onboarding, a prior login, or Settings —
