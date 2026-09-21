@@ -13,7 +13,8 @@
  * NOTE: This is a practical starter template, not legal advice. Review and
  * adapt it to how your service actually handles data before publishing.
  *
- * TODO: replace the contact email below with a real, monitored address.
+ * The contact address comes from src/lib/contact.ts, so the policy, the
+ * footer and the About page cannot drift apart.
  *
  * LOCALIZATION — the clauses live in the i18n catalogue under `privacy.*`,
  * one key per clause. They are NOT split into fragments: a legal sentence has
@@ -29,11 +30,10 @@
 import { CSSProperties } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import PageLayout from "@/components/PageLayout";
+import { CONTACT_EMAIL, CONTACT_MAILTO } from "@/lib/contact";
 
 /** Source of record for the "Last updated" line; rendered in the UI locale. */
 const LAST_UPDATED_ISO = "2026-06-19";
-
-const CONTACT_EMAIL = "your-email@gmail.com";
 
 export default function PrivacyPolicy() {
   const { t, i18n } = useTranslation();
@@ -118,7 +118,7 @@ export default function PrivacyPolicy() {
             <Trans
               i18nKey="privacy.s7.body"
               values={{ email: CONTACT_EMAIL }}
-              components={{ a: <a style={styles.link} href={`mailto:${CONTACT_EMAIL}`} /> }}
+              components={{ a: <a style={styles.link} href={CONTACT_MAILTO} /> }}
             />
           </p>
 
@@ -141,7 +141,7 @@ export default function PrivacyPolicy() {
             {t("privacy.s12.address")}
             <br />
             {t("privacy.s12.emailLabel")}{" "}
-            <a style={styles.link} href={`mailto:${CONTACT_EMAIL}`}>
+            <a style={styles.link} href={CONTACT_MAILTO}>
               {CONTACT_EMAIL}
             </a>
           </p>
