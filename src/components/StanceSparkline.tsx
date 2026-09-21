@@ -3,6 +3,7 @@
 // Renders as a small SVG — no chart library dependency.
 
 import * as React from "react";
+import { localeFor } from "@/lib/intlFormat";
 import i18n from "@/lib/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { getSupabase } from "@/lib/supabaseClient";
@@ -29,7 +30,7 @@ const SCORE_COLOR: Record<number, string> = {
 };
 
 function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return new Date(iso).toLocaleDateString(localeFor(i18n.language), { month: "short", day: "numeric" });
 }
 
 // M-E01: Compute the net score change within the last `windowMs` milliseconds.

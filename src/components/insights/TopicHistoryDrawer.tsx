@@ -20,6 +20,8 @@
 //   questions + topics — question text and topic title
 
 import * as React from "react";
+import { localeFor } from "@/lib/intlFormat";
+import i18n from "@/lib/i18n";
 import { STANCE_LABEL_KEYS } from "@/lib/stanceLabelKeys";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
@@ -58,7 +60,7 @@ const STANCE_SHORT: Record<number, string> = {
 };
 
 function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, {
+  return new Date(iso).toLocaleDateString(localeFor(i18n.language), {
     month: "short", day: "numeric", year: "numeric",
   });
 }

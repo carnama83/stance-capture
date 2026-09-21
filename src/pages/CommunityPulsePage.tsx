@@ -5,6 +5,8 @@
 // F3: Regional comparison + demographic breakdown
 
 import * as React from "react";
+import { localeFor } from "@/lib/intlFormat";
+import i18n from "@/lib/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { getSupabase } from "@/lib/supabaseClient";
 import PageLayout from "@/components/PageLayout";
@@ -129,7 +131,7 @@ function fmtScore(v: number | null): string {
 }
 
 function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return new Date(iso).toLocaleDateString(localeFor(i18n.language), { month: "short", day: "numeric" });
 }
 
 function fmtNum(n: number): string {
@@ -220,7 +222,7 @@ function AggregatedStanceSection({
 
       {macro.macro_last_updated && (
         <p className="text-[10px] text-slate-400">
-          {t("pulsePage.lastUpdated")} {new Date(macro.macro_last_updated).toLocaleString()}
+          {t("pulsePage.lastUpdated")} {new Date(macro.macro_last_updated).toLocaleString(localeFor(i18n.language))}
         </p>
       )}
 

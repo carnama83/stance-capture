@@ -1,5 +1,7 @@
 // src/components/cognitive/CognitiveStateViewer.tsx
 import React from 'react';
+import { localeFor } from "@/lib/intlFormat";
+import i18n from "@/lib/i18n";
 import { useCognitiveState, formatStanceValue, getStanceColor } from '@/hooks/useCognitiveState';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -244,7 +246,7 @@ export function CognitiveStateViewer() {
 
       {/* Metadata */}
       <div className="text-xs text-muted-foreground text-center">
-        {t("cognitive.lastCalculated")} {new Date(cognitiveState.evaluated_at).toLocaleString()}
+        {t("cognitive.lastCalculated")} {new Date(cognitiveState.evaluated_at).toLocaleString(localeFor(i18n.language))}
         {' • '}
         {t("cognitive.basedOn")} {cognitive_profile.evaluation_period_days} {t("cognitive.daysOfActivity")}
       </div>

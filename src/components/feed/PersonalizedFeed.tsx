@@ -10,6 +10,8 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { localeFor } from "@/lib/intlFormat";
+import i18n from "@/lib/i18n";
 import { getSupabase } from '@/lib/supabaseClient';
 import { Card } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -300,5 +302,5 @@ function formatTimeAgo(dateString: string): string {
   if (diffHours < 24) return `${diffHours}h ago`;
   if (diffDays < 7) return `${diffDays}d ago`;
   
-  return date.toLocaleDateString();
+  return date.toLocaleDateString(localeFor(i18n.language));
 }

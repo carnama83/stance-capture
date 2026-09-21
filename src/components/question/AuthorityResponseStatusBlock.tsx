@@ -15,6 +15,8 @@
 // maintain a second, driftable copy — same reasoning as EXPECTATION_LABELS.
 
 import * as React from "react";
+import { localeFor } from "@/lib/intlFormat";
+import i18n from "@/lib/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { getSupabase } from "@/lib/supabaseClient";
 import { ClipboardCheck } from "lucide-react";
@@ -45,7 +47,7 @@ export const STATUS_COLORS: Record<string, string> = {
 };
 
 export function formatResponseDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, { dateStyle: "medium" });
+  return new Date(iso).toLocaleDateString(localeFor(i18n.language), { dateStyle: "medium" });
 }
 
 function useAuthorityResponses(questionId: string) {

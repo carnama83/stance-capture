@@ -4,6 +4,8 @@
 // embed performance (impressions, submissions, conversion rate) after login.
 
 import * as React from "react";
+import { localeFor } from "@/lib/intlFormat";
+import i18n from "@/lib/i18n";
 import { useNavigate } from "react-router-dom";
 import PageLayout from "@/components/PageLayout";
 import { supabase } from "@/integrations/supabase/client";
@@ -326,8 +328,8 @@ function PublisherStats() {
         <>
           {/* Summary cards */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <StatCard icon={<Eye className="h-4 w-4" />} label={t("publisher.totalImpressions")} value={(stats?.total_impressions ?? 0).toLocaleString()} sub={t("publisher.widgetLoadsAcrossPages")} />
-            <StatCard icon={<Send className="h-4 w-4" />} label={t("publisher.stancesCaptured")} value={(stats?.total_submissions ?? 0).toLocaleString()} sub={t("publisher.completedResponses")} />
+            <StatCard icon={<Eye className="h-4 w-4" />} label={t("publisher.totalImpressions")} value={(stats?.total_impressions ?? 0).toLocaleString(localeFor(i18n.language))} sub={t("publisher.widgetLoadsAcrossPages")} />
+            <StatCard icon={<Send className="h-4 w-4" />} label={t("publisher.stancesCaptured")} value={(stats?.total_submissions ?? 0).toLocaleString(localeFor(i18n.language))} sub={t("publisher.completedResponses")} />
             <StatCard icon={<MousePointerClick className="h-4 w-4" />} label={t("publisher.conversionRate")} value={`${(stats?.rate ?? 0).toFixed(1)}%`} sub={t("publisher.readersWhoSubmitted")} />
           </div>
 
@@ -342,8 +344,8 @@ function PublisherStats() {
                   <div key={q.question_id} className="px-4 py-3 flex items-center gap-4">
                     <p className="flex-1 text-sm text-slate-800 line-clamp-1">{q.question_text}</p>
                     <div className="flex items-center gap-6 text-xs text-slate-500 shrink-0">
-                      <span><span className="font-medium text-slate-700">{q.impressions.toLocaleString()}</span> {t("publisher.views")}</span>
-                      <span><span className="font-medium text-slate-700">{q.submissions.toLocaleString()}</span> {t("proposalDetail.stances")}</span>
+                      <span><span className="font-medium text-slate-700">{q.impressions.toLocaleString(localeFor(i18n.language))}</span> {t("publisher.views")}</span>
+                      <span><span className="font-medium text-slate-700">{q.submissions.toLocaleString(localeFor(i18n.language))}</span> {t("proposalDetail.stances")}</span>
                       <span className="w-14 text-right">
                         <span className={`font-medium ${q.rate >= 20 ? "text-emerald-600" : q.rate >= 10 ? "text-amber-600" : "text-slate-500"}`}>
                           {q.rate.toFixed(1)}%
