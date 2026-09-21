@@ -643,7 +643,10 @@
     "back": "← Back",
     "all": "All",
     "to": "to",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "dismiss": "Dismiss",
+    "saved": "Saved",
+    "open": "Open →"
   },
   "myStances": {
     "title": "My stances",
@@ -673,5 +676,43 @@
     "updated": "Updated: {{date}}",
     "exportFailedTitle": "Export failed",
     "exportFailedBody": "Export failed. Please try again."
+  },
+  "quickTakes": {
+    "title": "Today's quick takes",
+    "subtitle": "Optional. Takes less than a minute.",
+    "skip": "Skip for now",
+    "loadingCommunity": "Loading community response…",
+    "loadingQuestions": "Loading questions…",
+    "thanks": "Thanks. You can come back anytime.",
+    "topicLabel": "Topic: {{topic}}",
+    "respondents_one": "{{count}} respondent",
+    "respondents_other": "{{count}} respondents",
+    "respondentsPct": "{{pct}}% of respondents {{what}}",
+    "leanAgree": "lean toward agreement",
+    "leanDisagree": "lean toward disagreement",
+    "areNeutral": "are neutral",
+    "youResponded": "You {{what}}",
+    "responded": "responded",
+    "pastStronglyDisagreed": "strongly disagreed",
+    "pastDisagreed": "disagreed",
+    "pastNeutral": "were neutral",
+    "pastAgreed": "agreed",
+    "pastStronglyAgreed": "strongly agreed"
+  },
+  "search": {
+    "title": "Search",
+    "button": "Search",
+    "subtitle": "Find questions and topics across the platform",
+    "placeholder": "Search questions and topics...",
+    "prompt": "Type a keyword and press Search or Enter",
+    "questions": "Questions",
+    "topics": "Topics",
+    "tryDifferent": "Try different keywords or check your spelling.",
+    "searchingFor": "Searching for \"{{query}}\"…",
+    "failed": "Search failed: {{msg}}",
+    "noResults": "No results for \"{{query}}\"",
+    "questionCount_one": "{{count}} question",
+    "questionCount_other": "{{count}} questions",
+    "resultSummary": "{{questions}} questions and {{topics}} topics for <q>\"{{query}}\"</q>"
   }
 }

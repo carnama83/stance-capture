@@ -643,7 +643,10 @@
     "back": "← वापस",
     "all": "सभी",
     "to": "से",
-    "cancel": "रद्द करें"
+    "cancel": "रद्द करें",
+    "dismiss": "बंद करें",
+    "saved": "सहेजा गया",
+    "open": "खोलें →"
   },
   "myStances": {
     "title": "मेरे रुख",
@@ -673,5 +676,43 @@
     "updated": "अपडेट: {{date}}",
     "exportFailedTitle": "एक्सपोर्ट विफल",
     "exportFailedBody": "एक्सपोर्ट विफल रहा। कृपया फिर से प्रयास करें।"
+  },
+  "quickTakes": {
+    "title": "आज के त्वरित सवाल",
+    "subtitle": "वैकल्पिक। एक मिनट से भी कम समय लगेगा।",
+    "skip": "अभी छोड़ें",
+    "loadingCommunity": "सामुदायिक प्रतिक्रिया लोड हो रही है…",
+    "loadingQuestions": "सवाल लोड हो रहे हैं…",
+    "thanks": "धन्यवाद। आप कभी भी वापस आ सकते हैं।",
+    "topicLabel": "विषय: {{topic}}",
+    "respondents_one": "{{count}} प्रतिभागी",
+    "respondents_other": "{{count}} प्रतिभागी",
+    "respondentsPct": "{{pct}}% प्रतिभागी {{what}}",
+    "leanAgree": "सहमति की ओर झुके हैं",
+    "leanDisagree": "असहमति की ओर झुके हैं",
+    "areNeutral": "तटस्थ हैं",
+    "youResponded": "आपने {{what}}",
+    "responded": "जवाब दिया",
+    "pastStronglyDisagreed": "पूर्णतः असहमति जताई",
+    "pastDisagreed": "असहमति जताई",
+    "pastNeutral": "तटस्थ रहे",
+    "pastAgreed": "सहमति जताई",
+    "pastStronglyAgreed": "पूर्णतः सहमति जताई"
+  },
+  "search": {
+    "title": "खोजें",
+    "button": "खोजें",
+    "subtitle": "पूरे प्लेटफ़ॉर्म पर सवाल और विषय खोजें",
+    "placeholder": "सवाल और विषय खोजें...",
+    "prompt": "कोई शब्द लिखें और खोजें या Enter दबाएँ",
+    "questions": "सवाल",
+    "topics": "विषय",
+    "tryDifferent": "दूसरे शब्द आज़माएँ या वर्तनी जाँचें।",
+    "searchingFor": "\"{{query}}\" खोजा जा रहा है…",
+    "failed": "खोज विफल: {{msg}}",
+    "noResults": "\"{{query}}\" के लिए कोई परिणाम नहीं",
+    "questionCount_one": "{{count}} सवाल",
+    "questionCount_other": "{{count}} सवाल",
+    "resultSummary": "<q>\"{{query}}\"</q> के लिए {{questions}} सवाल और {{topics}} विषय"
   }
 }

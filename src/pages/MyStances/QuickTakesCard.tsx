@@ -9,6 +9,7 @@ import { getSupabase } from "@/lib/supabaseClient";
 import { QuestionCoverImage } from "@/components/question/QuestionCoverImage";
 import { getStanceColorHex } from "@/lib/stanceColors";
 import { Loader2, X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 const BATCH     = 6;
 const VISIBLE   = 3;
@@ -72,18 +73,19 @@ const STANCE_LABELS: Record<number, string> = {
   [2]:  "Strongly agree",
 };
 
-const STANCE_LABELS_PAST: Record<number, string> = {
-  [-2]: "Strongly disagreed",
-  [-1]: "Disagreed",
-  [0]:  "Were neutral",
-  [1]:  "Agreed",
-  [2]:  "Strongly agreed",
+const STANCE_LABELS_PAST_KEYS: Record<number, string> = {
+  [-2]: "quickTakes.pastStronglyDisagreed",
+  [-1]: "quickTakes.pastDisagreed",
+  [0]:  "quickTakes.pastNeutral",
+  [1]:  "quickTakes.pastAgreed",
+  [2]:  "quickTakes.pastStronglyAgreed",
 };
 
 function QuickSlider({ onCommit, disabled }: {
   onCommit: (value: number) => void;
   disabled?: boolean;
 }) {
+  const { t } = useTranslation();
   const [value, setValue] = React.useState(0);
   const color = getStanceColorHex(value);
   const fillPct = Math.max(8, ((value + 2) / 4) * 100);
@@ -92,7 +94,7 @@ function QuickSlider({ onCommit, disabled }: {
     <div>
       <div className="flex items-center justify-between mb-1">
         <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500">
-          Your stance
+          {t("stance.yourStance")}
         </span>
         <span className="text-[11px] font-medium" style={{ color }}>
           {STANCE_LABELS[value]}
@@ -119,11 +121,11 @@ function QuickSlider({ onCommit, disabled }: {
         />
       </div>
       <div className="flex justify-between text-[9px] text-slate-400 px-0.5">
-        <span>Strongly disagree</span>
-        <span>Disagree</span>
-        <span>Neutral</span>
-        <span>Agree</span>
-        <span>Strongly agree</span>
+        <span>{t("stance.stronglyDisagree")}</span>
+        <span>{t("stance.disagree")}</span>
+        <span>{t("stance.neutral")}</span>
+        <span>{t("stance.agree")}</span>
+        <span>{t("stance.stronglyAgree")}</span>
       </div>
     </div>
   );
@@ -144,13 +146,15 @@ function HeaderArea({
   onSkip: () => void;
   allDone: boolean;
 }) {
+  const { t } = useTranslation();
+
   if (!feedback && !loadingFeedback) {
     // Default header
     return (
       <div className="flex items-baseline justify-between mb-3">
         <div>
-          <h2 className="text-sm font-semibold text-slate-900">Today's quick takes</h2>
-          <p className="text-xs text-slate-500 mt-0.5">Optional. Takes less than a minute.</p>
+          <h2 className="text-sm font-semibold text-slate-900">{t("quickTakes.title")}</h2>
+          <p className="text-xs text-slate-500 mt-0.5">{t("quickTakes.subtitle")}</p>
         </div>
         {!allDone && (
           <button
@@ -158,7 +162,7 @@ function HeaderArea({
             onClick={onSkip}
             className="text-xs text-slate-400 hover:text-slate-600 transition-colors"
           >
-            Skip for now
+            {t("quickTakes.skip")}
           </button>
         )}
       </div>
@@ -169,7 +173,7 @@ function HeaderArea({
     return (
       <div className="mb-3 rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 flex items-center gap-2">
         <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400 shrink-0" />
-        <span className="text-xs text-slate-500">Loading community response…</span>
+        <span className="text-xs text-slate-500">{t("quickTakes.loadingCommunity")}</span>
       </div>
     );
   }
@@ -182,10 +186,10 @@ function HeaderArea({
 
   const dominant =
     agree >= disagree && agree >= neutral
-      ? { pct: agree, label: "lean toward agreement" }
+      ? { pct: agree, labelKey: "quickTakes.leanAgree" }
       : disagree > agree && disagree >= neutral
-      ? { pct: disagree, label: "lean toward disagreement" }
-      : { pct: neutral, label: "are neutral" };
+      ? { pct: disagree, labelKey: "quickTakes.leanDisagree" }
+      : { pct: neutral, labelKey: "quickTakes.areNeutral" };
 
   let citySentence: string | null = null;
   if (feedback.city_label && feedback.city_support_pct !== null) {
@@ -213,11 +217,11 @@ function HeaderArea({
               className="text-xs font-medium"
               style={{ color: getStanceColorHex(feedback.score) }}
             >
-              You {STANCE_LABELS_PAST[feedback.score] ?? "responded"}
+              {t("quickTakes.youResponded", { what: STANCE_LABELS_PAST_KEYS[feedback.score] ? t(STANCE_LABELS_PAST_KEYS[feedback.score]) : t("quickTakes.responded") })}
             </span>
             <span className="text-slate-300 text-xs">·</span>
             <span className="text-xs text-slate-600">
-              {dominant.pct}% of respondents {dominant.label}
+              {t("quickTakes.respondentsPct", { pct: dominant.pct, what: t(dominant.labelKey) })}
             </span>
           </div>
         </div>
@@ -225,7 +229,7 @@ function HeaderArea({
           type="button"
           onClick={onDismiss}
           className="shrink-0 text-slate-400 hover:text-slate-600 transition-colors mt-0.5"
-          aria-label="Dismiss"
+          aria-label={t("common.dismiss")}
         >
           <X className="h-3.5 w-3.5" />
         </button>
@@ -242,15 +246,15 @@ function HeaderArea({
       <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] text-slate-400">
         <span className="flex items-center gap-1">
           <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#639922]" />
-          Agree {agree}%
+          {t("stance.agree")} {agree}%
         </span>
         <span className="flex items-center gap-1">
           <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#B4B2A9]" />
-          Neutral {neutral}%
+          {t("stance.neutral")} {neutral}%
         </span>
         <span className="flex items-center gap-1">
           <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#D85A30]" />
-          Disagree {disagree}%
+          {t("stance.disagree")} {disagree}%
         </span>
         {citySentence && (
           <>
@@ -261,7 +265,7 @@ function HeaderArea({
         {feedback.responses > 0 && (
           <>
             <span className="text-slate-200">·</span>
-            <span>{feedback.responses.toLocaleString()} respondents</span>
+            <span>{t("quickTakes.respondents", { count: feedback.responses })}</span>
           </>
         )}
       </div>
@@ -277,6 +281,7 @@ interface QuickTileProps {
 }
 
 function QuickTile({ q, onAnswered }: QuickTileProps) {
+  const { t } = useTranslation();
   const qc = useQueryClient();
   const [submitted, setSubmitted] = React.useState(false);
 
@@ -328,7 +333,7 @@ function QuickTile({ q, onAnswered }: QuickTileProps) {
 
         {q.topic_title && (
           <p className="text-[11px] text-slate-400 mt-1 mb-2">
-            Topic: {q.topic_title}
+            {t("quickTakes.topicLabel", { topic: q.topic_title })}
           </p>
         )}
 
@@ -336,7 +341,7 @@ function QuickTile({ q, onAnswered }: QuickTileProps) {
           {submitted ? (
             <div className="flex items-center gap-2 py-2 text-xs text-slate-400">
               <Loader2 className="h-3 w-3 animate-spin" />
-              Saved
+              {t("common.saved")}
             </div>
           ) : (
             <QuickSlider
@@ -349,7 +354,7 @@ function QuickTile({ q, onAnswered }: QuickTileProps) {
               to={`/q/${q.id}`}
               className="text-[11px] text-slate-400 hover:text-slate-700 transition-colors"
             >
-              Open →
+              {t("common.open")}
             </Link>
           </div>
         </div>
@@ -365,6 +370,7 @@ interface QuickTakesCardProps {
 }
 
 export default function QuickTakesCard({ userId }: QuickTakesCardProps) {
+  const { t } = useTranslation();
   const [skipped, setSkipped]               = React.useState(false);
   const [pool, setPool]                     = React.useState<ForYouQuestion[]>([]);
   const [answeredIds, setAnsweredIds]       = React.useState<Set<string>>(new Set());
@@ -504,14 +510,14 @@ export default function QuickTakesCard({ userId }: QuickTakesCardProps) {
       {loading && pool.length === 0 && (
         <div className="flex items-center gap-2 py-4 text-xs text-slate-500">
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          Loading questions…
+          {t("quickTakes.loadingQuestions")}
         </div>
       )}
 
       {/* All done */}
       {allDone && (
         <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 text-xs text-slate-600">
-          Thanks. You can come back anytime.
+          {t("quickTakes.thanks")}
         </div>
       )}
 
