@@ -19,6 +19,7 @@ import { Link } from "react-router-dom";
 import type { QuestionWithLifecycle } from "@/types/questionLifecycleTypes";
 import { Badge } from "@/components/ui/badge";
 import { Vote, User, MapPin, Lock, AlertTriangle } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -74,6 +75,7 @@ function LocalCandidateStrip({
   partyColour: string | null | undefined;
   constituencyName: string | null | undefined;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex items-center gap-2 rounded bg-slate-50 border border-slate-200 px-3 py-1.5 text-xs">
       <User className="h-3 w-3 text-muted-foreground shrink-0" />
@@ -87,7 +89,7 @@ function LocalCandidateStrip({
             {partyAbbreviation}
           </span>
         )}
-        <span className="text-muted-foreground">candidate:</span>
+        <span className="text-muted-foreground">{t("electionQuestion.yourCandidate")}</span>
         <span className="font-medium text-foreground truncate">{candidateName}</span>
         {candidateNameLocal && (
           <span className="text-muted-foreground">({candidateNameLocal})</span>
@@ -109,12 +111,12 @@ function LocalCandidateStrip({
 // ─── Silence Overlay ──────────────────────────────────────────────────────────
 
 function SilenceBanner() {
+  const { t } = useTranslation();
   return (
     <div className="flex items-center gap-2 rounded bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">
       <Lock className="h-3.5 w-3.5 shrink-0" />
       <span>
-        <strong>Stance submission paused.</strong> Electoral silence period is active (RPA 1951 §126).
-        Submissions reopen after polling closes.
+        <strong>{t("electionQuestion.stanceSubmissionPaused")}</strong> {t("electionQuestion.electoralSilencePeriodIsActive")}
       </span>
     </div>
   );
@@ -128,6 +130,7 @@ export function ElectionQuestionCard({
   showDisclosure = true,
   className = "",
 }: ElectionQuestionCardProps) {
+  const { t } = useTranslation();
   const {
     id,
     question: questionText,
@@ -179,7 +182,7 @@ export function ElectionQuestionCard({
             {/* ELECTION badge */}
             <span className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-bold bg-slate-800 text-white uppercase tracking-wide">
               <Vote className="h-2.5 w-2.5" />
-              Election
+              {t("electionQuestion.election")}
             </span>
 
             {/* Party abbreviation badge */}

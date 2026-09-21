@@ -14,6 +14,7 @@
 import * as React from "react";
 import { Loader2 } from "lucide-react";
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/env";
+import { useTranslation } from "react-i18next";
 
 function getTokenFromUrl(): string | null {
   // HashRouter: the query string lives inside window.location.hash, not
@@ -26,6 +27,7 @@ function getTokenFromUrl(): string | null {
 }
 
 export default function WhatsAppSigninPage() {
+  const { t } = useTranslation();
   const [error, setError] = React.useState<string | null>(null);
   const ranRef = React.useRef(false);
 
@@ -36,7 +38,7 @@ export default function WhatsAppSigninPage() {
     (async () => {
       const token = getTokenFromUrl();
       if (!token) {
-        setError("This sign-in link is missing its token. Please use the link from your WhatsApp message.");
+        setError(t("whatsAppSignin.thisSignInLinkIs"));
         return;
       }
       try {
@@ -89,7 +91,7 @@ export default function WhatsAppSigninPage() {
         }
         window.location.replace(data.action_link);
       } catch {
-        setError("Couldn't reach the server. Check your connection and try again.");
+        setError(t("auth.couldntReachServer"));
       }
     })();
   }, []);
@@ -98,7 +100,7 @@ export default function WhatsAppSigninPage() {
     return (
       <div className="flex min-h-screen items-center justify-center px-4">
         <div className="max-w-sm space-y-2 text-center">
-          <p className="text-sm font-semibold text-slate-800">Sign-in link problem</p>
+          <p className="text-sm font-semibold text-slate-800">{t("whatsAppSignin.signInLinkProblem")}</p>
           <p className="text-sm text-slate-600">{error}</p>
         </div>
       </div>
@@ -109,7 +111,7 @@ export default function WhatsAppSigninPage() {
     <div className="flex min-h-screen items-center justify-center px-4">
       <div className="flex flex-col items-center gap-3 text-center">
         <Loader2 className="h-6 w-6 animate-spin text-violet-600" />
-        <p className="text-sm text-slate-600">Signing you in…</p>
+        <p className="text-sm text-slate-600">{t("whatsAppSignin.signingYouIn")}</p>
       </div>
     </div>
   );

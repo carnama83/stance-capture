@@ -141,7 +141,14 @@
     "cityOptional": "शहर (वैकल्पिक)",
     "loadingCities": "शहर लोड हो रहे हैं…",
     "noCitiesAvailable": "(कोई शहर उपलब्ध नहीं)",
-    "selectCity": "शहर चुनें"
+    "selectCity": "शहर चुनें",
+    "signupDebug": "साइनअप डीबग",
+    "copyLogs": "लॉग कॉपी करें",
+    "debugEnabledVia": "डीबग सक्षम है",
+    "debug1": "?debug=1",
+    "hashrouterSupportedOr": "(HashRouter समर्थित) या",
+    "passwordIsNeverLogged": "। पासवर्ड कभी लॉग नहीं होता।",
+    "noLogsYet": "अभी कोई लॉग नहीं।"
   },
   "auth": {
     "emailRequired": "ईमेल आवश्यक है।",
@@ -552,7 +559,8 @@
     "contact": "संपर्क",
     "privacy": "गोपनीयता",
     "tagline": "एक नागरिक-तकनीक मंच जो जनमत दर्ज करता है और दिखाता है कि विचार कैसे बदलते हैं।",
-    "location": "भोपाल, भारत"
+    "location": "भोपाल, भारत",
+    "footer": "फ़ुटर"
   },
   "notFound": {
     "title": "ओह! पेज नहीं मिला",
@@ -591,7 +599,8 @@
     "following": "फ़ॉलो किया जा रहा है",
     "hide": "छिपाएँ",
     "sources": "स्रोत:",
-    "civicIncident": "नागरिक घटना"
+    "civicIncident": "नागरिक घटना",
+    "resolved": "सुलझा:"
   },
   "comments": {
     "title": "टिप्पणियाँ",
@@ -1149,7 +1158,8 @@
     "editingTheCaptionAboveWon": "ऊपर का कैप्शन बदलने से यह नहीं हटेगा — जाँच यह देखती है कि आपके वीडियो में वास्तव में क्या कहा गया है, कैप्शन में क्या लिखा है यह नहीं। फिर से भेजने का एकमात्र तरीका दोबारा रिकॉर्ड करना है।",
     "reRecordVideo": "वीडियो फिर से रिकॉर्ड करें",
     "stillBeingReviewedWeLl": "अभी समीक्षा जारी है — तैयार होते ही हम आपको बता देंगे।",
-    "thisQuestionIsLive": "यह सवाल लाइव है।"
+    "thisQuestionIsLive": "यह सवाल लाइव है।",
+    "thisReadsAsLeadingTry": "यह पक्षपाती लगता है — उत्तर सुझाए बिना अधिक तटस्थ ढंग से पूछने का प्रयास करें।"
   },
   "cognitive": {
     "errorLoadingCognitiveState": "संज्ञानात्मक स्थिति लोड करने में त्रुटि:",
@@ -1261,7 +1271,10 @@
     "pasteThisIntoAnyArticle": "इसे किसी भी लेख पृष्ठ में चिपकाएँ। विजेट सवाल ढूँढ़ता है, स्लाइडर दिखाता है, और बाक़ी सब संभाल लेता है।",
     "reviewNotice": "हम आपके आवेदन की समीक्षा करेंगे और 1 कार्यदिवस के भीतर आपके प्रकाशक क्रेडेंशियल {{email}} पर भेज देंगे।",
     "legalNotice": "आवेदन करके आप Stance Capture की <terms>एम्बेड शर्तों</terms> से सहमत होते हैं। एम्बेड के माध्यम से एकत्र डेटा हमारी <privacy>गोपनीयता नीति</privacy> के अधीन है।",
-    "browseQuestions": "प्रश्न आईडी को किसी भी सक्रिय Stance Capture सवाल से बदलें। सवाल यहाँ देखें: <a>stancecapture.com/topics</a>।"
+    "browseQuestions": "प्रश्न आईडी को किसी भी सक्रिय Stance Capture सवाल से बदलें। सवाल यहाँ देखें: <a>stancecapture.com/topics</a>।",
+    "copied": "कॉपी हो गया ✓",
+    "copy": "कॉपी करें",
+    "applyForEmbedAccess": "एम्बेड पहुँच के लिए आवेदन करें"
   },
   "topicHistoryDrawer": {
     "yourStance": "आपका रुख:",
@@ -1424,7 +1437,11 @@
     "logInToViewFollowed": "फ़ॉलो किए गए विषय देखने के लिए लॉग इन करें",
     "searchTopics": "विषय खोजें…",
     "noSummaryYet": "अभी कोई सारांश नहीं।",
-    "loadMore": "और लोड करें"
+    "loadMore": "और लोड करें",
+    "seeAll": "सभी देखें",
+    "answeredTodayCount_one": "आपने आज {{count}} सवाल का उत्तर दिया",
+    "answeredTodayCount_other": "आपने आज {{count}} सवालों के उत्तर दिए",
+    "seeAllInMyStances": "मेरे रुख में सभी {{count}} देखें →"
   },
   "todayQuestionsFeed": {
     "curatedByOurEditorialTeam": "हमारी संपादकीय टीम द्वारा चयनित",
@@ -1612,5 +1629,258 @@
     "cityIdOptional": "शहर (ID वैकल्पिक)",
     "confirmLocation": "स्थान की पुष्टि करें",
     "overrideRecordedRawIpDiscarded": "बदलाव दर्ज; कच्चा IP हटा दिया गया।"
+  },
+  "topicMuteButton": {
+    "couldnTUpdateNotificationPreference": "सूचना प्राथमिकता अपडेट नहीं हो सकी",
+    "pleaseTryAgain": "कृपया फिर से प्रयास करें।",
+    "unmuteTopicNotifications": "विषय सूचनाएँ फिर चालू करें",
+    "muteTopicNotifications": "विषय सूचनाएँ बंद करें",
+    "unmuteNotificationsForThisTopic": "इस विषय की सूचनाएँ फिर चालू करें",
+    "muteNotificationsForThisTopic": "इस विषय की सूचनाएँ बंद करें",
+    "muted": "बंद",
+    "notify": "सूचित करें"
+  },
+  "threeTierTrending": {
+    "aroundTheWorld": "दुनिया भर में",
+    "trendingNow": "अभी चर्चा में",
+    "unableToLoadTrendingTopics": "अभी चर्चित विषय लोड नहीं हो सके।",
+    "noTrendingTopicsYetCheck": "अभी कोई चर्चित विषय नहीं। जल्द फिर देखें!",
+    "thisWeek": "इस सप्ताह",
+    "signUpToSeeLocal": "अपने क्षेत्र के चर्चित विषय देखने के लिए <a>साइन अप करें</a>"
+  },
+  "forYouFeed": {
+    "questionsTailoredToYourInterests": "आपकी रुचियों और स्थान के अनुसार चुने गए सवाल",
+    "loadingYourFeed": "आपका फ़ीड लोड हो रहा है...",
+    "failedToLoadFeed": "फ़ीड लोड नहीं हो सका:",
+    "noPersonalizedQuestionsYet": "अभी कोई वैयक्तिक सवाल नहीं।",
+    "followSomeTopicsOrAnswer": "वैयक्तिक सुझाव पाने के लिए कुछ विषय फ़ॉलो करें या अपने क्षेत्र के सवालों के उत्तर दें।",
+    "browseAllQuestions": "सभी सवाल देखें"
+  },
+  "shareStats": {
+    "yourShares": "आपकी साझेदारी",
+    "noClicksYet": "अभी कोई क्लिक नहीं",
+    "viewQuestion": "सवाल देखें",
+    "shareCount_one": "{{count}} साझा",
+    "shareCount_other": "{{count}} साझा",
+    "viewCount_one": "{{count}} दृश्य",
+    "viewCount_other": "{{count}} दृश्य",
+    "moreShared": "+{{n}} और साझा किए सवाल"
+  },
+  "trendingAnswered": {
+    "checkingYourAnsweredQuestions": "आपके उत्तर दिए गए सवाल जाँचे जा रहे हैं…",
+    "questionsYouAnsweredWithUpdates": "आपके उत्तर दिए गए सवाल — अपडेट के साथ",
+    "theseQuestionsYouVeWeighed": "जिन सवालों पर आपने राय दी, वे अब चर्चा में हैं या बदल रहे हैं।",
+    "communityNow": "समुदाय अभी:",
+    "leaningAgree": "सहमति की ओर",
+    "leaningDisagree": "असहमति की ओर",
+    "mixed": "मिश्रित"
+  },
+  "publicLedger": {
+    "ledgerNotYetPublished": "बही अभी प्रकाशित नहीं",
+    "thisExpectationLedgerEitherDoesn": "यह अपेक्षा बही या तो अभी मौजूद नहीं है या प्रकाशित नहीं हुई है।",
+    "publicExpectationLedger": "सार्वजनिक अपेक्षा बही",
+    "region": "क्षेत्र:",
+    "responseStatus": "प्रतिक्रिया की स्थिति",
+    "authority": "प्राधिकरण",
+    "dataCollectedByStanceCapture": "डेटा Stance Capture द्वारा एकत्रित",
+    "respondentCount_one": "{{count}} उत्तरदाता",
+    "respondentCount_other": "{{count}} उत्तरदाता"
+  },
+  "socialAuthButtons": {
+    "continueWithGoogle": "Google से जारी रखें",
+    "continueWithFacebook": "Facebook से जारी रखें",
+    "continueWithApple": "Apple से जारी रखें",
+    "legalNote": "जारी रखकर आप हमारी <terms>शर्तों</terms> और <privacy>गोपनीयता नीति</privacy> से सहमत होते हैं।"
+  },
+  "notifications": {
+    "markAllRead": "सभी पढ़ा हुआ चिह्नित करें",
+    "notificationSettings": "सूचना सेटिंग्स",
+    "couldnTLoadNotifications": "सूचनाएँ लोड नहीं हो सकीं।",
+    "youReAllCaughtUp": "आप पूरी तरह अद्यतन हैं।",
+    "followTopicsToGetActivity": "गतिविधि अपडेट पाने के लिए विषय फ़ॉलो करें, या रुख बदलाव की सूचनाएँ पाने के लिए और सवालों के उत्तर दें।",
+    "browseTopics": "विषय देखें →"
+  },
+  "questionStanceSlider": {
+    "youChose": "आपने चुना:",
+    "youReTheFirstTo": "इस पर राय देने वाले आप पहले हैं। और रुख आने पर हम दिखाएँगे कि दूसरे कैसे तुलना करते हैं।",
+    "agreeShare": "{{scope}} का {{pct}} आपसे सहमत है",
+    "disagreeShare": "{{scope}} का {{pct}} आपसे असहमत है"
+  },
+  "rationaleEditor": {
+    "editRationale": "तर्क संपादित करें",
+    "addRationale": "तर्क जोड़ें",
+    "whyDoYouHoldThis": "आप यह रुख क्यों रखते हैं? (वैकल्पिक)",
+    "addASupportingLink": "एक सहायक लिंक जोड़ें…",
+    "failedToSave": "सहेजा नहीं जा सका।"
+  },
+  "usernameField": {
+    "chooseAUsername": "एक उपयोगकर्ता नाम चुनें"
+  },
+  "youVsCommunity": {
+    "yourPerspectiveInContext": "संदर्भ में आपका नज़रिया",
+    "howYourViewsCompareAcross": "आपने जिन विषयों के उत्तर दिए, उनमें आपके विचार कैसी तुलना करते हैं।",
+    "loadingYourComparison": "आपकी तुलना लोड हो रही है…",
+    "answerAFewQuestionsTo": "यह देखने के लिए कि आपके विचार दूसरों से कैसे तुलना करते हैं, कुछ सवालों के उत्तर दें।",
+    "thisReflectsAggregatePatternsNot": "यह समेकित प्रवृत्तियाँ दर्शाता है, सही या गलत उत्तर नहीं।",
+    "basedOnRespondents_one": "{{count}} उत्तरदाता के आधार पर।",
+    "basedOnRespondents_other": "{{count}} उत्तरदाताओं के आधार पर।"
+  },
+  "cognitiveinsights": {
+    "yourCognitiveInsights": "आपकी संज्ञानात्मक अंतर्दृष्टि",
+    "understandingYourStancePatternsAnd": "आपके रुख की प्रवृत्तियाँ और भागीदारी समझना",
+    "recalculate": "फिर से गणना करें",
+    "yourCognitiveProfileCanBe": "आपकी हाल की गतिविधि के आधार पर आपकी संज्ञानात्मक प्रोफ़ाइल अपडेट की जा सकती है।",
+    "updateNow": "अभी अपडेट करें",
+    "whatIsACognitiveProfile": "संज्ञानात्मक प्रोफ़ाइल क्या है?",
+    "yourCognitiveProfileIsAutomatically": "आपकी संज्ञानात्मक प्रोफ़ाइल आपके उत्तरों से अपने आप बनती है। यह आपके समग्र रुख की प्रवृत्तियाँ, विषयों में सुसंगति और भागीदारी के रुझान दिखाती है। इससे आप अपनी सोच को समझ पाते हैं और देख पाते हैं कि वह समय के साथ कैसे बदलती है।"
+  },
+  "dobField": {
+    "month": "महीना",
+    "year": "वर्ष"
+  },
+  "latestQuestions": {
+    "latestQuestions": "नवीनतम सवाल",
+    "somethingWentWrongLoadingQuestions": "सवाल लोड करते समय कुछ गड़बड़ हुई:",
+    "noQuestionsAreLiveYet": "अभी कोई सवाल लाइव नहीं है। एडमिन क्षेत्र से सवाल प्रकाशित करने पर वे यहाँ दिखेंगे।"
+  },
+  "stanceEvolutionTimeline": {
+    "firstAnswered": "पहली बार उत्तर दिया",
+    "reConfirmedStance": "रुख की पुनः पुष्टि की",
+    "loadingYourStanceHistory": "आपका रुख इतिहास लोड हो रहा है…",
+    "couldNotLoadStanceHistory": "रुख इतिहास लोड नहीं हो सका। कृपया फिर से प्रयास करें।",
+    "noStanceChangesYet": "अभी कोई रुख बदलाव नहीं।",
+    "whenYouUpdateAPrevious": "जब आप कोई पुराना उत्तर बदलेंगे, आपका विकास यहाँ दिखेगा।",
+    "movedTowardAgreement": "सहमति की ओर बढ़े (+{{diff}})",
+    "movedTowardDisagreement": "असहमति की ओर बढ़े ({{diff}})"
+  },
+  "notificationListItem": {
+    "yourArea": "आपका क्षेत्र",
+    "vsNational": "बनाम राष्ट्रीय:",
+    "opinionShifted": "{{scope}} राय {{delta}} अंक बदली",
+    "opinionShiftedHere": "आपके क्षेत्र में राय {{delta}} अंक बदली"
+  },
+  "weeklyDigest": {
+    "noDigestAvailableYet": "अभी कोई सारांश उपलब्ध नहीं।",
+    "weeklyDigest": "साप्ताहिक सारांश",
+    "closeDigest": "सारांश बंद करें",
+    "topicsYouFollow": "आपके फ़ॉलो किए विषय",
+    "questionsYouAnswered": "आपके उत्तर दिए सवाल",
+    "recommendedForYou": "आपके लिए सुझाए गए"
+  },
+  "activeQuestionsFeed": {
+    "loadingQuestions": "सवाल लोड हो रहे हैं...",
+    "failedToLoadQuestions": "सवाल लोड नहीं हो सके।",
+    "noActiveQuestionsRightNow": "अभी कोई सक्रिय सवाल नहीं",
+    "checkBackSoonForNew": "नए सवालों के लिए जल्द फिर देखें!",
+    "activeQuestions": "सक्रिय सवाल",
+    "questionCount_one": "{{count}} सवाल",
+    "questionCount_other": "{{count}} सवाल"
+  },
+  "questionPhaseBadge": {
+    "newDevelopmentsOnThisIssue": "इस मुद्दे पर नए घटनाक्रम",
+    "resolution": "समाधान",
+    "thisIssueHasBeenResolved": "यह मुद्दा सुलझ चुका है",
+    "continuedDiscussionOfThisTopic": "इस विषय पर चर्चा जारी"
+  },
+  "stanceSnapshot": {
+    "yourStanceSnapshot": "आपका रुख स्नैपशॉट",
+    "thisIsAReflectionOf": "यह दर्शाता है कि आपने अब तक कैसे उत्तर दिए। यह कोई स्कोर नहीं — बस एक क्षण की तस्वीर है।",
+    "loadingYourSnapshot": "आपका स्नैपशॉट लोड हो रहा है…",
+    "couldNotLoadSnapshotRight": "अभी स्नैपशॉट लोड नहीं हो सका।",
+    "asYouAnswerMoreQuestions": "जैसे-जैसे आप और सवालों के उत्तर देंगे, यहाँ प्रवृत्तियाँ दिखने लगेंगी।",
+    "onTheseQuestionsYou": "इन सवालों पर आप {{sentence}}"
+  },
+  "tradeoffExplorer": {
+    "analysingTradeOffs": "संतुलन का विश्लेषण हो रहा है…",
+    "couldNotExtractTradeOffs": "इस सवाल के लिए संतुलन नहीं निकाले जा सके।",
+    "adjustTheSlidersToReflect": "स्लाइडर समायोजित करें कि आपके लिए क्या सबसे अहम है, फिर नीचे अपना रुख दर्ज करें।",
+    "yourPriorityWeightsAreSaved": "आपकी प्राथमिकताएँ निजी रूप से सहेजी जाती हैं और इस सवाल पर लौटने पर यहीं मिलेंगी।",
+    "leaningOnThisQuestion": "इस सवाल पर {{leaning}}।"
+  },
+  "electionQuestion": {
+    "stanceSubmissionPaused": "रुख भेजना रोका गया।",
+    "electoralSilencePeriodIsActive": "चुनावी मौन अवधि लागू है (RPA 1951 §126)। मतदान समाप्त होने के बाद भेजना फिर से शुरू होगा।",
+    "election": "चुनाव",
+    "yourCandidate": "आपका उम्मीदवार:"
+  },
+  "stanceSparkline": {
+    "history": "इतिहास",
+    "loadingHistory": "इतिहास लोड हो रहा है…",
+    "noChangesYetYouVe": "अभी कोई बदलाव नहीं — आपने इस सवाल का एक बार उत्तर दिया है।",
+    "firstAnswer": "पहला उत्तर:",
+    "changedFromTo": "बदला"
+  },
+  "whatsAppSignin": {
+    "thisSignInLinkIs": "इस साइन-इन लिंक में उसका टोकन नहीं है। कृपया अपने WhatsApp संदेश वाला लिंक उपयोग करें।",
+    "signInLinkProblem": "साइन-इन लिंक में समस्या",
+    "signingYouIn": "आपको साइन इन किया जा रहा है…"
+  },
+  "moderatoronly": {
+    "error": "त्रुटि",
+    "noAccess": "पहुँच नहीं",
+    "youNeedModeratorOrAdministrator": "यह पेज देखने के लिए आपको मॉडरेटर या प्रशासक पहुँच चाहिए।"
+  },
+  "youVsCommunityPhrase": {
+    "answerMore": "अपने विचारों की तुलना देखने के लिए कुछ और सवालों के उत्तर दें।",
+    "overallAgree": "आपने जिन विषयों के उत्तर दिए, उनमें आपके विचार अधिकांश उत्तरदाताओं की तुलना में सहमति की ओर अधिक झुकते हैं।",
+    "overallDisagree": "आपने जिन विषयों के उत्तर दिए, उनमें आपके विचार अधिकांश उत्तरदाताओं की तुलना में असहमति की ओर अधिक झुकते हैं।",
+    "overallInLine": "आपने जिन विषयों के उत्तर दिए, उनमें आपके विचार कुल मिलाकर समुदाय के अनुरूप हैं।",
+    "deltaStrongAgree": "यहाँ आप दूसरों की तुलना में स्पष्ट रूप से अधिक सहमति की ओर झुकते हैं।",
+    "deltaLeanAgree": "यहाँ आप कुछ अधिक सहमति की ओर झुकते हैं।",
+    "deltaStrongDisagree": "यहाँ आप दूसरों की तुलना में स्पष्ट रूप से अधिक असहमति की ओर झुकते हैं।",
+    "deltaLeanDisagree": "यहाँ आप कुछ अधिक असहमति की ओर झुकते हैं।",
+    "deltaClose": "यहाँ आपका नज़रिया समुदाय के औसत के करीब है।",
+    "fairlySplit": "समुदाय लगभग बँटा हुआ है",
+    "leanAgreePct": "~{{pct}}% सहमति की ओर झुके",
+    "leanDisagreePct": "~{{pct}}% असहमति की ओर झुके",
+    "mostLeanAgree": "अधिकांश लोग सहमति की ओर झुकते हैं",
+    "mostLeanDisagree": "अधिकांश लोग असहमति की ओर झुकते हैं"
+  },
+  "snapshotSentence": {
+    "genericStrongSupport": "इस क्षेत्र का पुरज़ोर समर्थन करते हैं।",
+    "genericLeanSupport": "इस क्षेत्र के पक्ष में झुकते हैं।",
+    "genericStrongOppose": "इस क्षेत्र का पुरज़ोर विरोध करते हैं।",
+    "genericLeanOppose": "इस क्षेत्र के विरुद्ध झुकते हैं।",
+    "genericMixed": "इस क्षेत्र में मिश्रित विचार रखते हैं।",
+    "envStrongSupport": "सख़्त पर्यावरण नियमन का पुरज़ोर समर्थन करते हैं।",
+    "envLeanSupport": "पर्यावरण मुद्दों पर कार्रवाई का समर्थन करते हैं।",
+    "envStrongOppose": "मौजूदा पर्यावरण नीति दिशा का पुरज़ोर विरोध करते हैं।",
+    "envLeanOppose": "पर्यावरण नियमन को लेकर सतर्क रहते हैं।",
+    "envMixed": "पर्यावरण नीति पर मिश्रित राय रखते हैं।",
+    "housingStrongSupport": "आवास सुधार का पुरज़ोर समर्थन करते हैं।",
+    "housingLeanSupport": "आवास में अधिक हस्तक्षेप की ओर झुकते हैं।",
+    "housingStrongOppose": "मौजूदा आवास नीति दिशा का पुरज़ोर विरोध करते हैं।",
+    "housingLeanOppose": "आवास नीति में बदलाव को लेकर आम तौर पर सतर्क रहते हैं।",
+    "housingMixed": "आवास नीति पर मिश्रित विचार रखते हैं।",
+    "econStrongSupport": "आर्थिक हस्तक्षेप का पुरज़ोर समर्थन करते हैं।",
+    "econLeanSupport": "आम तौर पर आर्थिक सुधार की ओर झुकते हैं।",
+    "econStrongOppose": "मौजूदा आर्थिक दिशा का पुरज़ोर विरोध करते हैं।",
+    "econLeanOppose": "अधिक रूढ़िवादी आर्थिक दृष्टिकोण को पसंद करते हैं।",
+    "econMixed": "आर्थिक नीति पर संतुलित राय रखते हैं।",
+    "techStrongSupport": "तकनीक के नियमन और निगरानी का पुरज़ोर समर्थन करते हैं।",
+    "techLeanSupport": "आम तौर पर तकनीक पर अधिक निगरानी के पक्ष में हैं।",
+    "techStrongOppose": "तकनीक पर बढ़े नियमन का पुरज़ोर विरोध करते हैं।",
+    "techLeanOppose": "तकनीक के नियमन को लेकर सतर्क रहते हैं।",
+    "techMixed": "तकनीक नीति पर सूक्ष्म विचार रखते हैं।",
+    "healthStrongSupport": "सार्वजनिक स्वास्थ्य में निवेश का पुरज़ोर समर्थन करते हैं।",
+    "healthLeanSupport": "आम तौर पर बेहतर स्वास्थ्य सेवा की ओर झुकते हैं।",
+    "healthStrongOppose": "मौजूदा स्वास्थ्य दिशा का पुरज़ोर विरोध करते हैं।",
+    "healthLeanOppose": "स्वास्थ्य सेवा में बाज़ार-आधारित तरीक़ों को पसंद करते हैं।",
+    "healthMixed": "स्वास्थ्य नीति पर मिश्रित विचार रखते हैं।",
+    "eduStrongSupport": "शिक्षा में बढ़े निवेश का पुरज़ोर समर्थन करते हैं।",
+    "eduLeanSupport": "आम तौर पर शिक्षा में अधिक निवेश की ओर झुकते हैं।",
+    "eduStrongOppose": "मौजूदा शिक्षा दिशा का पुरज़ोर विरोध करते हैं।",
+    "eduLeanOppose": "शिक्षा में अधिक विकल्प और स्वायत्तता को पसंद करते हैं।",
+    "eduMixed": "शिक्षा नीति पर मिश्रित विचार रखते हैं।",
+    "immStrongSupport": "अधिक खुली आप्रवासन नीति का पुरज़ोर समर्थन करते हैं।",
+    "immLeanSupport": "आम तौर पर अधिक स्वागतपूर्ण आप्रवासन नीति की ओर झुकते हैं।",
+    "immStrongOppose": "सख़्त आप्रवासन नियंत्रण का पुरज़ोर समर्थन करते हैं।",
+    "immLeanOppose": "सख़्त आप्रवासन नीति को पसंद करते हैं।",
+    "immMixed": "आप्रवासन पर सूक्ष्म राय रखते हैं।",
+    "justiceStrongSupport": "न्याय व्यवस्था में सुधार का पुरज़ोर समर्थन करते हैं।",
+    "justiceLeanSupport": "आम तौर पर आपराधिक न्याय सुधार की ओर झुकते हैं।",
+    "justiceStrongOppose": "सख़्त क़ानून प्रवर्तन का पुरज़ोर समर्थन करते हैं।",
+    "justiceLeanOppose": "क़ानून-व्यवस्था के प्रति अधिक पारंपरिक दृष्टिकोण को पसंद करते हैं।",
+    "justiceMixed": "आपराधिक न्याय पर मिश्रित विचार रखते हैं।"
   }
 }

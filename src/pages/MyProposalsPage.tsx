@@ -105,9 +105,9 @@ function StanceScalePreview({ low, high }: { low: string | null; high: string | 
         />
       </div>
       <div className="flex items-start justify-between gap-2 text-[11px] text-slate-600">
-        <span className="max-w-[42%] leading-tight">{low ?? "Oppose"}</span>
+        <span className="max-w-[42%] leading-tight">{low ?? t("ugq.opposeDefault")}</span>
         <span className="text-slate-400 shrink-0">{t("stance.neutral")}</span>
-        <span className="max-w-[42%] text-right leading-tight">{high ?? "Support"}</span>
+        <span className="max-w-[42%] text-right leading-tight">{high ?? t("ugq.supportDefault")}</span>
       </div>
     </div>
   );
@@ -193,7 +193,7 @@ function InlinePublishCard({ proposal, onPublished }: { proposal: Proposal; onPu
       // Deliberately not resetting `publishing` — the row re-renders as
       // 'published' once the list refetches, so this component unmounts.
     } catch (_e) {
-      setError("Network error. Please try again.");
+      setError(t("ugq.networkErrorShort"));
       setPublishing(false);
     }
   }
@@ -229,7 +229,7 @@ function InlinePublishCard({ proposal, onPublished }: { proposal: Proposal; onPu
       {error && <p className="text-xs text-red-600">{error}</p>}
       <div className="flex justify-end pt-0.5">
         <Button size="sm" disabled={publishing} onClick={handlePublish}>
-          {publishing ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> {t("proposals.publishing")}</> : "Publish"}
+          {publishing ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> {t("proposals.publishing")}</> : t("ugq.publish")}
         </Button>
       </div>
     </div>

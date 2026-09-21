@@ -157,9 +157,9 @@ function StanceScalePreview({ low, high }: { low: string | null; high: string | 
         <div className="absolute left-1/2 top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-slate-400 bg-white" aria-hidden />
       </div>
       <div className="flex items-start justify-between gap-2 text-[11px] text-slate-600">
-        <span className="max-w-[42%] leading-tight">{low ?? "Oppose"}</span>
+        <span className="max-w-[42%] leading-tight">{low ?? t("ugq.opposeDefault")}</span>
         <span className="text-slate-400 shrink-0">{t("ugq.neutralLabel")}</span>
-        <span className="max-w-[42%] text-right leading-tight">{high ?? "Support"}</span>
+        <span className="max-w-[42%] text-right leading-tight">{high ?? t("ugq.supportDefault")}</span>
       </div>
     </div>
   );
@@ -192,7 +192,7 @@ function ReadyToPublishCard({ proposalId, preview, onPublished }: {
       }
       onPublished();
     } catch (_e) {
-      setError("Network error. Please try again.");
+      setError(t("ugq.networkErrorShort"));
       setPublishing(false);
     }
   }
@@ -223,7 +223,7 @@ function ReadyToPublishCard({ proposalId, preview, onPublished }: {
       {error && <p className="text-xs text-red-600">{error}</p>}
       <div className="flex justify-end pt-0.5">
         <Button size="sm" disabled={publishing} onClick={handlePublish}>
-          {publishing ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> {t("ugq.publishing")}</> : "Publish"}
+          {publishing ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> {t("ugq.publishing")}</> : t("ugq.publish")}
         </Button>
       </div>
     </div>
@@ -378,7 +378,7 @@ export default function ProposalDetailPage() {
                   <div className="flex gap-2 text-sm text-orange-900">
                     <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
                     <p>
-                      {proposal.framing_flag_reason ?? "This reads as leading — try asking more neutrally, without suggesting an answer."}
+                      {proposal.framing_flag_reason ?? t("proposalDetail.thisReadsAsLeadingTry")}
                     </p>
                   </div>
                   <p className="text-xs text-orange-800/80">

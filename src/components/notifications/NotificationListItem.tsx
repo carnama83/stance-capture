@@ -19,6 +19,7 @@ import {
 import { type UserNotification, type NotificationType } from "@/hooks/notificationTypes";
 import { cn } from "@/lib/utils";
 import { getSupabase } from "@/lib/supabaseClient";
+import { useTranslation } from "react-i18next";
 
 // ── Icon selection ────────────────────────────────────────────────────────────
 
@@ -83,13 +84,14 @@ function StanceChangeSubtitle({
   eventKind?: EventKind;
   metadata: Record<string, unknown>;
 }) {
+  const { t } = useTranslation();
   if (eventKind === "community_shift") {
     const delta = typeof metadata.delta === "number" ? metadata.delta.toFixed(1) : null;
     const scope = metadata.regionScope === "global" ? "Globally" : String(metadata.regionKey ?? "");
     if (!delta) return null;
     return (
       <span className="block text-xs text-amber-600/80 mt-0.5">
-        {scope} opinion shifted by {delta} points
+        {t("notificationListItem.opinionShifted", { scope, delta })}
       </span>
     );
   }
@@ -112,7 +114,7 @@ function StanceChangeSubtitle({
     if (!regional || !global_) return null;
     return (
       <span className="block text-xs text-red-500/80 mt-0.5">
-        {region ? `${region}` : "Your area"}: {regional} vs national: {global_}
+        {region ? `${region}` : t("notificationListItem.yourArea")}: {regional} {t("notificationListItem.vsNational")} {global_}
       </span>
     );
   }

@@ -1,6 +1,7 @@
 // src/components/UsernameField.tsx
 import * as React from "react";
 import { getSupabase } from "@/lib/supabaseClient";
+import { useTranslation } from "react-i18next";
 
 type UStatus = "idle" | "invalid" | "checking" | "available" | "taken";
 
@@ -19,6 +20,7 @@ export default function UsernameField({
   status?: UStatus;
   setStatus?: (s: UStatus) => void;
 }) {
+  const { t: tr } = useTranslation();
   const client = React.useMemo(getSupabase, []);
   const [ok, setOk] = React.useState<null | boolean>(null);
   const [hint, setHint] = React.useState("");
@@ -126,7 +128,7 @@ export default function UsernameField({
   return (
     <div>
       <label className="block text-sm font-medium" htmlFor="username">
-        Username <span className="text-rose-600">*</span>
+        {tr("settingsPrivacy.username")} <span className="text-rose-600">*</span>
       </label>
       <input
         id="username"
@@ -136,7 +138,7 @@ export default function UsernameField({
         ]
           .filter(Boolean)
           .join(" ")}
-        placeholder="Choose a username"
+        placeholder={tr("usernameField.chooseAUsername")}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         autoComplete="username"

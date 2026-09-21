@@ -8,12 +8,14 @@ import * as React from "react";
 import { Bell, BellOff, Loader2 } from "lucide-react";
 import { getSupabase } from "@/lib/supabaseClient";
 import { toast } from "@/components/ui/use-toast";
+import { useTranslation } from "react-i18next";
 
 interface TopicMuteButtonProps {
   topicId: string;
 }
 
 export function TopicMuteButton({ topicId }: TopicMuteButtonProps) {
+  const { t } = useTranslation();
   // null = loading, true = muted, false = not muted, "unauthed" = no session
   const [state, setState] = React.useState<boolean | null | "unauthed">(null);
   const [saving, setSaving] = React.useState(false);
@@ -72,8 +74,8 @@ export function TopicMuteButton({ topicId }: TopicMuteButtonProps) {
     if (error) {
       console.error("TopicMuteButton: set_topic_notification_pref failed", error);
       toast({
-        title: "Couldn't update notification preference",
-        description: "Please try again.",
+        title: t("topicMuteButton.couldnTUpdateNotificationPreference"),
+        description: t("topicMuteButton.pleaseTryAgain"),
         variant: "destructive",
       });
       return;
@@ -97,8 +99,8 @@ export function TopicMuteButton({ topicId }: TopicMuteButtonProps) {
       type="button"
       onClick={handleToggle}
       disabled={saving}
-      aria-label={isMuted ? "Unmute topic notifications" : "Mute topic notifications"}
-      title={isMuted ? "Unmute notifications for this topic" : "Mute notifications for this topic"}
+      aria-label={isMuted ? t("topicMuteButton.unmuteTopicNotifications") : t("topicMuteButton.muteTopicNotifications")}
+      title={isMuted ? t("topicMuteButton.unmuteNotificationsForThisTopic") : t("topicMuteButton.muteNotificationsForThisTopic")}
       className={[
         "inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -115,7 +117,7 @@ export function TopicMuteButton({ topicId }: TopicMuteButtonProps) {
       ) : (
         <Bell className="h-3.5 w-3.5" />
       )}
-      {isMuted ? "Muted" : "Notify"}
+      {isMuted ? t("topicMuteButton.muted") : t("topicMuteButton.notify")}
     </button>
   );
 }

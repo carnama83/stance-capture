@@ -35,7 +35,7 @@ function EmbedCodePreview({ questionId }: { questionId: string }) {
           onClick={copy}
           className="text-xs text-slate-400 hover:text-white transition-colors"
         >
-          {copied ? "Copied ✓" : "Copy"}
+          {copied ? t("publisher.copied") : t("publisher.copy")}
         </button>
       </div>
       <pre className="p-4 text-xs text-emerald-400 font-mono leading-relaxed overflow-x-auto whitespace-pre-wrap">
@@ -164,7 +164,7 @@ function RegistrationForm() {
         className="w-full py-2.5 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
       >
         {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
-        {submitting ? "Submitting…" : "Apply for embed access"}
+        {submitting ? t("comments.submitting") : t("publisher.applyForEmbedAccess")}
       </button>
 
       <p className="text-[11px] text-slate-400 text-center">

@@ -141,7 +141,14 @@
     "cityOptional": "City (optional)",
     "loadingCities": "Loading cities…",
     "noCitiesAvailable": "(No cities available)",
-    "selectCity": "Select city"
+    "selectCity": "Select city",
+    "signupDebug": "Signup Debug",
+    "copyLogs": "Copy logs",
+    "debugEnabledVia": "Debug enabled via",
+    "debug1": "?debug=1",
+    "hashrouterSupportedOr": "(HashRouter supported) or",
+    "passwordIsNeverLogged": ". Password is never logged.",
+    "noLogsYet": "No logs yet."
   },
   "auth": {
     "emailRequired": "Email is required.",
@@ -552,7 +559,8 @@
     "contact": "Contact",
     "privacy": "Privacy",
     "tagline": "A civic-technology platform for capturing public opinion and revealing how views shift.",
-    "location": "Bhopal, India"
+    "location": "Bhopal, India",
+    "footer": "Footer"
   },
   "notFound": {
     "title": "Oops! Page not found",
@@ -591,7 +599,8 @@
     "following": "Following",
     "hide": "Hide",
     "sources": "Sources:",
-    "civicIncident": "Civic Incident"
+    "civicIncident": "Civic Incident",
+    "resolved": "Resolved:"
   },
   "comments": {
     "title": "Comments",
@@ -1149,7 +1158,8 @@
     "editingTheCaptionAboveWon": "Editing the caption above won't clear this — the check looks at what's actually said in your video, not the caption. Recording again is the only way to resubmit.",
     "reRecordVideo": "Re-record video",
     "stillBeingReviewedWeLl": "Still being reviewed — we'll let you know once it's ready.",
-    "thisQuestionIsLive": "This question is live."
+    "thisQuestionIsLive": "This question is live.",
+    "thisReadsAsLeadingTry": "This reads as leading — try asking more neutrally, without suggesting an answer."
   },
   "cognitive": {
     "errorLoadingCognitiveState": "Error loading cognitive state:",
@@ -1261,7 +1271,10 @@
     "pasteThisIntoAnyArticle": "Paste this into any article page. The widget finds the question, renders the slider, and handles everything else.",
     "reviewNotice": "We'll review your application and send your publisher credentials to {{email}} within 1 business day.",
     "legalNotice": "By applying you agree to Stance Capture's <terms>embed terms</terms>. Data collected via embeds is subject to our <privacy>privacy policy</privacy>.",
-    "browseQuestions": "Replace the question ID with any active Stance Capture question. Browse questions at <a>stancecapture.com/topics</a>."
+    "browseQuestions": "Replace the question ID with any active Stance Capture question. Browse questions at <a>stancecapture.com/topics</a>.",
+    "copied": "Copied ✓",
+    "copy": "Copy",
+    "applyForEmbedAccess": "Apply for embed access"
   },
   "topicHistoryDrawer": {
     "yourStance": "Your stance:",
@@ -1424,7 +1437,11 @@
     "logInToViewFollowed": "Log in to view followed topics",
     "searchTopics": "Search topics…",
     "noSummaryYet": "No summary yet.",
-    "loadMore": "Load more"
+    "loadMore": "Load more",
+    "seeAll": "See all",
+    "answeredTodayCount_one": "You answered {{count}} question today",
+    "answeredTodayCount_other": "You answered {{count}} questions today",
+    "seeAllInMyStances": "See all {{count}} in My stances →"
   },
   "todayQuestionsFeed": {
     "curatedByOurEditorialTeam": "Curated by our editorial team",
@@ -1612,5 +1629,258 @@
     "cityIdOptional": "City (ID optional)",
     "confirmLocation": "Confirm location",
     "overrideRecordedRawIpDiscarded": "Override recorded; raw IP discarded."
+  },
+  "topicMuteButton": {
+    "couldnTUpdateNotificationPreference": "Couldn't update notification preference",
+    "pleaseTryAgain": "Please try again.",
+    "unmuteTopicNotifications": "Unmute topic notifications",
+    "muteTopicNotifications": "Mute topic notifications",
+    "unmuteNotificationsForThisTopic": "Unmute notifications for this topic",
+    "muteNotificationsForThisTopic": "Mute notifications for this topic",
+    "muted": "Muted",
+    "notify": "Notify"
+  },
+  "threeTierTrending": {
+    "aroundTheWorld": "Around the World",
+    "trendingNow": "Trending Now",
+    "unableToLoadTrendingTopics": "Unable to load trending topics right now.",
+    "noTrendingTopicsYetCheck": "No trending topics yet. Check back soon!",
+    "thisWeek": "this week",
+    "signUpToSeeLocal": "<a>Sign up</a> to see trending topics in your area"
+  },
+  "forYouFeed": {
+    "questionsTailoredToYourInterests": "Questions tailored to your interests and location",
+    "loadingYourFeed": "Loading your feed...",
+    "failedToLoadFeed": "Failed to load feed:",
+    "noPersonalizedQuestionsYet": "No personalized questions yet.",
+    "followSomeTopicsOrAnswer": "Follow some topics or answer questions in your area to get personalized recommendations.",
+    "browseAllQuestions": "Browse All Questions"
+  },
+  "shareStats": {
+    "yourShares": "Your shares",
+    "noClicksYet": "No clicks yet",
+    "viewQuestion": "View question",
+    "shareCount_one": "{{count}} share",
+    "shareCount_other": "{{count}} shares",
+    "viewCount_one": "{{count}} view",
+    "viewCount_other": "{{count}} views",
+    "moreShared": "+{{n}} more shared questions"
+  },
+  "trendingAnswered": {
+    "checkingYourAnsweredQuestions": "Checking your answered questions…",
+    "questionsYouAnsweredWithUpdates": "Questions you answered — with updates",
+    "theseQuestionsYouVeWeighed": "These questions you've weighed in on are now trending or shifting.",
+    "communityNow": "Community now:",
+    "leaningAgree": "leaning agree",
+    "leaningDisagree": "leaning disagree",
+    "mixed": "mixed"
+  },
+  "publicLedger": {
+    "ledgerNotYetPublished": "Ledger not yet published",
+    "thisExpectationLedgerEitherDoesn": "This expectation ledger either doesn't exist yet or hasn't been published.",
+    "publicExpectationLedger": "Public Expectation Ledger",
+    "region": "Region:",
+    "responseStatus": "Response status",
+    "authority": "Authority",
+    "dataCollectedByStanceCapture": "Data collected by Stance Capture",
+    "respondentCount_one": "{{count}} respondent",
+    "respondentCount_other": "{{count}} respondents"
+  },
+  "socialAuthButtons": {
+    "continueWithGoogle": "Continue with Google",
+    "continueWithFacebook": "Continue with Facebook",
+    "continueWithApple": "Continue with Apple",
+    "legalNote": "By continuing, you agree to our <terms>Terms</terms> and <privacy>Privacy Policy</privacy>."
+  },
+  "notifications": {
+    "markAllRead": "Mark all read",
+    "notificationSettings": "Notification settings",
+    "couldnTLoadNotifications": "Couldn't load notifications.",
+    "youReAllCaughtUp": "You're all caught up.",
+    "followTopicsToGetActivity": "Follow topics to get activity updates, or answer more questions to receive stance shift alerts.",
+    "browseTopics": "Browse topics →"
+  },
+  "questionStanceSlider": {
+    "youChose": "You chose:",
+    "youReTheFirstTo": "You're the first to weigh in on this. We'll show you how others compare once more stances come in.",
+    "agreeShare": "{{pct}} of {{scope}} agrees with you",
+    "disagreeShare": "{{pct}} of {{scope}} disagrees with you"
+  },
+  "rationaleEditor": {
+    "editRationale": "Edit rationale",
+    "addRationale": "Add rationale",
+    "whyDoYouHoldThis": "Why do you hold this stance? (optional)",
+    "addASupportingLink": "Add a supporting link…",
+    "failedToSave": "Failed to save."
+  },
+  "usernameField": {
+    "chooseAUsername": "Choose a username"
+  },
+  "youVsCommunity": {
+    "yourPerspectiveInContext": "Your perspective in context",
+    "howYourViewsCompareAcross": "How your views compare across the topics you've answered.",
+    "loadingYourComparison": "Loading your comparison…",
+    "answerAFewQuestionsTo": "Answer a few questions to see how your views compare to others.",
+    "thisReflectsAggregatePatternsNot": "This reflects aggregate patterns, not right or wrong answers.",
+    "basedOnRespondents_one": "Based on {{count}} respondent.",
+    "basedOnRespondents_other": "Based on {{count}} respondents."
+  },
+  "cognitiveinsights": {
+    "yourCognitiveInsights": "Your Cognitive Insights",
+    "understandingYourStancePatternsAnd": "Understanding your stance patterns and engagement",
+    "recalculate": "Recalculate",
+    "yourCognitiveProfileCanBe": "Your cognitive profile can be updated based on your recent activity.",
+    "updateNow": "Update now",
+    "whatIsACognitiveProfile": "What is a Cognitive Profile?",
+    "yourCognitiveProfileIsAutomatically": "Your cognitive profile is automatically calculated from your responses to questions. It shows your overall stance patterns, consistency across topics, and engagement trends. This helps you understand your own thinking and see how it evolves over time."
+  },
+  "dobField": {
+    "month": "Month",
+    "year": "Year"
+  },
+  "latestQuestions": {
+    "latestQuestions": "Latest Questions",
+    "somethingWentWrongLoadingQuestions": "Something went wrong loading questions:",
+    "noQuestionsAreLiveYet": "No questions are live yet. Once you publish questions from the admin area, they'll appear here."
+  },
+  "stanceEvolutionTimeline": {
+    "firstAnswered": "First answered",
+    "reConfirmedStance": "Re-confirmed stance",
+    "loadingYourStanceHistory": "Loading your stance history…",
+    "couldNotLoadStanceHistory": "Could not load stance history. Please try again.",
+    "noStanceChangesYet": "No stance changes yet.",
+    "whenYouUpdateAPrevious": "When you update a previous answer, your evolution will appear here.",
+    "movedTowardAgreement": "Moved toward agreement (+{{diff}})",
+    "movedTowardDisagreement": "Moved toward disagreement ({{diff}})"
+  },
+  "notificationListItem": {
+    "yourArea": "Your area",
+    "vsNational": "vs national:",
+    "opinionShifted": "{{scope}} opinion shifted by {{delta}} points",
+    "opinionShiftedHere": "Opinion shifted by {{delta}} points in your area"
+  },
+  "weeklyDigest": {
+    "noDigestAvailableYet": "No digest available yet.",
+    "weeklyDigest": "Weekly Digest",
+    "closeDigest": "Close digest",
+    "topicsYouFollow": "Topics you follow",
+    "questionsYouAnswered": "Questions you answered",
+    "recommendedForYou": "Recommended for you"
+  },
+  "activeQuestionsFeed": {
+    "loadingQuestions": "Loading questions...",
+    "failedToLoadQuestions": "Failed to load questions.",
+    "noActiveQuestionsRightNow": "No active questions right now",
+    "checkBackSoonForNew": "Check back soon for new questions!",
+    "activeQuestions": "Active Questions",
+    "questionCount_one": "{{count}} question",
+    "questionCount_other": "{{count}} questions"
+  },
+  "questionPhaseBadge": {
+    "newDevelopmentsOnThisIssue": "New developments on this issue",
+    "resolution": "Resolution",
+    "thisIssueHasBeenResolved": "This issue has been resolved",
+    "continuedDiscussionOfThisTopic": "Continued discussion of this topic"
+  },
+  "stanceSnapshot": {
+    "yourStanceSnapshot": "Your stance snapshot",
+    "thisIsAReflectionOf": "This is a reflection of how you've responded so far. It's not a score — just a snapshot in time.",
+    "loadingYourSnapshot": "Loading your snapshot…",
+    "couldNotLoadSnapshotRight": "Could not load snapshot right now.",
+    "asYouAnswerMoreQuestions": "As you answer more questions, patterns will begin to appear here.",
+    "onTheseQuestionsYou": "On these questions, you {{sentence}}"
+  },
+  "tradeoffExplorer": {
+    "analysingTradeOffs": "Analysing trade-offs…",
+    "couldNotExtractTradeOffs": "Could not extract trade-offs for this question.",
+    "adjustTheSlidersToReflect": "Adjust the sliders to reflect what matters most to you, then record your stance below.",
+    "yourPriorityWeightsAreSaved": "Your priority weights are saved privately and will be here when you return to this question.",
+    "leaningOnThisQuestion": "{{leaning}} on this question."
+  },
+  "electionQuestion": {
+    "stanceSubmissionPaused": "Stance submission paused.",
+    "electoralSilencePeriodIsActive": "Electoral silence period is active (RPA 1951 §126). Submissions reopen after polling closes.",
+    "election": "Election",
+    "yourCandidate": "Your candidate:"
+  },
+  "stanceSparkline": {
+    "history": "History",
+    "loadingHistory": "Loading history…",
+    "noChangesYetYouVe": "No changes yet — you've answered this question once.",
+    "firstAnswer": "First answer:",
+    "changedFromTo": "Changed"
+  },
+  "whatsAppSignin": {
+    "thisSignInLinkIs": "This sign-in link is missing its token. Please use the link from your WhatsApp message.",
+    "signInLinkProblem": "Sign-in link problem",
+    "signingYouIn": "Signing you in…"
+  },
+  "moderatoronly": {
+    "error": "Error",
+    "noAccess": "No access",
+    "youNeedModeratorOrAdministrator": "You need moderator or administrator access to view this page."
+  },
+  "youVsCommunityPhrase": {
+    "answerMore": "Answer a few more questions to see how your views compare.",
+    "overallAgree": "On the topics you've answered, your views tend to lean more toward agreement than most respondents.",
+    "overallDisagree": "On the topics you've answered, your views tend to lean more toward disagreement than most respondents.",
+    "overallInLine": "On the topics you've answered, your views are broadly in line with the overall community.",
+    "deltaStrongAgree": "You lean noticeably more toward agreement here than others.",
+    "deltaLeanAgree": "You lean somewhat more toward agreement here.",
+    "deltaStrongDisagree": "You lean noticeably more toward disagreement here than others.",
+    "deltaLeanDisagree": "You lean somewhat more toward disagreement here.",
+    "deltaClose": "Your view is close to the community average here.",
+    "fairlySplit": "Community is fairly split",
+    "leanAgreePct": "~{{pct}}% lean toward agreement",
+    "leanDisagreePct": "~{{pct}}% lean toward disagreement",
+    "mostLeanAgree": "Most people lean toward agreement",
+    "mostLeanDisagree": "Most people lean toward disagreement"
+  },
+  "snapshotSentence": {
+    "genericStrongSupport": "tend to strongly support this area.",
+    "genericLeanSupport": "tend to lean in favour of this area.",
+    "genericStrongOppose": "tend to strongly oppose this area.",
+    "genericLeanOppose": "tend to lean against this area.",
+    "genericMixed": "have mixed views in this area.",
+    "envStrongSupport": "tend to strongly support stronger environmental regulation.",
+    "envLeanSupport": "tend to support action on environmental issues.",
+    "envStrongOppose": "tend to strongly oppose current environmental policy direction.",
+    "envLeanOppose": "tend to be cautious about environmental regulation.",
+    "envMixed": "have a mixed view on environmental policy.",
+    "housingStrongSupport": "tend to strongly support housing reform.",
+    "housingLeanSupport": "tend to lean toward more housing intervention.",
+    "housingStrongOppose": "tend to strongly oppose current housing policy direction.",
+    "housingLeanOppose": "are generally cautious about housing policy changes.",
+    "housingMixed": "have mixed views on housing policy.",
+    "econStrongSupport": "tend to strongly support economic intervention.",
+    "econLeanSupport": "generally lean toward economic reform.",
+    "econStrongOppose": "tend to strongly oppose the current economic direction.",
+    "econLeanOppose": "tend to favour a more conservative economic approach.",
+    "econMixed": "have a balanced view on economic policy.",
+    "techStrongSupport": "tend to strongly support technology regulation and oversight.",
+    "techLeanSupport": "are generally in favour of more technology oversight.",
+    "techStrongOppose": "tend to strongly oppose increased tech regulation.",
+    "techLeanOppose": "tend to be cautious about technology regulation.",
+    "techMixed": "have nuanced views on technology policy.",
+    "healthStrongSupport": "tend to strongly support investment in public health.",
+    "healthLeanSupport": "generally lean toward stronger healthcare provision.",
+    "healthStrongOppose": "tend to strongly oppose the current healthcare direction.",
+    "healthLeanOppose": "tend to favour market-led approaches to healthcare.",
+    "healthMixed": "have mixed views on healthcare policy.",
+    "eduStrongSupport": "tend to strongly support increased education investment.",
+    "eduLeanSupport": "generally lean toward more investment in education.",
+    "eduStrongOppose": "tend to strongly oppose the current education direction.",
+    "eduLeanOppose": "tend to favour more choice and autonomy in education.",
+    "eduMixed": "have mixed views on education policy.",
+    "immStrongSupport": "tend to strongly support more open immigration policy.",
+    "immLeanSupport": "generally lean toward more welcoming immigration policy.",
+    "immStrongOppose": "tend to strongly support stricter immigration controls.",
+    "immLeanOppose": "tend to favour tighter immigration policy.",
+    "immMixed": "have a nuanced view on immigration.",
+    "justiceStrongSupport": "tend to strongly support reform of the justice system.",
+    "justiceLeanSupport": "generally lean toward criminal justice reform.",
+    "justiceStrongOppose": "tend to strongly support tougher law enforcement.",
+    "justiceLeanOppose": "tend to favour a more traditional approach to law and order.",
+    "justiceMixed": "have mixed views on criminal justice."
   }
 }

@@ -11,6 +11,7 @@ import { MessageSquare } from 'lucide-react';
 import { ShareButton } from '@/components/share/ShareButton';
 // Epic EL: election question card variant
 import { ElectionQuestionCard } from './ElectionQuestionCard';
+import { useTranslation } from "react-i18next";
 
 interface QuestionCardProps {
   question: QuestionWithLifecycle & {
@@ -27,6 +28,7 @@ export function QuestionCard({
   showCover = true,
   className = '',
 }: QuestionCardProps) {
+  const { t } = useTranslation();
   const ageDays = calculateAgeDays(question.published_at);
 
   // Epic EL: dispatch to election card variant for election questions
@@ -73,13 +75,13 @@ export function QuestionCard({
           
           {question.is_featured && (
             <Badge variant="secondary" className="bg-purple-100 text-purple-700 text-xs">
-              ⭐ Featured
+              {t("threeTierQuestionsFeed.featured")}
             </Badge>
           )}
           
           {question.is_resolved && (
             <Badge variant="secondary" className="bg-green-100 text-green-700 text-xs">
-              ✅ Resolved
+              {t("threeTierQuestionsFeed.resolved")}
             </Badge>
           )}
         </div>
@@ -121,7 +123,7 @@ export function QuestionCard({
               <span className="font-medium text-blue-600">
                 {Math.round(question.engagement.response_rate_24h)}
               </span>
-              <span className="ml-1">today</span>
+              <span className="ml-1">{t("threeTierQuestionsFeed.today")}</span>
             </div>
           )}
 
@@ -139,7 +141,7 @@ export function QuestionCard({
       {/* Resolution summary */}
       {question.is_resolved && question.resolution_summary && (
         <div className="mt-3 p-2 bg-green-50 border border-green-200 rounded text-sm">
-          <span className="font-semibold text-green-800">Resolved: </span>
+          <span className="font-semibold text-green-800">{t("question.resolved")} </span>
           <span className="text-green-700">{question.resolution_summary}</span>
         </div>
       )}

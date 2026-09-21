@@ -6,6 +6,7 @@
 import * as React from "react";
 import { getSupabase } from "@/lib/supabaseClient";
 import { Loader2 } from "lucide-react";
+import { Trans, useTranslation } from "react-i18next";
 
 type Provider = "google" | "facebook" | "apple";
 
@@ -65,24 +66,24 @@ function AppleIcon() {
 
 const PROVIDER_CONFIG: Record<
   Provider,
-  { label: string; icon: React.ReactNode; bgClass: string; textClass: string; borderClass: string }
+  { labelKey: string; icon: React.ReactNode; bgClass: string; textClass: string; borderClass: string }
 > = {
   google: {
-    label: "Continue with Google",
+    labelKey: "socialAuthButtons.continueWithGoogle",
     icon: <GoogleIcon />,
     bgClass: "bg-white hover:bg-gray-50",
     textClass: "text-gray-700",
     borderClass: "border-gray-300",
   },
   facebook: {
-    label: "Continue with Facebook",
+    labelKey: "socialAuthButtons.continueWithFacebook",
     icon: <FacebookIcon />,
     bgClass: "bg-[#1877F2] hover:bg-[#166FE5]",
     textClass: "text-white",
     borderClass: "border-transparent",
   },
   apple: {
-    label: "Continue with Apple",
+    labelKey: "socialAuthButtons.continueWithApple",
     icon: <AppleIcon />,
     bgClass: "bg-black hover:bg-gray-900",
     textClass: "text-white",
@@ -108,6 +109,7 @@ function SocialButton({
   loading: boolean;
   onClick: () => void;
 }) {
+  const { t } = useTranslation();
   const cfg = PROVIDER_CONFIG[provider];
   return (
     <button
@@ -121,14 +123,14 @@ function SocialButton({
         cfg.textClass,
         cfg.borderClass,
       ].join(" ")}
-      aria-label={cfg.label}
+      aria-label={t(cfg.labelKey)}
     >
       {loading ? (
         <Loader2 className="h-4 w-4 animate-spin" />
       ) : (
         cfg.icon
       )}
-      <span>{cfg.label}</span>
+      <span>{t(cfg.labelKey)}</span>
     </button>
   );
 }
@@ -136,6 +138,7 @@ function SocialButton({
 // ─── Main component ────────────────────────────────────────────────────────────
 
 export default function SocialAuthButtons({ mode, onError }: SocialAuthButtonsProps) {
+  const { t } = useTranslation();
   const sb = React.useMemo(getSupabase, []);
   const [loadingProvider, setLoadingProvider] = React.useState<Provider | null>(null);
 
@@ -212,15 +215,13 @@ export default function SocialAuthButtons({ mode, onError }: SocialAuthButtonsPr
 
       {/* Apple legal note — required by Apple HIG */}
       <p className="text-center text-[11px] text-slate-400 leading-relaxed">
-        By continuing, you agree to our{" "}
-        <a href="/terms" className="underline">
-          Terms
-        </a>{" "}
-        and{" "}
-        <a href="/privacy" className="underline">
-          Privacy Policy
-        </a>
-        .
+        <Trans
+          i18nKey="socialAuthButtons.legalNote"
+          components={{
+            terms: <a href="/terms" className="underline" />,
+            privacy: <a href="/privacy" className="underline" />,
+          }}
+        />
       </p>
     </div>
   );

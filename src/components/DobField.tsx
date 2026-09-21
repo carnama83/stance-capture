@@ -2,6 +2,7 @@
 // M-A08: Replaced <input type="date"> with month/day/year selects for
 // consistent cross-browser, cross-locale rendering.
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
@@ -29,6 +30,7 @@ interface DobFieldProps {
 }
 
 export function DobField({ value, setValue, error: externalError, containerRef }: DobFieldProps) {
+  const { t } = useTranslation();
   const parsed = React.useMemo(() => {
     if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return { y: "", m: "", d: "" };
     const [y, m, d] = value.split("-");
@@ -79,25 +81,25 @@ export function DobField({ value, setValue, error: externalError, containerRef }
   return (
     <div className="space-y-1" ref={containerRef}>
       <div className="flex gap-2">
-        <select aria-label="Month" className={`${sel} flex-1`} value={month}
+        <select aria-label={t("dobField.month")} className={`${sel} flex-1`} value={month}
           onChange={(e) => update(year, e.target.value, day)}>
-          <option value="">Month</option>
+          <option value="">{t("dobField.month")}</option>
           {MONTHS.map((name, i) => (
             <option key={i + 1} value={String(i + 1)}>{name}</option>
           ))}
         </select>
 
-        <select aria-label="Day" className={`${sel} w-20`} value={day}
+        <select aria-label={t("settingsNotif.day")} className={`${sel} w-20`} value={day}
           onChange={(e) => update(year, month, e.target.value)}>
-          <option value="">Day</option>
+          <option value="">{t("settingsNotif.day")}</option>
           {dayRange.map((d) => (
             <option key={d} value={String(d)}>{d}</option>
           ))}
         </select>
 
-        <select aria-label="Year" className={`${sel} w-24`} value={year}
+        <select aria-label={t("dobField.year")} className={`${sel} w-24`} value={year}
           onChange={(e) => update(e.target.value, month, day)}>
-          <option value="">Year</option>
+          <option value="">{t("dobField.year")}</option>
           {yearRange.map((y) => (
             <option key={y} value={String(y)}>{y}</option>
           ))}

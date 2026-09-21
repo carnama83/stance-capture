@@ -17,6 +17,7 @@ import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { getStanceColorHex } from "@/lib/stanceColors";
 import { Loader2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 type HistoryRow = {
   id: string;
@@ -38,16 +39,17 @@ const STANCE_LABEL: Record<number, string> = {
 };
 
 function directionLabel(oldScore: number | null, newScore: number): {
-  text: string;
+  key: string;
+  diff?: number;
   color: string;
 } {
   if (oldScore === null) {
-    return { text: "First answered", color: "#888780" };
+    return { key: "stanceEvolutionTimeline.firstAnswered", color: "#888780" };
   }
   const diff = newScore - oldScore;
-  if (diff > 0)  return { text: `Moved toward agreement (+${diff})`, color: "#639922" };
-  if (diff < 0)  return { text: `Moved toward disagreement (${diff})`, color: "#D85A30" };
-  return         { text: "Re-confirmed stance", color: "#888780" };
+  if (diff > 0)  return { key: "stanceEvolutionTimeline.movedTowardAgreement", diff, color: "#639922" };
+  if (diff < 0)  return { key: "stanceEvolutionTimeline.movedTowardDisagreement", diff, color: "#D85A30" };
+  return         { key: "stanceEvolutionTimeline.reConfirmedStance", color: "#888780" };
 }
 
 function timeAgo(iso: string): string {
@@ -68,6 +70,7 @@ interface StanceEvolutionTimelineProps {
 export default function StanceEvolutionTimeline({
   limit = 20,
 }: StanceEvolutionTimelineProps) {
+  const { t } = useTranslation();
   const { data, isLoading, isError } = useQuery<HistoryRow[]>({
     queryKey: ["s1-stance-evolution", limit],
     staleTime: 5 * 60_000,
@@ -135,7 +138,7 @@ export default function StanceEvolutionTimeline({
     return (
       <div className="flex items-center gap-2 py-4 text-xs text-slate-400">
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        Loading your stance history…
+        {t("stanceEvolutionTimeline.loadingYourStanceHistory")}
       </div>
     );
   }
@@ -143,7 +146,7 @@ export default function StanceEvolutionTimeline({
   if (isError) {
     return (
       <p className="text-xs text-red-500 py-2">
-        Could not load stance history. Please try again.
+        {t("stanceEvolutionTimeline.couldNotLoadStanceHistory")}
       </p>
     );
   }
@@ -151,9 +154,9 @@ export default function StanceEvolutionTimeline({
   if (!data || data.length === 0) {
     return (
       <div className="rounded-xl border border-slate-100 bg-slate-50 px-5 py-6 text-center">
-        <p className="text-sm text-slate-500">No stance changes yet.</p>
+        <p className="text-sm text-slate-500">{t("stanceEvolutionTimeline.noStanceChangesYet")}</p>
         <p className="text-xs text-slate-400 mt-1">
-          When you update a previous answer, your evolution will appear here.
+          {t("stanceEvolutionTimeline.whenYouUpdateAPrevious")}
         </p>
       </div>
     );
@@ -208,7 +211,7 @@ export default function StanceEvolutionTimeline({
                   className="text-[11px] font-medium"
                   style={{ color: direction.color }}
                 >
-                  {direction.text}
+                  {t(direction.key, { diff: direction.diff })}
                 </span>
               </div>
             </div>

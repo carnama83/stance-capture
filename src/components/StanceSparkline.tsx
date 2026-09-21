@@ -5,6 +5,7 @@
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getSupabase } from "@/lib/supabaseClient";
+import { useTranslation } from "react-i18next";
 
 interface HistoryPoint {
   id: string;
@@ -53,6 +54,7 @@ function fmtDelta(delta: number | null, period: "week" | "month"): string | null
 }
 
 export function StanceSparkline({ questionId, currentScore }: StanceSparklineProps) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = React.useState(false);
 
   const { data: history, isLoading } = useQuery<HistoryPoint[]>({
@@ -118,19 +120,19 @@ export function StanceSparkline({ questionId, currentScore }: StanceSparklinePro
         onClick={() => setExpanded((v) => !v)}
         className="flex items-center gap-1.5 text-[10px] text-slate-500 hover:text-slate-700 transition-colors"
       >
-        <span className="font-medium">History</span>
+        <span className="font-medium">{t("stanceSparkline.history")}</span>
         <span>{expanded ? "▲" : "▼"}</span>
       </button>
 
       {expanded && (
         <div className="mt-1.5 space-y-1.5">
           {isLoading && (
-            <p className="text-[10px] text-slate-400">Loading history…</p>
+            <p className="text-[10px] text-slate-400">{t("stanceSparkline.loadingHistory")}</p>
           )}
 
           {!isLoading && !hasHistory && (
             <p className="text-[10px] text-slate-400 italic">
-              No changes yet — you've answered this question once.
+              {t("stanceSparkline.noChangesYetYouVe")}
             </p>
           )}
 
@@ -198,7 +200,7 @@ export function StanceSparkline({ questionId, currentScore }: StanceSparklinePro
                     <span className="text-slate-400 w-16 shrink-0">{formatDate(p.changed_at)}</span>
                     {i === 0 ? (
                       <span>
-                        First answer:{" "}
+                        {t("stanceSparkline.firstAnswer")}{" "}
                         <span
                           className="font-medium"
                           style={{ color: SCORE_COLOR[p.new_score] }}

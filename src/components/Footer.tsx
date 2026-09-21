@@ -26,13 +26,13 @@ export default function Footer() {
     <footer style={styles.footer}>
       <div style={styles.inner}>
         <div style={styles.brandCol}>
-          <p style={styles.brand}>Stance Capture</p>
+          <p style={styles.brand}>{t("about.stanceCapture")}</p>
           <p style={styles.tagline}>
             {t("footer.tagline")}
           </p>
         </div>
 
-        <nav style={styles.nav} aria-label="Footer">
+        <nav style={styles.nav} aria-label={t("footer.footer")}>
           <a style={styles.navLink} href="#/about">
             {t("footer.about")}
           </a>
@@ -46,7 +46,7 @@ export default function Footer() {
       </div>
 
       <div style={styles.bottomBar}>
-        <span>© {new Date().getFullYear()} Stance Capture</span>
+        <span>© {new Date().getFullYear()} {t("about.stanceCapture")}</span>
         <span style={styles.dot}>·</span>
         <span>{t("footer.location")}</span>
       </div>
