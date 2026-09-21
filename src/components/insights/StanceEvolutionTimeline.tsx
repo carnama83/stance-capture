@@ -12,6 +12,7 @@
 // needed here — removed to reduce query complexity and silent empty results.
 
 import * as React from "react";
+import { STANCE_LABEL_KEYS } from "@/lib/stanceLabelKeys";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -30,13 +31,7 @@ type HistoryRow = {
   topic_id: string | null;
 };
 
-const STANCE_LABEL: Record<number, string> = {
-  [-2]: "Strongly disagree",
-  [-1]: "Disagree",
-  [0]:  "Neutral",
-  [1]:  "Agree",
-  [2]:  "Strongly agree",
-};
+
 
 function directionLabel(oldScore: number | null, newScore: number): {
   key: string;
@@ -195,16 +190,16 @@ export default function StanceEvolutionTimeline({
               <div className="flex items-center gap-3 mt-1.5 flex-wrap">
                 {row.old_score !== null && (
                   <span className="text-[11px] text-slate-400">
-                    {STANCE_LABEL[row.old_score] ?? row.old_score}
+                    {STANCE_LABEL_KEYS[row.old_score] ? t(STANCE_LABEL_KEYS[row.old_score]) : row.old_score}
                     <span className="mx-1 text-slate-300">→</span>
                     <span style={{ color: newColor }} className="font-medium">
-                      {STANCE_LABEL[row.new_score] ?? row.new_score}
+                      {STANCE_LABEL_KEYS[row.new_score] ? t(STANCE_LABEL_KEYS[row.new_score]) : row.new_score}
                     </span>
                   </span>
                 )}
                 {row.old_score === null && (
                   <span className="text-[11px] font-medium" style={{ color: newColor }}>
-                    {STANCE_LABEL[row.new_score] ?? row.new_score}
+                    {STANCE_LABEL_KEYS[row.new_score] ? t(STANCE_LABEL_KEYS[row.new_score]) : row.new_score}
                   </span>
                 )}
                 <span

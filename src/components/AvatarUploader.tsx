@@ -291,7 +291,7 @@ export default function AvatarUploader({
       const { data } = client.storage.from("avatars").getPublicUrl(newPath);
       // Append cache-busting param so replaced avatars show immediately
       const url  = `${data.publicUrl}?t=${ts}`;
-      const alt  = `Avatar of @${handle}`;
+      const alt  = t("avatarUploader.avatarOf", { handle });
 
       // avatars table insert is best-effort — failure doesn't block the upload
       try {
@@ -348,7 +348,7 @@ export default function AvatarUploader({
         {currentUrl && (
           <img
             src={currentUrl}
-            alt={`Avatar of @${handle}`}
+            alt={t("avatarUploader.avatarOf", { handle })}
             className="h-16 w-16 rounded-full object-cover border"
           />
         )}

@@ -336,7 +336,7 @@ function WhatsAppPhoneSection({ sb, uid }: WhatsAppPhoneSectionProps) {
           body: JSON.stringify({
             phone_number:      phone,
             question_id:       "00000000-0000-0000-0000-000000000000",
-            question_text:     "Phone verification",
+            question_text:     t("settingsProfile.phoneVerification"),
             question_summary:  "verification_otp",
             verification_mode: true,
           }),

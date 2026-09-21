@@ -6,6 +6,7 @@
 // question_stance_stats (avg_score shift vs user's own score).
 
 import * as React from "react";
+import { STANCE_LABEL_KEYS } from "@/lib/stanceLabelKeys";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { getSupabase } from "@/lib/supabaseClient";
@@ -173,13 +174,7 @@ function SignalBadge({ signal, label }: { signal: TrendingAnsweredRow["signal"];
   );
 }
 
-const STANCE_SHORT: Record<number, string> = {
-  [-2]: "Strongly disagree",
-  [-1]: "Disagree",
-  [0]: "Neutral",
-  [1]: "Agree",
-  [2]: "Strongly agree",
-};
+
 
 interface TrendingAnsweredCardProps {
   userId: string;
@@ -246,7 +241,7 @@ export default function TrendingAnsweredCard({ userId }: TrendingAnsweredCardPro
               <span>
                 {t("topicHistoryDrawer.yourStance")}{" "}
                 <span className="font-medium text-slate-700">
-                  {STANCE_SHORT[row.user_score] ?? row.user_score}
+                  {STANCE_LABEL_KEYS[row.user_score] ? t(STANCE_LABEL_KEYS[row.user_score]) : row.user_score}
                 </span>
               </span>
               {row.signal === "shifted" && row.community_avg_score !== null && (

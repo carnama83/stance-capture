@@ -236,7 +236,10 @@ function TopicNotificationsSection() {
                 type="button"
                 role="switch"
                 aria-checked={!isMuted}
-                aria-label={`${isMuted ? t("settingsNotif.unmute") : t("settingsNotif.mute")} notifications for ${topic.topic_title}`}
+                aria-label={t(
+                  isMuted ? "settingsNotif.unmuteTopicAria" : "settingsNotif.muteTopicAria",
+                  { topic: topic.topic_title }
+                )}
                 disabled={isPending}
                 onClick={() => setMute({ topicId: topic.topic_id, muted: !isMuted })}
                 className={[

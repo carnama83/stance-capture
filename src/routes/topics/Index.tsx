@@ -77,10 +77,10 @@ function formatDateShort(iso?: string | null) {
 function trendLabel(score?: number | null, activity?: number | null) {
   const s = score ?? 0;
   const a = activity ?? 0;
-  if (a >= 20 || s >= 80) return "Very hot";
-  if (a >= 10 || s >= 50) return "Heating up";
-  if (a >= 3 || s >= 20) return "Some activity";
-  return "Quiet";
+  if (a >= 20 || s >= 80) return "trendLabel.veryHot";
+  if (a >= 10 || s >= 50) return "trendLabel.heatingUp";
+  if (a >= 3 || s >= 20) return "trendLabel.someActivity";
+  return "trendLabel.quiet";
 }
 
 type TabKey = "trending" | "all" | "following";
@@ -421,7 +421,7 @@ export default function TopicsIndex() {
                       {showTrending && (
                         <div className="text-[11px] text-slate-700 flex items-center gap-2">
                           <span className="inline-flex items-center rounded-full border px-2 py-0.5 bg-slate-50">
-                            {trendLabel(score, activity)}
+                            {tr(trendLabel(score, activity))}
                           </span>
                           <span className="tabular-nums">
                             {Math.round(score)} · {activity} / 7d

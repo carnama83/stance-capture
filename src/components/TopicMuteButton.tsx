@@ -84,8 +84,8 @@ export function TopicMuteButton({ topicId }: TopicMuteButtonProps) {
     setState(nextMuted);
     toast({
       title: nextMuted
-        ? "Topic notifications muted"
-        : "Topic notifications unmuted",
+        ? t("topicMuteButton.notificationsMuted")
+        : t("topicMuteButton.notificationsUnmuted"),
     });
   }
 
