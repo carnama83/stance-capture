@@ -14,6 +14,7 @@
  */
 
 import { CSSProperties } from "react";
+import { CONTACT_EMAIL, CONTACT_MAILTO } from "@/lib/contact";
 import PageLayout from "@/components/PageLayout";
 import { useTranslation } from "react-i18next";
 
@@ -53,8 +54,8 @@ export default function About() {
           <h2 style={styles.h2}>{t("footer.contact")}</h2>
           <p style={styles.body}>
             {t("about.forQuestionsFeedbackOrPress")}{" "}
-            <a style={styles.link} href="mailto:no-reply@stance-capture.com">
-              {t("about.noReplyStanceCaptureCom")}
+            <a style={styles.link} href={CONTACT_MAILTO}>
+              {CONTACT_EMAIL}
             </a>
             .
           </p>
