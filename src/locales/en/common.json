@@ -709,7 +709,12 @@
     "saved": "Saved",
     "open": "Open →",
     "home": "Home",
-    "updated": "Updated"
+    "updated": "Updated",
+    "stancesRecordedCount_one": "{{count}} stance recorded",
+    "stancesRecordedCount_other": "{{count}} stances recorded",
+    "stanceCount_one": "{{count}} stance",
+    "stanceCount_other": "{{count}} stances",
+    "plusMore": "+{{n}} more"
   },
   "myStances": {
     "title": "My stances",
@@ -738,7 +743,13 @@
     "revise": "Revise",
     "updated": "Updated: {{date}}",
     "exportFailedTitle": "Export failed",
-    "exportFailedBody": "Export failed. Please try again."
+    "exportFailedBody": "Export failed. Please try again.",
+    "exporting": "Exporting…",
+    "export": "Export",
+    "hideTopicHistory": "Hide topic history",
+    "showTopicHistory": "Show topic history",
+    "hideHistory": "Hide history",
+    "topicHistory": "Topic history"
   },
   "quickTakes": {
     "title": "Today's quick takes",
@@ -1477,5 +1488,129 @@
     "thisIsWhatShowsAs2": "This is what shows as your question text. Your original video and voice stay exactly as recorded either way.",
     "submitQuestion": "Submit question",
     "reRecord": "Re-record"
+  },
+  "avatarUploader": {
+    "cropYourAvatar": "Crop your avatar",
+    "dragTheWhiteSquareTo": "Drag the white square to reposition. Use the slider to resize.",
+    "cropSize": "Crop size",
+    "useThisCrop": "Use this crop",
+    "useJpgPngWebp": "Use JPG/PNG/WebP",
+    "max5mb": "Max 5MB",
+    "min200200px": "Min 200×200px",
+    "uploaded": "Uploaded.",
+    "supabaseOff": "Supabase OFF",
+    "removedFallbackInUse": "Removed (fallback in use).",
+    "replaceAvatar": "Replace avatar",
+    "uploadAvatar": "Upload avatar",
+    "removeAvatar": "Remove avatar",
+    "uploading": "Uploading…"
+  },
+  "oAuthCallback": {
+    "supabaseClientUnavailableCheckEnvironment": "Supabase client unavailable. Check environment variables.",
+    "noAuthenticationDataFoundPlease": "No authentication data found. Please try signing in again.",
+    "confirmingYourEmail": "Confirming your email…",
+    "exchangingAuthorizationCode": "Exchanging authorization code…",
+    "incompleteAuthenticationResponsePleaseTry": "Incomplete authentication response. Please try again.",
+    "verifyingYourAccount": "Verifying your account…",
+    "couldNotEstablishSessionPlease": "Could not establish session. Please try again.",
+    "signInFailed": "Sign-in failed",
+    "backToLogin": "Back to login",
+    "settingUpYourProfile": "Setting up your profile…",
+    "savingAccountConnection": "Saving account connection…"
+  },
+  "personalizedFeed": {
+    "failedToLoadYourPersonalized": "Failed to load your personalized feed.",
+    "error": "Error:",
+    "tryRefreshingThePage": "Try refreshing the page",
+    "noQuestionsAvailable": "No questions available",
+    "checkBackLaterForNew": "Check back later for new questions tailored to your interests.",
+    "newUpdate": "New Update",
+    "new": "🆕 New",
+    "youAnswered": "✓ You answered"
+  },
+  "expectationSignalBlock": {
+    "yourResponseIsIncludedAnonymously": "Your response is included, anonymously.",
+    "peopleInYourRegionOverwhelmingly": "People in your region overwhelmingly expect action. Would you like this expectation to be made visible?",
+    "yesIncludeMyResponseAnonymously": "Yes, include my response anonymously",
+    "viewSummaryOnly": "View summary only",
+    "whatRegionExpects": "What {{region}} respondents expect",
+    "whatRespondentsExpect": "What respondents expect",
+    "basedOnRespondents_one": "Based on {{count}} respondent.",
+    "basedOnRespondents_other": "Based on {{count}} respondents."
+  },
+  "resetPassword": {
+    "supabaseIsOff": "Supabase is OFF.",
+    "checkYourEmailForThe": "Check your email for the reset link.",
+    "passwordUpdatedYouCanLog": "Password updated. You can log in now.",
+    "resetPassword": "Reset password",
+    "yourEmail": "Your email",
+    "sendResetLink": "Send reset link",
+    "newPassword": "New password",
+    "updating": "Updating…",
+    "setNewPassword": "Set new password"
+  },
+  "settingsLayout": {
+    "settings": "Settings",
+    "manageYourAccountPreferencesAnd": "Manage your account preferences and privacy settings"
+  },
+  "videoPublishChoice": {
+    "rawVideoWithNeutralOverlay": "Raw video with neutral overlay (recommended)",
+    "yourVideoPlaysAsRecorded": "Your video plays as recorded. A neutral title and question sit alongside it — never gated behind watching the clip.",
+    "rawVideoOnly": "Raw video only",
+    "justYourVideoExactlyAs": "Just your video, exactly as recorded — no overlay text.",
+    "beforeYouPublish": "Before you publish",
+    "reRecordInstead": "Re-record instead",
+    "howShouldThisBePublished": "How should this be published?"
+  },
+  "questionDetail": {
+    "stronglyOppose": "Strongly oppose",
+    "stronglySupport": "Strongly support",
+    "failedToLoadQuestion": "Failed to load question:"
+  },
+  "topicDetail": {
+    "pleaseTryAgainOrGo": "Please try again or go back to topics."
+  },
+  "feedFilters": {
+    "active": "Active",
+    "cooling": "Cooling",
+    "dormant": "Dormant",
+    "filters": "Filters",
+    "filterQuestions": "Filter Questions",
+    "clearAll": "Clear all",
+    "questionStatus": "Question Status",
+    "showQuestionsIVeAlready": "Show questions I've already answered"
+  },
+  "communityStanceBar": {
+    "strongConviction": "Strong conviction",
+    "stronglyPolarised": "Strongly polarised",
+    "genuinelyUncertain": "Genuinely uncertain",
+    "yourStanceIsnTCounted": "▲ Your stance isn't counted yet — opt in below to add it.",
+    "yourStanceCounted": "Your stance (counted)",
+    "yourStanceNotCountedYet": "Your stance — not counted yet",
+    "you": "you",
+    "refreshCommunityStance": "Refresh community stance"
+  },
+  "inlineQuestionStanceEditor": {
+    "couldnTUpdateYourStance": "Couldn't update your stance",
+    "logInToAnswer": "Log in to answer",
+    "createAnAccountOrLog": "Create an account or log in to record your stance on this question.",
+    "wantToRecordYourStance": "Want to record your stance?"
+  },
+  "sinceLastVisit": {
+    "sinceYouLastVisited": "Since You Last Visited",
+    "whatSChangedInThe": "What's changed in the community while you were away.",
+    "loadingUpdates": "Loading updates…",
+    "unableToLoadUpdatesPlease": "Unable to load updates. Please try again.",
+    "noDataAvailable": "No data available.",
+    "thingsHaveBeenRelativelySteady": "Things have been relatively steady while you were away.",
+    "awayFor": "You were away for {{duration}}.",
+    "shiftOnAverage": "Shift: {{delta}} on average"
+  },
+  "locationPicker": {
+    "countryId": "Country (ID)",
+    "stateIdOptional": "State (ID optional)",
+    "cityIdOptional": "City (ID optional)",
+    "confirmLocation": "Confirm location",
+    "overrideRecordedRawIpDiscarded": "Override recorded; raw IP discarded."
   }
 }

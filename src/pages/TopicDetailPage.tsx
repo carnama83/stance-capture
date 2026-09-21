@@ -508,7 +508,7 @@ export default function TopicDetailPage() {
         <div className="font-medium mb-1">{t("topicPage.loadFailed")}</div>
         <div>
           {(topicErrorObj as Error)?.message ??
-            "Please try again or go back to topics."}
+            t("topicDetail.pleaseTryAgainOrGo")}
         </div>
         <button
           type="button"
@@ -583,15 +583,15 @@ export default function TopicDetailPage() {
                   {topic.tier && (
                     <span className="text-[10px] uppercase tracking-wide">
                       {topic.tier === "city"
-                        ? "City"
+                        ? t("pulsePage.city")
                         : topic.tier === "county"
-                        ? "County"
+                        ? t("signup.countyLabel")
                         : topic.tier === "state"
-                        ? "State"
+                        ? t("pulsePage.state")
                         : topic.tier === "country"
-                        ? "Country"
+                        ? t("signup.countryLabel")
                         : topic.tier === "global"
-                        ? "Global"
+                        ? t("home.globalTab")
                         : topic.tier}
                     </span>
                   )}
@@ -666,7 +666,7 @@ export default function TopicDetailPage() {
                 <div className="flex flex-col items-end">
                   <span className="text-[10px] text-slate-500">{t("topicPage.sevenDayActivity")}</span>
                   <span className="text-xs font-semibold">
-                    {activity} {activity === 1 ? "stance recorded" : "stances recorded"}
+                    {t("common.stancesRecordedCount", { count: activity })}
                   </span>
                 </div>
               </div>
@@ -769,7 +769,7 @@ export default function TopicDetailPage() {
                     </span>
                     {typeof r.response_count === "number" && r.response_count > 0 && (
                       <p className="text-[10px] text-slate-400 mt-0.5">
-                        {r.response_count} {r.response_count === 1 ? "stance" : "stances"}
+                        {t("common.stanceCount", { count: r.response_count })}
                       </p>
                     )}
                   </div>

@@ -479,7 +479,7 @@ export default function MyStancesPage() {
                   ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   : <Download className="h-3.5 w-3.5" />
                 }
-                {exportLoading ? "Exporting…" : "Export"}
+                {exportLoading ? t("myStances.exporting") : t("myStances.export")}
               </button>
               {exportOpen && !exportLoading && (
                 <div className="absolute right-0 top-full mt-1 z-20 rounded-md border bg-white shadow-md text-xs overflow-hidden">
@@ -510,7 +510,7 @@ export default function MyStancesPage() {
                   : "border-transparent text-slate-500 hover:text-slate-700",
               ].join(" ")}
             >
-              {tab === "overview" ? "Overview" : `My Stances${totalCount > 0 ? ` (${totalCount})` : ""}`}
+              {tab === "overview" ? t("insights.overview") : `My Stances${totalCount > 0 ? ` (${totalCount})` : ""}`}
             </button>
           ))}
         </div>
@@ -601,10 +601,10 @@ export default function MyStancesPage() {
                           ? "bg-blue-50 border-blue-200 text-blue-700"
                           : "border-slate-200 text-slate-600 hover:bg-slate-50",
                       ].join(" ")}
-                      title={drawerTopic ? "Hide topic history" : "Show topic history"}
+                      title={drawerTopic ? t("myStances.hideTopicHistory") : t("myStances.showTopicHistory")}
                     >
                       <BookOpen className="h-3 w-3" />
-                      {drawerTopic ? "Hide history" : "Topic history"}
+                      {drawerTopic ? t("myStances.hideHistory") : t("myStances.topicHistory")}
                     </button>
                   )}
                 </div>
@@ -867,7 +867,7 @@ function MyStanceCard({ row, userId }: { row: MyStanceRow; userId: string }) {
                   disabled={saving}
                   className="rounded-md bg-slate-900 px-3 py-1 text-[11px] font-medium text-white hover:bg-slate-700 disabled:opacity-50 transition-colors"
                 >
-                  {saving ? "Saving…" : "Save"}
+                  {saving ? t("stance.saving") : t("comments.save")}
                 </button>
                 <button
                   type="button"

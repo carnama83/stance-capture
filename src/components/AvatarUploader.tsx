@@ -5,6 +5,7 @@
 //        Falls back gracefully when path is unknown (old rows without path).
 import * as React from "react";
 import { getSupabase } from "@/lib/supabaseClient";
+import { useTranslation } from "react-i18next";
 
 // ── Crop modal ──────────────────────────────────────────────────────────────
 
@@ -16,6 +17,7 @@ interface CropModalProps {
 }
 
 function CropModal({ src, file, onAccept, onCancel }: CropModalProps) {
+  const { t } = useTranslation();
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
   const imgRef    = React.useRef<HTMLImageElement>(null);
 
@@ -136,8 +138,8 @@ function CropModal({ src, file, onAccept, onCancel }: CropModalProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
       <div className="bg-white rounded-lg shadow-xl p-4 space-y-3 max-w-sm w-full mx-4">
-        <div className="text-sm font-semibold">Crop your avatar</div>
-        <p className="text-xs text-slate-500">Drag the white square to reposition. Use the slider to resize.</p>
+        <div className="text-sm font-semibold">{t("avatarUploader.cropYourAvatar")}</div>
+        <p className="text-xs text-slate-500">{t("avatarUploader.dragTheWhiteSquareTo")}</p>
 
         {/* Hidden img element — used for natural dimensions and drawImage source */}
         <img ref={imgRef} src={src} alt="" className="hidden" onLoad={onImgLoad} crossOrigin="anonymous" />
@@ -153,7 +155,7 @@ function CropModal({ src, file, onAccept, onCancel }: CropModalProps) {
 
         {naturalW > 0 && maxSize > 0 && (
           <div className="space-y-1">
-            <label className="text-xs text-slate-500">Crop size</label>
+            <label className="text-xs text-slate-500">{t("avatarUploader.cropSize")}</label>
             <input
               type="range"
               min={50}
@@ -167,7 +169,7 @@ function CropModal({ src, file, onAccept, onCancel }: CropModalProps) {
 
         <div className="flex gap-2 pt-1">
           <button type="button" className="flex-1 border rounded px-3 py-1.5 text-sm" onClick={onCancel}>
-            Cancel
+            {t("auth.cancel")}
           </button>
           <button
             type="button"
@@ -175,7 +177,7 @@ function CropModal({ src, file, onAccept, onCancel }: CropModalProps) {
             onClick={onConfirm}
             disabled={!naturalW}
           >
-            Use this crop
+            {t("avatarUploader.useThisCrop")}
           </button>
         </div>
       </div>
@@ -210,6 +212,7 @@ export default function AvatarUploader({
   currentPath,
   onChange,
 }: AvatarUploaderProps) {
+  const { t } = useTranslation();
   const client = React.useMemo(getSupabase, []);
   const [msg, setBusy_msg]      = React.useState("");
   const [busy, setBusy]         = React.useState(false);
@@ -225,9 +228,9 @@ export default function AvatarUploader({
     e.target.value = ""; // allow re-selection of same file after cancel
     if (!f) return;
     if (!["image/jpeg", "image/png", "image/webp"].includes(f.type)) {
-      setMsg("Use JPG/PNG/WebP"); return;
+      setMsg(t("avatarUploader.useJpgPngWebp")); return;
     }
-    if (f.size > 5 * 1024 * 1024) { setMsg("Max 5MB"); return; }
+    if (f.size > 5 * 1024 * 1024) { setMsg(t("avatarUploader.max5mb")); return; }
 
     const objUrl = URL.createObjectURL(f);
     const img = new Image();
@@ -235,7 +238,7 @@ export default function AvatarUploader({
     img.onload = () => {
       if (img.width < 200 || img.height < 200) {
         URL.revokeObjectURL(objUrl);
-        setMsg("Min 200×200px");
+        setMsg(t("avatarUploader.min200200px"));
         return;
       }
       setPendingFile(f);
@@ -295,7 +298,7 @@ export default function AvatarUploader({
       } catch { /* non-fatal */ }
 
       onChange(url, newPath);
-      setMsg("Uploaded.");
+      setMsg(t("avatarUploader.uploaded"));
     } catch (err: any) {
       setMsg(err.message ?? "Upload failed");
     } finally {
@@ -311,7 +314,7 @@ export default function AvatarUploader({
 
   // ── Remove avatar ──
   async function remove() {
-    if (!client) { setMsg("Supabase OFF"); return; }
+    if (!client) { setMsg(t("avatarUploader.supabaseOff")); return; }
     setBusy(true);
     setMsg("");
     try {
@@ -323,7 +326,7 @@ export default function AvatarUploader({
           .catch(() => {});
       }
       onChange(null, null);
-      setMsg("Removed (fallback in use).");
+      setMsg(t("avatarUploader.removedFallbackInUse"));
     } finally {
       setBusy(false);
     }
@@ -350,7 +353,7 @@ export default function AvatarUploader({
         )}
         <label className="inline-block">
           <span className="cursor-pointer rounded border px-3 py-1.5 text-sm hover:bg-slate-50 disabled:opacity-50">
-            {currentUrl ? "Replace avatar" : "Upload avatar"}
+            {currentUrl ? t("avatarUploader.replaceAvatar") : t("avatarUploader.uploadAvatar")}
           </span>
           <input
             type="file"
@@ -367,10 +370,10 @@ export default function AvatarUploader({
             onClick={remove}
             disabled={busy}
           >
-            Remove avatar
+            {t("avatarUploader.removeAvatar")}
           </button>
         )}
-        {busy  && <div className="text-xs text-slate-500">Uploading…</div>}
+        {busy  && <div className="text-xs text-slate-500">{t("avatarUploader.uploading")}</div>}
         {msg   && <div className="text-xs text-slate-700">{msg}</div>}
       </div>
     </>

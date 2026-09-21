@@ -135,6 +135,7 @@ function CollectiveActionOptIn({
   questionId: string;
   regionId: string;
 }) {
+  const { t } = useTranslation();
   const [visible, setVisible] = React.useState(false);
   const [choice, setChoice] = React.useState<"optedIn" | "viewSummary" | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
@@ -189,7 +190,7 @@ function CollectiveActionOptIn({
     return (
       <div className="flex items-center gap-1.5 text-[11px] text-slate-500 mt-2 pt-2 border-t border-slate-100">
         <Check className="h-3 w-3 text-green-600" />
-        Your response is included, anonymously.
+        {t("expectationSignalBlock.yourResponseIsIncludedAnonymously")}
       </div>
     );
   }
@@ -199,7 +200,7 @@ function CollectiveActionOptIn({
       <div className="flex items-start gap-1.5 mb-2">
         <Megaphone className="h-3.5 w-3.5 text-slate-400 mt-0.5 shrink-0" />
         <p className="text-[11px] text-slate-600">
-          People in your region overwhelmingly expect action. Would you like this expectation to be made visible?
+          {t("expectationSignalBlock.peopleInYourRegionOverwhelmingly")}
         </p>
       </div>
       <div className="flex flex-wrap gap-2">
@@ -208,7 +209,7 @@ function CollectiveActionOptIn({
           disabled={submitting}
           className="text-[11px] font-medium rounded-lg px-2.5 py-1 bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50 transition-colors"
         >
-          {submitting ? "Saving…" : "Yes, include my response anonymously"}
+          {submitting ? t("stance.saving") : t("expectationSignalBlock.yesIncludeMyResponseAnonymously")}
         </button>
         <Link
           to={`/ledger/${questionId}/${regionId}`}
@@ -217,13 +218,13 @@ function CollectiveActionOptIn({
           onClick={() => setChoice("viewSummary")}
           className="text-[11px] font-medium rounded-lg px-2.5 py-1 border border-slate-200 text-slate-600 hover:border-slate-300 transition-colors"
         >
-          View summary only
+          {t("expectationSignalBlock.viewSummaryOnly")}
         </Link>
         <button
           onClick={dismiss}
           className="text-[11px] text-slate-400 hover:text-slate-600 underline underline-offset-2 px-1"
         >
-          Not now
+          {t("ugq.notNow")}
         </button>
       </div>
     </div>
@@ -262,7 +263,9 @@ export function ExpectationSignalBlock({ questionId }: { questionId: string }) {
       <div className="flex items-center gap-1.5 mb-2">
         <BarChart3 className="h-3.5 w-3.5 text-slate-500" />
         <p className="text-xs font-medium text-slate-700">
-          What {data.regionName ? `${data.regionName} respondents` : "respondents"} expect
+          {data.regionName
+            ? t("expectationSignalBlock.whatRegionExpects", { region: data.regionName })
+            : t("expectationSignalBlock.whatRespondentsExpect")}
         </p>
       </div>
 
@@ -294,7 +297,7 @@ export function ExpectationSignalBlock({ questionId }: { questionId: string }) {
       </div>
 
       <p className="text-[10px] text-slate-400 mt-2">
-        Based on {data.totalRespondents} respondent{data.totalRespondents === 1 ? "" : "s"}.
+        {t("expectationSignalBlock.basedOnRespondents", { count: data.totalRespondents })}
       </p>
 
       {userId && regionId && (

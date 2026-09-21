@@ -10,6 +10,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { TrendingUp, TrendingDown, Activity, Minus } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 type TopicChange = {
   topic_id: string;
@@ -71,6 +72,7 @@ function formatDaysAway(days: number): string {
 }
 
 export default function SinceLastVisitCard() {
+  const { t } = useTranslation();
   const sb = React.useMemo(getSupabase, []);
 
   const { data, isLoading, isError, error } = useQuery<SinceLastVisited>({
@@ -120,27 +122,27 @@ export default function SinceLastVisitCard() {
   return (
     <Card className="mb-4">
       <CardHeader>
-        <CardTitle>Since You Last Visited</CardTitle>
+        <CardTitle>{t("sinceLastVisit.sinceYouLastVisited")}</CardTitle>
         <CardDescription>
-          What's changed in the community while you were away.
+          {t("sinceLastVisit.whatSChangedInThe")}
         </CardDescription>
       </CardHeader>
 
       <CardContent>
         {isLoading ? (
-          <div className="text-sm text-slate-600">Loading updates…</div>
+          <div className="text-sm text-slate-600">{t("sinceLastVisit.loadingUpdates")}</div>
         ) : isError ? (
           <div className="text-sm text-slate-600">
-            Unable to load updates. Please try again.
+            {t("sinceLastVisit.unableToLoadUpdatesPlease")}
           </div>
         ) : !data ? (
-          <div className="text-sm text-slate-600">No data available.</div>
+          <div className="text-sm text-slate-600">{t("sinceLastVisit.noDataAvailable")}</div>
         ) : (
           <div className="space-y-4">
             {/* Time away context */}
             {data.days_away > 0 && (
               <div className="text-xs text-slate-500">
-                You were away for {formatDaysAway(data.days_away)}.
+                {t("sinceLastVisit.awayFor", { duration: formatDaysAway(data.days_away) })}
               </div>
             )}
 
@@ -161,8 +163,9 @@ export default function SinceLastVisitCard() {
                       </div>
                       {change.delta !== 0 && (
                         <div className="text-xs text-slate-500 mt-1">
-                          Shift: {change.delta > 0 ? "+" : ""}
-                          {change.delta.toFixed(2)} on average
+                          {t("sinceLastVisit.shiftOnAverage", {
+                            delta: `${change.delta > 0 ? "+" : ""}${change.delta.toFixed(2)}`,
+                          })}
                         </div>
                       )}
                     </div>
@@ -171,7 +174,7 @@ export default function SinceLastVisitCard() {
               </div>
             ) : (
               <div className="text-sm text-slate-600">
-                Things have been relatively steady while you were away.
+                {t("sinceLastVisit.thingsHaveBeenRelativelySteady")}
               </div>
             )}
           </div>

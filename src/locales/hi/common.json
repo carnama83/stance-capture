@@ -709,7 +709,12 @@
     "saved": "सहेजा गया",
     "open": "खोलें →",
     "home": "होम",
-    "updated": "अपडेट किया गया"
+    "updated": "अपडेट किया गया",
+    "stancesRecordedCount_one": "{{count}} रुख दर्ज",
+    "stancesRecordedCount_other": "{{count}} रुख दर्ज",
+    "stanceCount_one": "{{count}} रुख",
+    "stanceCount_other": "{{count}} रुख",
+    "plusMore": "+{{n}} और"
   },
   "myStances": {
     "title": "मेरे रुख",
@@ -738,7 +743,13 @@
     "revise": "बदलें",
     "updated": "अपडेट: {{date}}",
     "exportFailedTitle": "एक्सपोर्ट विफल",
-    "exportFailedBody": "एक्सपोर्ट विफल रहा। कृपया फिर से प्रयास करें।"
+    "exportFailedBody": "एक्सपोर्ट विफल रहा। कृपया फिर से प्रयास करें।",
+    "exporting": "निर्यात हो रहा है…",
+    "export": "निर्यात करें",
+    "hideTopicHistory": "विषय इतिहास छिपाएँ",
+    "showTopicHistory": "विषय इतिहास दिखाएँ",
+    "hideHistory": "इतिहास छिपाएँ",
+    "topicHistory": "विषय इतिहास"
   },
   "quickTakes": {
     "title": "आज के त्वरित सवाल",
@@ -1477,5 +1488,129 @@
     "thisIsWhatShowsAs2": "यही आपके सवाल के टेक्स्ट के रूप में दिखता है। आपका मूल वीडियो और आवाज़ दोनों ही स्थिति में जैसे रिकॉर्ड हुए वैसे ही रहते हैं।",
     "submitQuestion": "सवाल भेजें",
     "reRecord": "फिर से रिकॉर्ड करें"
+  },
+  "avatarUploader": {
+    "cropYourAvatar": "अपना अवतार क्रॉप करें",
+    "dragTheWhiteSquareTo": "स्थिति बदलने के लिए सफ़ेद वर्ग खींचें। आकार बदलने के लिए स्लाइडर का उपयोग करें।",
+    "cropSize": "क्रॉप आकार",
+    "useThisCrop": "यही क्रॉप उपयोग करें",
+    "useJpgPngWebp": "JPG/PNG/WebP उपयोग करें",
+    "max5mb": "अधिकतम 5MB",
+    "min200200px": "न्यूनतम 200×200px",
+    "uploaded": "अपलोड हो गया।",
+    "supabaseOff": "Supabase बंद है",
+    "removedFallbackInUse": "हटा दिया गया (डिफ़ॉल्ट उपयोग में)।",
+    "replaceAvatar": "अवतार बदलें",
+    "uploadAvatar": "अवतार अपलोड करें",
+    "removeAvatar": "अवतार हटाएँ",
+    "uploading": "अपलोड हो रहा है…"
+  },
+  "oAuthCallback": {
+    "supabaseClientUnavailableCheckEnvironment": "Supabase क्लाइंट उपलब्ध नहीं। एनवायरनमेंट वेरिएबल जाँचें।",
+    "noAuthenticationDataFoundPlease": "कोई प्रमाणीकरण डेटा नहीं मिला। कृपया फिर से साइन इन करें।",
+    "confirmingYourEmail": "आपका ईमेल सत्यापित हो रहा है…",
+    "exchangingAuthorizationCode": "प्राधिकरण कोड का आदान-प्रदान हो रहा है…",
+    "incompleteAuthenticationResponsePleaseTry": "प्रमाणीकरण प्रतिक्रिया अधूरी है। कृपया फिर से प्रयास करें।",
+    "verifyingYourAccount": "आपका खाता सत्यापित हो रहा है…",
+    "couldNotEstablishSessionPlease": "सत्र स्थापित नहीं हो सका। कृपया फिर से प्रयास करें।",
+    "signInFailed": "साइन-इन विफल",
+    "backToLogin": "लॉगिन पर वापस",
+    "settingUpYourProfile": "आपकी प्रोफ़ाइल तैयार हो रही है…",
+    "savingAccountConnection": "खाता कनेक्शन सहेजा जा रहा है…"
+  },
+  "personalizedFeed": {
+    "failedToLoadYourPersonalized": "आपका वैयक्तिक फ़ीड लोड नहीं हो सका।",
+    "error": "त्रुटि:",
+    "tryRefreshingThePage": "पेज ताज़ा करके देखें",
+    "noQuestionsAvailable": "कोई सवाल उपलब्ध नहीं",
+    "checkBackLaterForNew": "आपकी रुचियों के अनुसार नए सवालों के लिए बाद में फिर देखें।",
+    "newUpdate": "नया अपडेट",
+    "new": "🆕 नया",
+    "youAnswered": "✓ आपने उत्तर दिया"
+  },
+  "expectationSignalBlock": {
+    "yourResponseIsIncludedAnonymously": "आपकी प्रतिक्रिया गुमनाम रूप से शामिल है।",
+    "peopleInYourRegionOverwhelmingly": "आपके क्षेत्र के अधिकांश लोग कार्रवाई की अपेक्षा रखते हैं। क्या आप चाहेंगे कि यह अपेक्षा दिखाई दे?",
+    "yesIncludeMyResponseAnonymously": "हाँ, मेरी प्रतिक्रिया गुमनाम रूप से शामिल करें",
+    "viewSummaryOnly": "केवल सारांश देखें",
+    "whatRegionExpects": "{{region}} के उत्तरदाता क्या अपेक्षा रखते हैं",
+    "whatRespondentsExpect": "उत्तरदाता क्या अपेक्षा रखते हैं",
+    "basedOnRespondents_one": "{{count}} उत्तरदाता के आधार पर।",
+    "basedOnRespondents_other": "{{count}} उत्तरदाताओं के आधार पर।"
+  },
+  "resetPassword": {
+    "supabaseIsOff": "Supabase बंद है।",
+    "checkYourEmailForThe": "रीसेट लिंक के लिए अपना ईमेल देखें।",
+    "passwordUpdatedYouCanLog": "पासवर्ड अपडेट हो गया। अब आप लॉग इन कर सकते हैं।",
+    "resetPassword": "पासवर्ड रीसेट करें",
+    "yourEmail": "आपका ईमेल",
+    "sendResetLink": "रीसेट लिंक भेजें",
+    "newPassword": "नया पासवर्ड",
+    "updating": "अपडेट हो रहा है…",
+    "setNewPassword": "नया पासवर्ड सेट करें"
+  },
+  "settingsLayout": {
+    "settings": "सेटिंग्स",
+    "manageYourAccountPreferencesAnd": "अपने खाते की प्राथमिकताएँ और गोपनीयता सेटिंग्स प्रबंधित करें"
+  },
+  "videoPublishChoice": {
+    "rawVideoWithNeutralOverlay": "तटस्थ ओवरले के साथ मूल वीडियो (अनुशंसित)",
+    "yourVideoPlaysAsRecorded": "आपका वीडियो जैसा रिकॉर्ड हुआ वैसा ही चलता है। एक तटस्थ शीर्षक और सवाल उसके साथ दिखते हैं — क्लिप देखे बिना भी उपलब्ध।",
+    "rawVideoOnly": "केवल मूल वीडियो",
+    "justYourVideoExactlyAs": "सिर्फ़ आपका वीडियो, ठीक जैसा रिकॉर्ड हुआ — कोई ओवरले टेक्स्ट नहीं।",
+    "beforeYouPublish": "प्रकाशित करने से पहले",
+    "reRecordInstead": "इसके बजाय फिर रिकॉर्ड करें",
+    "howShouldThisBePublished": "इसे कैसे प्रकाशित किया जाए?"
+  },
+  "questionDetail": {
+    "stronglyOppose": "पूर्ण विरोध",
+    "stronglySupport": "पूर्ण समर्थन",
+    "failedToLoadQuestion": "सवाल लोड नहीं हो सका:"
+  },
+  "topicDetail": {
+    "pleaseTryAgainOrGo": "कृपया फिर से प्रयास करें या विषयों पर वापस जाएँ।"
+  },
+  "feedFilters": {
+    "active": "सक्रिय",
+    "cooling": "ठंडा पड़ता",
+    "dormant": "निष्क्रिय",
+    "filters": "फ़िल्टर",
+    "filterQuestions": "सवाल फ़िल्टर करें",
+    "clearAll": "सब हटाएँ",
+    "questionStatus": "सवाल की स्थिति",
+    "showQuestionsIVeAlready": "वे सवाल दिखाएँ जिनके उत्तर मैं दे चुका/चुकी हूँ"
+  },
+  "communityStanceBar": {
+    "strongConviction": "मज़बूत विश्वास",
+    "stronglyPolarised": "तीव्र ध्रुवीकरण",
+    "genuinelyUncertain": "वास्तव में अनिश्चित",
+    "yourStanceIsnTCounted": "▲ आपका रुख अभी गिना नहीं गया — जोड़ने के लिए नीचे सहमति दें।",
+    "yourStanceCounted": "आपका रुख (गिना गया)",
+    "yourStanceNotCountedYet": "आपका रुख — अभी गिना नहीं गया",
+    "you": "आप",
+    "refreshCommunityStance": "सामुदायिक रुख ताज़ा करें"
+  },
+  "inlineQuestionStanceEditor": {
+    "couldnTUpdateYourStance": "आपका रुख अपडेट नहीं हो सका",
+    "logInToAnswer": "उत्तर देने के लिए लॉग इन करें",
+    "createAnAccountOrLog": "इस सवाल पर अपना रुख दर्ज करने के लिए खाता बनाएँ या लॉग इन करें।",
+    "wantToRecordYourStance": "अपना रुख दर्ज करना चाहते हैं?"
+  },
+  "sinceLastVisit": {
+    "sinceYouLastVisited": "आपकी पिछली विज़िट के बाद से",
+    "whatSChangedInThe": "आपकी अनुपस्थिति में समुदाय में क्या बदला।",
+    "loadingUpdates": "अपडेट लोड हो रहे हैं…",
+    "unableToLoadUpdatesPlease": "अपडेट लोड नहीं हो सके। कृपया फिर से प्रयास करें।",
+    "noDataAvailable": "कोई डेटा उपलब्ध नहीं।",
+    "thingsHaveBeenRelativelySteady": "आपकी अनुपस्थिति में स्थिति काफ़ी स्थिर रही।",
+    "awayFor": "आप {{duration}} दूर रहे।",
+    "shiftOnAverage": "बदलाव: औसतन {{delta}}"
+  },
+  "locationPicker": {
+    "countryId": "देश (ID)",
+    "stateIdOptional": "राज्य (ID वैकल्पिक)",
+    "cityIdOptional": "शहर (ID वैकल्पिक)",
+    "confirmLocation": "स्थान की पुष्टि करें",
+    "overrideRecordedRawIpDiscarded": "बदलाव दर्ज; कच्चा IP हटा दिया गया।"
   }
 }
