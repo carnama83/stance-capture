@@ -80,7 +80,7 @@ export default function PrivacyPolicy() {
           </ul>
           <p style={styles.subhead}>{t("privacy.s1.automatic")}</p>
           <ul style={styles.list}>
-            {["privacy.s1.usage", "privacy.s1.cookies"].map(clause)}
+            {["privacy.s1.usage", "privacy.s1.location", "privacy.s1.cookies"].map(clause)}
           </ul>
 
           <h2 style={styles.h2}>{t("privacy.s2.heading")}</h2>
