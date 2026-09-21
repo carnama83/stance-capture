@@ -1,5 +1,7 @@
 // src/pages/SearchResultsPage.tsx
 import * as React from "react";
+import { localeFor } from "@/lib/intlFormat";
+import i18n from "@/lib/i18n";
 import { useSearchParams, Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getSupabase } from "@/lib/supabaseClient";
@@ -219,7 +221,7 @@ export default function SearchResultsPage() {
                         )}
                         {q.published_at && (
                           <span className="text-xs text-muted-foreground">
-                            {new Date(q.published_at).toLocaleDateString(undefined, {
+                            {new Date(q.published_at).toLocaleDateString(localeFor(i18n.language), {
                               month: "short",
                               day: "numeric",
                               year: "numeric",

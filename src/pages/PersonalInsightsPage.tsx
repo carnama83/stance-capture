@@ -11,6 +11,8 @@
 //      now opens the drawer inline on this page.
 
 import * as React from "react";
+import { localeFor } from "@/lib/intlFormat";
+import i18n from "@/lib/i18n";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -105,7 +107,7 @@ function ProfileSummary({ state }: { state: CognitiveState }) {
       </div>
 
       <p className="text-[10px] text-slate-400">
-        {t("insights.profileLastUpdated")} {new Date(state.evaluated_at).toLocaleDateString(undefined, { dateStyle: "medium" })}
+        {t("insights.profileLastUpdated")} {new Date(state.evaluated_at).toLocaleDateString(localeFor(i18n.language), { dateStyle: "medium" })}
       </p>
     </div>
   );

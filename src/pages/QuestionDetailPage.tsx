@@ -11,6 +11,7 @@
 //   the singleton client's WebSocket for subsequent subscriptions on the same instance.
 
 import * as React from "react";
+import i18n from "@/lib/i18n";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useLanguage } from "@/hooks/useLanguage";
 import { useTranslation } from "react-i18next";
@@ -486,7 +487,7 @@ async function trackQuestionInteraction(
 // ---------- Editorial hero image ----------
 import { getHeroImageUrl } from "@/lib/imageUtils";
 import { buildStanceLabels } from "@/lib/stanceColors";
-import { formatDate } from "@/lib/intlFormat";
+import { formatDate, localeFor } from "@/lib/intlFormat";
 import { useTopicLabels } from "@/hooks/useTopicLabels";
 import { usePlaceLabels } from "@/hooks/usePlaceLabels";
 
@@ -605,7 +606,7 @@ function QuestionContextUpdates({ questionId }: { questionId: string }) {
               {PHASE_LABELS[u.new_phase] ?? u.new_phase}
             </span>
             <span className="text-[10px] text-slate-400">
-              {new Date(u.updated_at).toLocaleDateString(undefined, { dateStyle: "medium" })}
+              {new Date(u.updated_at).toLocaleDateString(localeFor(i18n.language), { dateStyle: "medium" })}
             </span>
           </div>
           <p className="text-sm text-slate-700 leading-relaxed">{u.new_context}</p>

@@ -16,6 +16,8 @@
 // relationship, which doesn't exist here.
 
 import * as React from "react";
+import { localeFor } from "@/lib/intlFormat";
+import i18n from "@/lib/i18n";
 import { useTranslation } from "react-i18next";
 import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -84,7 +86,7 @@ function useLedger(questionId: string, regionId: string) {
 
 function formatDate(iso: string | null): string {
   if (!iso) return "—";
-  return new Date(iso).toLocaleDateString(undefined, { dateStyle: "medium" });
+  return new Date(iso).toLocaleDateString(localeFor(i18n.language), { dateStyle: "medium" });
 }
 
 // M-R08 / QA-R17: authority_responses is read LIVE here, not from the

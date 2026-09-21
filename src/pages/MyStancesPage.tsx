@@ -8,6 +8,7 @@
 // All other functionality unchanged.
 
 import ContributionBanner from "./MyStances/ContributionBanner";
+import { localeFor } from "@/lib/intlFormat";
 import StanceSnapshotCard from "./MyStances/StanceSnapshotCard";
 import YouVsCommunityCard from "./MyStances/YouVsCommunityCard";
 import SinceLastVisitCard from "./MyStances/SinceLastVisitCard";
@@ -707,7 +708,7 @@ function MyStanceCard({ row, userId }: { row: MyStanceRow; userId: string }) {
   const q = row.question;
   const updatedAt = row.updated_at ?? row.created_at;
   const dateLabel = updatedAt
-    ? new Date(updatedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
+    ? new Date(updatedAt).toLocaleString(localeFor(i18n.language), { dateStyle: "medium", timeStyle: "short" })
     : "Unknown";
 
   const [editing, setEditing] = React.useState(false);
@@ -914,7 +915,7 @@ function MyStanceCard({ row, userId }: { row: MyStanceRow; userId: string }) {
           )}
           {q?.published_at && (
             <span className="text-[10px] text-slate-500">
-              Q: {new Date(q.published_at).toLocaleDateString(undefined, { dateStyle: "medium" })}
+              Q: {new Date(q.published_at).toLocaleDateString(localeFor(i18n.language), { dateStyle: "medium" })}
             </span>
           )}
           <span className="text-[10px] text-slate-500">{t("myStances.updated", { date: dateLabel })}</span>

@@ -13,6 +13,7 @@
 //     social_auth_tokens — will now return twitter rows after Fix 1 enum migration
 
 import * as React from "react";
+import { localeFor } from "@/lib/intlFormat";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -228,7 +229,7 @@ function ProviderRow({
         {linked ? (
           <p className="text-xs text-slate-400 mt-0.5">
             {t("account.connectedOn", {
-              date: new Date(linked.connected_at).toLocaleDateString(i18n.language, {
+              date: new Date(linked.connected_at).toLocaleDateString(localeFor(i18n.language), {
                 dateStyle: "medium",
               }),
             })}

@@ -1,5 +1,7 @@
 // src/routes/topics/Index.tsx
 import * as React from "react";
+import { localeFor } from "@/lib/intlFormat";
+import i18n from "@/lib/i18n";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getSupabase } from "@/lib/supabaseClient";
@@ -68,7 +70,7 @@ function useSupabaseSession() {
 function formatDateShort(iso?: string | null) {
   if (!iso) return null;
   try {
-    return new Date(iso).toLocaleDateString(undefined, { dateStyle: "medium" });
+    return new Date(iso).toLocaleDateString(localeFor(i18n.language), { dateStyle: "medium" });
   } catch {
     return null;
   }
