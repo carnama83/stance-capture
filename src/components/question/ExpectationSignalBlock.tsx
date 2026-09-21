@@ -15,13 +15,14 @@
 // the CAPTURE prompt (post-stance only), not this display.
 
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getSupabase } from "@/lib/supabaseClient";
 import { fetchUserRegionId } from "@/lib/userRegion";
 import { SUPABASE_URL, getJwt, supabaseHeaders } from "@/lib/env";
 import { BarChart3, Megaphone, Check } from "lucide-react";
-import { EXPECTATION_LABELS } from "@/components/question/ExpectationPrompt";
+import { EXPECTATION_LABEL_KEYS } from "@/components/question/ExpectationPrompt";
 
 type Session = import("@supabase/supabase-js").Session;
 
@@ -230,6 +231,7 @@ function CollectiveActionOptIn({
 }
 
 export function ExpectationSignalBlock({ questionId }: { questionId: string }) {
+  const { t } = useTranslation();
   const session = useLocalSession();
   const userId = session?.user?.id ?? null;
 
@@ -267,7 +269,8 @@ export function ExpectationSignalBlock({ questionId }: { questionId: string }) {
       <div className="space-y-1.5">
         {data.breakdown.map((row) => {
           const isDominant = row.expectation_type === data.dominantType;
-          const label = EXPECTATION_LABELS[row.expectation_type] ?? row.expectation_type;
+          const labelKey = EXPECTATION_LABEL_KEYS[row.expectation_type];
+          const label = labelKey ? t(labelKey) : row.expectation_type;
           const pct = row.pct_of_respondents ?? 0;
           return (
             <div key={row.expectation_type}>

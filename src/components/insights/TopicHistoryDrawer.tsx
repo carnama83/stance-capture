@@ -26,6 +26,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getStanceColorHex } from "@/lib/stanceColors";
 import { X, Loader2, TrendingUp, TrendingDown, Minus, RotateCcw } from "lucide-react";
 import { RationaleEditor } from "@/components/RationaleEditor";
+import { useTranslation } from "react-i18next";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -141,6 +142,7 @@ function DirectionIcon({ oldScore, newScore }: { oldScore: number | null; newSco
 // ── Question row ──────────────────────────────────────────────────────────────
 
 function QuestionRow({ question }: { question: TopicQuestion }) {
+  const { t } = useTranslation();
   const [historyOpen, setHistoryOpen] = React.useState(false);
   const userColor = getStanceColorHex(question.user_score);
   const communityColor = question.community_avg !== null
@@ -172,7 +174,7 @@ function QuestionRow({ question }: { question: TopicQuestion }) {
       {/* Stance + community comparison */}
       <div className="flex items-center gap-3 flex-wrap pl-4">
         <div className="flex items-center gap-1">
-          <span className="text-[10px] text-slate-400">Your stance:</span>
+          <span className="text-[10px] text-slate-400">{t("topicHistoryDrawer.yourStance")}</span>
           <span
             className="text-[10px] font-semibold"
             style={{ color: userColor }}
@@ -183,7 +185,7 @@ function QuestionRow({ question }: { question: TopicQuestion }) {
 
         {question.community_avg !== null && (
           <div className="flex items-center gap-1">
-            <span className="text-[10px] text-slate-400">Community:</span>
+            <span className="text-[10px] text-slate-400">{t("topicHistoryDrawer.community")}</span>
             <span
               className="text-[10px] font-medium"
               style={{ color: communityColor ?? "#888" }}
@@ -192,7 +194,9 @@ function QuestionRow({ question }: { question: TopicQuestion }) {
             </span>
             {drift !== null && Math.abs(drift) >= 0.5 && (
               <span className="text-[10px] text-slate-400">
-                ({drift > 0 ? "+" : ""}{drift.toFixed(1)} from avg)
+                {t("topicHistoryDrawer.fromAvgDelta", {
+                  delta: `${drift > 0 ? "+" : ""}${drift.toFixed(1)}`,
+                })}
               </span>
             )}
           </div>
@@ -205,16 +209,16 @@ function QuestionRow({ question }: { question: TopicQuestion }) {
           <div className="flex items-center gap-1">
             <RotateCcw className="h-3 w-3 text-slate-400" aria-hidden="true" />
             <span className="text-[10px] text-slate-500">
-              Changed {question.change_count - 1} time{question.change_count - 1 !== 1 ? "s" : ""}
+              {t("topicHistoryDrawer.changedTimes", { count: question.change_count - 1 })}
             </span>
           </div>
         )}
         <span className="text-[10px] text-slate-400">
-          First answered {timeAgo(question.first_answered)}
+          {t("topicHistoryDrawer.firstAnsweredWhen", { when: timeAgo(question.first_answered) })}
         </span>
         {question.last_updated !== question.first_answered && (
           <span className="text-[10px] text-slate-400">
-            · Updated {timeAgo(question.last_updated)}
+            {t("topicHistoryDrawer.updatedWhen", { when: timeAgo(question.last_updated) })}
           </span>
         )}
       </div>
@@ -228,7 +232,11 @@ function QuestionRow({ question }: { question: TopicQuestion }) {
             className="flex items-center gap-1.5 text-[10px] text-slate-500 hover:text-slate-700 transition-colors"
           >
             <span>{historyOpen ? "▲" : "▼"}</span>
-            <span>{historyOpen ? "Hide" : "Show"} change history</span>
+            <span>
+              {historyOpen
+                ? t("topicHistoryDrawer.hideChangeHistory")
+                : t("topicHistoryDrawer.showChangeHistory")}
+            </span>
           </button>
 
           {historyOpen && (
@@ -258,7 +266,7 @@ function QuestionRow({ question }: { question: TopicQuestion }) {
                     </span>
                     {i === 0 ? (
                       <span>
-                        First answered:{" "}
+                        {t("topicHistoryDrawer.firstAnswered2")}{" "}
                         <span
                           className="font-medium"
                           style={{ color: getStanceColorHex(point.new_score) }}
@@ -389,6 +397,7 @@ export default function TopicHistoryDrawer({
   userId,
   onClose,
 }: TopicHistoryDrawerProps) {
+  const { t } = useTranslation();
   const { data: questions, isLoading, isError } = useTopicHistory(topicTitle, userId);
 
   // Summary stats
@@ -406,8 +415,8 @@ export default function TopicHistoryDrawer({
           <h3 className="text-sm font-semibold text-slate-900 truncate">{topicTitle}</h3>
           {!isLoading && totalQuestions > 0 && (
             <p className="text-[11px] text-slate-500 mt-0.5">
-              {totalQuestions} question{totalQuestions !== 1 ? "s" : ""} answered
-              {changedCount > 0 && ` · ${changedCount} stance${changedCount !== 1 ? "s" : ""} revised`}
+              {t("topicHistoryDrawer.questionsAnswered", { count: totalQuestions })}
+              {changedCount > 0 && t("topicHistoryDrawer.stancesRevised", { count: changedCount })}
             </p>
           )}
         </div>
@@ -415,7 +424,7 @@ export default function TopicHistoryDrawer({
           type="button"
           onClick={onClose}
           className="rounded-md p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
-          aria-label="Close topic history"
+          aria-label={t("topicHistoryDrawer.closeTopicHistory")}
         >
           <X className="h-4 w-4" aria-hidden="true" />
         </button>
@@ -428,21 +437,21 @@ export default function TopicHistoryDrawer({
         {isLoading && (
           <div className="flex items-center gap-2 py-4 text-xs text-slate-400">
             <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
-            Loading your stance history for this topic…
+            {t("topicHistoryDrawer.loadingYourStanceHistoryFor")}
           </div>
         )}
 
         {/* Error */}
         {isError && (
           <p className="text-xs text-red-500 py-2">
-            Could not load topic history. Please try again.
+            {t("topicHistoryDrawer.couldNotLoadTopicHistory")}
           </p>
         )}
 
         {/* Empty */}
         {!isLoading && !isError && totalQuestions === 0 && (
           <p className="text-xs text-slate-500 py-4 text-center">
-            No stance history found for this topic.
+            {t("topicHistoryDrawer.noStanceHistoryFoundFor")}
           </p>
         )}
 
@@ -450,11 +459,11 @@ export default function TopicHistoryDrawer({
         {!isLoading && questions && questions.length >= 2 && avgUserScore !== null && (
           <div className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 flex items-center gap-4">
             <div>
-              <p className="text-[10px] text-slate-400 mb-1">Your stance trajectory</p>
+              <p className="text-[10px] text-slate-400 mb-1">{t("topicHistoryDrawer.yourStanceTrajectory")}</p>
               <TopicSparkline questions={questions} />
             </div>
             <div className="text-right ml-auto">
-              <p className="text-[10px] text-slate-400">Average lean</p>
+              <p className="text-[10px] text-slate-400">{t("topicHistoryDrawer.averageLean")}</p>
               <p
                 className="text-sm font-semibold"
                 style={{ color: getStanceColorHex(Math.round(avgUserScore)) }}
@@ -480,7 +489,7 @@ export default function TopicHistoryDrawer({
             to={`/me/insights`}
             className="block text-center text-[11px] text-blue-600 hover:underline py-1"
           >
-            View full opinion profile →
+            {t("topicHistoryDrawer.viewFullOpinionProfile")}
           </Link>
         )}
       </div>

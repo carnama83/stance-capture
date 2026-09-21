@@ -242,7 +242,7 @@ function GuestPreviewCard({
             className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold text-white"
             style={{ backgroundColor: "#6048C0" }}
           >
-            Ready to compare
+            {t("hero.readyToCompare")}
           </span>
         )}
       </div>
@@ -308,7 +308,7 @@ function GuestPreviewCard({
       <p className="mt-2 text-[11px] text-slate-500 leading-snug">
         {isLocked
           ? t("hero.seeWhereStanceLands")
-          : "See whether your stance is closer to the majority or the minority."}
+          : t("hero.seeWhetherYourStanceIs")}
       </p>
 
       {/* Lock chip — locked state only */}
@@ -419,10 +419,10 @@ function SectionBGuestEngaged({
         </div>
 
         <h3 className="text-base font-semibold text-slate-900 leading-snug mb-1">
-          See how your stance compares
+          {t("hero.seeHowYourStanceCompares")}
         </h3>
         <p className="text-xs text-slate-500 leading-relaxed mb-3">
-          Create an account to compare your stance with society and keep tracking how it changes.
+          {t("hero.createAnAccountToCompare")}
         </p>
 
         {/* Engaged preview card — same data, stronger visual */}
@@ -461,7 +461,7 @@ function SectionBGuestEngaged({
           {t("hero.logIn")}
         </button>
         <p className="text-center text-[10px] text-slate-400 mt-1">
-          Unlock your stance profile in seconds
+          {t("hero.unlockYourStanceProfileIn")}
         </p>
       </div>
     </div>
@@ -646,7 +646,7 @@ function MiniSparkline({
 const PULSE_CONFIG: Record<
   SocietalPulseChip["icon"],
   {
-    label: string;
+    labelKey: string;
     labelColor: string;
     badgeBg: string;
     badgeText: string;
@@ -655,7 +655,7 @@ const PULSE_CONFIG: Record<
   }
 > = {
   up: {
-    label: "Rising",
+    labelKey: "home.momentumRising",
     labelColor: "#10b981",
     badgeBg: "#ecfdf5",
     badgeText: "#059669",
@@ -663,7 +663,7 @@ const PULSE_CONFIG: Record<
     sparkColor: "#10b981",
   },
   reawakening: {
-    label: "Reawakening",
+    labelKey: "hero.reawakening",
     labelColor: "#f59e0b",
     badgeBg: "#fffbeb",
     badgeText: "#d97706",
@@ -671,7 +671,7 @@ const PULSE_CONFIG: Record<
     sparkColor: "#f59e0b",
   },
   polarized: {
-    label: "Polarizing",
+    labelKey: "hero.polarizing",
     labelColor: "#ef4444",
     badgeBg: "#fef2f2",
     badgeText: "#dc2626",
@@ -679,7 +679,7 @@ const PULSE_CONFIG: Record<
     sparkColor: "#ef4444",
   },
   steady: {
-    label: "Steady",
+    labelKey: "home.momentumSteady",
     labelColor: "#94a3b8",
     badgeBg: "#f8fafc",
     badgeText: "#64748b",
@@ -713,7 +713,7 @@ function PulseRow({ chip }: { chip: SocietalPulseChip }) {
         <p className="text-[10px] leading-snug mt-0.5">
           <span className="text-slate-400">{t("hero.momentum")} </span>
           <span className="font-semibold" style={{ color: cfg.labelColor }}>
-            {cfg.label}
+            {t(cfg.labelKey)}
           </span>
         </p>
       </div>
@@ -727,11 +727,12 @@ function PulseRow({ chip }: { chip: SocietalPulseChip }) {
 // ─── Section B — Societal pulse card ─────────────────────────────────────────
 
 function SocietalPulseCard({ chips }: { chips: SocietalPulseChip[] }) {
+  const { t } = useTranslation();
   if (chips.length === 0) {
     return (
       <div className="px-1">
         <p className="text-[11px] text-slate-400 italic">
-          Trending topic shifts will appear here.
+          {t("hero.trendingTopicShiftsWillAppear")}
         </p>
       </div>
     );
@@ -754,7 +755,7 @@ function SocietalPulseCard({ chips }: { chips: SocietalPulseChip[] }) {
           to="/topics"
           className="mt-1 flex items-center gap-1 text-[11px] font-medium text-slate-400 hover:text-slate-600 transition-colors px-1.5"
         >
-          {remaining} more <span className="text-slate-300 ml-0.5">›</span>
+          {t("hero.moreCount", { n: remaining })} <span className="text-slate-300 ml-0.5">›</span>
         </Link>
       )}
     </div>
@@ -849,6 +850,7 @@ function SinceLastVisitBlock({
   data: SinceLastVisitData | null;
   isLoading: boolean;
 }) {
+  const { t } = useTranslation();
   if (isLoading) {
     return (
       <div className="space-y-2 animate-pulse">
@@ -885,7 +887,7 @@ function SinceLastVisitBlock({
         <div className="flex items-center gap-1.5">
           <span className="h-1.5 w-1.5 rounded-full bg-blue-400" />
           <span className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">
-            Since your last visit
+            {t("hero.sinceYourLastVisit")}
           </span>
         </div>
         <span className="text-[10px] text-slate-400">{daysText}</span>
@@ -906,7 +908,7 @@ function SinceLastVisitBlock({
             <span className="text-[11px] text-slate-700 truncate group-hover:text-slate-900 leading-snug">
               {c.topic_title}
               {c.change_type === "gaining_attention" && c.new_responses > 0 && (
-                <span className="text-slate-400 ml-1">· {c.new_responses} new</span>
+                <span className="text-slate-400 ml-1">{t("hero.newResponses", { n: c.new_responses })}</span>
               )}
               {c.change_type !== "gaining_attention" && c.delta !== 0 && (
                 <span className="text-slate-400 ml-1">
@@ -959,6 +961,7 @@ function ReturnNudgeBlock({ nudge }: { nudge: ReturnNudge | null }) {
 // ─── Epic Q — Streak block ────────────────────────────────────────────────────
 
 function StreakBlock({ streak }: { streak: UserStreak | null }) {
+  const { t } = useTranslation();
   if (!streak || (streak.currentStreak === 0 && !streak.isAtRisk)) return null;
 
   if (streak.isAtRisk) {
@@ -968,10 +971,10 @@ function StreakBlock({ streak }: { streak: UserStreak | null }) {
           <span className="text-base">⚠️</span>
           <div>
             <p className="text-[11px] font-semibold text-amber-800">
-              Keep your {streak.currentStreak} day streak alive
+              {t("hero.keepStreakAlive", { days: streak.currentStreak })}
             </p>
             <p className="text-[10px] text-amber-600 mt-0.5">
-              Answer one question today
+              {t("hero.answerOneQuestionToday")}
             </p>
           </div>
         </div>
@@ -985,12 +988,12 @@ function StreakBlock({ streak }: { streak: UserStreak | null }) {
         <span className="text-base">🔥</span>
         <div>
           <p className="text-[11px] font-semibold text-orange-800">
-            {streak.currentStreak} day streak
+            {t("hero.dayStreakCount", { days: streak.currentStreak })}
           </p>
           <p className="text-[10px] text-orange-600 mt-0.5">
             {streak.answeredToday
-              ? "You've answered today — keep it up"
-              : "You've shared a stance every day recently"}
+              ? t("hero.youVeAnsweredTodayKeep")
+              : t("hero.youVeSharedAStance")}
           </p>
         </div>
       </div>
@@ -1105,7 +1108,7 @@ function SectionBAuthed({
             to="/me/stances"
             className="mt-2 block text-[11px] font-medium text-violet-600 hover:text-violet-800 transition-colors"
           >
-            See all →
+            {t("insights.seeAll")}
           </Link>
         )}
       </div>
@@ -1130,7 +1133,7 @@ function SectionBAuthed({
           <div className="flex items-center gap-1.5 mb-1">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
             <span className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">
-              Societal Pulse
+              {t("home.societalPulseTitle")}
             </span>
           </div>
           <SocietalPulseCard chips={pulseChips} />
@@ -1267,7 +1270,7 @@ function SectionAQuestion({
             )}
             {isFallbackMode && (
               <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-500 gap-1">
-                🌐 Global conversation
+                {t("hero.globalConversation")}
               </span>
             )}
             <ContentLanguageIndicator renditionLanguageCode={instrumentLanguage} />
@@ -1322,7 +1325,7 @@ function SectionAQuestion({
                   onClick={onAdvanceNow}
                   className="mt-2 text-xs font-medium text-slate-400 hover:text-slate-700 transition-colors underline underline-offset-2"
                 >
-                  Next question →
+                  {t("hero.nextQuestion")}
                 </button>
               )}
             </div>
@@ -1405,6 +1408,7 @@ function SectionAError({
   message: string;
   onRetry: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-col items-center justify-center h-full min-h-[240px] p-6 text-center gap-3">
       <p className="text-sm text-slate-500">{message}</p>
@@ -1413,7 +1417,7 @@ function SectionAError({
         onClick={onRetry}
         className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors"
       >
-        Retry
+        {t("hero.retry")}
       </button>
     </div>
   );
@@ -1434,11 +1438,11 @@ function SectionAWaiting() {
       {showSpinner ? (
         <>
           <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-200 border-t-slate-600" />
-          <p className="text-sm text-slate-400">Loading next question…</p>
+          <p className="text-sm text-slate-400">{t("hero.loadingNextQuestion")}</p>
         </>
       ) : (
         <>
-          <p className="text-sm font-medium text-slate-600">You're all caught up!</p>
+          <p className="text-sm font-medium text-slate-600">{t("hero.youReAllCaughtUp")}</p>
           <p className="text-xs text-slate-400">{t("hero.newQuestionsOnTheWay")}</p>
         </>
       )}
@@ -1496,7 +1500,7 @@ function QueueCard({
 
         {isUpNext && (
           <div className="absolute top-2 left-2 rounded-full bg-indigo-600 px-2 py-0.5 text-[10px] font-semibold text-white shadow-sm">
-            Up Next
+            {t("hero.upNext")}
           </div>
         )}
 
@@ -1668,7 +1672,7 @@ export function HeroSection({
 
             {status === "hero_error" && (
               <SectionAError
-                message={errorMessage ?? "Something went wrong."}
+                message={errorMessage ?? t("hero.somethingWentWrong")}
                 onRetry={retry}
               />
             )}

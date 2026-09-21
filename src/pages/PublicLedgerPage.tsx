@@ -16,12 +16,13 @@
 // relationship, which doesn't exist here.
 
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getSupabase } from "@/lib/supabaseClient";
 import { ShareButton } from "@/components/share/ShareButton";
 import { useLanguage } from "@/hooks/useLanguage";
-import { EXPECTATION_LABELS } from "@/components/question/ExpectationPrompt";
+import { EXPECTATION_LABEL_KEYS } from "@/components/question/ExpectationPrompt";
 import { STATUS_LABELS, STATUS_COLORS, formatResponseDate } from "@/components/question/AuthorityResponseStatusBlock";
 import { Loader2, ClipboardCheck } from "lucide-react";
 
@@ -120,6 +121,7 @@ function useRegionAuthorityResponses(questionId: string, regionId: string) {
 }
 
 export default function PublicLedgerPage() {
+  const { t } = useTranslation();
   const { questionId, regionId } = useParams<{ questionId: string; regionId: string }>();
   // No AppTopBar on this page (see file header — "no chrome" by design), so
   // there's no parent already resolving language. Called directly here,
@@ -183,7 +185,8 @@ export default function PublicLedgerPage() {
           <div className="space-y-2.5 mb-5">
             {breakdown.map((row) => {
               const isDominant = row.expectation_type === dominant;
-              const label = EXPECTATION_LABELS[row.expectation_type] ?? row.expectation_type;
+              const labelKey = EXPECTATION_LABEL_KEYS[row.expectation_type];
+              const label = labelKey ? t(labelKey) : row.expectation_type;
               return (
                 <div key={row.expectation_type}>
                   <div className="flex items-center justify-between text-xs mb-1">

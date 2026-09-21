@@ -419,10 +419,10 @@ async function checkCivility(
 }
 
 const REPORT_REASONS = [
-  { value: "spam", label: "Spam" },
-  { value: "harassment", label: "Harassment" },
-  { value: "hate_speech", label: "Hate speech" },
-  { value: "other", label: "Other" },
+  { value: "spam", labelKey: "comments.spam" },
+  { value: "harassment", labelKey: "comments.harassment" },
+  { value: "hate_speech", labelKey: "comments.hateSpeech" },
+  { value: "other", labelKey: "comments.other" },
 ];
 
 // ── ReportModal ────────────────────────────────────────────────────────────────
@@ -434,6 +434,7 @@ function ReportModal({
   commentId: string;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const sb = getSupabase()!;
   const { toast } = useToast();
   const [reason, setReason] = React.useState("spam");
@@ -462,7 +463,7 @@ function ReportModal({
       setDone(true);
       setTimeout(onClose, 2000);
     } catch {
-      toast({ title: "Could not submit report. Please try again.", variant: "destructive" });
+      toast({ title: t("comments.couldNotSubmitReportPlease"), variant: "destructive" });
     } finally {
       setSubmitting(false);
     }
@@ -473,14 +474,14 @@ function ReportModal({
       <div className="bg-white rounded-xl border border-slate-200 shadow-lg p-5 w-80 space-y-4">
         {done ? (
           <div className="text-center space-y-2">
-            <p className="text-sm font-medium text-slate-900">Report submitted</p>
-            <p className="text-xs text-slate-500">Thank you. Our team will review this comment.</p>
+            <p className="text-sm font-medium text-slate-900">{t("comments.reportSubmitted")}</p>
+            <p className="text-xs text-slate-500">{t("comments.thankYouOurTeamWill")}</p>
           </div>
         ) : (
           <>
             <div>
-              <p className="text-sm font-semibold text-slate-900 mb-0.5">Report comment</p>
-              <p className="text-xs text-slate-500">Why are you reporting this comment?</p>
+              <p className="text-sm font-semibold text-slate-900 mb-0.5">{t("comments.reportComment")}</p>
+              <p className="text-xs text-slate-500">{t("comments.whyAreYouReportingThis")}</p>
             </div>
             <div className="space-y-2">
               {REPORT_REASONS.map((r) => (
@@ -493,16 +494,16 @@ function ReportModal({
                     onChange={() => setReason(r.value)}
                     className="accent-slate-900"
                   />
-                  <span className="text-sm text-slate-700">{r.label}</span>
+                  <span className="text-sm text-slate-700">{t(r.labelKey)}</span>
                 </label>
               ))}
             </div>
             <div className="flex gap-2 justify-end pt-1">
               <Button size="sm" variant="outline" onClick={onClose} disabled={submitting}>
-                Cancel
+                {t("auth.cancel")}
               </Button>
               <Button size="sm" onClick={handleSubmit} disabled={submitting}>
-                {submitting ? "Submitting…" : "Submit report"}
+                {submitting ? t("comments.submitting") : t("comments.submitReport")}
               </Button>
             </div>
           </>
@@ -524,16 +525,17 @@ function DeleteConfirmInline({
   onCancel: () => void;
   deleting: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="mt-1.5 flex items-center gap-2 text-[11px] text-slate-600">
-      <span>Delete this comment?</span>
+      <span>{t("comments.deleteThisComment")}</span>
       <button
         type="button"
         onClick={onConfirm}
         disabled={deleting}
         className="font-medium text-red-600 hover:text-red-700 transition-colors disabled:opacity-50"
       >
-        {deleting ? "Deleting…" : "Yes, delete"}
+        {deleting ? t("comments.deleting") : t("comments.yesDelete")}
       </button>
       <button
         type="button"
@@ -541,7 +543,7 @@ function DeleteConfirmInline({
         disabled={deleting}
         className="hover:text-slate-900 transition-colors"
       >
-        Cancel
+        {t("auth.cancel")}
       </button>
     </div>
   );
@@ -574,6 +576,7 @@ function CommentThread({
   onEdit,
   onDelete,
 }: CommentThreadProps) {
+  const { t } = useTranslation();
   const [isReplying, setIsReplying] = React.useState(false);
   const [replyText, setReplyText] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
@@ -665,7 +668,7 @@ function CommentThread({
         <div className="flex-1 min-w-0">
           {/* M-G02: tombstone — no author, no actions, just placeholder */}
           {isDeleted ? (
-            <p className="text-[11px] text-slate-400 italic">[deleted]</p>
+            <p className="text-[11px] text-slate-400 italic">{t("comments.deleted")}</p>
           ) : (
             <>
               {/* Header: display name + timestamp + edited indicator */}
@@ -674,7 +677,9 @@ function CommentThread({
                 <span>{timeAgo(node.created_at)}</span>
                 {/* M-G01: edited_at indicator */}
                 {node.edited_at && (
-                  <span className="text-slate-400 italic">· edited {timeAgo(node.edited_at)}</span>
+                  <span className="text-slate-400 italic">
+                    {t("comments.editedWhen", { when: timeAgo(node.edited_at) })}
+                  </span>
                 )}
               </div>
 
@@ -697,14 +702,14 @@ function CommentThread({
                       onClick={() => setIsEditing(false)}
                       disabled={savingEdit}
                     >
-                      Cancel
+                      {t("auth.cancel")}
                     </Button>
                     <Button
                       size="sm"
                       onClick={handleSaveEdit}
                       disabled={savingEdit || !editDirty}
                     >
-                      {savingEdit ? "Saving…" : "Save"}
+                      {savingEdit ? t("stance.saving") : t("comments.save")}
                     </Button>
                   </div>
                 </div>
@@ -775,7 +780,7 @@ function CommentThread({
                         setIsReplying((v) => !v);
                       }}
                     >
-                      {isReplying ? "Cancel" : "Reply"}
+                      {isReplying ? t("auth.cancel") : t("comments.reply")}
                     </button>
                   )}
 
@@ -785,7 +790,7 @@ function CommentThread({
                       type="button"
                       className="flex items-center gap-1 hover:text-slate-900 transition-colors"
                       onClick={handleOpenEdit}
-                      aria-label="Edit comment"
+                      aria-label={t("comments.editComment")}
                     >
                       <Pencil className="h-3 w-3" />
                     </button>
@@ -801,7 +806,7 @@ function CommentThread({
                         setIsReplying(false);
                         setIsEditing(false);
                       }}
-                      aria-label="Delete comment"
+                      aria-label={t("comments.deleteComment")}
                     >
                       <Trash2 className="h-3 w-3" />
                     </button>
@@ -813,7 +818,7 @@ function CommentThread({
                       type="button"
                       className="flex items-center gap-1 hover:text-red-500 transition-colors ml-auto"
                       onClick={() => setReportingId(node.id)}
-                      aria-label="Report comment"
+                      aria-label={t("comments.reportComment")}
                     >
                       <Flag className="h-3 w-3" />
                     </button>
@@ -827,7 +832,7 @@ function CommentThread({
                   <Textarea
                     rows={2}
                     className="text-xs"
-                    placeholder="Write a reply…"
+                    placeholder={t("comments.writeAReply")}
                     value={replyText}
                     onChange={(e) => setReplyText(e.target.value)}
                     disabled={submitting}
@@ -839,14 +844,14 @@ function CommentThread({
                       onClick={() => setIsReplying(false)}
                       disabled={submitting}
                     >
-                      Cancel
+                      {t("auth.cancel")}
                     </Button>
                     <Button
                       size="sm"
                       onClick={handleSubmitReply}
                       disabled={submitting || !replyText.trim()}
                     >
-                      {submitting ? "Replying…" : "Reply"}
+                      {submitting ? t("comments.replying") : t("comments.reply")}
                     </Button>
                   </div>
                 </div>
@@ -1031,7 +1036,7 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
       }
     } catch (err: any) {
       toast({
-        title: "Could not load more comments",
+        title: t("comments.couldNotLoadMoreComments"),
         description: err?.message ?? "Please try again.",
         variant: "destructive",
       });
@@ -1235,7 +1240,7 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
     },
     onError: (err) => {
       console.error("[reactMutation] error:", err);
-      toast({ title: "Could not save reaction. Please try again.", variant: "destructive" });
+      toast({ title: t("comments.couldNotSaveReactionPlease"), variant: "destructive" });
     },
   });
 
@@ -1290,7 +1295,7 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
     },
     onError: (err: any) => {
       toast({
-        title: "Could not save edit",
+        title: t("comments.couldNotSaveEdit"),
         description: err?.message ?? "Please try again.",
         variant: "destructive",
       });
@@ -1310,7 +1315,7 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
     },
     onError: (err: any) => {
       toast({
-        title: "Could not delete comment",
+        title: t("comments.couldNotDeleteComment"),
         description: err?.message ?? "Please try again.",
         variant: "destructive",
       });
@@ -1373,7 +1378,7 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
       }
     } catch (err: any) {
       toast({
-        title: "Could not post comment",
+        title: t("comments.couldNotPostComment"),
         description: err?.message ?? "Please try again.",
         variant: "destructive",
       });
@@ -1432,9 +1437,9 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
         {/* Discussion mood */}
         {(liveCommentCount > 0 || threadSentimentQuery.isLoading) && (
           <div className="rounded-md border bg-slate-50 px-3 py-2 text-[11px] flex items-center gap-2">
-            <span className="font-semibold text-slate-900">Discussion mood</span>
+            <span className="font-semibold text-slate-900">{t("stance.discussionMood")}</span>
             {threadSentimentQuery.isLoading ? (
-              <span className="text-slate-500">Analyzing…</span>
+              <span className="text-slate-500">{t("comments.analyzing")}</span>
             ) : sentiment ? (
               <>
                 <span
@@ -1456,7 +1461,7 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
         <div className="space-y-2">
           <RichCommentInput
             ref={newCommentRef}
-            placeholder={sessionUserId ? "Add a comment…" : "Sign in to add a comment."}
+            placeholder={sessionUserId ? t("comments.addAComment") : t("comments.signInToAddA")}
             disabled={!sessionUserId || posting || checkingCivility || createCommentMutation.isPending}
             minHeight={72}
             onChange={(text) => {
@@ -1471,10 +1476,10 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
               <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
               <div className="flex-1">
                 <p className="text-xs font-medium text-amber-800">
-                  Your comment may contain language that could be seen as harmful.
+                  {t("comments.yourCommentMayContainLanguage")}
                 </p>
                 <p className="text-[11px] text-amber-700 mt-0.5">
-                  Please review and edit it, or post anyway if you believe it's appropriate.
+                  {t("comments.pleaseReviewAndEditIt")}
                 </p>
               </div>
             </div>
@@ -1497,7 +1502,7 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
                   disabled={posting}
                   className="text-amber-700 border-amber-300"
                 >
-                  Post anyway
+                  {t("comments.postAnyway")}
                 </Button>
               )}
               <Button
@@ -1506,11 +1511,11 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
                 disabled={!sessionUserId || posting || checkingCivility || createCommentMutation.isPending || !newCommentHasContent}
               >
                 {checkingCivility
-                  ? "Checking…"
+                  ? t("home.checking")
                   : posting
-                  ? "Posting…"
+                  ? t("comments.posting")
                   : civilityWarning
-                  ? "Edit comment"
+                  ? t("comments.editComment")
                   : t("comments.post")}
               </Button>
             </div>
@@ -1520,7 +1525,7 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
         {/* G2: Sort controls */}
         {sortedNodes.length > 1 && (
           <div className="flex items-center gap-2 text-[11px] text-slate-500 border-t pt-3">
-            <span>Sort:</span>
+            <span>{t("comments.sort")}</span>
             {(["latest", "helpful"] as SortMode[]).map((m) => (
               <button
                 key={m}
@@ -1531,7 +1536,7 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
                   sortMode === m ? "font-medium text-slate-900" : "hover:text-slate-700",
                 ].join(" ")}
               >
-                {m === "latest" ? "Latest" : "Most Helpful"}
+                {m === "latest" ? t("comments.latest") : t("comments.mostHelpful")}
               </button>
             ))}
           </div>
@@ -1540,7 +1545,7 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
         {/* Comments list */}
         <div className={sortedNodes.length > 1 ? "" : "border-t pt-3 mt-2"}>
           {isInitialLoading && (
-            <p className="text-xs text-slate-500">Loading comments…</p>
+            <p className="text-xs text-slate-500">{t("comments.loadingComments")}</p>
           )}
           {!isInitialLoading && sortedNodes.length === 0 && (
             <p className="text-xs text-slate-500">
@@ -1595,10 +1600,10 @@ export function QuestionCommentsPanel({ questionId }: { questionId: string }) {
                 {loadingMore ? (
                   <span className="flex items-center gap-1.5">
                     <Loader2 className="h-3 w-3 animate-spin" />
-                    Loading…
+                    {t("common.loading")}
                   </span>
                 ) : (
-                  "Show more comments"
+                  t("comments.showMoreComments")
                 )}
               </Button>
             </div>
