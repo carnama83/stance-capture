@@ -17,6 +17,9 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { RegionMultiSelect } from "@/components/admin/RegionMultiSelect";
 import { EXPECTATION_LABEL_KEYS } from "@/components/question/ExpectationPrompt";
+// Admin screens stay English regardless of the viewer's UI language. This
+// reads the shared expectation vocabulary (keys, not text) purely so the
+// panel keeps showing labels rather than raw keys — it is not localization.
 import i18n from "@/lib/i18n";
 import { SUPABASE_URL, getJwt, supabaseHeaders } from "@/lib/env";
 import {
@@ -350,7 +353,7 @@ function PublishPanel() {
                     <div key={row.expectation_type} className="flex items-center justify-between text-xs">
                       <span className="text-slate-600">
                         {EXPECTATION_LABEL_KEYS[row.expectation_type]
-                          ? i18n.t(EXPECTATION_LABEL_KEYS[row.expectation_type])
+                          ? i18n.t(EXPECTATION_LABEL_KEYS[row.expectation_type], { lng: "en" })
                           : row.expectation_type}
                       </span>
                       <span className="text-slate-400">{row.pct_of_respondents}%</span>
