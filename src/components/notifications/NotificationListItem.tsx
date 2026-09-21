@@ -102,7 +102,8 @@ function StanceChangeSubtitle({
     if (!delta) return null;
     return (
       <span className="block text-xs text-orange-600/80 mt-0.5">
-        {region ? `${region}: ` : ""}Opinion shifted by {delta} points in your area
+        {region ? `${region}: ` : ""}
+        {t("notificationListItem.opinionShiftedHere", { delta })}
       </span>
     );
   }

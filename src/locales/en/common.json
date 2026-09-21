@@ -914,7 +914,9 @@
     "savePreferences": "Save preferences",
     "noFollowedTopics": "You haven't followed any topics yet. <a>Browse topics</a> to follow ones you care about.",
     "mutedCount_one": "{{count}} topic muted — no stance shift or activity alerts for that topic.",
-    "mutedCount_other": "{{count}} topics muted — no stance shift or activity alerts for those topics."
+    "mutedCount_other": "{{count}} topics muted — no stance shift or activity alerts for those topics.",
+    "unmute": "Unmute",
+    "mute": "Mute"
   },
   "settingsAccount": {
     "deletionRequestSubmittedYouHave": "Deletion request submitted. You have 14 days to cancel.",
@@ -947,7 +949,9 @@
     "deleteAccount": "Delete account",
     "permanentlyDeleteYourAccountAnd": "Permanently delete your account and all associated data.",
     "deletionScheduledDetail": "Requested on {{requested}}. Your account and all data will be permanently deleted on <b>{{execute}}</b> ({{days}} days remaining).",
-    "typeDeleteToConfirm": "Type <code>DELETE</code> to confirm"
+    "typeDeleteToConfirm": "Type <code>DELETE</code> to confirm",
+    "consentGranted": "Consent granted",
+    "consentWithdrawn": "Consent withdrawn"
   },
   "settingsPrivacy": {
     "failedToUpdateWhatsappSetting": "Failed to update WhatsApp setting. Please try again.",
@@ -1003,7 +1007,8 @@
     "connectXToPostYour": "Connect X to post your stances directly from Stance Capture. Requires write permission to your X account.",
     "connectedOn": "Connected · {{date}}",
     "disconnectProvider": "Disconnect {{provider}}",
-    "providerDisconnected": "{{provider}} disconnected."
+    "providerDisconnected": "{{provider}} disconnected.",
+    "canTDisconnectYourOnly": "Can't disconnect your only login method"
   },
   "settingsProfile": {
     "correctMyDateOfBirth": "Correct my date of birth",
@@ -1144,7 +1149,9 @@
     "demographicBreakdown": "Demographic Breakdown",
     "seeHowStanceDistributionsVary": "See how stance distributions vary by gender across questions.",
     "startBuildingYourInsights": "Start Building Your Insights",
-    "theMoreQuestionsYouAnswer": "The more questions you answer, the richer your insights become."
+    "theMoreQuestionsYouAnswer": "The more questions you answer, the richer your insights become.",
+    "beliefProfile": "Belief profile",
+    "howYouVeChanged": "How you've changed"
   },
   "proposalDetail": {
     "couldNotLoadThisProposal": "Could not load this proposal.",
@@ -1228,7 +1235,9 @@
     "selectAQuestion": "Select a question…",
     "regionalBreakdown": "Regional breakdown",
     "demographics": "Demographics",
-    "questionsCount": "Questions ({{count}})"
+    "questionsCount": "Questions ({{count}})",
+    "comparingTwoRegionsSideBy": "Comparing two regions side by side.",
+    "distributionAcrossAllQuestionsIn": "Distribution across all questions in this region."
   },
   "publisher": {
     "htmlSnippet": "HTML snippet",
@@ -1332,7 +1341,8 @@
     "setAUsernameFirst": "Set a username first",
     "dob": "DOB:",
     "refresh": "Refresh",
-    "noAvatar": "No Avatar"
+    "noAvatar": "No Avatar",
+    "setAUsernameFirstBefore": "Set a username first before switching display to username."
   },
   "constituency": {
     "constituencySaved": "Constituency saved",
@@ -1371,7 +1381,8 @@
     "addMyVoiceOnWhatsapp": "💬 Add my voice on WhatsApp",
     "opensWhatsappWithAPre": "Opens WhatsApp with a pre-filled \"SUBSCRIBE\" message. Send it to count your stance and get updates. Reply STOP anytime.",
     "stanceRecorded": "✓ Your stance is recorded",
-    "stanceRecordedLabeled": "✓ Your stance — <v>{{label}}</v> — is recorded"
+    "stanceRecordedLabeled": "✓ Your stance — <v>{{label}}</v> — is recorded",
+    "couldnTSendTheLink": "Couldn't send the link. Check the address and try again."
   },
   "settingsSessions": {
     "sessions": "Sessions",
@@ -1388,7 +1399,10 @@
     "keepThisDeviceSignedIn": "Keep this device signed in; log out everywhere else.",
     "signOutOnOtherDevices": "Sign out on other devices",
     "signOutOnAllDevices": "Sign out on all devices including this one.",
-    "signOutEverywhere": "Sign out everywhere"
+    "signOutEverywhere": "Sign out everywhere",
+    "signedOutOnThisDevice": "Signed out on this device.",
+    "signedOutOnOtherDevices": "Signed out on other devices.",
+    "signedOutEverywhere": "Signed out everywhere."
   },
   "threeTierQuestionsFeed": {
     "failedToLoadCuratedQuestions": "Failed to load curated questions. Please try refreshing.",
@@ -1414,7 +1428,8 @@
     "recordedCount_one": "✓ {{count}} stance recorded",
     "recordedCount_other": "✓ {{count}} stances recorded",
     "notCountedYet_one": "Not counted yet — add your voice to make it count.",
-    "notCountedYet_other": "Not counted yet — add your voice to make them count."
+    "notCountedYet_other": "Not counted yet — add your voice to make them count.",
+    "couldnTSendTheLink": "Couldn't send the link. Try again in a moment."
   },
   "settingsSecurity": {
     "authenticatorEnabled": "Authenticator enabled.",
@@ -1882,5 +1897,49 @@
     "justiceStrongOppose": "tend to strongly support tougher law enforcement.",
     "justiceLeanOppose": "tend to favour a more traditional approach to law and order.",
     "justiceMixed": "have mixed views on criminal justice."
+  },
+  "followTopicButton": {
+    "actionFailed": "Action failed"
+  },
+  "coachMark": {
+    "dismissTip": "Dismiss tip"
+  },
+  "authorityBlock": {
+    "thisIssueFallsUnderThe": "This issue falls under the responsibility of:",
+    "unconfirmed": "(unconfirmed)"
+  },
+  "incidentSummary": {
+    "when": "When:",
+    "category": "Category:"
+  },
+  "rawVideoReveal": {
+    "couldnTLoadTheVideo": "Couldn't load the video.",
+    "loadingVideo": "Loading video…"
+  },
+  "videoThumbnail": {
+    "playVideo": "Play video",
+    "couldnTLoadTheVideo": "Couldn't load the video — tap to retry."
+  },
+  "searchBar": {
+    "clearSearch": "Clear search"
+  },
+  "postStanceSharePrompt": {
+    "wantToSeeWhatOthers": "Want to see what others think?",
+    "shareThisQuestionAndHelp": "Share this question and help grow the conversation."
+  },
+  "socialIngestionDisclosure": {
+    "repliesToPostsSharedOn": "Replies to posts shared on X may be captured as stances.",
+    "manageInPrivacySettings": "Manage in Privacy Settings"
+  },
+  "proposeQuestionButton": {
+    "propose": "Propose"
+  },
+  "topicMomentumTimeline": {
+    "peakDriven_one": "Peak driven by {{count}} news outlet — {{title}}.",
+    "peakDriven_other": "Peak driven by {{count}} news outlets — {{title}}."
+  },
+  "stanceDistributionBar": {
+    "responseCount_one": "{{shown}} response",
+    "responseCount_other": "{{shown}} responses"
   }
 }

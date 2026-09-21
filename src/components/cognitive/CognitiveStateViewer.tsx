@@ -33,7 +33,7 @@ export function CognitiveStateViewer() {
     return (
       <Alert variant="destructive">
         <AlertDescription>
-          {t("cognitive.errorLoadingCognitiveState")} {error.message || 'Unknown error'}
+          {t("cognitive.errorLoadingCognitiveState")} {error.message || t("todayQuestionsFeed.unknownError")}
         </AlertDescription>
       </Alert>
     );

@@ -914,7 +914,9 @@
     "savePreferences": "प्राथमिकताएँ सहेजें",
     "noFollowedTopics": "आपने अभी तक कोई विषय फ़ॉलो नहीं किया है। जो विषय आपके लिए मायने रखते हैं उन्हें फ़ॉलो करने के लिए <a>विषय देखें</a>।",
     "mutedCount_one": "{{count}} विषय म्यूट — उस विषय के लिए कोई रुख बदलाव या गतिविधि सूचना नहीं।",
-    "mutedCount_other": "{{count}} विषय म्यूट — उन विषयों के लिए कोई रुख बदलाव या गतिविधि सूचना नहीं।"
+    "mutedCount_other": "{{count}} विषय म्यूट — उन विषयों के लिए कोई रुख बदलाव या गतिविधि सूचना नहीं।",
+    "unmute": "फिर चालू करें",
+    "mute": "बंद करें"
   },
   "settingsAccount": {
     "deletionRequestSubmittedYouHave": "हटाने का अनुरोध भेज दिया गया। इसे रद्द करने के लिए आपके पास 14 दिन हैं।",
@@ -947,7 +949,9 @@
     "deleteAccount": "खाता हटाएँ",
     "permanentlyDeleteYourAccountAnd": "अपना खाता और उससे जुड़ा सारा डेटा स्थायी रूप से हटाएँ।",
     "deletionScheduledDetail": "{{requested}} को अनुरोध किया गया। आपका खाता और सारा डेटा <b>{{execute}}</b> को स्थायी रूप से हटा दिया जाएगा ({{days}} दिन शेष)।",
-    "typeDeleteToConfirm": "पुष्टि के लिए <code>DELETE</code> लिखें"
+    "typeDeleteToConfirm": "पुष्टि के लिए <code>DELETE</code> लिखें",
+    "consentGranted": "सहमति दी गई",
+    "consentWithdrawn": "सहमति वापस ली गई"
   },
   "settingsPrivacy": {
     "failedToUpdateWhatsappSetting": "WhatsApp सेटिंग अपडेट नहीं हो सकी। कृपया फिर से प्रयास करें।",
@@ -1003,7 +1007,8 @@
     "connectXToPostYour": "Stance Capture से सीधे अपने रुख पोस्ट करने के लिए X जोड़ें। इसके लिए आपके X खाते में लिखने की अनुमति चाहिए।",
     "connectedOn": "जुड़ा · {{date}}",
     "disconnectProvider": "{{provider}} हटाएँ",
-    "providerDisconnected": "{{provider}} हटा दिया गया।"
+    "providerDisconnected": "{{provider}} हटा दिया गया।",
+    "canTDisconnectYourOnly": "आप अपनी एकमात्र लॉगिन विधि हटा नहीं सकते"
   },
   "settingsProfile": {
     "correctMyDateOfBirth": "मेरी जन्मतिथि सुधारें",
@@ -1144,7 +1149,9 @@
     "demographicBreakdown": "जनसांख्यिकी विश्लेषण",
     "seeHowStanceDistributionsVary": "देखें कि सवालों के अनुसार रुख वितरण लिंग के हिसाब से कैसे बदलता है।",
     "startBuildingYourInsights": "अपनी अंतर्दृष्टि बनाना शुरू करें",
-    "theMoreQuestionsYouAnswer": "आप जितने ज़्यादा सवालों के उत्तर देंगे, आपकी अंतर्दृष्टि उतनी ही समृद्ध होगी।"
+    "theMoreQuestionsYouAnswer": "आप जितने ज़्यादा सवालों के उत्तर देंगे, आपकी अंतर्दृष्टि उतनी ही समृद्ध होगी।",
+    "beliefProfile": "मान्यता प्रोफ़ाइल",
+    "howYouVeChanged": "आप कैसे बदले"
   },
   "proposalDetail": {
     "couldNotLoadThisProposal": "यह प्रस्ताव लोड नहीं हो सका।",
@@ -1228,7 +1235,9 @@
     "selectAQuestion": "कोई सवाल चुनें…",
     "regionalBreakdown": "क्षेत्रीय विश्लेषण",
     "demographics": "जनसांख्यिकी",
-    "questionsCount": "सवाल ({{count}})"
+    "questionsCount": "सवाल ({{count}})",
+    "comparingTwoRegionsSideBy": "दो क्षेत्रों की साथ-साथ तुलना।",
+    "distributionAcrossAllQuestionsIn": "इस क्षेत्र के सभी सवालों में वितरण।"
   },
   "publisher": {
     "htmlSnippet": "HTML स्निपेट",
@@ -1332,7 +1341,8 @@
     "setAUsernameFirst": "पहले उपयोगकर्ता नाम सेट करें",
     "dob": "जन्म तिथि:",
     "refresh": "ताज़ा करें",
-    "noAvatar": "कोई अवतार नहीं"
+    "noAvatar": "कोई अवतार नहीं",
+    "setAUsernameFirstBefore": "प्रदर्शन को उपयोगकर्ता नाम में बदलने से पहले उपयोगकर्ता नाम सेट करें।"
   },
   "constituency": {
     "constituencySaved": "निर्वाचन क्षेत्र सहेजा गया",
@@ -1371,7 +1381,8 @@
     "addMyVoiceOnWhatsapp": "💬 WhatsApp पर मेरी आवाज़ जोड़ें",
     "opensWhatsappWithAPre": "पहले से भरे \"SUBSCRIBE\" संदेश के साथ WhatsApp खुलता है। अपना रुख गिनने और अपडेट पाने के लिए इसे भेजें। रोकने के लिए कभी भी STOP लिखें।",
     "stanceRecorded": "✓ आपका रुख दर्ज है",
-    "stanceRecordedLabeled": "✓ आपका रुख — <v>{{label}}</v> — दर्ज है"
+    "stanceRecordedLabeled": "✓ आपका रुख — <v>{{label}}</v> — दर्ज है",
+    "couldnTSendTheLink": "लिंक नहीं भेजा जा सका। पता जाँचकर फिर प्रयास करें।"
   },
   "settingsSessions": {
     "sessions": "सत्र",
@@ -1388,7 +1399,10 @@
     "keepThisDeviceSignedIn": "इस डिवाइस को साइन इन रखें; बाक़ी सब जगह से लॉग आउट करें।",
     "signOutOnOtherDevices": "अन्य डिवाइस पर साइन आउट करें",
     "signOutOnAllDevices": "इस डिवाइस सहित सभी डिवाइस पर साइन आउट करें।",
-    "signOutEverywhere": "हर जगह साइन आउट करें"
+    "signOutEverywhere": "हर जगह साइन आउट करें",
+    "signedOutOnThisDevice": "इस डिवाइस पर साइन आउट हो गया।",
+    "signedOutOnOtherDevices": "अन्य डिवाइस पर साइन आउट हो गया।",
+    "signedOutEverywhere": "हर जगह साइन आउट हो गया।"
   },
   "threeTierQuestionsFeed": {
     "failedToLoadCuratedQuestions": "चयनित सवाल लोड नहीं हो सके। कृपया पेज ताज़ा करें।",
@@ -1414,7 +1428,8 @@
     "recordedCount_one": "✓ {{count}} रुख दर्ज",
     "recordedCount_other": "✓ {{count}} रुख दर्ज",
     "notCountedYet_one": "अभी गिना नहीं गया — इसे गिनती में लाने के लिए अपनी आवाज़ जोड़ें।",
-    "notCountedYet_other": "अभी गिने नहीं गए — इन्हें गिनती में लाने के लिए अपनी आवाज़ जोड़ें।"
+    "notCountedYet_other": "अभी गिने नहीं गए — इन्हें गिनती में लाने के लिए अपनी आवाज़ जोड़ें।",
+    "couldnTSendTheLink": "लिंक नहीं भेजा जा सका। कुछ देर बाद फिर प्रयास करें।"
   },
   "settingsSecurity": {
     "authenticatorEnabled": "प्रमाणक सक्षम किया गया।",
@@ -1882,5 +1897,49 @@
     "justiceStrongOppose": "सख़्त क़ानून प्रवर्तन का पुरज़ोर समर्थन करते हैं।",
     "justiceLeanOppose": "क़ानून-व्यवस्था के प्रति अधिक पारंपरिक दृष्टिकोण को पसंद करते हैं।",
     "justiceMixed": "आपराधिक न्याय पर मिश्रित विचार रखते हैं।"
+  },
+  "followTopicButton": {
+    "actionFailed": "कार्रवाई विफल"
+  },
+  "coachMark": {
+    "dismissTip": "सुझाव हटाएँ"
+  },
+  "authorityBlock": {
+    "thisIssueFallsUnderThe": "यह मुद्दा इनकी ज़िम्मेदारी में आता है:",
+    "unconfirmed": "(अपुष्ट)"
+  },
+  "incidentSummary": {
+    "when": "कब:",
+    "category": "श्रेणी:"
+  },
+  "rawVideoReveal": {
+    "couldnTLoadTheVideo": "वीडियो लोड नहीं हो सका।",
+    "loadingVideo": "वीडियो लोड हो रहा है…"
+  },
+  "videoThumbnail": {
+    "playVideo": "वीडियो चलाएँ",
+    "couldnTLoadTheVideo": "वीडियो लोड नहीं हो सका — फिर से करने के लिए टैप करें।"
+  },
+  "searchBar": {
+    "clearSearch": "खोज हटाएँ"
+  },
+  "postStanceSharePrompt": {
+    "wantToSeeWhatOthers": "जानना चाहते हैं दूसरे क्या सोचते हैं?",
+    "shareThisQuestionAndHelp": "यह सवाल साझा करें और चर्चा को आगे बढ़ाएँ।"
+  },
+  "socialIngestionDisclosure": {
+    "repliesToPostsSharedOn": "X पर साझा की गई पोस्ट के उत्तर रुख के रूप में दर्ज हो सकते हैं।",
+    "manageInPrivacySettings": "गोपनीयता सेटिंग्स में प्रबंधित करें"
+  },
+  "proposeQuestionButton": {
+    "propose": "प्रस्ताव दें"
+  },
+  "topicMomentumTimeline": {
+    "peakDriven_one": "{{count}} समाचार स्रोत से उभरा शिखर — {{title}}।",
+    "peakDriven_other": "{{count}} समाचार स्रोतों से उभरा शिखर — {{title}}।"
+  },
+  "stanceDistributionBar": {
+    "responseCount_one": "{{shown}} प्रतिक्रिया",
+    "responseCount_other": "{{shown}} प्रतिक्रियाएँ"
   }
 }

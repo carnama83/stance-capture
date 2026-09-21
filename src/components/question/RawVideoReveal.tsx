@@ -37,6 +37,7 @@
 
 import { useEffect, useState } from "react";
 import { SUPABASE_URL, getJwt, supabaseHeaders } from "@/lib/env";
+import { useTranslation } from "react-i18next";
 
 type Props = {
   questionId: string;
@@ -46,6 +47,7 @@ type Props = {
 type PlaybackState = "loading" | "ready" | "error";
 
 export function RawVideoReveal({ questionId, posterUrl }: Props) {
+  const { t } = useTranslation();
   const [playback, setPlayback] = useState<PlaybackState>("loading");
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
 
@@ -95,13 +97,13 @@ export function RawVideoReveal({ questionId, posterUrl }: Props) {
   if (playback === "error") {
     return (
       <div className="flex aspect-video w-full flex-col items-center justify-center gap-2 rounded-lg bg-slate-900 text-sm text-slate-300">
-        <p>Couldn't load the video.</p>
+        <p>{t("rawVideoReveal.couldnTLoadTheVideo")}</p>
         <button
           type="button"
           onClick={() => setPlayback("loading")}
           className="underline underline-offset-2 text-white"
         >
-          Try again
+          {t("settingsNotif.tryAgain")}
         </button>
       </div>
     );
@@ -115,7 +117,7 @@ export function RawVideoReveal({ questionId, posterUrl }: Props) {
       className="flex aspect-video w-full items-center justify-center rounded-lg bg-slate-900 bg-cover bg-center text-sm text-slate-300"
       style={posterUrl ? { backgroundImage: `url(${posterUrl})` } : undefined}
     >
-      <span className="rounded bg-black/50 px-2 py-1">Loading video…</span>
+      <span className="rounded bg-black/50 px-2 py-1">{t("rawVideoReveal.loadingVideo")}</span>
     </div>
   );
 }

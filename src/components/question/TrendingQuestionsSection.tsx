@@ -1,6 +1,7 @@
 import { useTrendingQuestions } from '@/hooks/useQuestionLifecycle';
 import { QuestionCard } from './QuestionCard';
 import { Flame } from 'lucide-react';
+import { useTranslation } from "react-i18next";
 
 interface TrendingQuestionsSectionProps {
   limit?: number;
@@ -11,6 +12,7 @@ export function TrendingQuestionsSection({
   limit = 5,
   className = '',
 }: TrendingQuestionsSectionProps) {
+  const { t } = useTranslation();
   const { data: trending, isLoading } = useTrendingQuestions(limit);
   
   // Don't show section if no trending questions
@@ -24,7 +26,7 @@ export function TrendingQuestionsSection({
       <div className="flex items-center gap-2 mb-4">
         <div className="flex items-center gap-2 text-orange-600">
           <Flame className="w-6 h-6" />
-          <h2 className="text-2xl font-bold">Trending Now</h2>
+          <h2 className="text-2xl font-bold">{t("threeTierTrending.trendingNow")}</h2>
         </div>
         <span className="text-sm text-gray-500">
           ({trending.length})

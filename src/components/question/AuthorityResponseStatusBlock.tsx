@@ -18,6 +18,7 @@ import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getSupabase } from "@/lib/supabaseClient";
 import { ClipboardCheck } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 export interface AuthorityResponseRow {
   id: string;
@@ -70,6 +71,7 @@ function useAuthorityResponses(questionId: string) {
 }
 
 export function AuthorityResponseStatusBlock({ questionId }: { questionId: string }) {
+  const { t } = useTranslation();
   const { data: responses = [] } = useAuthorityResponses(questionId);
 
   if (responses.length === 0) return null;
@@ -78,13 +80,13 @@ export function AuthorityResponseStatusBlock({ questionId }: { questionId: strin
     <div className="rounded-xl border border-slate-200 bg-white p-3 mb-3">
       <div className="flex items-center gap-1.5 mb-2">
         <ClipboardCheck className="h-3.5 w-3.5 text-slate-500" />
-        <p className="text-xs font-medium text-slate-700">Response status</p>
+        <p className="text-xs font-medium text-slate-700">{t("publicLedger.responseStatus")}</p>
       </div>
       <div className="space-y-1.5">
         {responses.map((r) => (
           <div key={r.id} className="flex items-center justify-between gap-2">
             <span className="text-xs text-slate-600 truncate">
-              {r.authority_registry?.name ?? "Authority"}
+              {r.authority_registry?.name ?? t("publicLedger.authority")}
             </span>
             <div className="flex items-center gap-2 shrink-0">
               <span

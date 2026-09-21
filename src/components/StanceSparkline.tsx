@@ -210,7 +210,7 @@ export function StanceSparkline({ questionId, currentScore }: StanceSparklinePro
                       </span>
                     ) : (
                       <span>
-                        Changed{" "}
+                        {t("stanceSparkline.changedFromTo")}{" "}
                         <span style={{ color: SCORE_COLOR[p.old_score ?? 0] }}>
                           {SCORE_LABELS[p.old_score ?? 0]}
                         </span>

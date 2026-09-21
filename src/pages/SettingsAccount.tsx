@@ -327,7 +327,7 @@ function ConsentLogsSection() {
                 {consentKeyLabel(log.consent_key)}
               </p>
               <p className="text-[11px] text-slate-400 mt-0.5">
-                {log.granted ? "Consent granted" : "Consent withdrawn"}
+                {log.granted ? t("settingsAccount.consentGranted") : t("settingsAccount.consentWithdrawn")}
                 {log.version ? ` · v${log.version}` : ""}{" "}
                 · {formatDate(log.created_at)}
               </p>

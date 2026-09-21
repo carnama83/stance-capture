@@ -15,6 +15,7 @@
 // <video> element, are only fetched/mounted on click.
 import { useCallback, useState } from "react";
 import { SUPABASE_URL, getJwt, supabaseHeaders } from "@/lib/env";
+import { useTranslation } from "react-i18next";
 
 type Props = {
   questionId: string;
@@ -25,6 +26,7 @@ type Props = {
 type PlaybackState = "idle" | "loading" | "ready" | "error";
 
 export function VideoThumbnailCard({ questionId, posterUrl, className }: Props) {
+  const { t } = useTranslation();
   const [playback, setPlayback] = useState<PlaybackState>("idle");
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
 
@@ -89,7 +91,7 @@ export function VideoThumbnailCard({ questionId, posterUrl, className }: Props) 
         void handlePlay();
       }}
       disabled={playback === "loading"}
-      aria-label="Play video"
+      aria-label={t("videoThumbnail.playVideo")}
       className={
         (className ?? "aspect-video w-full rounded-lg") +
         ` ${hasOwnPosition ? "" : "relative"} flex items-center justify-center overflow-hidden bg-slate-900 bg-cover bg-center disabled:opacity-80`
@@ -106,7 +108,7 @@ export function VideoThumbnailCard({ questionId, posterUrl, className }: Props) 
       </span>
       {playback === "error" && (
         <span className="absolute bottom-1.5 left-1.5 right-1.5 rounded bg-black/70 px-2 py-1 text-[11px] text-white">
-          Couldn't load the video — tap to retry.
+          {t("videoThumbnail.couldnTLoadTheVideo")}
         </span>
       )}
     </button>

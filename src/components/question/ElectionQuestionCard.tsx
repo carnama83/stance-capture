@@ -80,7 +80,6 @@ function LocalCandidateStrip({
     <div className="flex items-center gap-2 rounded bg-slate-50 border border-slate-200 px-3 py-1.5 text-xs">
       <User className="h-3 w-3 text-muted-foreground shrink-0" />
       <div className="flex items-center gap-1.5 flex-wrap min-w-0">
-        <span className="text-muted-foreground">Your</span>
         {partyAbbreviation && (
           <span
             className="font-semibold px-1 py-0.5 rounded text-white text-[10px]"

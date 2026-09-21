@@ -536,7 +536,7 @@ export default function PersonalInsightsPage() {
                       : "border-transparent text-slate-500 hover:text-slate-700",
                   ].join(" ")}
                 >
-                  {tab === "profile" ? "Belief profile" : "How you've changed"}
+                  {tab === "profile" ? t("insights.beliefProfile") : t("insights.howYouVeChanged")}
                 </button>
               ))}
             </div>

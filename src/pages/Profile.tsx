@@ -135,7 +135,7 @@ export default function Profile() {
 
       // Guard: username must exist before switching to 'username'
       if (mode === "username" && !row?.username) {
-        setMsg("Set a username first before switching display to username.");
+        setMsg(t("profile.setAUsernameFirstBefore"));
         return;
       }
 

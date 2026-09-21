@@ -248,7 +248,7 @@ function ProviderRow({
             disabled={disconnecting || isLastMethod}
             title={
               isLastMethod
-                ? "Can't disconnect your only login method"
+                ? t("account.canTDisconnectYourOnly")
                 : t("account.disconnectProvider", { provider: t(meta.labelKey) })
             }
             className="flex items-center gap-1.5 rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-500 hover:border-red-200 hover:text-red-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"

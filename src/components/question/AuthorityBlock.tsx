@@ -16,8 +16,10 @@
 import * as React from "react";
 import { Landmark } from "lucide-react";
 import { useQuestionAuthorities } from "@/hooks/useQuestionAuthorities";
+import { useTranslation } from "react-i18next";
 
 export function AuthorityBlock({ questionId }: { questionId: string }) {
+  const { t } = useTranslation();
   const { data: authorities = [] } = useQuestionAuthorities(questionId);
 
   if (authorities.length === 0) return null;
@@ -28,7 +30,7 @@ export function AuthorityBlock({ questionId }: { questionId: string }) {
         <Landmark className="h-4 w-4 text-slate-500 mt-0.5 shrink-0" />
         <div className="min-w-0">
           <p className="text-xs font-medium text-slate-700">
-            This issue falls under the responsibility of:
+            {t("authorityBlock.thisIssueFallsUnderThe")}
           </p>
           <div className="mt-1 space-y-0.5">
             {authorities.map((a) => {
@@ -43,7 +45,7 @@ export function AuthorityBlock({ questionId }: { questionId: string }) {
                   {" / "}
                   <span className="capitalize">{reg.jurisdiction_level}</span>
                   {isUnclear && (
-                    <span className="text-slate-400 italic"> (unconfirmed)</span>
+                    <span className="text-slate-400 italic"> {t("authorityBlock.unconfirmed")}</span>
                   )}
                 </p>
               );

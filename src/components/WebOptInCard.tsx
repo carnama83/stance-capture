@@ -43,7 +43,7 @@ export function WebOptInCard({
 
   async function sendMagicLink() {
     setError(null);
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { setError("Enter a valid email address."); return; }
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { setError(t("auth.enterValidEmail")); return; }
     setBusy(true);
     try {
       const ref = getMyForwardRef(questionId);
@@ -67,7 +67,7 @@ export function WebOptInCard({
       if (error) throw error;
       setEmailSent(true);
     } catch {
-      setError("Couldn't send the link. Check the address and try again.");
+      setError(t("webOptIn.couldnTSendTheLink"));
     } finally { setBusy(false); }
   }
 

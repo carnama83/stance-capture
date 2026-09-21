@@ -954,7 +954,7 @@ export default function CommunityPulsePage({ userKey = "anon" }: { userKey?: str
           {/* Mode toggle */}
           <div className="flex items-center justify-between mb-4">
             <p className="text-xs text-slate-500">
-              {compareMode ? "Comparing two regions side by side." : "Distribution across all questions in this region."}
+              {compareMode ? t("pulsePage.comparingTwoRegionsSideBy") : t("pulsePage.distributionAcrossAllQuestionsIn")}
             </p>
             <div className="flex gap-1">
               {[

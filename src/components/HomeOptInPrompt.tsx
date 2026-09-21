@@ -28,7 +28,7 @@ export function HomeOptInPrompt({
 
   async function sendMagicLink() {
     setError(null);
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { setError("Enter a valid email address."); return; }
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { setError(t("auth.enterValidEmail")); return; }
     setBusy(true);
     try {
       // Return to the homepage after auth; OAuthCallbackPage reads return_to.
@@ -41,7 +41,7 @@ export function HomeOptInPrompt({
       if (error) throw error;
       setEmailSent(true);
     } catch {
-      setError("Couldn't send the link. Try again in a moment.");
+      setError(t("homeOptInPrompt.couldnTSendTheLink"));
     } finally { setBusy(false); }
   }
 

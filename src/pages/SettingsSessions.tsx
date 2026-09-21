@@ -49,7 +49,7 @@ export default function SettingsSessions() {
     try {
       const { error } = await sb.auth.signOut(); // this device only
       if (error) throw error;
-      setMsg("Signed out on this device.");
+      setMsg(t("settingsSessions.signedOutOnThisDevice"));
     } catch (e: any) {
       setMsg(e?.message || "Failed to sign out on this device.");
     } finally {
@@ -65,7 +65,7 @@ export default function SettingsSessions() {
       // Supabase JS v2 supports scoped sign-out:
       const { error } = await sb.auth.signOut({ scope: "others" as any });
       if (error) throw error;
-      setMsg("Signed out on other devices.");
+      setMsg(t("settingsSessions.signedOutOnOtherDevices"));
     } catch (e: any) {
       setMsg(e?.message || "Failed to sign out on other devices.");
     } finally {
@@ -80,7 +80,7 @@ export default function SettingsSessions() {
     try {
       const { error } = await sb.auth.signOut({ scope: "global" as any });
       if (error) throw error;
-      setMsg("Signed out everywhere.");
+      setMsg(t("settingsSessions.signedOutEverywhere"));
     } catch (e: any) {
       setMsg(e?.message || "Failed to sign out everywhere.");
     } finally {
