@@ -106,7 +106,7 @@ function DobCorrectionSection({ sb, onDobCleared }: DobCorrectionSectionProps) {
   }
 
   async function handleReauth() {
-    if (!sb || !password) { setErr("Enter your current password."); return; }
+    if (!sb || !password) { setErr(t("settingsProfile.enterYourCurrentPassword")); return; }
     setBusy(true);
     setErr("");
     try {
@@ -124,7 +124,7 @@ function DobCorrectionSection({ sb, onDobCleared }: DobCorrectionSectionProps) {
   }
 
   async function handleClearAndSet() {
-    if (!sb || !newDob) { setErr("Select a new date of birth."); return; }
+    if (!sb || !newDob) { setErr(t("settingsProfile.selectANewDateOf")); return; }
     setBusy(true);
     setErr("");
     try {
@@ -233,7 +233,7 @@ function DobSetSection({ sb, onDobSet }: DobSetSectionProps) {
   const [busy, setBusy] = React.useState(false);
 
   async function handleSet() {
-    if (!sb || !dob) { setErr("Please select your date of birth."); return; }
+    if (!sb || !dob) { setErr(t("settingsProfile.pleaseSelectYourDateOf")); return; }
     setBusy(true);
     setErr("");
     try {
@@ -309,7 +309,7 @@ function WhatsAppPhoneSection({ sb, uid }: WhatsAppPhoneSectionProps) {
   async function handleSendOtp() {
     setErr("");
     if (!isValidE164(phone)) {
-      setErr("Enter a valid number in international format, e.g. +919876543210 or +19787993684");
+      setErr(t("settingsProfile.enterAValidNumberIn"));
       return;
     }
     setBusy(true);
@@ -363,7 +363,7 @@ function WhatsAppPhoneSection({ sb, uid }: WhatsAppPhoneSectionProps) {
       // Store verification token returned by the Edge Function
       setVerificationToken(data.verification_token);
       setStep("enter_otp");
-      setMsg("A 6-digit verification code has been sent to your WhatsApp.");
+      setMsg(t("settingsProfile.a6DigitVerificationCode"));
     } catch (e: any) {
       setErr(e.message ?? "Failed to send verification message.");
     } finally {
@@ -374,11 +374,11 @@ function WhatsAppPhoneSection({ sb, uid }: WhatsAppPhoneSectionProps) {
   async function handleVerifyOtp() {
     setErr("");
     if (!otp || otp.length !== 6) {
-      setErr("Enter the 6-digit code from WhatsApp.");
+      setErr(t("auth.enterSixDigitCodeWhatsApp"));
       return;
     }
     if (!verificationToken) {
-      setErr("Verification session expired. Please request a new code.");
+      setErr(t("auth.verificationExpired"));
       setStep("enter_phone");
       return;
     }
@@ -400,7 +400,7 @@ function WhatsAppPhoneSection({ sb, uid }: WhatsAppPhoneSectionProps) {
         );
       }
       setStep("verified");
-      setMsg("WhatsApp number verified. You can now send interactive stance questions to contacts.");
+      setMsg(t("settingsProfile.whatsappNumberVerifiedYouCan"));
       setPhone("");
       setOtp("");
       setVerificationToken(null);
@@ -421,7 +421,7 @@ function WhatsAppPhoneSection({ sb, uid }: WhatsAppPhoneSectionProps) {
         .eq("user_id", uid);
       if (error) throw error;
       setStep("idle");
-      setMsg("WhatsApp number removed.");
+      setMsg(t("settingsProfile.whatsappNumberRemoved"));
     } catch (e: any) {
       setErr(e.message ?? "Failed to remove number.");
     } finally {
@@ -649,8 +649,8 @@ export default function SettingsProfile() {
   React.useEffect(() => {
     let cancelled = false;
     (async () => {
-      if (!sb) return setMsg("Supabase is OFF (check env).");
-      if (!sessionUserId) { setUid(""); setMsg("Please log in."); return; }
+      if (!sb) return setMsg(t("auth.supabaseOff"));
+      if (!sessionUserId) { setUid(""); setMsg(t("settingsProfile.pleaseLogIn")); return; }
       try {
         setMsg(null);
         const { data, error } = await sb
@@ -688,8 +688,8 @@ export default function SettingsProfile() {
   // ── Save bio / avatar / show_age ──
   async function saveProfile() {
     setMsg(null);
-    if (!sb) return setMsg("Supabase is OFF (check env).");
-    if (!uid) return setMsg("Session not ready. Please wait a moment and try again.");
+    if (!sb) return setMsg(t("auth.supabaseOff"));
+    if (!uid) return setMsg(t("settingsProfile.sessionNotReadyPleaseWait"));
     try {
       setBusy(true);
       const update: Record<string, any> = {
@@ -702,7 +702,7 @@ export default function SettingsProfile() {
       }
       const { error } = await sb.from("profiles").update(update).eq("user_id", uid);
       if (error) throw error;
-      setMsg("Profile saved.");
+      setMsg(t("settingsProfile.profileSaved"));
     } catch (e: any) {
       setMsg(e.message || "Could not save profile");
     } finally {
@@ -715,8 +715,8 @@ export default function SettingsProfile() {
   // profile" button, since a language switch should just take effect.
   async function setLanguage(code: string) {
     setMsg(null);
-    if (!sb) return setMsg("Supabase is OFF (check env).");
-    if (!uid) return setMsg("Session not ready. Please wait a moment and try again.");
+    if (!sb) return setMsg(t("auth.supabaseOff"));
+    if (!uid) return setMsg(t("settingsProfile.sessionNotReadyPleaseWait"));
     // Skip ONLY when the profile and the language actually on screen already
     // agree. Comparing against the profile alone made this control inert in
     // precisely the state it exists to repair: profile says Hindi, a stale
@@ -739,7 +739,7 @@ export default function SettingsProfile() {
       // which is exactly what it exists for.
       setUiLanguageCode(code);
       setForm(f => ({ ...f, preferred_language_code: code }));
-      setMsg("Language updated.");
+      setMsg(t("settingsProfile.languageUpdated"));
       // Must match useLanguage's own queryKey (["preferred-language", userId])
       // exactly — otherwise the feed/question pages keep serving the OLD
       // cached preference until an unrelated navigation happens to refetch it.
@@ -759,8 +759,8 @@ export default function SettingsProfile() {
   // their own feed; nobody has it widened for them.
   async function setShowUnavailable(next: boolean) {
     setMsg(null);
-    if (!sb) return setMsg("Supabase is OFF (check env).");
-    if (!uid) return setMsg("Session not ready. Please wait a moment and try again.");
+    if (!sb) return setMsg(t("auth.supabaseOff"));
+    if (!uid) return setMsg(t("settingsProfile.sessionNotReadyPleaseWait"));
     try {
       setBusy(true);
       const { error } = await sb
@@ -786,11 +786,11 @@ export default function SettingsProfile() {
     if (busy) return;
     setMsg(null);
     setLastUsernameError(null);
-    if (!sb) return setMsg("Supabase is OFF (check env).");
+    if (!sb) return setMsg(t("auth.supabaseOff"));
     const desired = (form.username || "").trim().toLowerCase();
     const current = (initialUsername || "").trim().toLowerCase();
-    if (!desired) { setMsg("Enter a username first."); return; }
-    if (desired === current) { setMsg("That's already your current username."); return; }
+    if (!desired) { setMsg(t("settingsProfile.enterAUsernameFirst")); return; }
+    if (desired === current) { setMsg(t("settingsProfile.thatSAlreadyYourCurrent")); return; }
     try {
       setBusy(true);
       const res = await sb.rpc("set_username", { p_username: desired });
@@ -798,15 +798,15 @@ export default function SettingsProfile() {
         setLastUsernameError({ code: res.error.code, message: res.error.message });
         const raw = String(res.error.message || "").trim();
         if (raw.startsWith("ERR_USERNAME_LIMIT") || raw.toLowerCase().includes("username change limit")) {
-          setMsg("You've hit the username change limit (2 changes per 30 days). Try again later.");
+          setMsg(t("settingsProfile.youVeHitTheUsername"));
         } else if (raw.toLowerCase().includes("reserved")) {
-          setMsg("That username is reserved. Please choose another.");
+          setMsg(t("settingsProfile.thatUsernameIsReservedPlease"));
         } else if (raw.toLowerCase().includes("taken") || res.error.code === "23505") {
-          setMsg("That username is already taken.");
+          setMsg(t("settingsProfile.thatUsernameIsAlreadyTaken"));
         } else if (raw.toLowerCase().includes("invalid username")) {
-          setMsg("Invalid username. Use 3–20 characters: a–z, 0–9, underscore.");
+          setMsg(t("settingsProfile.invalidUsernameUse320"));
         } else if (raw.toLowerCase().includes("not authenticated")) {
-          setMsg("Session not detected. Please refresh and try again.");
+          setMsg(t("settingsProfile.sessionNotDetectedPleaseRefresh"));
         } else {
           setMsg(`Username update failed: ${raw}`);
         }
@@ -814,7 +814,7 @@ export default function SettingsProfile() {
       }
       setForm(f => ({ ...f, username: desired }));
       setInitialUsername(desired);
-      setMsg("Username updated.");
+      setMsg(t("settingsProfile.usernameUpdated"));
       queryClient.invalidateQueries({ queryKey: ["profile", uid] });
       if (form.display_handle_mode === "username") setHandle(desired || randomId);
 
@@ -839,9 +839,9 @@ export default function SettingsProfile() {
   // ── Display handle ──
   async function setDisplay(mode: DisplayHandleMode) {
     setMsg(null);
-    if (!sb) return setMsg("Supabase is OFF (check env).");
+    if (!sb) return setMsg(t("auth.supabaseOff"));
     if (mode === "username" && !form.username) {
-      setMsg('Set a username before choosing "username" display mode.');
+      setMsg(t("settingsProfile.setAUsernameBeforeChoosing"));
       return;
     }
     try {
@@ -850,7 +850,7 @@ export default function SettingsProfile() {
       if (error) throw error;
       setForm(f => ({ ...f, display_handle_mode: mode }));
       setHandle(mode === "username" ? (form.username || randomId) : randomId);
-      setMsg("Display handle updated.");
+      setMsg(t("settingsProfile.displayHandleUpdated"));
       queryClient.invalidateQueries({ queryKey: ["profile", uid] });
     } catch (e: any) {
       setMsg(e.message || "Could not update display mode");
@@ -1057,7 +1057,7 @@ export default function SettingsProfile() {
               sb={sb}
               onDobCleared={() => {
                 setDobSet(false);
-                setMsg("Date of birth updated successfully.");
+                setMsg(t("settingsProfile.dateOfBirthUpdatedSuccessfully"));
               }}
             />
           </>
@@ -1066,7 +1066,7 @@ export default function SettingsProfile() {
             sb={sb}
             onDobSet={() => {
               setDobSet(true);
-              setMsg("Date of birth saved.");
+              setMsg(t("settingsProfile.dateOfBirthSaved"));
             }}
           />
         )}
