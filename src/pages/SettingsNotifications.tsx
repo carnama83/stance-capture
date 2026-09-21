@@ -13,6 +13,7 @@ import { type DigestFrequency } from "@/hooks/notificationTypes";
 import { useToast } from "@/hooks/use-toast";
 import { getSupabase } from "@/lib/supabaseClient";
 import { Loader2, BellOff, Bell } from "lucide-react";
+import { useTranslation, Trans } from "react-i18next";
 
 const DAYS = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
 
@@ -141,6 +142,7 @@ function useMutedTopics() {
 }
 
 function useSetTopicMute() {
+  const { t } = useTranslation();
   const qc = useQueryClient();
   const { toast } = useToast();
   return useMutation({
@@ -161,20 +163,21 @@ function useSetTopicMute() {
     },
     onError: (_e, _v, ctx) => {
       if (ctx?.prev) qc.setQueryData(["muted-topic-prefs"], ctx.prev);
-      toast({ title: "Failed to save", variant: "destructive" });
+      toast({ title: t("settingsNotif.failedToSave"), variant: "destructive" });
     },
     onSettled: () => qc.invalidateQueries({ queryKey: ["muted-topic-prefs"] }),
   });
 }
 
 function TopicNotificationsSection() {
+  const { t } = useTranslation();
   const { data: topics, isLoading, isError, refetch } = useFollowedTopics();
   const { data: mutedMap = {}, isError: mutedError } = useMutedTopics();
   const { mutate: setMute, isPending } = useSetTopicMute();
 
   if (isLoading) return (
     <div className="flex items-center gap-2 py-3 text-xs text-slate-400">
-      <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading followed topics…
+      <Loader2 className="h-3.5 w-3.5 animate-spin" /> {t("settingsNotif.loadingFollowedTopics")}
     </div>
   );
 
@@ -182,13 +185,13 @@ function TopicNotificationsSection() {
   if (isError || mutedError) return (
     <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
       <p className="text-xs text-amber-800">
-        Couldn’t load your topic notification settings.{" "}
+        {t("settingsNotif.couldnTLoadYourTopic")}{" "}
         <button
           type="button"
           onClick={() => refetch()}
           className="underline font-medium hover:text-amber-900"
         >
-          Try again
+          {t("settingsNotif.tryAgain")}
         </button>
       </p>
     </div>
@@ -196,9 +199,10 @@ function TopicNotificationsSection() {
 
   if (!topics?.length) return (
     <p className="text-xs text-slate-400 py-2">
-      You haven't followed any topics yet.{" "}
-      <a href="/#/topics" className="text-blue-500 hover:underline">Browse topics</a>{" "}
-      to follow ones you care about.
+      <Trans
+        i18nKey="settingsNotif.noFollowedTopics"
+        components={{ a: <a href="/#/topics" className="text-blue-500 hover:underline" /> }}
+      />
     </p>
   );
 
@@ -208,8 +212,7 @@ function TopicNotificationsSection() {
     <div className="space-y-3">
       {mutedCount > 0 && (
         <p className="text-xs text-slate-500">
-          {mutedCount} topic{mutedCount !== 1 ? "s" : ""} muted — no stance shift or
-          activity alerts for those topics.
+          {t("settingsNotif.mutedCount", { count: mutedCount })}
         </p>
       )}
       <div className="divide-y divide-slate-100 rounded-lg border border-slate-200 overflow-hidden">
@@ -258,6 +261,7 @@ function TopicNotificationsSection() {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function SettingsNotifications() {
+  const { t } = useTranslation();
   const { data: prefs, isLoading } = useMyNotificationPreferences();
   const { savePreferences, isPending } = useUpsertNotificationPreferences();
   const { toast } = useToast();
@@ -312,9 +316,9 @@ export default function SettingsNotifications() {
         quietHoursStart: quietEnabled ? quietStart : -1 as unknown as null,
         quietHoursEnd:   quietEnabled ? quietEnd   : -1 as unknown as null,
       });
-      toast({ title: "Preferences saved." });
+      toast({ title: t("settingsNotif.preferencesSaved") });
     } catch {
-      toast({ title: "Failed to save preferences.", variant: "destructive" });
+      toast({ title: t("settingsNotif.failedToSavePreferences"), variant: "destructive" });
     }
   };
 
@@ -327,41 +331,41 @@ export default function SettingsNotifications() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold text-slate-900">Notifications</h2>
-        <p className="text-sm text-slate-500 mt-1">Control what updates you receive and how.</p>
+        <h2 className="text-lg font-semibold text-slate-900">{t("settingsNotif.notifications")}</h2>
+        <p className="text-sm text-slate-500 mt-1">{t("settingsNotif.controlWhatUpdatesYouReceive")}</p>
       </div>
 
-      <SectionCard title="Alert types" description="Choose which activity triggers a notification.">
+      <SectionCard title={t("settingsNotif.alertTypes")} description={t("settingsNotif.chooseWhichActivityTriggersA")}>
         <div className="space-y-4">
-          <Toggle label="Stance shift alerts"
-            description="When community sentiment shifts materially on a question you answered."
+          <Toggle label={t("settingsNotif.stanceShiftAlerts")}
+            description={t("settingsNotif.whenCommunitySentimentShiftsMaterially")}
             checked={stanceChange} onChange={setStanceChange} disabled={isPending} />
-          <Toggle label="Topic activity"
-            description="When a topic you follow is surging or gaining momentum."
+          <Toggle label={t("settingsNotif.topicActivity")}
+            description={t("settingsNotif.whenATopicYouFollow")}
             checked={topicFollow} onChange={setTopicFollow} disabled={isPending} />
-          <Toggle label="Weekly digest"
-            description="A weekly summary of followed topics and answered question shifts."
+          <Toggle label={t("settingsNotif.weeklyDigest")}
+            description={t("settingsNotif.aWeeklySummaryOfFollowed")}
             checked={weeklyDigest} onChange={setWeeklyDigest} disabled={isPending} />
-          <Toggle label="Stance reminders"
-            description="A polite nudge to revisit your stance when notable news hits a followed topic."
+          <Toggle label={t("settingsNotif.stanceReminders")}
+            description={t("settingsNotif.aPoliteNudgeToRevisit")}
             checked={reminder} onChange={setReminder} disabled={isPending} />
-          <Toggle label="New local topics"
-            description="When new topics go live in your selected location."
+          <Toggle label={t("settingsNotif.newLocalTopics")}
+            description={t("settingsNotif.whenNewTopicsGoLive")}
             checked={newLocalTopic} onChange={setNewLocalTopic} disabled={isPending} />
         </div>
       </SectionCard>
 
-      <SectionCard title="Delivery channels" description="Choose how you receive notifications.">
+      <SectionCard title={t("settingsNotif.deliveryChannels")} description={t("settingsNotif.chooseHowYouReceiveNotifications")}>
         <div className="space-y-4">
-          <Toggle label="In-app"
-            description="Notifications appear in the bell icon in the top bar."
+          <Toggle label={t("settingsNotif.inApp")}
+            description={t("settingsNotif.notificationsAppearInTheBell")}
             checked={inapEnabled} onChange={setInapEnabled} disabled={isPending} />
-          <Toggle label="Email"
-            description="Receive digest and alert emails. (Coming soon)"
+          <Toggle label={t("auth.emailLabel")}
+            description={t("settingsNotif.receiveDigestAndAlertEmails")}
             checked={emailEnabled} onChange={setEmailEnabled} disabled={true} />
           {emailEnabled && (
             <p className="text-xs text-amber-600 bg-amber-50 rounded px-3 py-2">
-              Email delivery is not yet active. Your preference will be saved when email is enabled.
+              {t("settingsNotif.emailDeliveryIsNotYet")}
             </p>
           )}
         </div>
@@ -372,23 +376,23 @@ export default function SettingsNotifications() {
           unless Weekly digest was already on. The frequency control cannot live inside
           one of its own options, so the section now always renders. */}
       {(
-        <SectionCard title="Digest schedule" description="Choose when your digest is delivered.">
+        <SectionCard title={t("settingsNotif.digestSchedule")} description={t("settingsNotif.chooseWhenYourDigestIs")}>
           <div className="grid sm:grid-cols-2 gap-4">
-            <SelectField label="Frequency" value={digestFrequency}
+            <SelectField label={t("settingsNotif.frequency")} value={digestFrequency}
               onChange={(v) => setDigestFrequency(v as DigestFrequency)}
-              options={[{value:"weekly",label:"Weekly"},{value:"daily",label:"Daily"},{value:"off",label:"Off"}]}
+              options={[{value:"weekly",label:t("settingsNotif.weekly")},{value:"daily",label:t("settingsNotif.daily")},{value:"off",label:t("settingsNotif.off")}]}
               disabled={isPending} />
             {digestFrequency === "weekly" && (
-              <SelectField label="Day" value={digestDay}
+              <SelectField label={t("settingsNotif.day")} value={digestDay}
                 onChange={(v) => setDigestDay(Number(v))}
                 options={DAYS.map((d,i) => ({value:i,label:d}))}
                 disabled={isPending} />
             )}
-            <SelectField label="Time" value={digestHour}
+            <SelectField label={t("settingsNotif.time")} value={digestHour}
               onChange={(v) => setDigestHour(Number(v))}
               options={HOURS.map((h) => ({value:h.value,label:h.label}))}
               disabled={isPending} />
-            <SelectField label="Timezone" value={timezone}
+            <SelectField label={t("settingsNotif.timezone")} value={timezone}
               onChange={setTimezone}
               options={TIMEZONES.map((tz) => ({value:tz,label:tz}))}
               disabled={isPending} />
@@ -396,31 +400,31 @@ export default function SettingsNotifications() {
         </SectionCard>
       )}
 
-      <SectionCard title="Quiet hours" description="Pause all notifications during a set window.">
-        <Toggle label="Enable quiet hours"
-          description="No notifications will be sent during this window."
+      <SectionCard title={t("settingsNotif.quietHours")} description={t("settingsNotif.pauseAllNotificationsDuringA")}>
+        <Toggle label={t("settingsNotif.enableQuietHours")}
+          description={t("settingsNotif.noNotificationsWillBeSent")}
           checked={quietEnabled} onChange={setQuietEnabled} disabled={isPending} />
         {quietEnabled && (
           <div className="grid sm:grid-cols-2 gap-4 mt-2">
-            <SelectField label="Start" value={quietStart}
+            <SelectField label={t("settingsNotif.start")} value={quietStart}
               onChange={(v) => setQuietStart(Number(v))}
               options={HOURS.map((h) => ({value:h.value,label:h.label}))}
               disabled={isPending} />
-            <SelectField label="End" value={quietEnd}
+            <SelectField label={t("settingsNotif.end")} value={quietEnd}
               onChange={(v) => setQuietEnd(Number(v))}
               options={HOURS.map((h) => ({value:h.value,label:h.label}))}
               disabled={isPending} />
           </div>
         )}
         {quietEnabled && quietStart === quietEnd && (
-          <p className="text-xs text-amber-600">Start and end time are the same — quiet hours will have no effect.</p>
+          <p className="text-xs text-amber-600">{t("settingsNotif.startAndEndTimeAre")}</p>
         )}
       </SectionCard>
 
       {/* L: Per-topic notification muting */}
       <SectionCard
-        title="Per-topic notifications"
-        description="Mute alerts for specific followed topics. Toggle off to stop receiving stance shift and activity notifications for that topic."
+        title={t("settingsNotif.perTopicNotifications")}
+        description={t("settingsNotif.muteAlertsForSpecificFollowed")}
       >
         <TopicNotificationsSection />
       </SectionCard>
@@ -433,7 +437,7 @@ export default function SettingsNotifications() {
           className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
         >
           {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-          Save preferences
+          {t("settingsNotif.savePreferences")}
         </button>
       </div>
     </div>
