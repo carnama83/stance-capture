@@ -104,9 +104,14 @@ function daysUntil(iso: string): number {
   );
 }
 
+// Labels for consent keys that consent_logs can actually contain.
+// ip_region_inference was listed here but nothing ever wrote it: it appeared
+// exactly once in the whole repo, as this label, and no code path recorded or
+// checked such a consent. Listing it implied a control that did not exist.
+// If a real consent mechanism is built later, add the label back alongside the
+// code that writes the row — not before.
 function consentKeyLabel(key: string): string {
   const keys: Record<string, string> = {
-    ip_region_inference: "consentKey.ipRegionInference",
     analytics: "consentKey.analytics",
     marketing: "consentKey.marketing",
     terms_of_service: "consentKey.termsOfService",
