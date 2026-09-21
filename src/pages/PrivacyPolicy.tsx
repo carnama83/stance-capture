@@ -14,172 +14,135 @@
  * adapt it to how your service actually handles data before publishing.
  *
  * TODO: replace the contact email below with a real, monitored address.
+ *
+ * LOCALIZATION — the clauses live in the i18n catalogue under `privacy.*`,
+ * one key per clause. They are NOT split into fragments: a legal sentence has
+ * to be re-orderable as a unit, and a reviewer has to be able to read each
+ * clause end to end in both languages. Bold terms are a <b> slot inside the
+ * clause so the emphasis can sit wherever the target language puts the term.
+ *
+ * The English text is the source of record. If you change a clause here,
+ * change `privacy.*` in BOTH locales — `npm run test:i18n:parity` will catch a
+ * missing key but cannot tell you a translation has gone stale.
  */
 
 import { CSSProperties } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import PageLayout from "@/components/PageLayout";
 
+/** Source of record for the "Last updated" line; rendered in the UI locale. */
+const LAST_UPDATED_ISO = "2026-06-19";
+
+const CONTACT_EMAIL = "your-email@gmail.com";
+
 export default function PrivacyPolicy() {
+  const { t, i18n } = useTranslation();
+
+  // en-IN, not localeFor("en") — plain "en" formats this as "June 19, 2026",
+  // and the date on a legal document must not silently change shape when the
+  // page is refactored. en-IN reproduces the original "19 June 2026" exactly
+  // and is the right variant for an India-based service. Scoped here rather
+  // than changed in localeFor(), which would reformat every English date in
+  // the app.
+  const lastUpdated = new Intl.DateTimeFormat(
+    i18n.language === "hi" ? "hi-IN" : "en-IN",
+    { dateStyle: "long", timeZone: "UTC" },
+  ).format(new Date(LAST_UPDATED_ISO + "T00:00:00Z"));
+
+  /** A clause whose bold term has to move with the language. */
+  const clause = (key: string) => (
+    <li style={styles.li} key={key}>
+      <Trans i18nKey={key} components={{ b: <strong /> }} />
+    </li>
+  );
+
+  /** A clause with no bold term. */
+  const plain = (key: string) => (
+    <li style={styles.li} key={key}>
+      {t(key)}
+    </li>
+  );
+
   return (
     <PageLayout>
       <div style={styles.page}>
         <article style={styles.card}>
-          <p style={styles.eyebrow}>Legal</p>
-          <h1 style={styles.h1}>Privacy Policy</h1>
-          <p style={styles.updated}>Last updated: 19 June 2026</p>
+          <p style={styles.eyebrow}>{t("privacy.eyebrow")}</p>
+          <h1 style={styles.h1}>{t("privacy.title")}</h1>
+          <p style={styles.updated}>{t("privacy.lastUpdated", { date: lastUpdated })}</p>
 
-          <p style={styles.body}>
-            Stance Capture (&ldquo;Stance Capture,&rdquo; &ldquo;we,&rdquo;
-            &ldquo;us&rdquo;) operates the Stance Capture platform, including our
-            website and services delivered through messaging channels such as
-            WhatsApp. This Privacy Policy explains what information we collect,
-            how we use it, and the choices you have.
-          </p>
+          <p style={styles.body}>{t("privacy.intro")}</p>
 
-          <h2 style={styles.h2}>1. Information we collect</h2>
-          <p style={styles.subhead}>Information you provide</p>
+          <h2 style={styles.h2}>{t("privacy.s1.heading")}</h2>
+          <p style={styles.subhead}>{t("privacy.s1.provided")}</p>
           <ul style={styles.list}>
-            <li style={styles.li}>
-              <strong>Stances and responses</strong> &mdash; the positions you
-              take on questions, including any text you add.
-            </li>
-            <li style={styles.li}>
-              <strong>Account information</strong> &mdash; if you create an
-              account, details such as your name, email address, and login
-              credentials.
-            </li>
-            <li style={styles.li}>
-              <strong>Messages</strong> &mdash; when you interact with us through
-              WhatsApp or other messaging channels, the content of those
-              interactions.
-            </li>
+            {["privacy.s1.stances", "privacy.s1.account", "privacy.s1.messages"].map(clause)}
           </ul>
-          <p style={styles.subhead}>Information collected automatically</p>
+          <p style={styles.subhead}>{t("privacy.s1.automatic")}</p>
           <ul style={styles.list}>
-            <li style={styles.li}>
-              <strong>Usage and device data</strong> &mdash; pages viewed,
-              actions taken, approximate location (such as region or country),
-              browser and device type, and similar log data.
-            </li>
-            <li style={styles.li}>
-              <strong>Cookies and similar technologies</strong> &mdash; used to
-              keep you signed in and to understand how the service is used.
-            </li>
+            {["privacy.s1.usage", "privacy.s1.cookies"].map(clause)}
           </ul>
 
-          <h2 style={styles.h2}>2. How we use information</h2>
+          <h2 style={styles.h2}>{t("privacy.s2.heading")}</h2>
           <ul style={styles.list}>
-            <li style={styles.li}>
-              To operate the service &mdash; recording your stance and showing
-              how it compares with others.
-            </li>
-            <li style={styles.li}>
-              To produce aggregated, de-identified insights about how groups and
-              regions respond.
-            </li>
-            <li style={styles.li}>To improve and secure the platform.</li>
-            <li style={styles.li}>
-              To communicate with you about the service, including through
-              WhatsApp where you have engaged with us there.
-            </li>
+            {[
+              "privacy.s2.operate",
+              "privacy.s2.aggregate",
+              "privacy.s2.improve",
+              "privacy.s2.communicate",
+            ].map(plain)}
           </ul>
 
-          <h2 style={styles.h2}>3. How we share information</h2>
+          <h2 style={styles.h2}>{t("privacy.s3.heading")}</h2>
           <ul style={styles.list}>
-            <li style={styles.li}>
-              <strong>Aggregated insights</strong> &mdash; we may publish or
-              share aggregated, de-identified statistics that do not identify
-              you.
-            </li>
-            <li style={styles.li}>
-              <strong>Service providers</strong> &mdash; vendors who process data
-              on our behalf (such as hosting, analytics, and messaging delivery)
-              under appropriate confidentiality obligations.
-            </li>
-            <li style={styles.li}>
-              <strong>Legal reasons</strong> &mdash; where required by law or to
-              protect rights, safety, and security.
-            </li>
-            <li style={styles.li}>
-              <strong>Business transfers</strong> &mdash; in connection with a
-              merger, acquisition, or sale of assets.
-            </li>
+            {[
+              "privacy.s3.aggregated",
+              "privacy.s3.vendors",
+              "privacy.s3.legal",
+              "privacy.s3.transfers",
+            ].map(clause)}
           </ul>
-          <p style={styles.body}>We do not sell your personal information.</p>
+          <p style={styles.body}>{t("privacy.s3.noSale")}</p>
 
-          <h2 style={styles.h2}>4. WhatsApp and messaging</h2>
+          <h2 style={styles.h2}>{t("privacy.s4.heading")}</h2>
+          <p style={styles.body}>{t("privacy.s4.body")}</p>
+
+          <h2 style={styles.h2}>{t("privacy.s5.heading")}</h2>
+          <p style={styles.body}>{t("privacy.s5.body")}</p>
+
+          <h2 style={styles.h2}>{t("privacy.s6.heading")}</h2>
+          <p style={styles.body}>{t("privacy.s6.body")}</p>
+
+          <h2 style={styles.h2}>{t("privacy.s7.heading")}</h2>
           <p style={styles.body}>
-            We deliver some questions and collect some stances through the
-            WhatsApp Business Platform, provided by Meta. When you interact with
-            us on WhatsApp, your use is also governed by WhatsApp&rsquo;s own
-            terms and privacy policy. We use these channels only to send
-            questions you have opted into and to record the stances you choose to
-            share. You can stop receiving WhatsApp messages at any time by
-            replying STOP.
+            <Trans
+              i18nKey="privacy.s7.body"
+              values={{ email: CONTACT_EMAIL }}
+              components={{ a: <a style={styles.link} href={`mailto:${CONTACT_EMAIL}`} /> }}
+            />
           </p>
 
-          <h2 style={styles.h2}>5. Cookies</h2>
-          <p style={styles.body}>
-            We use cookies and similar technologies to keep you signed in,
-            remember preferences, and measure usage. You can control cookies
-            through your browser settings; disabling them may affect parts of the
-            service.
-          </p>
+          <h2 style={styles.h2}>{t("privacy.s8.heading")}</h2>
+          <p style={styles.body}>{t("privacy.s8.body")}</p>
 
-          <h2 style={styles.h2}>6. Data retention</h2>
-          <p style={styles.body}>
-            We keep personal information for as long as needed to provide the
-            service and for legitimate business or legal purposes. Aggregated,
-            de-identified data may be kept indefinitely.
-          </p>
+          <h2 style={styles.h2}>{t("privacy.s9.heading")}</h2>
+          <p style={styles.body}>{t("privacy.s9.body")}</p>
 
-          <h2 style={styles.h2}>7. Your rights and choices</h2>
-          <p style={styles.body}>
-            Depending on where you live, you may have the right to access,
-            correct, or delete your personal information, or to object to or
-            restrict certain processing. To make a request, email us at{" "}
-            <a style={styles.link} href="mailto:your-email@gmail.com">
-              your-email@gmail.com
-            </a>
-            .
-          </p>
+          <h2 style={styles.h2}>{t("privacy.s10.heading")}</h2>
+          <p style={styles.body}>{t("privacy.s10.body")}</p>
 
-          <h2 style={styles.h2}>8. Children&rsquo;s privacy</h2>
-          <p style={styles.body}>
-            Stance Capture is not directed to children under 16, and we do not
-            knowingly collect personal information from them. If you believe a
-            child has provided us information, contact us and we will delete it.
-          </p>
+          <h2 style={styles.h2}>{t("privacy.s11.heading")}</h2>
+          <p style={styles.body}>{t("privacy.s11.body")}</p>
 
-          <h2 style={styles.h2}>9. Data location</h2>
+          <h2 style={styles.h2}>{t("privacy.s12.heading")}</h2>
           <p style={styles.body}>
-            We are based in India and may process and store information in India
-            and in other countries where we or our service providers operate.
-          </p>
-
-          <h2 style={styles.h2}>10. Security</h2>
-          <p style={styles.body}>
-            We use reasonable technical and organizational measures to protect
-            your information. No method of transmission or storage is completely
-            secure, and we cannot guarantee absolute security.
-          </p>
-
-          <h2 style={styles.h2}>11. Changes to this policy</h2>
-          <p style={styles.body}>
-            We may update this Privacy Policy from time to time. We will post the
-            updated version here and revise the &ldquo;Last updated&rdquo; date
-            above.
-          </p>
-
-          <h2 style={styles.h2}>12. Contact us</h2>
-          <p style={styles.body}>
-            Stance Capture
+            {t("privacy.s12.org")}
             <br />
-            Bhopal, India
+            {t("privacy.s12.address")}
             <br />
-            Email:{" "}
-            <a style={styles.link} href="mailto:your-email@gmail.com">
-              your-email@gmail.com
+            {t("privacy.s12.emailLabel")}{" "}
+            <a style={styles.link} href={`mailto:${CONTACT_EMAIL}`}>
+              {CONTACT_EMAIL}
             </a>
           </p>
         </article>
