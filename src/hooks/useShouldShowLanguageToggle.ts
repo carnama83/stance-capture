@@ -21,10 +21,10 @@
 // Only when neither of those applies does actual geography decide: the
 // signed-in user's profile country (public.user_region_dimensions, same
 // table/pattern SettingsLocation.tsx already queries) takes priority, falling
-// back to IP geolocation (useIPLocation — real, already-working, ipapi.co-
+// back to IP geolocation (useIPLocation — real, already-working, /api/geo-
 // backed) only when there's no profile location to answer with. This mirrors
 // useIPLocation's existing "skip when the answer already came from elsewhere"
-// posture, and avoids burning an ipapi.co call (rate-limited free tier) for
+// posture, and avoids an unnecessary /api/geo round trip for
 // the ~35% of signed-in users whose profile already has a country set.
 //
 // Explicitly does NOT affect content-language resolution — useLanguage.ts's

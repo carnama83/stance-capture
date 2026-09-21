@@ -85,8 +85,10 @@ function getDebugFlag(): boolean {
 }
 
 // ---------- M-A01: IP geo-detection ----------------------------------------
-// Uses ipapi.co/json (free, no key, ~150ms). Returns the detected ISO country
-// code so Signup can pre-populate the country select and show a suggestion banner.
+// Uses our own /api/geo, which reads Vercel's edge geolocation headers.
+// Returns the detected ISO country code so Signup can pre-populate the country
+// select and show a suggestion banner. No external request, and the visitor's
+// IP is never disclosed to a third party.
 interface IpGeo {
   countryCode: string | null;  // ISO 3166-1 alpha-2, e.g. "US"
   countryName: string | null;
@@ -113,25 +115,29 @@ function useIpGeoDetection(): IpGeo {
 
     (async () => {
       try {
-        const res = await fetch("https://ipapi.co/json/", {
+        // /api/geo reads Vercel's own edge geolocation headers — no external
+        // request, and the visitor's IP is never disclosed to a third party.
+        const res = await fetch("/api/geo", {
           signal: controller.signal,
         });
-        if (!res.ok) throw new Error(`ipapi ${res.status}`);
+        if (!res.ok) throw new Error(`geo ${res.status}`);
         const json = await res.json();
         if (cancelled) return;
         const code = typeof json.country_code === "string" && json.country_code.length === 2
           ? json.country_code.toUpperCase()
           : null;
-        // region_code from ipapi is e.g. "NJ"; our geo_states_v uses codes like "US-NJ"
-        // so we store both raw and let the accept handler do the lookup
-        const regionCode = typeof json.region_code === "string" && json.region_code
-          ? json.region_code.toUpperCase()
+        // Vercel supplies the region CODE (x-vercel-ip-country-region), which is
+        // what geo_states_v is looked up by. It supplies no region NAME, so the
+        // suggestion banner degrades to country-only — cosmetic, and the accept
+        // handler still resolves the state from the code.
+        const regionCode = typeof json.region === "string" && json.region
+          ? json.region.toUpperCase()
           : null;
         setState({
           countryCode: code,
-          countryName: json.country_name ?? null,
+          countryName: json.country ?? null,
           regionCode,
-          regionName: json.region ?? null,
+          regionName: null,
           loading: false,
           error: !code,
         });

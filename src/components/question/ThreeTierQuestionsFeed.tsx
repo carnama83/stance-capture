@@ -3,6 +3,7 @@
 // Enhanced with state badges, trending indicators, and engagement metrics
 
 import * as React from "react";
+import { fetchIPLocation, type IPLocationData } from "@/lib/ipLocation";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { getSupabase } from "@/lib/supabaseClient";
@@ -46,12 +47,6 @@ interface TierSection {
   questions: ThreeTierQuestion[];
 }
 
-interface IPLocationData {
-  country: string | null;
-  country_code: string | null;
-  city: string | null;
-  region: string | null;
-}
 
 // Session hook
 function useSupabaseSession() {
@@ -71,35 +66,16 @@ function useSupabaseSession() {
 }
 
 // IP Geolocation hook (for anonymous users)
+// Location comes from the shared module, which calls our own /api/geo. This
+// file used to carry its own copy of a direct https://ipapi.co/json/ fetch;
+// leaving it would have kept disclosing every visitor IP to a third party
+// regardless of the shared module being fixed.
 function useIPLocation() {
   return useQuery<IPLocationData>({
-    queryKey: ['ip-location'],
-    queryFn: async () => {
-      try {
-        // Using ipapi.co (free tier: 30,000 requests/month)
-        const response = await fetch('https://ipapi.co/json/');
-        if (!response.ok) throw new Error('IP lookup failed');
-        
-        const data = await response.json();
-        
-        return {
-          country: data.country_name || null,
-          country_code: data.country_code || null,
-          city: data.city || null,
-          region: data.region || null,
-        };
-      } catch (error) {
-        console.error('IP geolocation failed:', error);
-        return {
-          country: null,
-          country_code: null,
-          city: null,
-          region: null,
-        };
-      }
-    },
-    staleTime: 24 * 60 * 60 * 1000, // Cache for 24 hours
-    cacheTime: 24 * 60 * 60 * 1000,
+    queryKey: ["ip-location"],
+    queryFn: fetchIPLocation,
+    staleTime: 24 * 60 * 60 * 1000,
+    gcTime: 24 * 60 * 60 * 1000,
     retry: 1,
   });
 }
