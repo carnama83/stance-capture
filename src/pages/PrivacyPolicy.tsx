@@ -33,7 +33,7 @@ import PageLayout from "@/components/PageLayout";
 import { CONTACT_EMAIL, CONTACT_MAILTO } from "@/lib/contact";
 
 /** Source of record for the "Last updated" line; rendered in the UI locale. */
-const LAST_UPDATED_ISO = "2026-06-19";
+const LAST_UPDATED_ISO = "2026-09-20";
 
 export default function PrivacyPolicy() {
   const { t, i18n } = useTranslation();
@@ -135,12 +135,15 @@ export default function PrivacyPolicy() {
           <p style={styles.body}>{t("privacy.s11.body")}</p>
 
           <h2 style={styles.h2}>{t("privacy.s12.heading")}</h2>
+          <p style={styles.body}>{t("privacy.s12.body")}</p>
+
+          <h2 style={styles.h2}>{t("privacy.s13.heading")}</h2>
           <p style={styles.body}>
-            {t("privacy.s12.org")}
+            {t("privacy.s13.org")}
             <br />
-            {t("privacy.s12.address")}
+            {t("privacy.s13.address")}
             <br />
-            {t("privacy.s12.emailLabel")}{" "}
+            {t("privacy.s13.emailLabel")}{" "}
             <a style={styles.link} href={CONTACT_MAILTO}>
               {CONTACT_EMAIL}
             </a>
