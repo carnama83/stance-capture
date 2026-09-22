@@ -242,6 +242,31 @@ Deno.serve(async (req) => {
     // questions.context_summary forever for that specific rendition.
     const contextSummaryNative = typeof body.context_summary_native === "string" && body.context_summary_native.trim()
       ? body.context_summary_native.trim() : null;
+    // Sep 2026, NEW — audience targeting. audience_location_label decides which
+    // country tab a question appears on. Until now this insert never set it, so
+    // the BEFORE INSERT trigger always fell through to infer_audience_location's
+    // keyword regex, which recognises only US FEDERAL institutions and a few
+    // multinational words and otherwise defaults to 'Global'. Result: a question
+    // about Bengaluru and Tamil Nadu bus fares was published to every country's
+    // feed, and so was one about Chicago and Seattle city councils — no country
+    // except the United States could ever be inferred from the text.
+    //
+    // The reframe already knows (it web-searched the topic to write
+    // context_summary), so ugq-screen now returns audience_country and
+    // ugq-confirm-publish forwards it here.
+    //
+    // NOT normalized in this function on purpose. canonical_audience_label() in
+    // the trigger is the single place that maps a label to its canonical country,
+    // including resolving a city or state through the locations gazetteer
+    // (migration 20260923010000). Doing any of that here would be a second,
+    // drifting copy of a rule that already bit this codebase twice today.
+    //
+    // Omitted entirely when absent, rather than sent as null: the column must
+    // stay NULL so the trigger's own inference still runs. Passing an explicit
+    // null would be identical in effect but reads as "no audience", which is a
+    // different claim from "we have nothing to add".
+    const audienceCountry = typeof body.audience_country === "string" && body.audience_country.trim()
+      ? body.audience_country.trim().slice(0, 120) : null;
 
     const { error: insErr } = await adminSb.from("questions").insert({
       id: questionId,
@@ -250,6 +275,10 @@ Deno.serve(async (req) => {
       source: "community",
       proposed_by: proposal.user_id,
       location_label: proposal.location_label,
+      // See audienceCountry above. Spread so the column is absent (NULL) when the
+      // reframe had no answer, which is what keeps the trigger's own inference
+      // running for older proposals and for anything the model declined to judge.
+      ...(audienceCountry ? { audience_location_label: audienceCountry } : {}),
       slider_low_label: sliderLow,
       slider_high_label: sliderHigh,
       context_summary: contextSummary,

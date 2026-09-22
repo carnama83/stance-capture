@@ -497,6 +497,12 @@ serve(async (req) => {
     // handle context_summary — never gets a chance to backfill it). Same
     // null-unless-non-English convention as the other _native fields.
     context_summary_native: string | null;
+    // Sep 2026, NEW — see AUDIENCE_INSTRUCTIONS below. The country whose public
+    // this question is for, used to set questions.audience_location_label at
+    // publish instead of leaving the SQL trigger's US-only keyword regex to
+    // guess. Null is a valid, safe answer: the trigger's existing inference
+    // still runs when this is absent.
+    audience_country: string | null;
   };
 
   // Shared parse tail for any LLM call that's supposed to return a
@@ -538,6 +544,14 @@ serve(async (req) => {
           ? parsed.slider_high_label_native.trim() : null,
         context_summary_native: detectedLanguage !== "en" && typeof parsed.context_summary_native === "string" && parsed.context_summary_native.trim()
           ? parsed.context_summary_native.trim() : null,
+        // Deliberately NOT gated on detectedLanguage, unlike the _native fields
+        // above: where a question is SET is independent of what language it was
+        // WRITTEN in. A Hindi proposal about US federal policy is audience
+        // "United States", and gating this the way the _native fields are gated
+        // would throw that answer away for every English proposal. Capped only
+        // for sanity; canonical_audience_label() does the real normalization.
+        audience_country: typeof parsed.audience_country === "string" && parsed.audience_country.trim()
+          ? parsed.audience_country.trim().slice(0, 120) : null,
       };
     } catch (parseErr) {
       // Full raw_text logged (not truncated) — a parse failure here means we
@@ -580,6 +594,42 @@ serve(async (req) => {
     "is the only version of the background a non-English proposer's audience will ever see, so it must stand on " +
     "its own, not read as a translation. Leave it null whenever context_summary is null or the language is English. ";
 
+  // Sep 2026, NEW — audience targeting. questions.audience_location_label decides
+  // which country tab a published question appears on, and until now nothing here
+  // produced it. When the proposer left the optional Location box empty, a SQL
+  // trigger fell back to a regex over the question text that recognises only US
+  // FEDERAL institutions ("white house|congress|senate|...") and a handful of
+  // multinational words; everything else defaulted to 'Global'. So a question
+  // explicitly about Bengaluru and Tamil Nadu bus fares was published to every
+  // country's feed, and one about Chicago and Seattle city councils did the same —
+  // the heuristic cannot name any country except the United States, and misses
+  // city/state-level US questions too.
+  //
+  // The answer already existed right here and was being thrown away: this pass
+  // web-searches the topic and writes context_summary, so it reliably knows where
+  // the story is set. Returning that as a country lets the publish path set the
+  // label outright instead of leaving a regex to guess from the text.
+  //
+  // COUNTRY, NOT CITY. The label is matched against country-level feed tabs. A
+  // city or state is still salvaged downstream — canonical_audience_label()
+  // resolves it through the locations gazetteer (migration 20260923010000) — but
+  // asking for the country directly avoids relying on that safety net.
+  //
+  // "Global" IS A REAL ANSWER, not a dumping ground: genuinely multinational
+  // subjects belong there. Null is also fine — the existing trigger inference
+  // still runs when this is absent, so an older proposal, a refused answer, or a
+  // model that simply omits the field degrades to exactly today's behaviour
+  // rather than breaking the publish.
+  const AUDIENCE_INSTRUCTIONS =
+    "AUDIENCE: also return \"audience_country\" — the single country whose public this question is really for, " +
+    "as its common English name (\"India\", \"United States\", \"United Kingdom\"). Judge it from where the events, " +
+    "institutions, laws or places involved actually sit, not from the language the proposal was written in: a " +
+    "question written in Hindi about US federal policy is \"United States\", and one written in English about " +
+    "Bengaluru's municipal corporations is \"India\". Return a COUNTRY, never a city or a state — if the subject " +
+    "is a city, return the country that city is in. Use \"Global\" only when the subject is genuinely " +
+    "multinational (a treaty, a war between states, a worldwide market). If you honestly cannot tell, return " +
+    "null rather than guessing — null is handled safely downstream, a wrong country is not. ";
+
   async function generatePreviewOnce(raw: string, withWebSearch: boolean): Promise<PreviewReframe | null> {
     if (!SCREEN_API_KEY) return null;
 
@@ -596,6 +646,7 @@ serve(async (req) => {
         "spectrum (never a menu of options, never 'A, B, or C', never 'Do you support' / 'Should the government'). " +
         "Target 30–45 words, 65 max. Plain everyday language, no jargon. " +
         LANGUAGE_HANDLING_INSTRUCTIONS +
+        AUDIENCE_INSTRUCTIONS +
         "Return ONLY JSON: {\"question\":\"... (English, per the language rule above)\",\"slider_low_label\":\"3-6 " +
         "word noun phrase for the oppose end, English\",\"slider_high_label\":\"3-6 word noun phrase for the " +
         "support end, English\",\"context_summary\":\"1-2 sentence grounded background from search, or null\"," +
@@ -605,7 +656,7 @@ serve(async (req) => {
         "is en\",\"slider_low_label_native\":\"... or null if detected_language is en\"," +
         "\"slider_high_label_native\":\"... or null if detected_language is en\"," +
         "\"context_summary_native\":\"context_summary natively phrased in detected_language, or null if " +
-        "context_summary is null or detected_language is en\"}. " +
+        "context_summary is null or detected_language is en\",\"audience_country\":\"the country whose public this question is for, common English name (e.g. India, United States), or Global if genuinely multinational, or null if you cannot tell\"}. " +
         "If the raw text has no usable civic topic at all, return {\"question\":null,\"slider_low_label\":null," +
         "\"slider_high_label\":null,\"context_summary\":null,\"supporting_links\":[],\"quality_notes\":\"no usable topic\"}."
       : "You write a QUICK, ROUGH preview of how a user's raw civic-question proposal might read once turned into a " +
@@ -618,6 +669,7 @@ serve(async (req) => {
         "a menu of options, never 'A, B, or C', never 'Do you support' / 'Should the government'). Target 30–45 " +
         "words, 65 max. Plain everyday language, no jargon. " +
         LANGUAGE_HANDLING_INSTRUCTIONS +
+        AUDIENCE_INSTRUCTIONS +
         "Return ONLY JSON: {\"question\":\"... (English, per the language rule above)\",\"slider_low_label\":\"3-6 " +
         "word noun phrase for the oppose end, English\",\"slider_high_label\":\"3-6 word noun phrase for the " +
         "support end, English\",\"context_summary\":null,\"supporting_links\":[],\"quality_notes\":\"one short " +
@@ -625,7 +677,9 @@ serve(async (req) => {
         "\"question_native\":\"same question natively phrased in detected_language, or null if detected_language " +
         "is en\",\"slider_low_label_native\":\"... or null if detected_language is en\"," +
         "\"slider_high_label_native\":\"... or null if detected_language is en\"," +
-        "\"context_summary_native\":null}. " +
+        "\"context_summary_native\":null,\"audience_country\":\"the country whose public this question is for, " +
+        "common English name (e.g. India, United States), or Global if genuinely multinational, or null if you " +
+        "cannot tell\"}. " +
         "If the raw text has no usable civic topic at all, return {\"question\":null,\"slider_low_label\":null," +
         "\"slider_high_label\":null,\"context_summary\":null,\"supporting_links\":[],\"quality_notes\":\"no usable topic\"}.";
 
@@ -709,6 +763,7 @@ serve(async (req) => {
         "Target 30–45 words, 65 max — this limit is fixed and doesn't change for a refine pass. Plain everyday " +
         "language, no jargon. " +
         LANGUAGE_HANDLING_INSTRUCTIONS +
+        AUDIENCE_INSTRUCTIONS +
         "Return ONLY JSON: {\"question\":\"... (English, per the language rule above)\",\"slider_low_label\":\"3-6 " +
         "word noun phrase for the oppose end, English\",\"slider_high_label\":\"3-6 word noun phrase for the " +
         "support end, English\",\"context_summary\":\"2-3 sentences " +
@@ -723,7 +778,7 @@ serve(async (req) => {
         "detected_language, or null if detected_language is en\",\"slider_low_label_native\":\"... or null if " +
         "detected_language is en\",\"slider_high_label_native\":\"... or null if detected_language is en\"," +
         "\"context_summary_native\":\"context_summary natively phrased in detected_language, or null if " +
-        "context_summary is null or detected_language is en\"}."
+        "context_summary is null or detected_language is en\",\"audience_country\":\"the country whose public this question is for, common English name (e.g. India, United States), or Global if genuinely multinational, or null if you cannot tell\"}."
       : "You are REVISING an existing draft preview of a civic stance question based on new context the proposer " +
         "just added — you are NOT starting over, and you do NOT have web search on this pass. You'll be shown the " +
         "CURRENT draft below: keep everything in it that's still accurate and relevant, and weave in the " +
@@ -741,6 +796,7 @@ serve(async (req) => {
         "a menu of options, never 'A, B, or C', never 'Do you support' / 'Should the government'). Target 30–45 " +
         "words, 65 max — this limit is fixed and doesn't change for a refine pass. Plain everyday language, no jargon. " +
         LANGUAGE_HANDLING_INSTRUCTIONS +
+        AUDIENCE_INSTRUCTIONS +
         "Return ONLY JSON: {\"question\":\"... (English, per the language rule above)\",\"slider_low_label\":\"3-6 " +
         "word noun phrase for the oppose end, English\",\"slider_high_label\":\"3-6 word noun phrase for the " +
         "support end, English\",\"context_summary\":\"2-3 sentences — " +
@@ -751,7 +807,7 @@ serve(async (req) => {
         "detected_language, or null if detected_language is en\",\"slider_low_label_native\":\"... or null if " +
         "detected_language is en\",\"slider_high_label_native\":\"... or null if detected_language is en\"," +
         "\"context_summary_native\":\"context_summary natively phrased in detected_language, or null if " +
-        "context_summary is null or detected_language is en\"}.";
+        "context_summary is null or detected_language is en\",\"audience_country\":\"the country whose public this question is for, common English name (e.g. India, United States), or Global if genuinely multinational, or null if you cannot tell\"}.";
 
     const refineUsr =
       `Original raw proposal (for reference only — the current draft below is the actual starting point):\n"${raw}"\n\n` +
@@ -1036,6 +1092,11 @@ serve(async (req) => {
                 : [],
               quality_notes: typeof existingPreviewRaw.quality_notes === "string" ? existingPreviewRaw.quality_notes : "",
               cover_image_url: typeof existingPreviewRaw.cover_image_url === "string" ? existingPreviewRaw.cover_image_url : null,
+              // Sep 2026, NEW: carried across a refine so "Add more context and
+              // regenerate" cannot silently drop the audience country back to
+              // null and hand targeting back to the keyword fallback. The refine
+              // prompt may still overwrite it with a better answer.
+              audience_country: typeof existingPreviewRaw.audience_country === "string" ? existingPreviewRaw.audience_country : null,
             }
           : null;
 
