@@ -298,6 +298,13 @@ serve(async (req) => {
         // async translator never revisits it), and the "Background" section
         // kept showing English to non-English viewers of that question.
         context_summary_native: typeof preview?.context_summary_native === "string" ? preview.context_summary_native : null,
+        // Sep 2026, NEW: the country the reframe judged this question to be
+        // about. Without it, ugq-publish leaves audience_location_label null and
+        // the SQL trigger falls back to a keyword regex that can only ever name
+        // the United States — so a question about Bengaluru bus fares published
+        // to every country's feed. Null here is safe: the trigger's existing
+        // inference still runs, which is exactly today's behaviour.
+        audience_country: typeof preview?.audience_country === "string" ? preview.audience_country : null,
         // Epic X, NEW.
         ...(isVideoSubmission ? {
           video_recording_path: proposal.video_recording_path,

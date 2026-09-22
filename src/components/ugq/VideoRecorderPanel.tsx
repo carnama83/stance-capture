@@ -186,11 +186,29 @@ export function VideoRecorderPanel({ transcribeAudio, sourceUrl = null, location
         setEditedTranscript(transcript);
         setStage("review");
       } catch (e) {
-        setError(t("videoRecorder.couldnTTranscribeYourRecording"));
+        // Surface the SERVER's message when there is one. ugq-transcribe-voice
+        // answers a failed transcription with "Couldn't transcribe that
+        // recording. Please try again, or type your question instead." — and
+        // that second clause is the only advice that helps when transcription
+        // is down for a reason retrying cannot fix. Observed on UAT 22 Sep 2026:
+        // Whisper returned 429 insufficient_quota (the OpenAI account was out of
+        // credits) on three consecutive attempts, and this catch replaced the
+        // server's message with a bare "You can try again" — telling the
+        // proposer to retry the one thing that could not possibly succeed,
+        // while hiding the typing fallback that would have worked immediately.
+        //
+        // transcribeAudio already puts that message on the Error it throws (see
+        // transcribeAudioForVideo in ProposeQuestionModal.tsx); this just stops
+        // throwing it away. Same `(e as Error).message || fallback` shape as
+        // submit()'s catch below, and as the voice path in ProposeQuestionModal,
+        // which both already surfaced the server message — video was the odd one
+        // out. The i18n string stays as the fallback for a thrown error with no
+        // message of its own (a network drop, say).
+        setError((e as Error).message || t("videoRecorder.couldnTTranscribeYourRecording"));
         setStage("idle");
       }
     }, 300);
-  }, [transcribeAudio]);
+  }, [transcribeAudio, t]);
 
   const submit = useCallback(async () => {
     if (editedTranscript.trim().length < 20) {
