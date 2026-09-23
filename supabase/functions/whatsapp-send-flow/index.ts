@@ -472,11 +472,15 @@ serve(async (req)=>{
     }
     const messageId = metaData?.messages?.[0]?.id ?? null;
     if (broadcast_id) {
-      await supabase.from("whatsapp_delivery_log").insert({
+      // Epic AA-07: record Meta's message id (AA-11 needs it to match receipts),
+      // and don't let a failed log write pass silently.
+      const { error: logErr } = await supabase.from("whatsapp_delivery_log").insert({
         broadcast_id,
         phone_hash: phoneHash,
-        status: "sent"
+        status: "sent",
+        message_id: messageId
       });
+      if (logErr) console.error("whatsapp_delivery_log insert failed:", logErr.message);
     }
     return new Response(JSON.stringify({
       sent: true,

@@ -205,20 +205,29 @@ serve(async (req) => {
     });
     const data = await resp.json();
 
+    // Epic AA-07: these inserts used columns that did not exist (error,
+    // message_id) and `.then(() => {}, () => {})` hid it — supabase-js resolves
+    // with { error } rather than rejecting — so link-mode sends were never
+    // logged. The dispatcher reads "has a log row" as "already processed", so
+    // that also fed AA-06's endless re-send. Real columns now, errors logged.
+    const logDelivery = async (row: Record<string, unknown>) => {
+      const { error } = await supabase.from("whatsapp_delivery_log").insert({ broadcast_id, phone_hash: phoneHash, ...row });
+      if (error) console.error("whatsapp_delivery_log insert failed:", error.message);
+    };
+
     if (!resp.ok) {
       if (broadcast_id) {
-        await supabase.from("whatsapp_delivery_log")
-          .insert({ broadcast_id, phone_hash: phoneHash, status: "failed", error: JSON.stringify(data?.error ?? data) })
-          .then(() => {}, () => {});
+        await logDelivery({
+          status: "failed",
+          failure_reason: String(data?.error?.message ?? "meta_api_error").slice(0, 500),
+        });
       }
       return json({ sent: false, reason: "meta_api_error", detail: data?.error?.message ?? data });
     }
 
     const messageId = data?.messages?.[0]?.id ?? null;
     if (broadcast_id) {
-      await supabase.from("whatsapp_delivery_log")
-        .insert({ broadcast_id, phone_hash: phoneHash, status: "sent", message_id: messageId })
-        .then(() => {}, () => {});
+      await logDelivery({ status: "sent", message_id: messageId });
     }
     return json({ sent: true, message_id: messageId, ref, url, mode: "link" });
   } catch (e) {
