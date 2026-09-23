@@ -72,11 +72,13 @@ interface QuestionImpactRow {
   is_featured: boolean | null;
 }
 
+// manual_only is not offered: it means "only via the curated set", and no user
+// surface shows that set yet (Epic P P-07), so it would hide a question
+// everywhere. Existing manual_only rows still render via the labels below.
 const visibilityOptions: QuestionVisibilityEnum[] = [
   "visible",
   "suppressed",
   "archived",
-  "manual_only",
 ];
 
 const visibilityLabels: Record<QuestionVisibilityEnum, string> = {
@@ -118,6 +120,8 @@ type HygieneResult = {
     archive_after_days: number;
     min_composite_score: number;
     low_engagement_threshold: number;
+    archive_max_responses: number;
+    boost_trending_score: number;
   };
 };
 
@@ -132,6 +136,7 @@ type HygieneRow = {
   last_evaluated_at: string;
   responses_total: number | null;
   composite_score: number | null;
+  set_by: "hygiene" | "admin";
 };
 
 function timeAgoHygiene(iso: string): string {
@@ -184,7 +189,7 @@ function FeedHygienePanel() {
       setLastResult(data);
       if (!dryRun) {
         queryClient.invalidateQueries({ queryKey: ["admin-hygiene-rows"] });
-        queryClient.invalidateQueries({ queryKey: ["admin-impact-rows"] });
+        queryClient.invalidateQueries({ queryKey: ["impact-dashboard", "v_question_impact_admin"] });
         toast({ title: `Hygiene run complete — ${data.suppressed} suppressed, ${data.archived} archived, ${data.boosted} boosted.` });
       }
     } catch (e: any) {
@@ -207,7 +212,7 @@ function FeedHygienePanel() {
               Feed Hygiene
             </CardTitle>
             <CardDescription className="mt-0.5">
-              Auto-suppresses old low-engagement questions and archives stale ones. Runs every 6h via pg_cron.
+              Hides low-scoring questions that get no responses, and restores them when that changes. Runs every 6h via pg_cron. Questions you set by hand are never changed by it.
             </CardDescription>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -244,12 +249,14 @@ function FeedHygienePanel() {
             <div className="flex items-center gap-6 text-xs">
               <span className="text-amber-600">{lastResult.suppressed} suppressed</span>
               <span className="text-red-600">{lastResult.archived} archived</span>
-              <span className="text-emerald-600">{lastResult.boosted} boosted (trending restored)</span>
+              <span className="text-emerald-600">{lastResult.boosted} restored</span>
             </div>
             <div className="text-[11px] text-slate-400">
-              Rules: suppress after {lastResult.rules.suppress_after_hours}h low-engagement ·
-              archive after {lastResult.rules.archive_after_days}d ·
-              min composite score {lastResult.rules.min_composite_score}
+              Rules: score below {lastResult.rules.min_composite_score} with fewer than{" "}
+              {lastResult.rules.low_engagement_threshold} responses → suppress after{" "}
+              {lastResult.rules.suppress_after_hours}h · archive after{" "}
+              {lastResult.rules.archive_after_days}d (fewer than{" "}
+              {lastResult.rules.archive_max_responses} responses) · trending always visible
             </div>
           </div>
         )}
@@ -258,11 +265,11 @@ function FeedHygienePanel() {
         <div className="grid grid-cols-2 gap-3">
           <div className="rounded-lg border px-4 py-3 text-center">
             <p className="text-2xl font-semibold text-amber-600">{suppressedCount}</p>
-            <p className="text-xs text-slate-500 mt-0.5">Auto-suppressed</p>
+            <p className="text-xs text-slate-500 mt-0.5">Suppressed</p>
           </div>
           <div className="rounded-lg border px-4 py-3 text-center">
             <p className="text-2xl font-semibold text-red-500">{archivedCount}</p>
-            <p className="text-xs text-slate-500 mt-0.5">Auto-archived</p>
+            <p className="text-xs text-slate-500 mt-0.5">Archived</p>
           </div>
         </div>
 
@@ -281,6 +288,7 @@ function FeedHygienePanel() {
                   <TableHead className="text-xs w-24">Status</TableHead>
                   <TableHead className="text-xs w-28">Age</TableHead>
                   <TableHead className="text-xs w-24">Responses</TableHead>
+                  <TableHead className="text-xs w-16">By</TableHead>
                   <TableHead className="text-xs w-32">Reason</TableHead>
                 </TableRow>
               </TableHeader>
@@ -301,6 +309,9 @@ function FeedHygienePanel() {
                     <TableCell className="text-xs text-slate-600">
                       {row.responses_total ?? 0}
                     </TableCell>
+                    <TableCell className="text-[10px] text-slate-500">
+                      {row.set_by === "admin" ? "Admin" : "Auto"}
+                    </TableCell>
                     <TableCell className="text-[10px] text-slate-400 max-w-[160px] line-clamp-2">
                       {row.reason ?? "—"}
                     </TableCell>
@@ -312,7 +323,7 @@ function FeedHygienePanel() {
         )}
         {!isLoading && (!hygieneRows || hygieneRows.length === 0) && (
           <p className="text-xs text-slate-400 py-2">
-            No questions auto-suppressed or archived yet. Run hygiene to evaluate.
+            No questions are hidden. Run hygiene to evaluate.
           </p>
         )}
       </CardContent>
@@ -521,14 +532,17 @@ const { data, isLoading, isError, error, refetch } = useQuery<QuestionImpactRow[
           + `. Applying visibility rules...`,
       });
 
-      // Step 2: Apply visibility rules (raw fetch — SDK mutex bypass)
-      const _vRes = await fetch(`${SUPABASE_URL}/rest/v1/rpc/update_visibility_rules`, {
+      // Step 2: Apply visibility rules. Feed hygiene is the single visibility
+      // engine (Epic P P-09). Raw fetch — SDK mutex bypass.
+      const _vRes = await fetch(`${SUPABASE_URL}/rest/v1/rpc/apply_feed_hygiene`, {
         method: 'POST',
         headers: supabaseHeaders(getJwt()),
-        body: JSON.stringify({}),
+        body: JSON.stringify({ p_dry_run: false }),
       });
-      const visibilityResult = _vRes.ok ? await _vRes.json().catch(() => []) : [];
-      const visibilityCount = Array.isArray(visibilityResult) ? visibilityResult.length : 0;
+      const visibilityResult: HygieneResult | null = _vRes.ok ? await _vRes.json().catch(() => null) : null;
+      const visibilityCount = visibilityResult
+        ? visibilityResult.suppressed + visibilityResult.archived + visibilityResult.boosted
+        : 0;
 
       const remaining = allRows.length - SCORE_BATCH_SIZE;
       toast({
@@ -626,27 +640,29 @@ const handleRescoreSingle = async (questionId: string | null) => {
     mutationFn: async () => {
       // Raw fetch — SDK mutex bypass pattern.
       const jwt = getJwt();
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/update_visibility_rules`, {
+      // Feed hygiene is the single visibility engine (Epic P P-09).
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/apply_feed_hygiene`, {
         method: "POST",
         headers: supabaseHeaders(jwt),
-        body: JSON.stringify({}),
+        body: JSON.stringify({ p_dry_run: false }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         const msg = body?.message ?? body?.error ?? `HTTP ${res.status}`;
-        console.error("update_visibility_rules error:", msg);
+        console.error("apply_feed_hygiene error:", msg);
         throw new Error(msg);
       }
       return res.json();
     },
-    onSuccess: (result) => {
-      const count = result?.length || 0;
+    onSuccess: (result: HygieneResult) => {
+      const count = (result?.suppressed ?? 0) + (result?.archived ?? 0) + (result?.boosted ?? 0);
       toast({
         title: "Visibility rules applied",
         description: `Updated visibility for ${count} questions.`,
       });
       // FIX 5: Force refetch after visibility rules
       refetch();
+      queryClient.invalidateQueries({ queryKey: ["admin-hygiene-rows"] });
     },
     onError: (err: any) => {
       toast({
@@ -719,19 +735,12 @@ const handleRescoreSingle = async (questionId: string | null) => {
                 variant="secondary"
                 onClick={() => applyVisibilityRulesMutation.mutate()}
                 disabled={applyVisibilityRulesMutation.isPending || isLoading}
-                title="Applies visibility rules to all scored questions that don't yet have a visibility value set."
+                title="Runs feed hygiene now (the same rules as the 6-hourly job). Questions you set by hand are not changed."
               >
                 {applyVisibilityRulesMutation.isPending ? (
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
                 ) : null}
-                {(() => {
-                  const pending = data?.filter(r =>
-                    r.composite_score != null && r.visibility == null
-                  ).length ?? 0;
-                  return pending > 0
-                    ? `Apply Visibility Rules (${pending} pending)`
-                    : "Apply Visibility Rules";
-                })()}
+                Apply Visibility Rules
               </Button>
             </div>
             

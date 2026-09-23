@@ -67,7 +67,7 @@ const LOW_SAMPLE_THRESHOLD = 30;
 
 /**
  * Derive signal type from trending_score alone.
- * Bands are calibrated against the scoring formula in impact-score edge fn:
+ * Bands are calibrated against the trending_score formula:
  *   score = 40% velocity + 30% recency + 20% volume + 10% diversity
  * High velocity (score ≥ 70) → organic momentum
  * Very high acceleration (score ≥ 85) → polarising (many users rapidly)
