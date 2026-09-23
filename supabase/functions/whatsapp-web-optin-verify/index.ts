@@ -82,7 +82,13 @@ serve(async (req) => {
       .limit(1);
 
     const row = rows?.[0];
-    if (!row || row.otp_code !== code) return json({ ok: false, reason: "invalid_or_expired_code" }, 400);
+    if (!row) return json({ ok: false, reason: "invalid_or_expired_code" }, 400);
+    if (row.otp_code !== code) {
+      // Epic AA-13: count the wrong guess; the code is burned on the 5th.
+      const { error: failErr } = await supabase.rpc("register_whatsapp_otp_failure", { p_id: row.id });
+      if (failErr) console.error("register_whatsapp_otp_failure failed:", failErr.message);
+      return json({ ok: false, reason: "invalid_or_expired_code" }, 400);
+    }
 
     // Consume the code (single-use).
     await supabase.from("whatsapp_phone_verifications").update({ used: true }).eq("id", row.id);
