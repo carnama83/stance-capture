@@ -27,8 +27,42 @@ async function sha256Hex(s: string) {
   return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+// ─── Epic AA-05: service-role callers only ──────────────────────────────────
+// verify_jwt=true stops unsigned requests, but the PUBLIC anon key is a valid
+// JWT, so on its own it let anyone on the internet make this function
+// message arbitrary numbers from the business account. Callers must now
+// present this project's service-role credential. Same check as
+// whatsapp-broadcast-dispatch (W-01). It accepts either credential shape:
+//   A - an exact match with this project's SUPABASE_SERVICE_ROLE_KEY;
+//   B - a JWT whose role is service_role. This is trustworthy ONLY because
+//       verify_jwt=true means the platform already checked the signature,
+//       so do NOT set verify_jwt to false on this function.
+function isServiceCaller(req: Request): boolean {
+  const m = /^Bearer\s+(.+)$/i.exec((req.headers.get("authorization") ?? "").trim());
+  if (!m) return false;
+  const token = m[1];
+  const envKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SERVICE_ROLE_KEY") ?? "";
+  if (envKey && token === envKey) return true;
+  try {
+    const seg = token.split(".")[1];
+    if (!seg) return false;
+    const norm = seg.replace(/-/g, "+").replace(/_/g, "/");
+    const claims = JSON.parse(atob(norm + "=".repeat((4 - norm.length % 4) % 4)));
+    if (claims?.role !== "service_role") return false;
+    const expectedRef = (Deno.env.get("SUPABASE_URL") ?? "").match(/https:\/\/([a-z0-9]+)\.supabase\.co/)?.[1];
+    return !(expectedRef && claims?.ref && claims.ref !== expectedRef);
+  } catch {
+    return false;
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
+  if (!isServiceCaller(req)) {
+    return new Response(JSON.stringify({ ok: false, reason: "unauthorized" }), {
+      status: 401, headers: { ...CORS, "Content-Type": "application/json" },
+    });
+  }
   try {
     const { phone_number } = await req.json();
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;

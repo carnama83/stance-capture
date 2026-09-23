@@ -18,7 +18,7 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type"
 };
-// ─── Hash wa_id with salt (SHA-256) ──────────────────────────────────────────
+// ─── Hash wa_id with salt (SHA-256) ─────────────────────────────────────────
 // BUG FIX: isValidE164() below requires a leading "+" — that's what makes
 // it E.164-compliant. But Meta's own webhook payload (message.from /
 // message.recipient_id, see whatsapp-flow-webhook) NEVER has a "+" — just
@@ -44,15 +44,41 @@ async function hashPhoneNumber(phoneNumber, salt) {
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   return hashArray.map((b)=>b.toString(16).padStart(2, "0")).join("");
 }
-// ─── Generate a 6-digit OTP ───────────────────────────────────────────────────
+// ─── Generate a 6-digit OTP ───────────────────────────────────────────────
 function generateOtp() {
   const digits = crypto.getRandomValues(new Uint8Array(6));
   return Array.from(digits).map((d)=>d % 10).join("");
 }
-// ─── Validate E.164 format ────────────────────────────────────────────────────
+// ─── Validate E.164 format ────────────────────────────────────────────────
 function isValidE164(phone) {
   return /^\+[1-9]\d{6,14}$/.test(phone);
 }
+// ─── Epic AA-05: who may call this ─────────────────────────────────────────
+// verify_jwt is false here (PhoneSignInFlow calls it before any session
+// exists), so the platform checks nothing and a JWT's claims cannot be
+// trusted. Question sends therefore require this project's own service-role
+// key, matched exactly. Its only callers are whatsapp-broadcast-dispatch and
+// whatsapp-send-router, which hold that key. OTP sends (verification_mode)
+// stay public, and are rate-limited below instead.
+function isServiceCaller(req) {
+  const m = /^Bearer\s+(.+)$/i.exec((req.headers.get("authorization") ?? "").trim());
+  const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SERVICE_ROLE_KEY") ?? "";
+  return !!m && !!key && m[1] === key;
+}
+// Requester IP, used only in hashed form for OTP rate limiting.
+function clientIp(req) {
+  const fwd = req.headers.get("x-forwarded-for") ?? "";
+  return (fwd.split(",")[0] || req.headers.get("cf-connecting-ip") || req.headers.get("x-real-ip") || "unknown").trim();
+}
+async function sha256Hex(s) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+  return Array.from(new Uint8Array(buf)).map((b)=>b.toString(16).padStart(2, "0")).join("");
+}
+// OTP limits. Per phone and per IP stop targeted spam; the global hourly cap
+// bounds the total Meta cost of a distributed attack. Tunable via env.
+const OTP_PER_PHONE_10MIN = 3;
+const OTP_PER_IP_HOUR = Number(Deno.env.get("WHATSAPP_OTP_PER_IP_HOURLY") ?? "10");
+const OTP_GLOBAL_HOUR = Number(Deno.env.get("WHATSAPP_OTP_HOURLY_CAP") ?? "100");
 serve(async (req)=>{
   if (req.method === "OPTIONS") {
     return new Response("ok", {
@@ -61,7 +87,20 @@ serve(async (req)=>{
   }
   try {
     const { phone_number, question_id, question_text, question_summary, broadcast_id, verification_mode, forward_chain_id, test_draft, language_code } = await req.json();
-    // ── Input validation ────────────────────────────────────────────────────
+    // ── Epic AA-05: question sends are service-role only ──────────────────
+    if (!verification_mode && !isServiceCaller(req)) {
+      return new Response(JSON.stringify({
+        sent: false,
+        reason: "unauthorized"
+      }), {
+        status: 401,
+        headers: {
+          ...CORS_HEADERS,
+          "Content-Type": "application/json"
+        }
+      });
+    }
+    // ── Input validation ──────────────────────────────────────────────────
     if (!phone_number) {
       return new Response(JSON.stringify({
         sent: false,
@@ -86,7 +125,7 @@ serve(async (req)=>{
         }
       });
     }
-    // ── Load env vars ───────────────────────────────────────────────────────
+    // ── Load env vars ──────────────────────────────────────────────────────
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     const PHONE_HASH_SALT = Deno.env.get("WHATSAPP_PHONE_HASH_SALT");
@@ -108,11 +147,11 @@ serve(async (req)=>{
         }
       });
     }
-    // ── Hash phone number — never store raw ────────────────────────────────
+    // ── Hash phone number — never store raw ──────────────────────────────────
     const phoneHash = await hashPhoneNumber(phone_number, PHONE_HASH_SALT);
-    // ── Service role client ─────────────────────────────────────────────────
+    // ── Service role client ───────────────────────────────────────────────
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-    // ── Check opt-out (skip for verification mode) ──────────────────────────
+    // ── Check opt-out (skip for verification mode) ───────────────────────────
     if (!verification_mode) {
       const { data: optOut } = await supabase.from("whatsapp_optouts").select("is_active").eq("phone_hash", phoneHash).eq("is_active", true).maybeSingle();
       if (optOut) {
@@ -128,14 +167,48 @@ serve(async (req)=>{
         });
       }
     }
-    // ── AA2.2: Verification mode — generate and store OTP ──────────────────
+    // ── AA2.2: Verification mode — generate and store OTP ─────────────────────
     let verificationToken = null;
     if (verification_mode) {
+      // ── Epic AA-05: rate limits, checked before anything is sent ──────────
+      // Fails CLOSED: if a count cannot be read, no code is sent.
+      const ipHash = await sha256Hex("ip:" + clientIp(req) + PHONE_HASH_SALT);
+      const hourAgo = new Date(Date.now() - 60 * 60_000).toISOString();
+      const tenMinAgo = new Date(Date.now() - 10 * 60_000).toISOString();
+      const countSince = (col, val, since)=>{
+        let q = supabase.from("whatsapp_phone_verifications").select("id", {
+          count: "exact",
+          head: true
+        }).gte("created_at", since);
+        if (col) q = q.eq(col, val);
+        return q;
+      };
+      const [perPhone, perIp, global] = await Promise.all([
+        countSince("phone_hash", phoneHash, tenMinAgo),
+        countSince("requester_ip_hash", ipHash, hourAgo),
+        countSince(null, null, hourAgo)
+      ]);
+      const limitErr = perPhone.error || perIp.error || global.error;
+      const limited = limitErr ? "rate_limit_unavailable" : (perPhone.count ?? 0) >= OTP_PER_PHONE_10MIN || (perIp.count ?? 0) >= OTP_PER_IP_HOUR || (global.count ?? 0) >= OTP_GLOBAL_HOUR ? "too_many_requests" : null;
+      if (limited) {
+        if (limitErr) console.error("OTP rate-limit read failed:", limitErr.message);
+        return new Response(JSON.stringify({
+          sent: false,
+          reason: limited
+        }), {
+          status: limitErr ? 503 : 429,
+          headers: {
+            ...CORS_HEADERS,
+            "Content-Type": "application/json"
+          }
+        });
+      }
       const otp = generateOtp();
       // Store OTP in verification table
       const { data: verRow, error: verError } = await supabase.from("whatsapp_phone_verifications").insert({
         phone_hash: phoneHash,
-        otp_code: otp
+        otp_code: otp,
+        requester_ip_hash: ipHash
       }).select("verification_token").single();
       if (verError || !verRow) {
         console.error("Failed to store OTP:", verError?.message);
@@ -224,7 +297,7 @@ serve(async (req)=>{
         }
       });
     }
-    // ── Standard message send ───────────────────────────────────────────────
+    // ── Standard message send ──────────────────────────────────────────────
     if (!question_id || !question_text) {
       return new Response(JSON.stringify({
         sent: false,

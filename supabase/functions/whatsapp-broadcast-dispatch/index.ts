@@ -55,9 +55,12 @@ const SUPABASE_FUNCTIONS_URL = `${Deno.env.get("SUPABASE_URL")}/functions/v1`;
 // Delivery channel (2026-07-08, post-flows pivot): "link" sends the plain-text
 // message with the /s/<slug> share link via whatsapp-send-link; "flow" (default)
 // keeps the legacy Flow card via whatsapp-send-flow. The dispatcher selects the
-// target itself with CLEAN headers (content-type only) rather than hopping
-// through whatsapp-send-router, whose internal Authorization: Bearer header is
-// the gateway-rejected legacy class (same failure as the ugq-submit 07-08 fix).
+// target itself rather than hopping through whatsapp-send-router.
+// Epic AA-05/AA-07 (23 Sep 2026): both targets now require the service role, so
+// the call carries this project's SUPABASE_SERVICE_ROLE_KEY as a Bearer token.
+// The earlier note that such headers are gateway-rejected was re-measured on Dev
+// that day: the gateway accepted legacy-JWT and sb_secret Bearer tokens alike.
+// Without the header, link mode was already 401ing at the gateway (AA-07).
 // NOTE (Meta): plain text delivers only inside a 24h customer-service window;
 // cold-number broadcasts require an approved template regardless of this flag.
 const SEND_MODE = (Deno.env.get("WHATSAPP_SEND_MODE") ?? "flow").toLowerCase();
@@ -264,7 +267,8 @@ async function processBroadcast(supabase, broadcast) {
       const sendResponse = await fetch(`${SUPABASE_FUNCTIONS_URL}/${SEND_FN}`, {
         method: "POST",
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SERVICE_ROLE_KEY") ?? ""}`
         },
         body: JSON.stringify({
           phone_number: phoneNumber,
