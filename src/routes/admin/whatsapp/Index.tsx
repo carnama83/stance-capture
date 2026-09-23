@@ -36,7 +36,8 @@ type Status = {
       display_phone_number?: string; verified_name?: string; quality_rating?: string;
       name_status?: string; code_verification_status?: string; messaging_limit_tier?: string;
     }>;
-    templates: ({ ok: true; data: { name: string; status: string; language: string; category: string }[]; missing: string[] })
+    templates: ({ ok: true; data: { name: string; status: string; language: string; category: string }[]; missing: string[];
+      account_template_count: number; account_template_names: string[]; sending_number_in_account: boolean | null; phone_numbers_error: string | null })
       | { ok: false; error: string };
     flow: MetaResult<{ name?: string; status?: string; validation_errors?: unknown[] }>;
   };
@@ -98,7 +99,9 @@ export default function AdminWhatsAppStatusPage() {
   const copy = (text: string) => { navigator.clipboard.writeText(text); toast({ title: "Copied." }); };
   const missingRequired = status?.secrets.filter((s) => s.required && !s.set) ?? [];
   const phone = status?.meta.phone_number;
-  const healthy = !!status && missingRequired.length === 0 && phone?.ok === true;
+  const reachable = !!status && missingRequired.length === 0 && phone?.ok === true;
+  // Green only when reachable AND nothing needs attention; warnings keep it amber.
+  const healthy = reachable && (status?.warnings.length ?? 0) === 0;
 
   return (
     <div className="space-y-6 max-w-3xl">
@@ -131,7 +134,9 @@ export default function AdminWhatsAppStatusPage() {
             {healthy ? <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" /> : <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0" />}
             <div className="flex-1">
               <p className={`text-sm font-medium ${healthy ? "text-emerald-800" : "text-amber-800"}`}>
-                {healthy ? "Configured, and the sending number is reachable at Meta" : "Needs attention"}
+                {healthy ? "Configured, and the sending number is reachable at Meta"
+                  : reachable ? `Sending number reachable at Meta, with ${status.warnings.length} warning${status.warnings.length === 1 ? "" : "s"}`
+                  : "Needs attention"}
               </p>
               <p className="text-xs text-slate-500 mt-0.5">Checked {new Date(status.checked_at).toLocaleString()}</p>
             </div>
@@ -176,7 +181,14 @@ export default function AdminWhatsAppStatusPage() {
             <CardContent className="text-xs space-y-2">
               {status.meta.templates.ok ? (
                 <>
-                  {status.meta.templates.data.length === 0 && <p className="text-slate-500">None of the configured templates exist in the business account.</p>}
+                  <p className="text-slate-500">
+                    Business account (WHATSAPP_WABA_ID) holds {status.meta.templates.account_template_count} template(s)
+                    {status.meta.templates.account_template_count > 0 && <>: <span className="font-mono">{status.meta.templates.account_template_names.join(", ")}</span></>}.
+                    {" "}Sending number in this account:{" "}
+                    {status.meta.templates.sending_number_in_account === true ? "yes"
+                      : status.meta.templates.sending_number_in_account === false ? <span className="text-rose-700">no — statuses below are for a different account</span>
+                      : <span className="text-amber-700">could not check ({status.meta.templates.phone_numbers_error})</span>}
+                  </p>
                   {status.meta.templates.data.map((t) => (
                     <div key={`${t.name}-${t.language}`} className="flex items-center justify-between gap-2 border-b last:border-0 py-1">
                       <span className="font-mono">{t.name} <span className="text-slate-400">({t.language}, {t.category})</span></span>

@@ -107,10 +107,30 @@ Deno.serve(async (req) => {
 
   const wanted = new Set(settings.filter((s) => s.name.endsWith("TEMPLATE_NAME")).map((s) => s.value));
   if (token && wabaId) {
-    const t = await metaGet(`${wabaId}/message_templates?fields=name,status,language,category&limit=200`, token);
+    // "Not found" is only meaningful if WHATSAPP_WABA_ID is the business
+    // account the sending number belongs to, so report both facts alongside:
+    // how many templates that account holds in total, and whether the sending
+    // number is one of its phone numbers.
+    const [t, nums] = await Promise.all([
+      metaGet(`${wabaId}/message_templates?fields=name,status,language,category&limit=200`, token),
+      metaGet(`${wabaId}/phone_numbers?fields=id,display_phone_number`, token),
+    ]);
+    const all = t.ok ? (t.data?.data ?? []) : [];
+    const numberInAccount = nums.ok ? (nums.data?.data ?? []).some((n: any) => String(n.id) === phoneNumberId) : null;
     meta.templates = t.ok
-      ? { ok: true, data: (t.data?.data ?? []).filter((x: any) => wanted.has(x.name)), missing: [...wanted].filter((n) => !(t.data?.data ?? []).some((x: any) => x.name === n)) }
+      ? {
+        ok: true,
+        data: all.filter((x: any) => wanted.has(x.name)),
+        missing: [...wanted].filter((n) => !all.some((x: any) => x.name === n)),
+        account_template_count: all.length,
+        account_template_names: all.map((x: any) => x.name).slice(0, 50),
+        sending_number_in_account: numberInAccount,
+        phone_numbers_error: nums.ok ? null : nums.error,
+      }
       : t;
+    if (numberInAccount === false) {
+      warnings.push("WHATSAPP_WABA_ID is not the business account that owns WHATSAPP_PHONE_NUMBER_ID, so the template statuses shown are for a different account.");
+    }
   } else meta.templates = { ok: false, error: "WHATSAPP_WABA_ID not set; template status cannot be read" };
 
   if (token && flowId) meta.flow = await metaGet(`${flowId}?fields=name,status,validation_errors`, token);
