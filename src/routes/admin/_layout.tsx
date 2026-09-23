@@ -250,7 +250,7 @@ export default function AdminLayout() {
           <AdminLink
             to="/admin/whatsapp"
             icon={<MessageSquareDot className="h-4 w-4" />}
-            label="WA Settings"
+            label="WA Status"
           />
           <AdminLink
             to="/admin/whatsapp/broadcasts"

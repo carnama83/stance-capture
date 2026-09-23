@@ -237,6 +237,15 @@ serve(async (req) => {
         { status: 200, headers: { "Content-Type": "text/plain" } },
       );
     }
+    // Epic AA-11: INIT is the recipient actually opening the Flow — the real
+    // "Flows opened" signal (read receipts were being counted before). Counted
+    // once per recipient per broadcast; never blocks the screen.
+    if (action === "INIT" && session.broadcast_id) {
+      const { error: openErr } = await supabase.rpc("record_whatsapp_flow_event", {
+        p_broadcast_id: session.broadcast_id, p_phone_hash: session.phone_hash, p_event: "opened",
+      });
+      if (openErr) console.error("record_whatsapp_flow_event(opened) failed:", openErr.message);
+    }
     // F2 / UGQ-ML-C03: re-serve the wording this recipient was actually SENT.
     // Reading questions.question here would show them the English on BACK even
     // though their card arrived in another language -- and worse, would show
@@ -279,34 +288,49 @@ serve(async (req) => {
 
   // ── data_exchange → store stance, return live confirmation ──────────────
   if (action === "data_exchange") {
-    const fallbackConfirmation = async (msg: string) =>
+    // Epic AA-01: every path through this helper is one where NOTHING was
+    // stored. It used to be headed "Your stance has been recorded." — which is
+    // how a stance write that failed on every call went unnoticed.
+    const notRecordedConfirmation = async (msg: string) =>
       new Response(
         await encryptResponse({
           version: FLOW_DATA_API_VERSION,
           screen: "CONFIRMATION",
           data: {
-            headline: "Your stance has been recorded.",
+            headline: "We couldn't record your stance just now.",
             distribution_line: msg,
             forward_line: "See the full community view at stancecapture.com",
-            subscription_prompt: "Reply YES to get updates when community stance shifts.",
+            subscription_prompt: "",
           },
         }, aesKey, iv),
         { status: 200, headers: { "Content-Type": "text/plain" } },
       );
+    const TRY_AGAIN = "Please try again later, or answer at stancecapture.com.";
+    let recorded = false; // set once upsert_whatsapp_stance has succeeded
+
+    // Logged without phone data (AA5.2): the question and the error only.
+    const logWriteError = async (errorType: string, detail: string) => {
+      const { error } = await supabase.from("whatsapp_webhook_errors").insert({
+        error_type: errorType,
+        payload_preview: detail.substring(0, 200),
+      });
+      if (error) console.error("whatsapp_webhook_errors insert failed:", error.message);
+    };
 
     try {
-      if (!session) return fallbackConfirmation("Visit stancecapture.com to see the community view.");
+      if (!session) return notRecordedConfirmation("This question is no longer available. Answer at stancecapture.com.");
 
       // Opt-out guard
       const { data: optOut } = await supabase
         .from("whatsapp_optouts").select("is_active")
         .eq("phone_hash", session.phone_hash).eq("is_active", true).maybeSingle();
-      if (optOut) return fallbackConfirmation("Visit stancecapture.com to see the community view.");
+      if (optOut) return notRecordedConfirmation("You've opted out of Stance Capture on WhatsApp. Reply START to opt back in.");
 
       const stanceValue = parseInt(payload?.data?.stance_value, 10);
       const questionId = session.question_id;
       if (isNaN(stanceValue) || stanceValue < -2 || stanceValue > 2) {
-        return fallbackConfirmation("Visit stancecapture.com to see the community view.");
+        await logWriteError("invalid_flow_payload", `question ${questionId}: stance_value out of range`);
+        return notRecordedConfirmation(TRY_AGAIN);
       }
 
       // ── D4 / PR 2b.6 — reject a reply whose instrument was withdrawn ──────
@@ -387,35 +411,29 @@ serve(async (req) => {
         );
       }
 
-      // AA4.2 — attribute to a verified Stance Capture account if the phone matches
-      let userId: string | null = null;
-      const { data: profile } = await supabase
-        .from("profiles").select("id").eq("verified_phone_hash", session.phone_hash).maybeSingle();
-      if (profile) userId = profile.id;
+      // AA4.2 — account attribution now happens inside upsert_whatsapp_stance
+      // (Epic AA-02: this used to select profiles.id, a column that does not
+      // exist, so every stance was stored anonymous).
 
-      // AA8 — resolve inbound forward chain and mint this respondent's child chain
-      let forwardChainId: string | null = null;
-      if (session.forward_chain_id) {
-        const { data: parentChain } = await supabase
-          .from("whatsapp_forward_chains").select("depth, child_stance_count")
-          .eq("id", session.forward_chain_id).maybeSingle();
-        if (parentChain && parentChain.depth < 10 && parentChain.child_stance_count < 500) {
-          const childId = generateChainId();
-          await supabase.from("whatsapp_forward_chains").insert({
-            id: childId, question_id: questionId, root_phone_hash: session.phone_hash,
-            parent_forward_chain_id: session.forward_chain_id, depth: parentChain.depth + 1,
-          });
-          await supabase.from("whatsapp_forward_chains").update({
-            child_stance_count: parentChain.child_stance_count + 1,
-          }).eq("id", session.forward_chain_id);
-          forwardChainId = childId;
-        }
-      }
-      // Every respondent gets a fresh chain token to forward onward
-      const outboundChainId = generateChainId();
-      await supabase.from("whatsapp_forward_chains").insert({
-        id: outboundChainId, question_id: questionId, root_phone_hash: session.phone_hash, depth: 0,
+      // AA8 — this respondent's node in the forward tree.
+      // Epic AA-10: this used to create a child node for the inbound chain AND
+      // a separate parentless depth-0 root as the link to forward, so every
+      // forward started a new tree and depth never passed 1. Now there is one
+      // node per respondent per question: its parent is the chain they came in
+      // through, it is written on their stance, and it is the ref they forward.
+      // Caps (depth 10, 500 children, flagged once) are applied in SQL
+      // (resolve_forward_parent). Re-answering reuses the existing node.
+      const { data: node, error: nodeErr } = await supabase.rpc("open_whatsapp_forward_node", {
+        p_question_id: questionId,
+        p_phone_hash: session.phone_hash,
+        p_inbound_ref: session.forward_chain_id ?? null,
+        p_new_id: generateChainId(),
       });
+      if (nodeErr) console.error("open_whatsapp_forward_node failed:", nodeErr.message);
+      // Without a node the stance is still stored (it is keyed by phone hash);
+      // only the forward link loses its ref.
+      const forwardChainId: string | null = node?.node_id ?? null;
+      const outboundChainId: string | null = forwardChainId;
 
       // F2 / UGQ-ML-C03: attribute the stance to the rendition bound when the
       // card was SENT. Re-resolving here would attribute the answer to whatever
@@ -437,33 +455,47 @@ serve(async (req) => {
       }
       if (!waRenditionId) {
         console.error("[whatsapp-flow] no published wording for question", questionId);
-      } else {
-        // Upsert the stance (dedup per phone_hash + question via session correlation)
-        await supabase.from("question_stances").upsert({
-          question_id: questionId,
-          user_id: userId,
-          whatsapp_phone_hash: session.phone_hash,
-          score: stanceValue,
-          source: "whatsapp_flow",
-          rendition_id: waRenditionId,
-          forward_chain_id: forwardChainId,
-        }, { onConflict: "whatsapp_phone_hash,question_id" });
-
-        // PR 2b.6 — record the disposition of this reply. Every inbound
-        // response now ends in exactly one of two states, so a rejected
-        // re-ask can be told apart from a reply that never arrived.
-        //
-        // provider_timestamp is deliberately left NULL: Meta sends none in the
-        // Flow data_exchange. responded_at is the authoritative time for this
-        // channel because the exchange is synchronous — see pr2b_04.
-        await supabase
-          .from("whatsapp_flow_sessions")
-          .update({
-            responded_at: new Date().toISOString(),
-            response_outcome: "recorded",
-          })
-          .eq("flow_token", flowToken);
+        await logWriteError("no_published_wording", `question ${questionId}`);
+        return notRecordedConfirmation(TRY_AGAIN);
       }
+
+      // Epic AA-01: the stance write. This used to be a PostgREST upsert with
+      // onConflict "whatsapp_phone_hash,question_id"; the matching unique index
+      // is PARTIAL, so every call raised 42P10 and — because the result was
+      // never checked — the user was still told their stance was in.
+      // upsert_whatsapp_stance does the write atomically without ON CONFLICT,
+      // resolves the account (AA-02), and applies one-stance-per-person,
+      // latest-answer-wins. Its result is checked: nothing below runs unless
+      // the stance really exists.
+      const { data: written, error: writeErr } = await supabase.rpc("upsert_whatsapp_stance", {
+        p_question_id: questionId,
+        p_phone_hash: session.phone_hash,
+        p_score: stanceValue,
+        p_rendition_id: waRenditionId,
+        p_broadcast_id: session.broadcast_id ?? null,
+        p_forward_chain_id: forwardChainId,
+      });
+      if (writeErr || !written?.stance_id) {
+        console.error("[whatsapp-flow] stance write failed", questionId, writeErr?.message);
+        await logWriteError("stance_write_failed", `question ${questionId}: ${writeErr?.code ?? ""} ${writeErr?.message ?? "no stance_id returned"}`);
+        return notRecordedConfirmation(TRY_AGAIN);
+      }
+      recorded = true;
+
+      // PR 2b.6 — record the disposition of this reply. Every inbound
+      // response now ends in exactly one of two states, so a rejected
+      // re-ask can be told apart from a reply that never arrived.
+      //
+      // provider_timestamp is deliberately left NULL: Meta sends none in the
+      // Flow data_exchange. responded_at is the authoritative time for this
+      // channel because the exchange is synchronous — see pr2b_04.
+      await supabase
+        .from("whatsapp_flow_sessions")
+        .update({
+          responded_at: new Date().toISOString(),
+          response_outcome: "recorded",
+        })
+        .eq("flow_token", flowToken);
 
       // AA7 — open a short session so a later "YES" subscribes to this question
       await supabase.from("whatsapp_active_sessions").upsert({
@@ -472,11 +504,19 @@ serve(async (req) => {
         expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
       }, { onConflict: "whatsapp_phone_hash" });
 
-      // Broadcast counter
-      if (session.broadcast_id) {
+      // Broadcast counter — a new stance only; a re-answer is not a second stance.
+      if (session.broadcast_id && written.action === "inserted") {
         await supabase.rpc("increment_broadcast_counter", {
           p_broadcast_id: session.broadcast_id, p_column: "total_stances",
         });
+      }
+      // Epic AA-11: the Flow was completed (flow_completed_at was never written
+      // before, so "Flows completed" was always 0). Counted once per recipient.
+      if (session.broadcast_id) {
+        const { error: doneErr } = await supabase.rpc("record_whatsapp_flow_event", {
+          p_broadcast_id: session.broadcast_id, p_phone_hash: session.phone_hash, p_event: "completed",
+        });
+        if (doneErr) console.error("record_whatsapp_flow_event(completed) failed:", doneErr.message);
       }
 
       // Live distribution INCLUDING the just-cast vote
@@ -489,7 +529,9 @@ serve(async (req) => {
 
       const { data: qData } = await supabase.from("questions").select("slug").eq("id", questionId).maybeSingle();
       const slug = qData?.slug ?? questionId;
-      const forwardLink = `stancecapture.com/q/${slug}?ref=${outboundChainId}`;
+      const forwardLink = outboundChainId
+        ? `stancecapture.com/q/${slug}?ref=${outboundChainId}`
+        : `stancecapture.com/q/${slug}`;
 
       return new Response(
         await encryptResponse({
@@ -511,7 +553,24 @@ serve(async (req) => {
       );
     } catch (e) {
       console.error("data_exchange_error", String(e));
-      return fallbackConfirmation("Visit stancecapture.com to see the community view.");
+      if (recorded) {
+        // The stance IS stored; only the follow-up (distribution, links) failed.
+        return new Response(
+          await encryptResponse({
+            version: FLOW_DATA_API_VERSION,
+            screen: "CONFIRMATION",
+            data: {
+              headline: "Your stance has been recorded.",
+              distribution_line: "Visit stancecapture.com to see the community view.",
+              forward_line: "See the full community view at stancecapture.com",
+              subscription_prompt: "Reply YES to get updates when community stance shifts.",
+            },
+          }, aesKey, iv),
+          { status: 200, headers: { "Content-Type": "text/plain" } },
+        );
+      }
+      await logWriteError("processing_error", String(e));
+      return notRecordedConfirmation(TRY_AGAIN);
     }
   }
 

@@ -35,7 +35,12 @@ export function WebOptInCard({
       const ref = getMyForwardRef(questionId) || localStorage.getItem(PENDING_ATTACH_KEY);
       if (!ref) return;
       try {
-        await supabase.rpc("attach_user_to_node", { p_ref: ref, p_user_id: userId });
+        // p_device_id proves this browser answered: a ref alone is shared in
+        // every forwarded link, so the RPC only commits a device-bound node for
+        // the device that recorded it (Epic AA-04).
+        await supabase.rpc("attach_user_to_node", {
+          p_ref: ref, p_user_id: userId, p_device_id: getDeviceId() || null,
+        });
         localStorage.removeItem(PENDING_ATTACH_KEY);
       } catch { /* non-fatal */ }
     })();

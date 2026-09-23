@@ -345,9 +345,14 @@ serve(async (req)=>{
   if (!isValid) {
     console.error("HMAC verification failed");
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    // Epic AA-16: this stored rawBody.substring(0, 200). A genuine Meta payload
+    // signed with a wrong or rotated secret carries the sender's wa_id (the raw
+    // phone number) in that prefix, which AA5.2 forbids storing. Record only the
+    // size and a short hash, enough to correlate repeats without any content.
+    const bodyDigest = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(rawBody)))).map((b)=>b.toString(16).padStart(2, "0")).join("").slice(0, 16);
     await supabase.from("whatsapp_webhook_errors").insert({
       error_type: "invalid_signature",
-      payload_preview: rawBody.substring(0, 200)
+      payload_preview: `len=${rawBody.length} sha256=${bodyDigest}`
     });
     return new Response("Forbidden", {
       status: 400
@@ -370,43 +375,26 @@ serve(async (req)=>{
         const value = change?.value ?? {};
         if (value?.statuses) {
           const statuses = value.statuses;
+          // Epic AA-11: each receipt is matched to its delivery_log row by Meta's
+          // message id and applied as a forward-only transition, counted exactly
+          // once, inside record_whatsapp_delivery_status(). The old code updated
+          // the phone hash's LATEST row (so receipts could land on the wrong
+          // broadcast), mapped both delivered and read to 'delivered' while
+          // incrementing total_delivered for each (every read message counted
+          // twice), and counted read receipts as Flow opens. Opens and
+          // completions now come from whatsapp-flow-endpoint itself.
           for (const status of statuses){
-            const waId = status?.recipient_id;
+            const messageId = status?.id;
             const msgStatus = status?.status;
-            if (!waId || !msgStatus) continue;
-            const phoneHash = await hashPhoneNumber(waId, PHONE_HASH_SALT);
-            const statusMap = {
-              sent: "sent",
-              delivered: "delivered",
-              read: "delivered",
-              failed: "failed"
-            };
-            const mappedStatus = statusMap[msgStatus];
-            if (!mappedStatus) continue;
-            const { data: logRow } = await supabase.from("whatsapp_delivery_log").select("id, broadcast_id").eq("phone_hash", phoneHash).order("sent_at", {
-              ascending: false
-            }).limit(1).maybeSingle();
-            if (logRow?.id) {
-              const updateData = {
-                status: mappedStatus
-              };
-              if (msgStatus === "read") {
-                updateData.flow_opened_at = new Date().toISOString();
-              }
-              await supabase.from("whatsapp_delivery_log").update(updateData).eq("id", logRow.id);
-              if (mappedStatus === "delivered" && logRow.broadcast_id) {
-                await supabase.rpc("increment_broadcast_counter", {
-                  p_broadcast_id: logRow.broadcast_id,
-                  p_column: "total_delivered"
-                });
-              }
-              if (msgStatus === "read" && logRow.broadcast_id) {
-                await supabase.rpc("increment_broadcast_counter", {
-                  p_broadcast_id: logRow.broadcast_id,
-                  p_column: "total_opened"
-                });
-              }
-            }
+            if (!messageId || !msgStatus) continue;
+            const at = status?.timestamp ? new Date(Number(status.timestamp) * 1000).toISOString() : null;
+            const { error: statusErr } = await supabase.rpc("record_whatsapp_delivery_status", {
+              p_message_id: messageId,
+              p_status: msgStatus,
+              p_error: status?.errors?.[0]?.title ?? status?.errors?.[0]?.message ?? null,
+              p_at: at
+            });
+            if (statusErr) console.error("record_whatsapp_delivery_status failed:", statusErr.message);
           }
           continue;
         }
