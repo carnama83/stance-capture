@@ -345,9 +345,14 @@ serve(async (req)=>{
   if (!isValid) {
     console.error("HMAC verification failed");
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    // Epic AA-16: this stored rawBody.substring(0, 200). A genuine Meta payload
+    // signed with a wrong or rotated secret carries the sender's wa_id (the raw
+    // phone number) in that prefix, which AA5.2 forbids storing. Record only the
+    // size and a short hash, enough to correlate repeats without any content.
+    const bodyDigest = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(rawBody)))).map((b)=>b.toString(16).padStart(2, "0")).join("").slice(0, 16);
     await supabase.from("whatsapp_webhook_errors").insert({
       error_type: "invalid_signature",
-      payload_preview: rawBody.substring(0, 200)
+      payload_preview: `len=${rawBody.length} sha256=${bodyDigest}`
     });
     return new Response("Forbidden", {
       status: 400

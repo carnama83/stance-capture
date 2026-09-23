@@ -415,29 +415,25 @@ serve(async (req) => {
       // (Epic AA-02: this used to select profiles.id, a column that does not
       // exist, so every stance was stored anonymous).
 
-      // AA8 — resolve inbound forward chain and mint this respondent's child chain
-      let forwardChainId: string | null = null;
-      if (session.forward_chain_id) {
-        const { data: parentChain } = await supabase
-          .from("whatsapp_forward_chains").select("depth, child_stance_count")
-          .eq("id", session.forward_chain_id).maybeSingle();
-        if (parentChain && parentChain.depth < 10 && parentChain.child_stance_count < 500) {
-          const childId = generateChainId();
-          await supabase.from("whatsapp_forward_chains").insert({
-            id: childId, question_id: questionId, root_phone_hash: session.phone_hash,
-            parent_forward_chain_id: session.forward_chain_id, depth: parentChain.depth + 1,
-          });
-          await supabase.from("whatsapp_forward_chains").update({
-            child_stance_count: parentChain.child_stance_count + 1,
-          }).eq("id", session.forward_chain_id);
-          forwardChainId = childId;
-        }
-      }
-      // Every respondent gets a fresh chain token to forward onward
-      const outboundChainId = generateChainId();
-      await supabase.from("whatsapp_forward_chains").insert({
-        id: outboundChainId, question_id: questionId, root_phone_hash: session.phone_hash, depth: 0,
+      // AA8 — this respondent's node in the forward tree.
+      // Epic AA-10: this used to create a child node for the inbound chain AND
+      // a separate parentless depth-0 root as the link to forward, so every
+      // forward started a new tree and depth never passed 1. Now there is one
+      // node per respondent per question: its parent is the chain they came in
+      // through, it is written on their stance, and it is the ref they forward.
+      // Caps (depth 10, 500 children, flagged once) are applied in SQL
+      // (resolve_forward_parent). Re-answering reuses the existing node.
+      const { data: node, error: nodeErr } = await supabase.rpc("open_whatsapp_forward_node", {
+        p_question_id: questionId,
+        p_phone_hash: session.phone_hash,
+        p_inbound_ref: session.forward_chain_id ?? null,
+        p_new_id: generateChainId(),
       });
+      if (nodeErr) console.error("open_whatsapp_forward_node failed:", nodeErr.message);
+      // Without a node the stance is still stored (it is keyed by phone hash);
+      // only the forward link loses its ref.
+      const forwardChainId: string | null = node?.node_id ?? null;
+      const outboundChainId: string | null = forwardChainId;
 
       // F2 / UGQ-ML-C03: attribute the stance to the rendition bound when the
       // card was SENT. Re-resolving here would attribute the answer to whatever
@@ -533,7 +529,9 @@ serve(async (req) => {
 
       const { data: qData } = await supabase.from("questions").select("slug").eq("id", questionId).maybeSingle();
       const slug = qData?.slug ?? questionId;
-      const forwardLink = `stancecapture.com/q/${slug}?ref=${outboundChainId}`;
+      const forwardLink = outboundChainId
+        ? `stancecapture.com/q/${slug}?ref=${outboundChainId}`
+        : `stancecapture.com/q/${slug}`;
 
       return new Response(
         await encryptResponse({
