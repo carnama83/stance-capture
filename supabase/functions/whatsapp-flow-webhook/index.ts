@@ -370,43 +370,26 @@ serve(async (req)=>{
         const value = change?.value ?? {};
         if (value?.statuses) {
           const statuses = value.statuses;
+          // Epic AA-11: each receipt is matched to its delivery_log row by Meta's
+          // message id and applied as a forward-only transition, counted exactly
+          // once, inside record_whatsapp_delivery_status(). The old code updated
+          // the phone hash's LATEST row (so receipts could land on the wrong
+          // broadcast), mapped both delivered and read to 'delivered' while
+          // incrementing total_delivered for each (every read message counted
+          // twice), and counted read receipts as Flow opens. Opens and
+          // completions now come from whatsapp-flow-endpoint itself.
           for (const status of statuses){
-            const waId = status?.recipient_id;
+            const messageId = status?.id;
             const msgStatus = status?.status;
-            if (!waId || !msgStatus) continue;
-            const phoneHash = await hashPhoneNumber(waId, PHONE_HASH_SALT);
-            const statusMap = {
-              sent: "sent",
-              delivered: "delivered",
-              read: "delivered",
-              failed: "failed"
-            };
-            const mappedStatus = statusMap[msgStatus];
-            if (!mappedStatus) continue;
-            const { data: logRow } = await supabase.from("whatsapp_delivery_log").select("id, broadcast_id").eq("phone_hash", phoneHash).order("sent_at", {
-              ascending: false
-            }).limit(1).maybeSingle();
-            if (logRow?.id) {
-              const updateData = {
-                status: mappedStatus
-              };
-              if (msgStatus === "read") {
-                updateData.flow_opened_at = new Date().toISOString();
-              }
-              await supabase.from("whatsapp_delivery_log").update(updateData).eq("id", logRow.id);
-              if (mappedStatus === "delivered" && logRow.broadcast_id) {
-                await supabase.rpc("increment_broadcast_counter", {
-                  p_broadcast_id: logRow.broadcast_id,
-                  p_column: "total_delivered"
-                });
-              }
-              if (msgStatus === "read" && logRow.broadcast_id) {
-                await supabase.rpc("increment_broadcast_counter", {
-                  p_broadcast_id: logRow.broadcast_id,
-                  p_column: "total_opened"
-                });
-              }
-            }
+            if (!messageId || !msgStatus) continue;
+            const at = status?.timestamp ? new Date(Number(status.timestamp) * 1000).toISOString() : null;
+            const { error: statusErr } = await supabase.rpc("record_whatsapp_delivery_status", {
+              p_message_id: messageId,
+              p_status: msgStatus,
+              p_error: status?.errors?.[0]?.title ?? status?.errors?.[0]?.message ?? null,
+              p_at: at
+            });
+            if (statusErr) console.error("record_whatsapp_delivery_status failed:", statusErr.message);
           }
           continue;
         }

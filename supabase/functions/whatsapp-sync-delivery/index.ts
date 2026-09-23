@@ -93,67 +93,29 @@ serve(async (req)=>{
       }
     });
   }
+  // Epic AA-11: this used to mark any 'sent' row older than an hour as
+  // 'delivered' with no evidence (Meta offers no per-message status poll), and
+  // wrote total_delivered from a stale snapshot. Deliveries now come only from
+  // receipts (whatsapp-flow-webhook -> record_whatsapp_delivery_status). This
+  // job reconciles: it recomputes the receipt and engagement counters from
+  // whatsapp_delivery_log / question_stances, so any drift self-heals.
   let totalUpdated = 0;
   for (const broadcast of broadcasts){
-    try {
-      // Fetch delivery logs for this broadcast that are still in 'sent' status
-      // (not yet confirmed delivered by webhook)
-      const { data: pendingLogs } = await supabase.from("whatsapp_delivery_log").select("id, phone_hash, status").eq("broadcast_id", broadcast.id).eq("status", "sent").limit(100);
-      if (!pendingLogs || pendingLogs.length === 0) continue;
-      // For each pending log, query Meta's message status
-      // Meta Graph API: GET /v18.0/{phone-number-id}/messages
-      // Note: Meta doesn't provide a bulk status endpoint for Cloud API —
-      // instead we rely primarily on webhook events. This function marks
-      // long-stale 'sent' entries (>1h old) as 'delivered' as a fallback,
-      // since Meta guarantees delivery acknowledgment within 30 minutes.
-      const cutoff = new Date(Date.now() - 60 * 60_000).toISOString(); // 1 hour ago
-      const { data: staleLogs } = await supabase.from("whatsapp_delivery_log").select("id, broadcast_id").eq("broadcast_id", broadcast.id).eq("status", "sent").lt("sent_at", cutoff).limit(100);
-      if (staleLogs && staleLogs.length > 0) {
-        const staleIds = staleLogs.map((l)=>l.id);
-        // Mark stale 'sent' rows as 'delivered' (Meta doesn't expose per-message
-        // status polling; webhook is the primary delivery confirmation channel)
-        const { error: updateErr } = await supabase.from("whatsapp_delivery_log").update({
-          status: "delivered"
-        }).in("id", staleIds);
-        if (!updateErr) {
-          // Update broadcast delivered counter
-          await supabase.from("whatsapp_broadcasts").update({
-            total_delivered: (broadcast.total_delivered ?? 0) + staleLogs.length
-          }).eq("id", broadcast.id);
-          totalUpdated += staleLogs.length;
-          log("info", "Marked stale sent→delivered", {
-            broadcast_id: broadcast.id,
-            count: staleLogs.length
-          });
-        }
-      }
-      // Also sync flow_opened_at: update total_opened for rows where
-      // flow_opened_at is set but broadcast counter hasn't been updated
-      const { count: openedCount } = await supabase.from("whatsapp_delivery_log").select("id", {
-        count: "exact",
-        head: true
-      }).eq("broadcast_id", broadcast.id).not("flow_opened_at", "is", null);
-      if (openedCount !== null && openedCount !== broadcast.total_opened) {
-        await supabase.from("whatsapp_broadcasts").update({
-          total_opened: openedCount
-        }).eq("id", broadcast.id);
-      }
-      // Sync total_stances
-      const { count: stanceCount } = await supabase.from("question_stances").select("id", {
-        count: "exact",
-        head: true
-      }).eq("broadcast_id", broadcast.id);
-      if (stanceCount !== null) {
-        await supabase.from("whatsapp_broadcasts").update({
-          total_stances: stanceCount
-        }).eq("id", broadcast.id);
-      }
-    } catch (err) {
-      log("warn", "Error syncing broadcast", {
+    const { data: counters, error: refreshErr } = await supabase.rpc("refresh_whatsapp_broadcast_counters", {
+      p_broadcast_id: broadcast.id
+    });
+    if (refreshErr) {
+      log("warn", "Error refreshing broadcast counters", {
         broadcast_id: broadcast.id,
-        error: String(err)
+        error: refreshErr.message
       });
+      continue;
     }
+    totalUpdated++;
+    log("info", "Broadcast counters refreshed", {
+      broadcast_id: broadcast.id,
+      ...counters
+    });
   }
   log("info", "Sync complete", {
     broadcasts: broadcasts.length,

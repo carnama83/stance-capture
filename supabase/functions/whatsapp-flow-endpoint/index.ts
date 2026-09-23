@@ -237,6 +237,15 @@ serve(async (req) => {
         { status: 200, headers: { "Content-Type": "text/plain" } },
       );
     }
+    // Epic AA-11: INIT is the recipient actually opening the Flow — the real
+    // "Flows opened" signal (read receipts were being counted before). Counted
+    // once per recipient per broadcast; never blocks the screen.
+    if (action === "INIT" && session.broadcast_id) {
+      const { error: openErr } = await supabase.rpc("record_whatsapp_flow_event", {
+        p_broadcast_id: session.broadcast_id, p_phone_hash: session.phone_hash, p_event: "opened",
+      });
+      if (openErr) console.error("record_whatsapp_flow_event(opened) failed:", openErr.message);
+    }
     // F2 / UGQ-ML-C03: re-serve the wording this recipient was actually SENT.
     // Reading questions.question here would show them the English on BACK even
     // though their card arrived in another language -- and worse, would show
@@ -504,6 +513,14 @@ serve(async (req) => {
         await supabase.rpc("increment_broadcast_counter", {
           p_broadcast_id: session.broadcast_id, p_column: "total_stances",
         });
+      }
+      // Epic AA-11: the Flow was completed (flow_completed_at was never written
+      // before, so "Flows completed" was always 0). Counted once per recipient.
+      if (session.broadcast_id) {
+        const { error: doneErr } = await supabase.rpc("record_whatsapp_flow_event", {
+          p_broadcast_id: session.broadcast_id, p_phone_hash: session.phone_hash, p_event: "completed",
+        });
+        if (doneErr) console.error("record_whatsapp_flow_event(completed) failed:", doneErr.message);
       }
 
       // Live distribution INCLUDING the just-cast vote
