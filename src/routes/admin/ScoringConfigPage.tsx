@@ -223,6 +223,60 @@ const SECTIONS: SectionDef[] = [
     ],
   },
   {
+    // Epic P P-08: read by apply_feed_hygiene() on every run (6-hourly cron and
+    // the Impact Dashboard buttons). Questions an admin set by hand are exempt.
+    id: "feed_hygiene",
+    title: "Epic P — Feed Hygiene",
+    subtitle: "When low-scoring, unanswered questions are hidden from every feed — and restored",
+    icon: "🧹",
+    accent: "#64748b",
+    fields: [
+      {
+        key: "hygiene_min_composite_score",
+        label: "Hide Below Composite Score",
+        description: "Only questions scoring below this can be suppressed or archived. Unscored questions are never hidden.",
+        min: 1, max: 10, step: 0.5,
+        format: "decimal",
+      },
+      {
+        key: "hygiene_suppress_after_hours",
+        label: "Suppress After (hours)",
+        description: "A low-scoring question is suppressed once it is this old and has fewer responses than the threshold below.",
+        min: 1, max: 720, step: 1,
+        format: "integer",
+      },
+      {
+        key: "hygiene_low_engagement_threshold",
+        label: "Suppress Below Responses (total)",
+        description: "A question with at least this many responses in total is never suppressed.",
+        min: 1, max: 1000, step: 1,
+        format: "integer",
+      },
+      {
+        key: "hygiene_archive_after_days",
+        label: "Archive After (days)",
+        description: "A low-scoring question is archived once it is this old and has fewer responses than the threshold below.",
+        min: 1, max: 365, step: 1,
+        format: "integer",
+        warning: "Low values archive most of the catalogue while traffic is low",
+      },
+      {
+        key: "hygiene_archive_max_responses",
+        label: "Archive Below Responses (total)",
+        description: "A question with at least this many responses in total is never archived.",
+        min: 1, max: 1000, step: 1,
+        format: "integer",
+      },
+      {
+        key: "hygiene_boost_trending_score",
+        label: "Always Show Above Trending Score",
+        description: "Questions that are trending, or whose trending score is above this, are always kept visible.",
+        min: 0, max: 100, step: 1,
+        format: "integer",
+      },
+    ],
+  },
+  {
     id: "expectation_signal",
     title: "Epic R — Expectation Signal Thresholds",
     subtitle: "Controls when a question's expectation distribution is shown to users as a signal",
@@ -285,6 +339,13 @@ function getDefaultValue(key: string): number {
     new_days: 7,
     stale_days: 60,
     min_score_floor: 0.0,
+    // Epic P P-08 — must match the COALESCE fallbacks in apply_feed_hygiene().
+    hygiene_min_composite_score: 7.0,
+    hygiene_suppress_after_hours: 24,
+    hygiene_low_engagement_threshold: 5,
+    hygiene_archive_after_days: 30,
+    hygiene_archive_max_responses: 5,
+    hygiene_boost_trending_score: 20,
     // Epic R — M-R03. Matches the COALESCE fallbacks baked into the
     // region_expectation_strength SQL view (§7.3 defaults: 65/100/72) —
     // keep these two in sync if either changes.

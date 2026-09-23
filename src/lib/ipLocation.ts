@@ -9,7 +9,8 @@
 // external request is made at all.
 //
 // Keep this the ONLY place that resolves visitor location. Three copies of the
-// old third-party call existed (here, ThreeTierQuestionsFeed and Signup), and
+// old third-party call existed (here, the since-deleted ThreeTierQuestionsFeed
+// and Signup), and
 // removing one would have left the disclosure in place via the others.
 
 export type IPLocationData = {

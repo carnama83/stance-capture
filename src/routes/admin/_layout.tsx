@@ -20,7 +20,6 @@ import {
   Building2,     // FIX 3: Publishers nav icon
   Activity,      // J: Pipeline run ledger
   Inbox,         // W4: X Reply Review
-  Bookmark,      // M-C05: Curated Feed
   Tag,           // Topics nav
   Vote,          // Epic EL — Elections nav
   Users,         // Epic EL — Party Library nav
@@ -287,11 +286,9 @@ export default function AdminLayout() {
             icon={<BarChart3 className="h-4 w-4" />}
             label="Impact Dashboard"
           />
-          <AdminLink
-            to="/admin/curated-feed"
-            icon={<Bookmark className="h-4 w-4" />}
-            label="Curated Feed"
-          />
+          {/* Curated Feed (/admin/curated-feed) is parked, not deleted: no user
+              surface shows the curated set yet (Epic P P-07). The route still
+              works by URL; restore this link when a surface ships. */}
           <AdminLink
             to="/admin/cron-jobs"
             icon={<Clock className="h-4 w-4" />}
