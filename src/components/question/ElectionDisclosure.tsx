@@ -6,8 +6,8 @@
 // QuestionDetailPage had no election handling at all, and ElectionQuestionCard
 // — the only component that renders this — is reachable only through
 // QuestionCard, whose entire feed chain (ActiveQuestionsFeed,
-// ThreeTierQuestionsFeed via TodayQuestionsFeed, TrendingQuestionsSection) has
-// no referents, so nothing rendered it. The disclosure is a compliance surface
+// TrendingQuestionsSection, and the since-deleted TodayQuestionsFeed /
+// ThreeTierQuestionsFeed) has no referents, so nothing rendered it. The disclosure is a compliance surface
 // (Section 126B), so an election question showing none of it is the real defect.
 //
 // Self-contained and fetches by questionId, the same shape as ProposerBadge,
