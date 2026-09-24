@@ -171,3 +171,10 @@ enabled = true
 # WHATSAPP_APP_SECRET is set. Same defect shape as ugq-moderate and ugq-video-url.
 verify_jwt = false
 entrypoint = "./functions/whatsapp-flow-endpoint/index.ts"
+
+[functions.whatsapp-status]
+enabled = true
+# Epic AA-15 (Sep 2026): read-only status for /admin/whatsapp. MUST stay true: the
+# platform verifies the caller's JWT, then the function checks is_admin_me() as the caller.
+verify_jwt = true
+entrypoint = "./functions/whatsapp-status/index.ts"
