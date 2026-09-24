@@ -31,16 +31,44 @@ function log(level, msg, extra = {}) {
     ...extra
   }));
 }
+// ─── Caller check (Epic AA-08 follow-up, 24 Sep 2026) ────────────────────────
+// Scheduled through admin.cron_invoke_notification, which sends the project's
+// service-role credential. The old check accepted only an EXACT match with this
+// function's SUPABASE_SERVICE_ROLE_KEY (or CRON_SECRET), so on Prod, where the
+// helper sends a legacy service-role JWT, the scheduled run got 401. It also
+// skipped the check entirely whenever CRON_SECRET was unset, so it failed OPEN.
+// Now it is the same check as whatsapp-broadcast-dispatch, and fails closed:
+//   * Bearer CRON_SECRET, or
+//   * an exact match with this project's service-role key, or
+//   * a JWT whose role is service_role for this project. Trustworthy ONLY
+//     because verify_jwt=true means the platform already verified the
+//     signature; do NOT set verify_jwt to false on this function.
+function isAuthorizedCaller(req) {
+  const m = /^Bearer\s+(.+)$/i.exec((req.headers.get("authorization") ?? "").trim());
+  if (!m) return false;
+  const token = m[1];
+  const cron = Deno.env.get("CRON_SECRET") ?? "";
+  if (cron && token === cron) return true;
+  const envKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SERVICE_ROLE_KEY") ?? "";
+  if (envKey && token === envKey) return true;
+  try {
+    const seg = token.split(".")[1];
+    if (!seg) return false;
+    const norm = seg.replace(/-/g, "+").replace(/_/g, "/");
+    const claims = JSON.parse(atob(norm + "=".repeat((4 - norm.length % 4) % 4)));
+    if (claims?.role !== "service_role") return false;
+    const expectedRef = (Deno.env.get("SUPABASE_URL") ?? "").match(/https:\/\/([a-z0-9]+)\.supabase\.co/)?.[1];
+    return !(expectedRef && claims?.ref && claims.ref !== expectedRef);
+  } catch {
+    return false;
+  }
+}
+
 serve(async (req)=>{
-  const CRON_SECRET = Deno.env.get("CRON_SECRET");
-  const authHeader = req.headers.get("authorization") ?? "";
-  if (CRON_SECRET && authHeader !== `Bearer ${CRON_SECRET}`) {
-    const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    if (authHeader !== `Bearer ${SERVICE_KEY}`) {
-      return new Response("Unauthorized", {
-        status: 401
-      });
-    }
+  if (!isAuthorizedCaller(req)) {
+    return new Response("Unauthorized", {
+      status: 401
+    });
   }
   const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
   const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
