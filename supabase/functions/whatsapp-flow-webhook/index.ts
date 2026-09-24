@@ -469,6 +469,12 @@ serve(async (req)=>{
                 unsubscribed_at: new Date().toISOString()
               }).eq("phone_hash", phoneHash);
               console.log("STOP received — opted out and subscriptions cancelled:", phoneHash.substring(0, 8));
+              // Confirm the opt-out (24 Sep 2026). The STOP itself opens Meta's
+              // 24-hour window, so a free-form reply is allowed; this is the last
+              // message the number gets until it sends START or SUBSCRIBE.
+              if (ACCESS_TOKEN && PHONE_NUMBER_ID) {
+                await sendTextMessage(PHONE_NUMBER_ID, ACCESS_TOKEN, waId, "You've been unsubscribed from Stance Capture on WhatsApp. You won't receive any more messages from us. Reply START at any time to opt back in.");
+              }
             }
             if (body === "START") {
               await supabase.from("whatsapp_optouts").update({
