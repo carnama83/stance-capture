@@ -25,7 +25,9 @@
 //     no OTP, no authentication template.
 //
 // Security: HMAC-SHA256 signature verified on every POST before any processing.
-// Privacy:  wa_id hashed with salt before any DB write — raw number never stored.
+// Privacy:  wa_id hashed with salt before any DB write. One exception (AA-09):
+//           a YES subscription stores the number AES-GCM encrypted (key in the
+//           WHATSAPP_NUMBER_KEY Edge secret), and STOP wipes it.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -73,6 +75,47 @@ async function hashPhoneNumber(phoneNumber, salt) {
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   return hashArray.map((b)=>b.toString(16).padStart(2, "0")).join("");
 }
+// ─── Encrypt a subscriber's wa_id (Epic AA-09, 24 Sep 2026) ─────────────────
+// Only a YES subscription stores the number, so whatsapp-send-update can send
+// the update the person asked for (a documented exception to AA5.2). AES-256-GCM
+// with the WHATSAPP_NUMBER_KEY Edge secret (base64, 32 bytes); the key never
+// reaches the database. The phone hash is the additional authenticated data, so
+// the ciphertext only decrypts on the row it was written for. The same format
+// is decrypted in whatsapp-send-update: v1.<iv b64>.<ciphertext b64>.
+// Returns null when the key is missing or malformed: the subscription is still
+// recorded, but it cannot be notified until the key is set and the person
+// replies YES again.
+function b64encode(bytes) {
+  let bin = "";
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin);
+}
+function b64decode(s) {
+  return Uint8Array.from(atob(s), (c)=>c.charCodeAt(0));
+}
+async function encryptWaId(waId, phoneHash) {
+  const keyB64 = Deno.env.get("WHATSAPP_NUMBER_KEY") ?? "";
+  let raw;
+  try {
+    raw = b64decode(keyB64);
+  } catch  {
+    return null;
+  }
+  if (raw.length !== 32) return null;
+  const key = await crypto.subtle.importKey("raw", raw, {
+    name: "AES-GCM"
+  }, false, [
+    "encrypt"
+  ]);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({
+    name: "AES-GCM",
+    iv,
+    additionalData: new TextEncoder().encode(phoneHash)
+  }, key, new TextEncoder().encode(normalizePhoneForHash(waId)));
+  return `v1.${b64encode(iv)}.${b64encode(new Uint8Array(ct))}`;
+}
+
 // ─── Send a WhatsApp text message (for YES confirmation, STOP confirm) ───────
 async function sendTextMessage(phoneNumberId, accessToken, toWaId, body) {
   await fetch(`https://graph.facebook.com/v18.0/${phoneNumberId}/messages`, {
@@ -415,9 +458,12 @@ serve(async (req)=>{
               }, {
                 onConflict: "phone_hash"
               });
+              // AA-09: STOP also wipes the stored (encrypted) number from every
+              // subscription; a CHECK constraint forbids keeping it on an inactive row.
               await supabase.from("whatsapp_question_subscriptions").update({
-                is_active: false
-              }).eq("whatsapp_phone_hash", phoneHash).eq("is_active", true);
+                is_active: false,
+                wa_id_enc: null
+              }).eq("whatsapp_phone_hash", phoneHash);
               await supabase.from("whatsapp_global_subscribers").update({
                 is_active: false,
                 unsubscribed_at: new Date().toISOString()
@@ -521,14 +567,24 @@ serve(async (req)=>{
                 }
                 continue;
               }
-              await supabase.from("whatsapp_question_subscriptions").upsert({
+              // AA-09: the YES is the explicit opt-in for updates, so this is the
+              // one place the number is stored, encrypted, on this subscription only.
+              const waIdEnc = await encryptWaId(waId, phoneHash);
+              if (!waIdEnc) console.warn("YES: WHATSAPP_NUMBER_KEY missing or invalid; subscription recorded without a number, so no updates can be sent");
+              const { error: subErr } = await supabase.from("whatsapp_question_subscriptions").upsert({
                 whatsapp_phone_hash: phoneHash,
                 question_id: session.last_question_id,
                 subscribed_at: new Date().toISOString(),
-                is_active: true
+                is_active: true,
+                wa_id_enc: waIdEnc,
+                last_inbound_at: new Date().toISOString()
               }, {
                 onConflict: "whatsapp_phone_hash,question_id"
               });
+              if (subErr) {
+                console.error("YES subscription upsert failed:", subErr.message);
+                continue;
+              }
               if (ACCESS_TOKEN && PHONE_NUMBER_ID) {
                 await sendTextMessage(PHONE_NUMBER_ID, ACCESS_TOKEN, waId, "You'll receive an update when community stance on this question shifts. Reply STOP to unsubscribe.");
               }
