@@ -1382,6 +1382,17 @@
     "optionalSeparateFromYourStance": "Optional — separate from your stance. Select as many as apply.",
     "confirm": "Confirm"
   },
+  "myExpectations": {
+    "title": "Your expectation",
+    "edit": "Edit",
+    "add": "Add",
+    "withdraw": "Withdraw",
+    "none": "You haven’t added an expectation for this question.",
+    "cancel": "Cancel",
+    "save": "Save",
+    "needsStance": "Take a stance on this question before adding an expectation.",
+    "couldNotSave": "Couldn’t save your expectation. Please try again."
+  },
   "profile": {
     "loadingSession": "Loading session…",
     "youAreNotLoggedIn": "You are not logged in.",
