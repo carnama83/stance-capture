@@ -1281,7 +1281,11 @@ export default function QuestionDetailPage() {
         // never before/during. Component-level localStorage check handles
         // "already handled this question" — this flag only handles
         // "a submit just happened."
-        setShowExpectationPrompt(true);
+        // Epic R R-05: only for signed-in users. An anonymous (staged) stance
+        // has no account to hold the selection, so the prompt would discard
+        // it; WebOptInCard is their next step, and once they join, the
+        // "Your expectation" control lets them add one.
+        if (session?.access_token) setShowExpectationPrompt(true);
       }
     },
     onError: (err: any) => {
@@ -1433,7 +1437,10 @@ export default function QuestionDetailPage() {
             queryClient.setQueryData(["my-expectations", questionId], [...saved].sort());
           })
           .catch((err) => {
+            // Epic R R-05: never a silent loss. The stance itself is unaffected,
+            // and the prompt stays unhandled so it can be offered again.
             console.error("[qdp:expectations] save failed (non-blocking)", err);
+            toast({ title: t("myExpectations.couldNotSave"), variant: "destructive", duration: 4000 });
           });
       }
     },

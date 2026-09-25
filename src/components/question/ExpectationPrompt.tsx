@@ -211,7 +211,9 @@ export function ExpectationPrompt({ questionId, isIncident, hasServerExpectation
   async function handleConfirm() {
     if (selected.size === 0 || submitting) return;
     setSubmitting(true);
-    markHandled();
+    // Epic R R-05: not marked handled here — saveMyExpectations() sets the
+    // flag only once the server has the selection, so a failed save doesn't
+    // suppress the prompt for good.
     setVisible(false);
     onConfirm(Array.from(selected));
   }
