@@ -1641,7 +1641,9 @@
     "basedOnRespondents_one": "Based on {{count}} respondent.",
     "basedOnRespondents_other": "Based on {{count}} respondents.",
     "withdraw": "Withdraw",
-    "couldNotUpdate": "Couldn’t update. Please try again."
+    "couldNotUpdate": "Couldn’t update. Please try again.",
+    "multiSelectNote": "People could choose more than one, so percentages can add up to more than 100%.",
+    "multiSelectNoteWithThreshold": "Highlighted: chosen by at least {{pct}}% of respondents. People could choose more than one, so percentages can add up to more than 100%."
   },
   "resetPassword": {
     "supabaseIsOff": "Supabase is OFF.",

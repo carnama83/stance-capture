@@ -50,6 +50,7 @@ interface PreviewData {
   signal_crossed: boolean;
   total_respondents: number;
   signal_strength_score: number | null;
+  qualifying_expectation_types: string[];
   thresholds: { threshold_pct: number; min_respondents: number; persistence_hours: number };
   rows: SummaryRow[];
 }
@@ -361,7 +362,7 @@ function PublishPanel() {
               ) : (
                 <div className="space-y-1.5 mb-3">
                   {preview.map((row) => (
-                    <div key={row.expectation_type} className="flex items-center justify-between text-xs">
+                    <div key={row.expectation_type} className={`flex items-center justify-between text-xs ${previewData?.qualifying_expectation_types?.includes(row.expectation_type) ? "font-semibold" : ""}`}>
                       <span className="text-slate-600">
                         {EXPECTATION_LABEL_KEYS[row.expectation_type]
                           ? i18n.t(EXPECTATION_LABEL_KEYS[row.expectation_type], { lng: "en" })

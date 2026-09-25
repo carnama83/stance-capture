@@ -52,7 +52,9 @@ interface SignalData {
   signalCrossed: boolean;
   breakdown: SummaryRow[];
   totalRespondents: number;
-  dominantType: string | null;
+  /** Every type at or above the threshold (Epic R R-07: no single winner, BR-R09). */
+  qualifyingTypes: string[];
+  thresholdPct: number | null;
   regionName: string | null;
 }
 
@@ -66,7 +68,8 @@ function useExpectationSignal(questionId: string, regionId: string | null, regio
         signalCrossed: false,
         breakdown: [],
         totalRespondents: 0,
-        dominantType: null,
+        qualifyingTypes: [],
+        thresholdPct: null,
         regionName: null,
       };
       const sb = getSupabase();
@@ -87,7 +90,8 @@ function useExpectationSignal(questionId: string, regionId: string | null, regio
       const s = signal as {
         signal_crossed?: boolean;
         total_respondents?: number;
-        dominant_expectation_type?: string | null;
+        qualifying_expectation_types?: string[];
+        threshold_pct?: number | null;
         breakdown?: SummaryRow[];
       } | null;
       if (!s?.signal_crossed) return empty;
@@ -102,7 +106,8 @@ function useExpectationSignal(questionId: string, regionId: string | null, regio
         signalCrossed: true,
         breakdown: s.breakdown ?? [],
         totalRespondents: s.total_respondents ?? 0,
-        dominantType: s.dominant_expectation_type ?? null,
+        qualifyingTypes: s.qualifying_expectation_types ?? [],
+        thresholdPct: s.threshold_pct ?? null,
         regionName,
       };
     },
@@ -344,23 +349,24 @@ export function ExpectationSignalBlock({ questionId }: { questionId: string }) {
 
       <div className="space-y-1.5">
         {data.breakdown.map((row) => {
-          const isDominant = row.expectation_type === data.dominantType;
+          // Epic R R-07: every qualifying type is emphasised equally; no single winner (BR-R09).
+          const qualifies = data.qualifyingTypes.includes(row.expectation_type);
           const labelKey = EXPECTATION_LABEL_KEYS[row.expectation_type];
           const label = labelKey ? t(labelKey) : row.expectation_type;
           const pct = row.pct_of_respondents ?? 0;
           return (
             <div key={row.expectation_type}>
               <div className="flex items-center justify-between text-[11px] mb-0.5">
-                <span className={isDominant ? "font-semibold text-slate-800" : "text-slate-500"}>
+                <span className={qualifies ? "font-semibold text-slate-800" : "text-slate-500"}>
                   {label}
                 </span>
-                <span className={isDominant ? "font-semibold text-slate-800" : "text-slate-400"}>
+                <span className={qualifies ? "font-semibold text-slate-800" : "text-slate-400"}>
                   {pct}%
                 </span>
               </div>
               <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
                 <div
-                  className={isDominant ? "h-full bg-slate-900" : "h-full bg-slate-300"}
+                  className={qualifies ? "h-full bg-slate-900" : "h-full bg-slate-300"}
                   style={{ width: `${Math.min(100, Math.max(0, pct))}%` }}
                 />
               </div>
@@ -371,6 +377,12 @@ export function ExpectationSignalBlock({ questionId }: { questionId: string }) {
 
       <p className="text-[10px] text-slate-400 mt-2">
         {t("expectationSignalBlock.basedOnRespondents", { count: data.totalRespondents })}
+      </p>
+      {/* Epic R R-07 / BR-R09: rates are independent (multi-select), so they can sum past 100%. */}
+      <p className="text-[10px] text-slate-400 mt-0.5">
+        {data.thresholdPct != null
+          ? t("expectationSignalBlock.multiSelectNoteWithThreshold", { pct: data.thresholdPct })
+          : t("expectationSignalBlock.multiSelectNote")}
       </p>
 
       {userId && regionId && (

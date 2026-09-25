@@ -1641,7 +1641,9 @@
     "basedOnRespondents_one": "{{count}} उत्तरदाता के आधार पर।",
     "basedOnRespondents_other": "{{count}} उत्तरदाताओं के आधार पर।",
     "withdraw": "वापस लें",
-    "couldNotUpdate": "अपडेट नहीं हो सका। कृपया फिर से कोशिश करें।"
+    "couldNotUpdate": "अपडेट नहीं हो सका। कृपया फिर से कोशिश करें।",
+    "multiSelectNote": "लोग एक से अधिक विकल्प चुन सकते थे, इसलिए प्रतिशत का योग 100% से अधिक हो सकता है।",
+    "multiSelectNoteWithThreshold": "हाइलाइट किए गए: कम से कम {{pct}}% उत्तरदाताओं द्वारा चुने गए। लोग एक से अधिक विकल्प चुन सकते थे, इसलिए प्रतिशत का योग 100% से अधिक हो सकता है।"
   },
   "resetPassword": {
     "supabaseIsOff": "Supabase बंद है।",
