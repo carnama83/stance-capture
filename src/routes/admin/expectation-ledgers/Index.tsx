@@ -46,6 +46,14 @@ interface SummaryRow {
   last_response_at: string;
 }
 
+interface PreviewData {
+  signal_crossed: boolean;
+  total_respondents: number;
+  signal_strength_score: number | null;
+  thresholds: { threshold_pct: number; min_respondents: number; persistence_hours: number };
+  rows: SummaryRow[];
+}
+
 interface LedgerRow {
   question_id: string;
   region_id: string;
@@ -94,22 +102,23 @@ function useQuestionSearch(search: string) {
   });
 }
 
+// Epic R R-01: the aggregate views are closed to browser roles, so the
+// preview goes through an admin-only RPC. It also reports whether the signal
+// has crossed threshold, which publish_expectation_ledger now requires (R-03).
 function usePreview(questionId: string | null, regionId: string | null) {
-  return useQuery<SummaryRow[]>({
+  return useQuery<PreviewData>({
     queryKey: ["admin-ledgers-preview", questionId, regionId],
     enabled: !!questionId && !!regionId,
     staleTime: 10_000,
     queryFn: async () => {
       const sb = getSupabase();
-      if (!sb) return [];
-      const { data, error } = await sb
-        .from("question_expectation_summary")
-        .select("*")
-        .eq("question_id", questionId as string)
-        .eq("region_id", regionId as string)
-        .order("pct_of_respondents", { ascending: false });
+      if (!sb) throw new Error("Supabase not available");
+      const { data, error } = await sb.rpc("admin_get_expectation_preview", {
+        p_question_id: questionId as string,
+        p_region_id: regionId as string,
+      });
       if (error) throw error;
-      return (data ?? []) as SummaryRow[];
+      return data as unknown as PreviewData;
     },
   });
 }
@@ -258,10 +267,12 @@ function PublishPanel() {
   const regionId = regionIds[0] ?? null;
 
   const { data: results = [], isFetching: searching } = useQuestionSearch(search);
-  const { data: preview = [], isLoading: previewLoading } = usePreview(
+  const { data: previewData, isLoading: previewLoading } = usePreview(
     selectedQuestion?.id ?? null,
     regionId
   );
+  const preview = previewData?.rows ?? [];
+  const canPublish = !!previewData?.signal_crossed;
   const publish = usePublish();
 
   async function handlePublish() {
@@ -360,15 +371,24 @@ function PublishPanel() {
                     </div>
                   ))}
                   <p className="text-[10px] text-slate-400 pt-1">
-                    {preview[0]?.total_respondents ?? 0} total respondents
+                    {previewData?.total_respondents ?? 0} total respondents
                   </p>
                 </div>
+              )}
+
+              {preview.length > 0 && !canPublish && previewData && (
+                <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2 mb-3">
+                  Below the signal threshold — this ledger can't be published yet. It needs a single
+                  expectation at {previewData.thresholds.threshold_pct}%+ from at least{" "}
+                  {previewData.thresholds.min_respondents} respondents, collected over at least{" "}
+                  {previewData.thresholds.persistence_hours}h.
+                </p>
               )}
 
               <Button
                 size="sm"
                 className="w-full gap-1.5"
-                disabled={preview.length === 0 || publish.isPending}
+                disabled={!canPublish || publish.isPending}
                 onClick={handlePublish}
               >
                 {publish.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ScrollText className="h-3.5 w-3.5" />}

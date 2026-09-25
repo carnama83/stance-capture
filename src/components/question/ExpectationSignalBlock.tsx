@@ -1,12 +1,11 @@
 // src/components/question/ExpectationSignalBlock.tsx
 // Epic R — M-R03: Expectation signal display on QuestionDetailPage (R-FR-10).
 //
-// Reads region_expectation_strength for the user's region. Renders nothing
+// Reads get_expectation_signal() for the user's region. Renders nothing
 // (BR-R02) unless signal_crossed=true — showing a signal below threshold
 // would amplify a weak/unrepresentative expectation, which is the core
-// credibility guardrail the doc calls out repeatedly. When crossed, pulls
-// the full per-type breakdown from question_expectation_summary for the
-// same (question_id, region_id) to render the bar chart.
+// credibility guardrail the doc calls out repeatedly. The RPC returns the
+// per-type breakdown only once the threshold is crossed (Epic R R-01).
 //
 // Self-contained (fetches its own data), mirrors AuthorityBlock/
 // IncidentSummaryCard's pattern. Not gated on whether the current user has
@@ -73,23 +72,25 @@ function useExpectationSignal(questionId: string, regionId: string | null, regio
       const sb = getSupabase();
       if (!sb) return empty;
 
-      let strengthQ = sb.from("region_expectation_strength").select("*").eq("question_id", questionId);
-      strengthQ = regionId ? strengthQ.eq("region_id", regionId) : strengthQ.is("region_id", null);
-      const { data: strengthRows, error: strengthErr } = await strengthQ.limit(1);
-      if (strengthErr) {
-        console.error("[ExpectationSignalBlock] strength fetch failed", strengthErr);
+      // Epic R R-01: the aggregate views are closed to browser roles (small
+      // cells exposed individual selections). This RPC returns NULL unless the
+      // signal has crossed threshold, so below-threshold data never leaves
+      // the database. regionId null = the no-location bucket.
+      const { data: signal, error: signalErr } = await sb.rpc("get_expectation_signal", {
+        p_question_id: questionId,
+        p_region_id: regionId,
+      });
+      if (signalErr) {
+        console.error("[ExpectationSignalBlock] signal fetch failed", signalErr);
         return empty;
       }
-      const strength = strengthRows?.[0];
-      if (!strength?.signal_crossed) return empty;
-
-      let summaryQ = sb.from("question_expectation_summary").select("*").eq("question_id", questionId);
-      summaryQ = regionId ? summaryQ.eq("region_id", regionId) : summaryQ.is("region_id", null);
-      const { data: summaryRows, error: summaryErr } = await summaryQ.order("pct_of_respondents", { ascending: false });
-      if (summaryErr) {
-        console.error("[ExpectationSignalBlock] summary fetch failed", summaryErr);
-        return empty;
-      }
+      const s = signal as {
+        signal_crossed?: boolean;
+        total_respondents?: number;
+        dominant_expectation_type?: string | null;
+        breakdown?: SummaryRow[];
+      } | null;
+      if (!s?.signal_crossed) return empty;
 
       let regionName: string | null = null;
       if (regionId) {
@@ -99,9 +100,9 @@ function useExpectationSignal(questionId: string, regionId: string | null, regio
 
       return {
         signalCrossed: true,
-        breakdown: (summaryRows ?? []) as SummaryRow[],
-        totalRespondents: strength.total_respondents ?? 0,
-        dominantType: strength.dominant_expectation_type ?? null,
+        breakdown: s.breakdown ?? [],
+        totalRespondents: s.total_respondents ?? 0,
+        dominantType: s.dominant_expectation_type ?? null,
         regionName,
       };
     },
