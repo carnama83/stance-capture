@@ -1382,6 +1382,17 @@
     "optionalSeparateFromYourStance": "वैकल्पिक — आपके रुख से अलग। जितने लागू हों उतने चुनें।",
     "confirm": "पुष्टि करें"
   },
+  "myExpectations": {
+    "title": "आपकी अपेक्षा",
+    "edit": "बदलें",
+    "add": "जोड़ें",
+    "withdraw": "वापस लें",
+    "none": "आपने इस प्रश्न के लिए कोई अपेक्षा नहीं जोड़ी है।",
+    "cancel": "रद्द करें",
+    "save": "सहेजें",
+    "needsStance": "अपेक्षा जोड़ने से पहले इस प्रश्न पर अपना रुख दें।",
+    "couldNotSave": "आपकी अपेक्षा सहेजी नहीं जा सकी। कृपया फिर से कोशिश करें।"
+  },
   "profile": {
     "loadingSession": "सत्र लोड हो रहा है…",
     "youAreNotLoggedIn": "आप लॉग इन नहीं हैं।",
@@ -1628,7 +1639,11 @@
     "whatRegionExpects": "{{region}} के उत्तरदाता क्या अपेक्षा रखते हैं",
     "whatRespondentsExpect": "उत्तरदाता क्या अपेक्षा रखते हैं",
     "basedOnRespondents_one": "{{count}} उत्तरदाता के आधार पर।",
-    "basedOnRespondents_other": "{{count}} उत्तरदाताओं के आधार पर।"
+    "basedOnRespondents_other": "{{count}} उत्तरदाताओं के आधार पर।",
+    "withdraw": "वापस लें",
+    "couldNotUpdate": "अपडेट नहीं हो सका। कृपया फिर से कोशिश करें।",
+    "multiSelectNote": "लोग एक से अधिक विकल्प चुन सकते थे, इसलिए प्रतिशत का योग 100% से अधिक हो सकता है।",
+    "multiSelectNoteWithThreshold": "हाइलाइट किए गए: कम से कम {{pct}}% उत्तरदाताओं द्वारा चुने गए। लोग एक से अधिक विकल्प चुन सकते थे, इसलिए प्रतिशत का योग 100% से अधिक हो सकता है।"
   },
   "resetPassword": {
     "supabaseIsOff": "Supabase बंद है।",
@@ -1775,7 +1790,9 @@
     "authority": "प्राधिकरण",
     "dataCollectedByStanceCapture": "डेटा Stance Capture द्वारा एकत्रित",
     "respondentCount_one": "{{count}} उत्तरदाता",
-    "respondentCount_other": "{{count}} उत्तरदाता"
+    "respondentCount_other": "{{count}} उत्तरदाता",
+    "visibleSupportCount_one": "इनमें से {{count}} ने दृश्यमान समर्थन के रूप में गिने जाने का विकल्प चुना",
+    "visibleSupportCount_other": "इनमें से {{count}} ने दृश्यमान समर्थन के रूप में गिने जाने का विकल्प चुना"
   },
   "socialAuthButtons": {
     "continueWithGoogle": "Google से जारी रखें",
@@ -1852,7 +1869,10 @@
     "yourArea": "आपका क्षेत्र",
     "vsNational": "बनाम राष्ट्रीय:",
     "opinionShifted": "{{scope}} राय {{delta}} अंक बदली",
-    "opinionShiftedHere": "आपके क्षेत्र में राय {{delta}} अंक बदली"
+    "opinionShiftedHere": "आपके क्षेत्र में राय {{delta}} अंक बदली",
+    "accountabilityUpdateTitle": "जवाबदेही अपडेट",
+    "accountabilityUpdateBody": "{{title}} पर एक अपडेट उपलब्ध है: स्थिति अब {{status}} है।",
+    "accountabilityUpdateBodyNoTitle": "एक अपडेट उपलब्ध है: स्थिति अब {{status}} है।"
   },
   "weeklyDigest": {
     "noDigestAvailableYet": "अभी कोई सारांश उपलब्ध नहीं।",

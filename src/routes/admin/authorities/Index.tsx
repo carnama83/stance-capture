@@ -48,6 +48,7 @@ interface Authority {
 interface QuestionRow {
   id: string;
   question: string;
+  content_type?: string | null;
 }
 
 interface Assignment {
@@ -133,7 +134,7 @@ function useQuestionSearch(search: string) {
       if (!sb) throw new Error("Supabase not available");
       const { data, error } = await sb
         .from("questions")
-        .select("id, question")
+        .select("id, question, content_type")
         .ilike("question", `%${search.trim()}%`)
         .order("created_at", { ascending: false })
         .limit(20);
@@ -566,9 +567,17 @@ function ResponseStatusTracker({
 
   async function handleSubmit() {
     if (!regionId) return;
+    // Epic R R-04: the RPC notifies only when the status actually changes.
+    const unchanged = rowsForThisAuthority.some(
+      (r) => r.region_id === regionId && r.response_status === status
+    );
     try {
       await update.mutateAsync({ questionId, authorityId, regionId, status, notes });
-      toast({ title: "Response status updated", description: "Stakers in this region have been notified." });
+      toast(
+        unchanged
+          ? { title: "Notes saved", description: "Status unchanged, so no notifications were sent." }
+          : { title: "Response status updated", description: "Stakers in this region have been notified." }
+      );
       setExpanded(false);
       setNotes("");
     } catch (err: any) {
@@ -621,10 +630,110 @@ function ResponseStatusTracker({
             disabled={!regionId || update.isPending}
             onClick={handleSubmit}
           >
-            {update.isPending ? "Saving…" : `Update — notifies stakers in this region`}
+            {update.isPending ? "Saving…" : `Update — notifies stakers in this region if the status changes`}
           </Button>
         </div>
       )}
+    </div>
+  );
+}
+
+// Epic R R-08: set a question's content type (incident / policy / election /
+// general) and generate authority suggestions from the entities extracted
+// from its source articles. Marking a question as an incident generates them
+// automatically; they land in the Pending Suggestions tab for review and are
+// never mapped automatically. 'video' is owned by the UGQ publish flow.
+const CONTENT_TYPE_OPTIONS = [
+  { value: "general", label: "General" },
+  { value: "incident", label: "Incident" },
+  { value: "policy", label: "Policy" },
+  { value: "election", label: "Election" },
+];
+
+function ContentTypeControl({
+  question,
+  onChanged,
+}: {
+  question: QuestionRow;
+  onChanged: (contentType: string) => void;
+}) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [busy, setBusy] = React.useState(false);
+  const current = question.content_type ?? "general";
+  const isVideo = current === "video";
+
+  function suggestionsToast(added: number) {
+    return added > 0
+      ? `${added} authority suggestion${added === 1 ? "" : "s"} added to Pending Suggestions for review.`
+      : "No new authority suggestions found in this question's source articles.";
+  }
+
+  async function setType(value: string) {
+    if (value === current || busy) return;
+    const sb = getSupabase();
+    if (!sb) return;
+    setBusy(true);
+    try {
+      const { data, error } = await sb.rpc("admin_set_question_content_type", {
+        p_question_id: question.id,
+        p_content_type: value,
+      });
+      if (error) throw error;
+      onChanged(value);
+      qc.invalidateQueries({ queryKey: ["admin-authorities-pending-suggestions"] });
+      const added = (data as { suggestions_added?: number } | null)?.suggestions_added ?? 0;
+      toast({
+        title: `Content type set to ${value}`,
+        description: value === "incident" ? suggestionsToast(added) : undefined,
+      });
+    } catch (err: any) {
+      toast({ title: "Update failed", description: err?.message, variant: "destructive" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function findSuggestions() {
+    const sb = getSupabase();
+    if (!sb || busy) return;
+    setBusy(true);
+    try {
+      const { data, error } = await sb.rpc("admin_generate_authority_suggestions", { p_question_id: question.id });
+      if (error) throw error;
+      qc.invalidateQueries({ queryKey: ["admin-authorities-pending-suggestions"] });
+      toast({ title: "Authority suggestions", description: suggestionsToast((data as number) ?? 0) });
+    } catch (err: any) {
+      toast({ title: "Could not generate suggestions", description: err?.message, variant: "destructive" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mb-3">
+      <p className="text-[11px] font-medium text-slate-500 uppercase tracking-wide mb-1.5">Content type</p>
+      <div className="flex items-center gap-2">
+        {isVideo ? (
+          <p className="text-xs text-slate-500">Video (set by the UGQ publish flow)</p>
+        ) : (
+          <Select value={current} onValueChange={setType} disabled={busy}>
+            <SelectTrigger className="h-8 text-xs w-36"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {CONTENT_TYPE_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value} className="text-xs">{o.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        <Button size="sm" variant="outline" className="h-8 text-xs" disabled={busy} onClick={findSuggestions}>
+          {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Find authority suggestions"}
+        </Button>
+      </div>
+      <p className="text-[10px] text-slate-400 mt-1">
+        Incident questions show the incident card and the accountability prompt. Suggestions come from the
+        institutions named in the source articles and always need review.
+      </p>
     </div>
   );
 }
@@ -690,6 +799,11 @@ function QuestionAssignmentPanel({ authorities }: { authorities: Authority[] }) 
               <X className="h-3.5 w-3.5" />
             </button>
           </div>
+
+          <ContentTypeControl
+            question={selectedQuestion}
+            onChanged={(contentType) => setSelectedQuestion({ ...selectedQuestion, content_type: contentType })}
+          />
 
           <p className="text-[11px] font-medium text-slate-500 uppercase tracking-wide mb-1.5">
             Assigned authorities

@@ -93,6 +93,11 @@ export default async function handler(req, res) {
   // want /s/abc123/en to become a second cache identity for the same content
   // /s/abc123 already serves.
   const lang = langParam && langParam !== "en" ? langParam : "";
+  // Epic R R-09: ?ledger=<regionId> sends a human to the Public Expectation
+  // Ledger for that region instead of the question. Only a well-formed UUID is
+  // accepted; anything else is ignored and the link opens the question as before.
+  const ledgerParam = req.query.ledger ? String(req.query.ledger) : "";
+  const ledgerRegion = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(ledgerParam) ? ledgerParam : "";
 
   let q = null;
   if (SUPABASE_URL && ANON && slug) {
@@ -172,7 +177,7 @@ export default async function handler(req, res) {
   // forgotten if this file gets touched again later.
   const canonical = `${SITE}/s/${esc(slug)}${resolvedLang ? `/${esc(resolvedLang)}` : ""}`;
   const target = q?.id
-    ? `${SITE}/#/q/${q.id}?${[
+    ? `${SITE}/#/${ledgerRegion ? `ledger/${q.id}/${ledgerRegion}` : `q/${q.id}`}?${[
         resolvedLang ? `lang=${encodeURIComponent(resolvedLang)}` : "",
         ref ? `ref=${encodeURIComponent(ref)}` : "",
       ].filter(Boolean).join("&")}`.replace(/\?$/, "")
@@ -201,6 +206,6 @@ export default async function handler(req, res) {
 <script>location.replace(${JSON.stringify(target)});</script>
 </head>
 <body style="font-family:system-ui;padding:24px;text-align:center;color:#475569">
-Opening the question… <a href="${esc(target)}">Continue →</a>
+${ledgerRegion ? "Opening the ledger…" : "Opening the question…"} <a href="${esc(target)}">Continue →</a>
 </body></html>`);
 }

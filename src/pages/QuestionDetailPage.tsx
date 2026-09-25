@@ -38,7 +38,7 @@ import { QuestionContextCard } from "@/components/question/QuestionContextCard";
 import { RawVideoReveal } from "@/components/question/RawVideoReveal";
 import { ExpectationSignalBlock } from "@/components/question/ExpectationSignalBlock";
 import { AuthorityResponseStatusBlock } from "@/components/question/AuthorityResponseStatusBlock";
-import { fetchUserRegionId } from "@/lib/userRegion";
+import { MyExpectations, saveMyExpectations, useMyExpectations } from "@/components/question/MyExpectations";
 import { useOgMeta } from "@/hooks/useOgMeta";
 import { fetchCommunityStats, communityStatsKey } from "@/lib/fetchCommunityStats";
 import { CommunityStanceBar } from "@/components/question/CommunityStanceBar";
@@ -342,44 +342,6 @@ async function upsertStanceConfidence(
     throw new Error(body?.message ?? `HTTP ${res.status}`);
   }
 }
-
-// Epic R — M-R01: bulk-insert selected expectation types for one question.
-// Uses the same direct-fetch pattern as setMyStance/upsertStanceConfidence
-// (avoids SDK .rpc()/.from() mutex). A single POST with an array body inserts
-// all selected rows in one round trip; Prefer: resolution=ignore-duplicates
-// relies on the (user_id, question_id, expectation_type) unique constraint
-// so a retry or double-submit is silently a no-op (QA-R03).
-async function submitQuestionExpectations(
-  questionId: string,
-  types: ExpectationType[],
-  regionId: string | null,
-  jwt: string,
-  supabaseUrl: string,
-  anonKey: string,
-): Promise<void> {
-  const rows = types.map((expectation_type) => ({
-    question_id: questionId,
-    expectation_type,
-    region_id: regionId,
-  }));
-
-  const res = await fetch(`${supabaseUrl}/rest/v1/question_expectations`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "apikey": anonKey,
-      "Authorization": `Bearer ${jwt}`,
-      "Prefer": "resolution=ignore-duplicates",
-    },
-    body: JSON.stringify(rows),
-  });
-
-  if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    throw new Error(body?.message ?? `HTTP ${res.status}`);
-  }
-}
-
 
 async function fetchQuestionStats(questionId: string): Promise<QuestionStats | null> {
   const sb = getSupabase();
@@ -738,6 +700,7 @@ function ConfidenceFeedback({ onSubmit }: { onSubmit: (score: number) => void })
 // ---------- StanceCard — extracted for dual mobile/desktop render (Point 14) ----------
 function StanceCard({
   isAuthed,
+  userId,
   questionId,
   question,
   myStance,
@@ -757,6 +720,7 @@ function StanceCard({
   languageCode,
 }: {
   isAuthed: boolean;
+  userId: string | null;
   questionId: string;
   question: LiveQuestion;
   myStance: number | null;
@@ -780,6 +744,7 @@ function StanceCard({
   const { languageOf: stanceCardLanguageOf } = useRenditionLanguages([question?.rendition_id]);
   const stanceCardInstrumentLanguage = stanceCardLanguageOf(question?.rendition_id);
   const { t } = useTranslation();
+  const { data: myExpectations = [] } = useMyExpectations(questionId, userId);
   return (
     <section className="rounded-xl border border-slate-200 bg-slate-50 p-4 md:p-5 shadow-sm">
       <h3 className="text-[11px] font-semibold tracking-wide uppercase text-slate-500 mb-1">
@@ -924,10 +889,21 @@ function StanceCard({
             <ExpectationPrompt
               questionId={questionId}
               isIncident={question.content_type === "incident"}
+              hasServerExpectations={myExpectations.length > 0}
               onConfirm={onExpectationConfirm}
               onSkip={onExpectationSkip}
             />
           )}
+
+          {/* Epic R R-02: review, edit or withdraw the expectation set at any
+              time, from server state (R-FR-21 / BR-R14). */}
+          <MyExpectations
+            questionId={questionId}
+            isIncident={question.content_type === "incident"}
+            userId={userId}
+            hasStance={myStance != null}
+            promptPending={!!showExpectationPrompt}
+          />
 
           <div className="text-[11px] text-slate-500 flex items-center gap-2 mt-1">
             {stanceLoading ? (
@@ -1307,7 +1283,11 @@ export default function QuestionDetailPage() {
         // never before/during. Component-level localStorage check handles
         // "already handled this question" — this flag only handles
         // "a submit just happened."
-        setShowExpectationPrompt(true);
+        // Epic R R-05: only for signed-in users. An anonymous (staged) stance
+        // has no account to hold the selection, so the prompt would discard
+        // it; WebOptInCard is their next step, and once they join, the
+        // "Your expectation" control lets them add one.
+        if (session?.access_token) setShowExpectationPrompt(true);
       }
     },
     onError: (err: any) => {
@@ -1417,6 +1397,7 @@ export default function QuestionDetailPage() {
 
   const stanceCardProps = {
     isAuthed,
+    userId: userId ?? null,
     questionId,
     myStance: myStance ?? null,
     stanceLoading,
@@ -1450,17 +1431,19 @@ export default function QuestionDetailPage() {
       setShowExpectationPrompt(false);
       // Fire-and-forget, same posture as confidence: secondary signal, must
       // never block or disrupt the post-stance UX (BR-R01 independence).
-      const jwt = session?.access_token;
-      if (jwt && supabaseUrl && supabaseAnonKey && userId) {
-        fetchUserRegionId(userId)
-          .then((regionId) =>
-            submitQuestionExpectations(questionId, types, regionId, jwt, supabaseUrl, supabaseAnonKey)
-          )
-          .then(() => {
-            console.log("[qdp:expectations] saved", { questionId, types });
+      // Epic R R-02: one audited write path (set_my_question_expectations);
+      // the server derives the region, so the client no longer looks it up.
+      if (session?.access_token && userId) {
+        saveMyExpectations(questionId, types)
+          .then((saved) => {
+            console.log("[qdp:expectations] saved", { questionId, types: saved });
+            queryClient.setQueryData(["my-expectations", userId, questionId], [...saved].sort());
           })
           .catch((err) => {
+            // Epic R R-05: never a silent loss. The stance itself is unaffected,
+            // and the prompt stays unhandled so it can be offered again.
             console.error("[qdp:expectations] save failed (non-blocking)", err);
+            toast({ title: t("myExpectations.couldNotSave"), variant: "destructive", duration: 4000 });
           });
       }
     },

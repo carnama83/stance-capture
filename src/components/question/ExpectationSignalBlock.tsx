@@ -1,12 +1,11 @@
 // src/components/question/ExpectationSignalBlock.tsx
 // Epic R — M-R03: Expectation signal display on QuestionDetailPage (R-FR-10).
 //
-// Reads region_expectation_strength for the user's region. Renders nothing
+// Reads get_expectation_signal() for the user's region. Renders nothing
 // (BR-R02) unless signal_crossed=true — showing a signal below threshold
 // would amplify a weak/unrepresentative expectation, which is the core
-// credibility guardrail the doc calls out repeatedly. When crossed, pulls
-// the full per-type breakdown from question_expectation_summary for the
-// same (question_id, region_id) to render the bar chart.
+// credibility guardrail the doc calls out repeatedly. The RPC returns the
+// per-type breakdown only once the threshold is crossed (Epic R R-01).
 //
 // Self-contained (fetches its own data), mirrors AuthorityBlock/
 // IncidentSummaryCard's pattern. Not gated on whether the current user has
@@ -17,7 +16,7 @@
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getSupabase } from "@/lib/supabaseClient";
 import { fetchUserRegionId } from "@/lib/userRegion";
 import { SUPABASE_URL, getJwt, supabaseHeaders } from "@/lib/env";
@@ -53,7 +52,9 @@ interface SignalData {
   signalCrossed: boolean;
   breakdown: SummaryRow[];
   totalRespondents: number;
-  dominantType: string | null;
+  /** Every type at or above the threshold (Epic R R-07: no single winner, BR-R09). */
+  qualifyingTypes: string[];
+  thresholdPct: number | null;
   regionName: string | null;
 }
 
@@ -67,29 +68,33 @@ function useExpectationSignal(questionId: string, regionId: string | null, regio
         signalCrossed: false,
         breakdown: [],
         totalRespondents: 0,
-        dominantType: null,
+        qualifyingTypes: [],
+        thresholdPct: null,
         regionName: null,
       };
       const sb = getSupabase();
       if (!sb) return empty;
 
-      let strengthQ = sb.from("region_expectation_strength").select("*").eq("question_id", questionId);
-      strengthQ = regionId ? strengthQ.eq("region_id", regionId) : strengthQ.is("region_id", null);
-      const { data: strengthRows, error: strengthErr } = await strengthQ.limit(1);
-      if (strengthErr) {
-        console.error("[ExpectationSignalBlock] strength fetch failed", strengthErr);
+      // Epic R R-01: the aggregate views are closed to browser roles (small
+      // cells exposed individual selections). This RPC returns NULL unless the
+      // signal has crossed threshold, so below-threshold data never leaves
+      // the database. regionId null = the no-location bucket.
+      const { data: signal, error: signalErr } = await sb.rpc("get_expectation_signal", {
+        p_question_id: questionId,
+        p_region_id: regionId,
+      });
+      if (signalErr) {
+        console.error("[ExpectationSignalBlock] signal fetch failed", signalErr);
         return empty;
       }
-      const strength = strengthRows?.[0];
-      if (!strength?.signal_crossed) return empty;
-
-      let summaryQ = sb.from("question_expectation_summary").select("*").eq("question_id", questionId);
-      summaryQ = regionId ? summaryQ.eq("region_id", regionId) : summaryQ.is("region_id", null);
-      const { data: summaryRows, error: summaryErr } = await summaryQ.order("pct_of_respondents", { ascending: false });
-      if (summaryErr) {
-        console.error("[ExpectationSignalBlock] summary fetch failed", summaryErr);
-        return empty;
-      }
+      const s = signal as {
+        signal_crossed?: boolean;
+        total_respondents?: number;
+        qualifying_expectation_types?: string[];
+        threshold_pct?: number | null;
+        breakdown?: SummaryRow[];
+      } | null;
+      if (!s?.signal_crossed) return empty;
 
       let regionName: string | null = null;
       if (regionId) {
@@ -99,9 +104,10 @@ function useExpectationSignal(questionId: string, regionId: string | null, regio
 
       return {
         signalCrossed: true,
-        breakdown: (summaryRows ?? []) as SummaryRow[],
-        totalRespondents: strength.total_respondents ?? 0,
-        dominantType: strength.dominant_expectation_type ?? null,
+        breakdown: s.breakdown ?? [],
+        totalRespondents: s.total_respondents ?? 0,
+        qualifyingTypes: s.qualifying_expectation_types ?? [],
+        thresholdPct: s.threshold_pct ?? null,
         regionName,
       };
     },
@@ -128,17 +134,47 @@ const OPTIN_DISMISS_KEY_PREFIX = "collective_optin_dismissed_";
 // DEFAULT auth.uid() (see BUGFIX_user_id_default.sql) — same fix that was
 // needed for M-R01's expectation writes, applied correctly here from the
 // start rather than retroactively.
+//
+// Epic R R-06: the component starts from the user's actual opt-in (RLS
+// allows reading your own row), so someone who already opted in sees the
+// "included" state with a Withdraw action instead of being asked again. A
+// duplicate insert (409) is treated as success, and failures are shown
+// rather than swallowed.
+function useMyOptIn(questionId: string, userId: string) {
+  return useQuery<boolean>({
+    // Keyed by user: the query cache survives sign-out (cf. F-06).
+    queryKey: ["my-optin", userId, questionId],
+    enabled: !!questionId && !!userId,
+    staleTime: 30_000,
+    queryFn: async () => {
+      const sb = getSupabase();
+      if (!sb) return false;
+      const { data, error } = await sb
+        .from("collective_action_optins")
+        .select("id")
+        .eq("question_id", questionId)
+        .limit(1);
+      if (error) throw error;
+      return (data ?? []).length > 0;
+    },
+  });
+}
+
 function CollectiveActionOptIn({
   questionId,
   regionId,
+  userId,
 }: {
   questionId: string;
   regionId: string;
+  userId: string;
 }) {
   const { t } = useTranslation();
+  const qc = useQueryClient();
+  const { data: optedIn, isSuccess: optInKnown } = useMyOptIn(questionId, userId);
   const [visible, setVisible] = React.useState(false);
-  const [choice, setChoice] = React.useState<"optedIn" | "viewSummary" | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
+  const [error, setError] = React.useState(false);
 
   React.useEffect(() => {
     let dismissed = false;
@@ -148,7 +184,7 @@ function CollectiveActionOptIn({
       /* sessionStorage unavailable — fail open, show the prompt */
     }
     setVisible(!dismissed);
-    setChoice(null);
+    setError(false);
   }, [questionId]);
 
   function dismiss() {
@@ -163,37 +199,79 @@ function CollectiveActionOptIn({
   async function handleOptIn() {
     if (submitting) return;
     setSubmitting(true);
+    setError(false);
     try {
       const res = await fetch(`${SUPABASE_URL}/rest/v1/collective_action_optins`, {
         method: "POST",
-        headers: supabaseHeaders(getJwt(), { Prefer: "resolution=ignore-duplicates" }),
+        headers: supabaseHeaders(getJwt()),
         body: JSON.stringify([{ question_id: questionId, region_id: regionId }]),
       });
-      if (!res.ok) {
+      // 409 = the unique (user_id, question_id) row already exists: already opted in.
+      if (!res.ok && res.status !== 409) {
         const body = await res.json().catch(() => null);
         throw new Error(body?.message ?? `HTTP ${res.status}`);
       }
-      setChoice("optedIn");
+      qc.setQueryData(["my-optin", userId, questionId], true);
     } catch (err) {
       console.error("[CollectiveActionOptIn] opt-in failed", err);
-      // Non-blocking — this is a secondary civic signal, not a critical
-      // action. Silently leave the prompt visible rather than showing an
-      // error the person can't do anything about.
+      setError(true);
     } finally {
       setSubmitting(false);
     }
   }
 
-  if (!visible) return null;
+  async function handleWithdraw() {
+    if (submitting) return;
+    setSubmitting(true);
+    setError(false);
+    try {
+      // RLS limits the delete to the caller's own row.
+      const res = await fetch(
+        `${SUPABASE_URL}/rest/v1/collective_action_optins?question_id=eq.${questionId}`,
+        { method: "DELETE", headers: supabaseHeaders(getJwt(), { Prefer: "return=representation" }) }
+      );
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.message ?? `HTTP ${res.status}`);
+      }
+      qc.setQueryData(["my-optin", userId, questionId], false);
+    } catch (err) {
+      console.error("[CollectiveActionOptIn] withdraw failed", err);
+      setError(true);
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
-  if (choice === "optedIn") {
+  if (!optInKnown) return null;
+
+  const errorLine = error ? (
+    <p className="text-[11px] text-rose-600 mt-1.5">{t("expectationSignalBlock.couldNotUpdate")}</p>
+  ) : null;
+
+  // Already opted in: show that, whatever this session's "Not now" said.
+  if (optedIn) {
     return (
-      <div className="flex items-center gap-1.5 text-[11px] text-slate-500 mt-2 pt-2 border-t border-slate-100">
-        <Check className="h-3 w-3 text-green-600" />
-        {t("expectationSignalBlock.yourResponseIsIncludedAnonymously")}
+      <div className="mt-2 pt-2 border-t border-slate-100">
+        <div className="flex items-center justify-between gap-2 text-[11px] text-slate-500">
+          <span className="flex items-center gap-1.5">
+            <Check className="h-3 w-3 text-green-600" />
+            {t("expectationSignalBlock.yourResponseIsIncludedAnonymously")}
+          </span>
+          <button
+            onClick={handleWithdraw}
+            disabled={submitting}
+            className="text-[11px] text-slate-400 hover:text-slate-600 underline underline-offset-2 disabled:opacity-50"
+          >
+            {t("expectationSignalBlock.withdraw")}
+          </button>
+        </div>
+        {errorLine}
       </div>
     );
   }
+
+  if (!visible) return null;
 
   return (
     <div className="mt-2 pt-2 border-t border-slate-100">
@@ -215,7 +293,6 @@ function CollectiveActionOptIn({
           to={`/ledger/${questionId}/${regionId}`}
           target="_blank"
           rel="noopener noreferrer"
-          onClick={() => setChoice("viewSummary")}
           className="text-[11px] font-medium rounded-lg px-2.5 py-1 border border-slate-200 text-slate-600 hover:border-slate-300 transition-colors"
         >
           {t("expectationSignalBlock.viewSummaryOnly")}
@@ -227,6 +304,7 @@ function CollectiveActionOptIn({
           {t("ugq.notNow")}
         </button>
       </div>
+      {errorLine}
     </div>
   );
 }
@@ -271,23 +349,24 @@ export function ExpectationSignalBlock({ questionId }: { questionId: string }) {
 
       <div className="space-y-1.5">
         {data.breakdown.map((row) => {
-          const isDominant = row.expectation_type === data.dominantType;
+          // Epic R R-07: every qualifying type is emphasised equally; no single winner (BR-R09).
+          const qualifies = data.qualifyingTypes.includes(row.expectation_type);
           const labelKey = EXPECTATION_LABEL_KEYS[row.expectation_type];
           const label = labelKey ? t(labelKey) : row.expectation_type;
           const pct = row.pct_of_respondents ?? 0;
           return (
             <div key={row.expectation_type}>
               <div className="flex items-center justify-between text-[11px] mb-0.5">
-                <span className={isDominant ? "font-semibold text-slate-800" : "text-slate-500"}>
+                <span className={qualifies ? "font-semibold text-slate-800" : "text-slate-500"}>
                   {label}
                 </span>
-                <span className={isDominant ? "font-semibold text-slate-800" : "text-slate-400"}>
+                <span className={qualifies ? "font-semibold text-slate-800" : "text-slate-400"}>
                   {pct}%
                 </span>
               </div>
               <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
                 <div
-                  className={isDominant ? "h-full bg-slate-900" : "h-full bg-slate-300"}
+                  className={qualifies ? "h-full bg-slate-900" : "h-full bg-slate-300"}
                   style={{ width: `${Math.min(100, Math.max(0, pct))}%` }}
                 />
               </div>
@@ -299,9 +378,15 @@ export function ExpectationSignalBlock({ questionId }: { questionId: string }) {
       <p className="text-[10px] text-slate-400 mt-2">
         {t("expectationSignalBlock.basedOnRespondents", { count: data.totalRespondents })}
       </p>
+      {/* Epic R R-07 / BR-R09: rates are independent (multi-select), so they can sum past 100%. */}
+      <p className="text-[10px] text-slate-400 mt-0.5">
+        {data.thresholdPct != null
+          ? t("expectationSignalBlock.multiSelectNoteWithThreshold", { pct: data.thresholdPct })
+          : t("expectationSignalBlock.multiSelectNote")}
+      </p>
 
       {userId && regionId && (
-        <CollectiveActionOptIn questionId={questionId} regionId={regionId} />
+        <CollectiveActionOptIn questionId={questionId} regionId={regionId} userId={userId} />
       )}
     </div>
   );
