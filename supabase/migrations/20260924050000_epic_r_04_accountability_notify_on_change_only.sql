@@ -15,8 +15,11 @@
 --     question/region, otherwise to the question page.
 --
 -- The whole body is replaced, guarded: it applies only if the target's
--- current body (CR-stripped, whitespace-collapsed) hashes to the known
--- pre-fix version, and is skipped if the fix is already present.
+-- current body — with comments removed, CRs dropped and whitespace
+-- collapsed — hashes to the known pre-fix version, and is skipped if the fix
+-- is already present. Comments are excluded because they differ between
+-- environments (Dev carried a 3-line BR-R08 comment that UAT and the repo
+-- copy do not); the logic is what has to match.
 
 DO $mig$
 DECLARE
@@ -29,8 +32,8 @@ BEGIN
     RAISE NOTICE 'update_authority_response_status already has R-04 — skipping';
     RETURN;
   END IF;
-  v_hash := md5(regexp_replace(replace(v_src, E'\r', ''), '\s+', ' ', 'g'));
-  IF v_hash <> 'a8f10131a67532c97209cddcda6b3f7d' THEN
+  v_hash := md5(regexp_replace(regexp_replace(replace(v_src, E'\r', ''), '--[^\n]*', '', 'g'), '\s+', ' ', 'g'));
+  IF v_hash <> 'ea4f1822b4011bbd377e98f04521315f' THEN
     RAISE EXCEPTION 'R-04: update_authority_response_status body differs from the known pre-fix version (hash %) — review before replacing', v_hash;
   END IF;
 
