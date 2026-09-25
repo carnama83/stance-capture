@@ -566,9 +566,17 @@ function ResponseStatusTracker({
 
   async function handleSubmit() {
     if (!regionId) return;
+    // Epic R R-04: the RPC notifies only when the status actually changes.
+    const unchanged = rowsForThisAuthority.some(
+      (r) => r.region_id === regionId && r.response_status === status
+    );
     try {
       await update.mutateAsync({ questionId, authorityId, regionId, status, notes });
-      toast({ title: "Response status updated", description: "Stakers in this region have been notified." });
+      toast(
+        unchanged
+          ? { title: "Notes saved", description: "Status unchanged, so no notifications were sent." }
+          : { title: "Response status updated", description: "Stakers in this region have been notified." }
+      );
       setExpanded(false);
       setNotes("");
     } catch (err: any) {
@@ -621,7 +629,7 @@ function ResponseStatusTracker({
             disabled={!regionId || update.isPending}
             onClick={handleSubmit}
           >
-            {update.isPending ? "Saving…" : `Update — notifies stakers in this region`}
+            {update.isPending ? "Saving…" : `Update — notifies stakers in this region if the status changes`}
           </Button>
         </div>
       )}
