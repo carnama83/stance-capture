@@ -18,7 +18,9 @@
 // PostStanceSharePrompt) — per US-R01/M-R01, once a user selects+confirms or
 // explicitly skips, this must not be asked again for this question, even in
 // a future session. Mirrors the ${prefix}_${questionId} key pattern used in
-// PostStanceSharePrompt.tsx and TradeoffExplorer.tsx.
+// PostStanceSharePrompt.tsx and TradeoffExplorer.tsx. Dismissing the prompt
+// does not lock the user out: MyExpectations ("Your expectation") lets them
+// add, edit or withdraw later, from server state (Epic R R-02).
 
 import * as React from "react";
 import { useTranslation } from "react-i18next";
@@ -88,20 +90,86 @@ export const EXPECTATION_LABEL_KEYS: Record<string, string> = Object.fromEntries
 
 const DISMISS_KEY_PREFIX = "sc_expectation_handled_";
 
+/** True once this device has confirmed or skipped the post-stance prompt for the question. */
+export function isExpectationPromptHandled(questionId: string): boolean {
+  try {
+    return !!localStorage.getItem(`${DISMISS_KEY_PREFIX}${questionId}`);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The option list for a question. `extra` keeps any already-saved type that
+ * isn't in the current vocabulary (e.g. the question became an incident after
+ * the user answered), so it can still be seen and deselected.
+ */
+export function getExpectationOptions(isIncident?: boolean, extra: string[] = []) {
+  const base = isIncident ? ACCOUNTABILITY_LEVELS : EXPECTATION_TYPES;
+  const all = [...EXPECTATION_TYPES, ...ACCOUNTABILITY_LEVELS];
+  const missing = extra
+    .filter((t) => !base.some((o) => o.type === t))
+    .map((t) => all.find((o) => o.type === t))
+    .filter((o): o is (typeof all)[number] => !!o);
+  return [...base, ...missing];
+}
+
+// Epic R R-02: shared by the post-stance prompt and the "Your expectation" editor.
+export function ExpectationOptionGrid({
+  options,
+  selected,
+  onToggle,
+  disabled,
+}: {
+  options: ReturnType<typeof getExpectationOptions>;
+  selected: Set<ExpectationType>;
+  onToggle: (type: ExpectationType) => void;
+  disabled?: boolean;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="grid grid-cols-3 gap-1.5 mb-3">
+      {options.map(({ type, labelKey, icon: Icon }) => {
+        const isSelected = selected.has(type);
+        return (
+          <button
+            key={type}
+            type="button"
+            onClick={() => onToggle(type)}
+            disabled={disabled}
+            aria-pressed={isSelected}
+            className={[
+              "flex flex-col items-center gap-1 rounded-lg border px-2 py-2.5 text-center transition-colors",
+              isSelected
+                ? "border-slate-900 bg-slate-900 text-white"
+                : "border-slate-200 bg-white text-slate-600 hover:border-slate-300",
+            ].join(" ")}
+          >
+            <Icon className="h-4 w-4" />
+            <span className="text-[10px] leading-tight font-medium">{t(labelKey)}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 interface ExpectationPromptProps {
   questionId: string;
   isIncident?: boolean;
+  /** Epic R R-02: the server already holds a set for this user (e.g. from another device). */
+  hasServerExpectations?: boolean;
   onConfirm: (types: ExpectationType[]) => void;
   onSkip: () => void;
 }
 
-export function ExpectationPrompt({ questionId, isIncident, onConfirm, onSkip }: ExpectationPromptProps) {
+export function ExpectationPrompt({ questionId, isIncident, hasServerExpectations, onConfirm, onSkip }: ExpectationPromptProps) {
   const { t } = useTranslation();
   const [visible, setVisible] = React.useState(false);
   const [selected, setSelected] = React.useState<Set<ExpectationType>>(new Set());
   const [submitting, setSubmitting] = React.useState(false);
 
-  const options = isIncident ? ACCOUNTABILITY_LEVELS : EXPECTATION_TYPES;
+  const options = getExpectationOptions(isIncident);
 
   React.useEffect(() => {
     // Self-gate: even if the parent renders this component (e.g. right after
@@ -143,12 +211,16 @@ export function ExpectationPrompt({ questionId, isIncident, onConfirm, onSkip }:
   async function handleConfirm() {
     if (selected.size === 0 || submitting) return;
     setSubmitting(true);
-    markHandled();
+    // Epic R R-05: not marked handled here — saveMyExpectations() sets the
+    // flag only once the server has the selection, so a failed save doesn't
+    // suppress the prompt for good.
     setVisible(false);
     onConfirm(Array.from(selected));
   }
 
-  if (!visible) return null;
+  // Server state wins over this device's flag: a set saved elsewhere means the
+  // question has been answered, so the "Your expectation" control takes over.
+  if (!visible || hasServerExpectations) return null;
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 mt-3">
@@ -161,29 +233,7 @@ export function ExpectationPrompt({ questionId, isIncident, onConfirm, onSkip }:
         {t("expectationPrompt.optionalSeparateFromYourStance")}
       </p>
 
-      <div className="grid grid-cols-3 gap-1.5 mb-3">
-        {options.map(({ type, labelKey, icon: Icon }) => {
-          const isSelected = selected.has(type);
-          return (
-            <button
-              key={type}
-              type="button"
-              onClick={() => toggle(type)}
-              disabled={submitting}
-              aria-pressed={isSelected}
-              className={[
-                "flex flex-col items-center gap-1 rounded-lg border px-2 py-2.5 text-center transition-colors",
-                isSelected
-                  ? "border-slate-900 bg-slate-900 text-white"
-                  : "border-slate-200 bg-white text-slate-600 hover:border-slate-300",
-              ].join(" ")}
-            >
-              <Icon className="h-4 w-4" />
-              <span className="text-[10px] leading-tight font-medium">{t(labelKey)}</span>
-            </button>
-          );
-        })}
-      </div>
+      <ExpectationOptionGrid options={options} selected={selected} onToggle={toggle} disabled={submitting} />
 
       <div className="flex items-center justify-between">
         <button

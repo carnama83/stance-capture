@@ -28,6 +28,8 @@ export interface AuthorityResponseRow {
   status_updated_at: string;
   region_id: string | null;
   authority_registry: { name: string } | null;
+  /** Epic R R-10: the region this status applies to, so rows are never ambiguous. */
+  region_name?: string | null;
 }
 
 export const STATUS_LABEL_KEYS: Record<string, string> = {
@@ -67,7 +69,16 @@ function useAuthorityResponses(questionId: string) {
         console.error("[AuthorityResponseStatusBlock] fetch failed", error);
         return [];
       }
-      return (data ?? []) as unknown as AuthorityResponseRow[];
+      const rows = (data ?? []) as unknown as AuthorityResponseRow[];
+      // Epic R R-10: label each row with its region. There is no FK from
+      // authority_responses.region_id to locations, so look the names up.
+      const regionIds = Array.from(new Set(rows.map((r) => r.region_id).filter((id): id is string => !!id)));
+      if (regionIds.length > 0) {
+        const { data: locs } = await sb.from("locations").select("id, name").in("id", regionIds);
+        const names = new Map((locs ?? []).map((l: { id: string; name: string }) => [l.id, l.name]));
+        for (const r of rows) r.region_name = r.region_id ? names.get(r.region_id) ?? null : null;
+      }
+      return rows;
     },
   });
 }
@@ -89,6 +100,7 @@ export function AuthorityResponseStatusBlock({ questionId }: { questionId: strin
           <div key={r.id} className="flex items-center justify-between gap-2">
             <span className="text-xs text-slate-600 truncate">
               {r.authority_registry?.name ?? t("publicLedger.authority")}
+              {r.region_name && <span className="text-slate-400"> · {r.region_name}</span>}
             </span>
             <div className="flex items-center gap-2 shrink-0">
               <span

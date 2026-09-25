@@ -1382,6 +1382,17 @@
     "optionalSeparateFromYourStance": "Optional — separate from your stance. Select as many as apply.",
     "confirm": "Confirm"
   },
+  "myExpectations": {
+    "title": "Your expectation",
+    "edit": "Edit",
+    "add": "Add",
+    "withdraw": "Withdraw",
+    "none": "You haven’t added an expectation for this question.",
+    "cancel": "Cancel",
+    "save": "Save",
+    "needsStance": "Take a stance on this question before adding an expectation.",
+    "couldNotSave": "Couldn’t save your expectation. Please try again."
+  },
   "profile": {
     "loadingSession": "Loading session…",
     "youAreNotLoggedIn": "You are not logged in.",
@@ -1628,7 +1639,11 @@
     "whatRegionExpects": "What {{region}} respondents expect",
     "whatRespondentsExpect": "What respondents expect",
     "basedOnRespondents_one": "Based on {{count}} respondent.",
-    "basedOnRespondents_other": "Based on {{count}} respondents."
+    "basedOnRespondents_other": "Based on {{count}} respondents.",
+    "withdraw": "Withdraw",
+    "couldNotUpdate": "Couldn’t update. Please try again.",
+    "multiSelectNote": "People could choose more than one, so percentages can add up to more than 100%.",
+    "multiSelectNoteWithThreshold": "Highlighted: chosen by at least {{pct}}% of respondents. People could choose more than one, so percentages can add up to more than 100%."
   },
   "resetPassword": {
     "supabaseIsOff": "Supabase is OFF.",
@@ -1775,7 +1790,9 @@
     "authority": "Authority",
     "dataCollectedByStanceCapture": "Data collected by Stance Capture",
     "respondentCount_one": "{{count}} respondent",
-    "respondentCount_other": "{{count}} respondents"
+    "respondentCount_other": "{{count}} respondents",
+    "visibleSupportCount_one": "{{count}} of them opted in to be counted as visible support",
+    "visibleSupportCount_other": "{{count}} of them opted in to be counted as visible support"
   },
   "socialAuthButtons": {
     "continueWithGoogle": "Continue with Google",
@@ -1852,7 +1869,10 @@
     "yourArea": "Your area",
     "vsNational": "vs national:",
     "opinionShifted": "{{scope}} opinion shifted by {{delta}} points",
-    "opinionShiftedHere": "Opinion shifted by {{delta}} points in your area"
+    "opinionShiftedHere": "Opinion shifted by {{delta}} points in your area",
+    "accountabilityUpdateTitle": "Accountability update",
+    "accountabilityUpdateBody": "An update is available on {{title}}: status is now {{status}}.",
+    "accountabilityUpdateBodyNoTitle": "An update is available: status is now {{status}}."
   },
   "weeklyDigest": {
     "noDigestAvailableYet": "No digest available yet.",
