@@ -51,6 +51,13 @@ export interface ShareButtonProps {
    */
   languageCode?: string;
   shareType?: ShareType;
+  /**
+   * Epic R R-09: when set, the link opens the Public Expectation Ledger for
+   * this region (/#/ledger/<questionId>/<regionId>) instead of the question.
+   * It still goes through /s/<id> so link previews and share tracking behave
+   * exactly as for a question share (see api/s/[slug].js).
+   */
+  ledgerRegionId?: string | null;
   /** Compact icon-only mode for question cards */
   compact?: boolean;
   className?: string;
@@ -129,7 +136,8 @@ function buildShareUrl(
   questionId: string,
   platform: string,
   shareId: string,
-  languageCode: string
+  languageCode: string,
+  ledgerRegionId?: string | null
 ): string {
   const base = window.location.origin;
   // Always route through /s/<id> — this is the endpoint (api/s/[slug].js) that
@@ -151,7 +159,8 @@ function buildShareUrl(
   const fwd = getMyForwardRef(questionId);
   const ref = fwd ?? platform;
   const via = fwd ? `&via=${platform}` : "";
-  return `${base}/s/${questionId}${langSegment}?ref=${ref}${via}&sid=${shareId}`;
+  const ledger = ledgerRegionId ? `&ledger=${encodeURIComponent(ledgerRegionId)}` : "";
+  return `${base}/s/${questionId}${langSegment}?ref=${ref}${via}&sid=${shareId}${ledger}`;
 }
 
 function buildShareText(questionText: string, questionSummary?: string | null): string {
@@ -317,6 +326,7 @@ export function ShareButton({
   ogImageUrl,
   languageCode = "en",
   shareType = "question",
+  ledgerRegionId = null,
   compact = false,
   className = "",
 }: ShareButtonProps) {
@@ -369,7 +379,7 @@ export function ShareButton({
       }
 
       const sid = shareId ?? "unknown";
-      const shareUrl = buildShareUrl(questionId, platform, sid, languageCode);
+      const shareUrl = buildShareUrl(questionId, platform, sid, languageCode, ledgerRegionId);
       const shareText = buildShareText(questionText, questionSummary);
       const whatsAppText = buildWhatsAppText(questionText, questionSummary);
 

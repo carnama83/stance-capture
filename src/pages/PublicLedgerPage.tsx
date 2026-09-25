@@ -262,6 +262,7 @@ export default function PublicLedgerPage() {
               questionSummary={ledger.questionSummary}
               shareType="question"
               languageCode={languageCode}
+              ledgerRegionId={regionId}
             />
           )}
         </div>
