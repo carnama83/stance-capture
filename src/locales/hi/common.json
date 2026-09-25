@@ -1639,7 +1639,9 @@
     "whatRegionExpects": "{{region}} के उत्तरदाता क्या अपेक्षा रखते हैं",
     "whatRespondentsExpect": "उत्तरदाता क्या अपेक्षा रखते हैं",
     "basedOnRespondents_one": "{{count}} उत्तरदाता के आधार पर।",
-    "basedOnRespondents_other": "{{count}} उत्तरदाताओं के आधार पर।"
+    "basedOnRespondents_other": "{{count}} उत्तरदाताओं के आधार पर।",
+    "withdraw": "वापस लें",
+    "couldNotUpdate": "अपडेट नहीं हो सका। कृपया फिर से कोशिश करें।"
   },
   "resetPassword": {
     "supabaseIsOff": "Supabase बंद है।",
@@ -1786,7 +1788,9 @@
     "authority": "प्राधिकरण",
     "dataCollectedByStanceCapture": "डेटा Stance Capture द्वारा एकत्रित",
     "respondentCount_one": "{{count}} उत्तरदाता",
-    "respondentCount_other": "{{count}} उत्तरदाता"
+    "respondentCount_other": "{{count}} उत्तरदाता",
+    "visibleSupportCount_one": "इनमें से {{count}} ने दृश्यमान समर्थन के रूप में गिने जाने का विकल्प चुना",
+    "visibleSupportCount_other": "इनमें से {{count}} ने दृश्यमान समर्थन के रूप में गिने जाने का विकल्प चुना"
   },
   "socialAuthButtons": {
     "continueWithGoogle": "Google से जारी रखें",

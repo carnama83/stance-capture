@@ -700,6 +700,7 @@ function ConfidenceFeedback({ onSubmit }: { onSubmit: (score: number) => void })
 // ---------- StanceCard — extracted for dual mobile/desktop render (Point 14) ----------
 function StanceCard({
   isAuthed,
+  userId,
   questionId,
   question,
   myStance,
@@ -719,6 +720,7 @@ function StanceCard({
   languageCode,
 }: {
   isAuthed: boolean;
+  userId: string | null;
   questionId: string;
   question: LiveQuestion;
   myStance: number | null;
@@ -742,7 +744,7 @@ function StanceCard({
   const { languageOf: stanceCardLanguageOf } = useRenditionLanguages([question?.rendition_id]);
   const stanceCardInstrumentLanguage = stanceCardLanguageOf(question?.rendition_id);
   const { t } = useTranslation();
-  const { data: myExpectations = [] } = useMyExpectations(questionId, isAuthed);
+  const { data: myExpectations = [] } = useMyExpectations(questionId, userId);
   return (
     <section className="rounded-xl border border-slate-200 bg-slate-50 p-4 md:p-5 shadow-sm">
       <h3 className="text-[11px] font-semibold tracking-wide uppercase text-slate-500 mb-1">
@@ -898,7 +900,7 @@ function StanceCard({
           <MyExpectations
             questionId={questionId}
             isIncident={question.content_type === "incident"}
-            isAuthed={isAuthed}
+            userId={userId}
             hasStance={myStance != null}
             promptPending={!!showExpectationPrompt}
           />
@@ -1395,6 +1397,7 @@ export default function QuestionDetailPage() {
 
   const stanceCardProps = {
     isAuthed,
+    userId: userId ?? null,
     questionId,
     myStance: myStance ?? null,
     stanceLoading,
@@ -1434,7 +1437,7 @@ export default function QuestionDetailPage() {
         saveMyExpectations(questionId, types)
           .then((saved) => {
             console.log("[qdp:expectations] saved", { questionId, types: saved });
-            queryClient.setQueryData(["my-expectations", questionId], [...saved].sort());
+            queryClient.setQueryData(["my-expectations", userId, questionId], [...saved].sort());
           })
           .catch((err) => {
             // Epic R R-05: never a silent loss. The stance itself is unaffected,

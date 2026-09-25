@@ -44,10 +44,12 @@ export async function saveMyExpectations(questionId: string, types: string[]): P
   return (body ?? []) as string[];
 }
 
-export function useMyExpectations(questionId: string, enabled: boolean) {
+// Keyed by user as well as question: React Query is not cleared on sign-out, so a
+// question-only key would show the previous account's set after a switch (cf. F-06).
+export function useMyExpectations(questionId: string, userId: string | null) {
   return useQuery<string[]>({
-    queryKey: ["my-expectations", questionId],
-    enabled: enabled && !!questionId,
+    queryKey: ["my-expectations", userId, questionId],
+    enabled: !!userId && !!questionId,
     staleTime: 30_000,
     queryFn: async () => {
       const sb = getSupabase();
@@ -65,20 +67,20 @@ export function useMyExpectations(questionId: string, enabled: boolean) {
 export function MyExpectations({
   questionId,
   isIncident,
-  isAuthed,
+  userId,
   hasStance,
   promptPending,
 }: {
   questionId: string;
   isIncident?: boolean;
-  isAuthed: boolean;
+  userId: string | null;
   hasStance: boolean;
   /** The post-stance prompt was just triggered and this device hasn't handled it yet. */
   promptPending: boolean;
 }) {
   const { t } = useTranslation();
   const qc = useQueryClient();
-  const { data: current = [], isSuccess } = useMyExpectations(questionId, isAuthed);
+  const { data: current = [], isSuccess } = useMyExpectations(questionId, userId);
   const [editing, setEditing] = React.useState(false);
   const [selected, setSelected] = React.useState<Set<ExpectationType>>(new Set());
   const [saving, setSaving] = React.useState(false);
@@ -89,7 +91,7 @@ export function MyExpectations({
     setError(null);
   }, [questionId]);
 
-  if (!isAuthed || !isSuccess) return null;
+  if (!userId || !isSuccess) return null;
   // Let the post-stance prompt ask first; afterwards this control takes over.
   if (current.length === 0 && (promptPending && !isExpectationPromptHandled(questionId))) return null;
   // BR-R01: nothing to add before a stance (withdrawing stays possible).
@@ -119,7 +121,7 @@ export function MyExpectations({
     setError(null);
     try {
       const saved = await saveMyExpectations(questionId, types);
-      qc.setQueryData(["my-expectations", questionId], [...saved].sort());
+      qc.setQueryData(["my-expectations", userId, questionId], [...saved].sort());
       qc.invalidateQueries({ queryKey: ["expectation-signal", questionId] });
       setEditing(false);
     } catch (err: any) {

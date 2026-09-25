@@ -1639,7 +1639,9 @@
     "whatRegionExpects": "What {{region}} respondents expect",
     "whatRespondentsExpect": "What respondents expect",
     "basedOnRespondents_one": "Based on {{count}} respondent.",
-    "basedOnRespondents_other": "Based on {{count}} respondents."
+    "basedOnRespondents_other": "Based on {{count}} respondents.",
+    "withdraw": "Withdraw",
+    "couldNotUpdate": "Couldn’t update. Please try again."
   },
   "resetPassword": {
     "supabaseIsOff": "Supabase is OFF.",
@@ -1786,7 +1788,9 @@
     "authority": "Authority",
     "dataCollectedByStanceCapture": "Data collected by Stance Capture",
     "respondentCount_one": "{{count}} respondent",
-    "respondentCount_other": "{{count}} respondents"
+    "respondentCount_other": "{{count}} respondents",
+    "visibleSupportCount_one": "{{count}} of them opted in to be counted as visible support",
+    "visibleSupportCount_other": "{{count}} of them opted in to be counted as visible support"
   },
   "socialAuthButtons": {
     "continueWithGoogle": "Continue with Google",

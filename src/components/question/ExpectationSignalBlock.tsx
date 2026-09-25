@@ -16,7 +16,7 @@
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getSupabase } from "@/lib/supabaseClient";
 import { fetchUserRegionId } from "@/lib/userRegion";
 import { SUPABASE_URL, getJwt, supabaseHeaders } from "@/lib/env";
@@ -129,17 +129,47 @@ const OPTIN_DISMISS_KEY_PREFIX = "collective_optin_dismissed_";
 // DEFAULT auth.uid() (see BUGFIX_user_id_default.sql) — same fix that was
 // needed for M-R01's expectation writes, applied correctly here from the
 // start rather than retroactively.
+//
+// Epic R R-06: the component starts from the user's actual opt-in (RLS
+// allows reading your own row), so someone who already opted in sees the
+// "included" state with a Withdraw action instead of being asked again. A
+// duplicate insert (409) is treated as success, and failures are shown
+// rather than swallowed.
+function useMyOptIn(questionId: string, userId: string) {
+  return useQuery<boolean>({
+    // Keyed by user: the query cache survives sign-out (cf. F-06).
+    queryKey: ["my-optin", userId, questionId],
+    enabled: !!questionId && !!userId,
+    staleTime: 30_000,
+    queryFn: async () => {
+      const sb = getSupabase();
+      if (!sb) return false;
+      const { data, error } = await sb
+        .from("collective_action_optins")
+        .select("id")
+        .eq("question_id", questionId)
+        .limit(1);
+      if (error) throw error;
+      return (data ?? []).length > 0;
+    },
+  });
+}
+
 function CollectiveActionOptIn({
   questionId,
   regionId,
+  userId,
 }: {
   questionId: string;
   regionId: string;
+  userId: string;
 }) {
   const { t } = useTranslation();
+  const qc = useQueryClient();
+  const { data: optedIn, isSuccess: optInKnown } = useMyOptIn(questionId, userId);
   const [visible, setVisible] = React.useState(false);
-  const [choice, setChoice] = React.useState<"optedIn" | "viewSummary" | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
+  const [error, setError] = React.useState(false);
 
   React.useEffect(() => {
     let dismissed = false;
@@ -149,7 +179,7 @@ function CollectiveActionOptIn({
       /* sessionStorage unavailable — fail open, show the prompt */
     }
     setVisible(!dismissed);
-    setChoice(null);
+    setError(false);
   }, [questionId]);
 
   function dismiss() {
@@ -164,37 +194,79 @@ function CollectiveActionOptIn({
   async function handleOptIn() {
     if (submitting) return;
     setSubmitting(true);
+    setError(false);
     try {
       const res = await fetch(`${SUPABASE_URL}/rest/v1/collective_action_optins`, {
         method: "POST",
-        headers: supabaseHeaders(getJwt(), { Prefer: "resolution=ignore-duplicates" }),
+        headers: supabaseHeaders(getJwt()),
         body: JSON.stringify([{ question_id: questionId, region_id: regionId }]),
       });
-      if (!res.ok) {
+      // 409 = the unique (user_id, question_id) row already exists: already opted in.
+      if (!res.ok && res.status !== 409) {
         const body = await res.json().catch(() => null);
         throw new Error(body?.message ?? `HTTP ${res.status}`);
       }
-      setChoice("optedIn");
+      qc.setQueryData(["my-optin", userId, questionId], true);
     } catch (err) {
       console.error("[CollectiveActionOptIn] opt-in failed", err);
-      // Non-blocking — this is a secondary civic signal, not a critical
-      // action. Silently leave the prompt visible rather than showing an
-      // error the person can't do anything about.
+      setError(true);
     } finally {
       setSubmitting(false);
     }
   }
 
-  if (!visible) return null;
+  async function handleWithdraw() {
+    if (submitting) return;
+    setSubmitting(true);
+    setError(false);
+    try {
+      // RLS limits the delete to the caller's own row.
+      const res = await fetch(
+        `${SUPABASE_URL}/rest/v1/collective_action_optins?question_id=eq.${questionId}`,
+        { method: "DELETE", headers: supabaseHeaders(getJwt(), { Prefer: "return=representation" }) }
+      );
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.message ?? `HTTP ${res.status}`);
+      }
+      qc.setQueryData(["my-optin", userId, questionId], false);
+    } catch (err) {
+      console.error("[CollectiveActionOptIn] withdraw failed", err);
+      setError(true);
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
-  if (choice === "optedIn") {
+  if (!optInKnown) return null;
+
+  const errorLine = error ? (
+    <p className="text-[11px] text-rose-600 mt-1.5">{t("expectationSignalBlock.couldNotUpdate")}</p>
+  ) : null;
+
+  // Already opted in: show that, whatever this session's "Not now" said.
+  if (optedIn) {
     return (
-      <div className="flex items-center gap-1.5 text-[11px] text-slate-500 mt-2 pt-2 border-t border-slate-100">
-        <Check className="h-3 w-3 text-green-600" />
-        {t("expectationSignalBlock.yourResponseIsIncludedAnonymously")}
+      <div className="mt-2 pt-2 border-t border-slate-100">
+        <div className="flex items-center justify-between gap-2 text-[11px] text-slate-500">
+          <span className="flex items-center gap-1.5">
+            <Check className="h-3 w-3 text-green-600" />
+            {t("expectationSignalBlock.yourResponseIsIncludedAnonymously")}
+          </span>
+          <button
+            onClick={handleWithdraw}
+            disabled={submitting}
+            className="text-[11px] text-slate-400 hover:text-slate-600 underline underline-offset-2 disabled:opacity-50"
+          >
+            {t("expectationSignalBlock.withdraw")}
+          </button>
+        </div>
+        {errorLine}
       </div>
     );
   }
+
+  if (!visible) return null;
 
   return (
     <div className="mt-2 pt-2 border-t border-slate-100">
@@ -216,7 +288,6 @@ function CollectiveActionOptIn({
           to={`/ledger/${questionId}/${regionId}`}
           target="_blank"
           rel="noopener noreferrer"
-          onClick={() => setChoice("viewSummary")}
           className="text-[11px] font-medium rounded-lg px-2.5 py-1 border border-slate-200 text-slate-600 hover:border-slate-300 transition-colors"
         >
           {t("expectationSignalBlock.viewSummaryOnly")}
@@ -228,6 +299,7 @@ function CollectiveActionOptIn({
           {t("ugq.notNow")}
         </button>
       </div>
+      {errorLine}
     </div>
   );
 }
@@ -302,7 +374,7 @@ export function ExpectationSignalBlock({ questionId }: { questionId: string }) {
       </p>
 
       {userId && regionId && (
-        <CollectiveActionOptIn questionId={questionId} regionId={regionId} />
+        <CollectiveActionOptIn questionId={questionId} regionId={regionId} userId={userId} />
       )}
     </div>
   );

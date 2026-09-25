@@ -37,6 +37,7 @@ interface SnapshotEntry {
 interface LedgerData {
   snapshot_summary: SnapshotEntry[] | null;
   participation_count: number | null;
+  optin_count: number | null;
   time_window_start: string | null;
   time_window_end: string | null;
   questionText: string | null;
@@ -59,7 +60,7 @@ function useLedger(questionId: string, regionId: string) {
       const { data: ledger, error } = await sb
         .from("expectation_ledgers")
         .select(
-          "snapshot_summary, participation_count, time_window_start, time_window_end, status, questions(question, summary)"
+          "snapshot_summary, participation_count, optin_count, time_window_start, time_window_end, status, questions(question, summary)"
         )
         .eq("question_id", questionId)
         .eq("region_id", regionId)
@@ -74,6 +75,7 @@ function useLedger(questionId: string, regionId: string) {
       return {
         snapshot_summary: (ledger as any).snapshot_summary ?? null,
         participation_count: (ledger as any).participation_count,
+        optin_count: (ledger as any).optin_count ?? null,
         time_window_start: (ledger as any).time_window_start,
         time_window_end: (ledger as any).time_window_end,
         questionText: q?.question ?? null,
@@ -244,6 +246,10 @@ export default function PublicLedgerPage() {
               social proof (BR-R04 / §6.3 — no "X people signed" language). */}
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500 border-t border-slate-100 pt-4 mb-5">
             <span>{t("publicLedger.respondentCount", { count: ledger.participation_count ?? 0 })}</span>
+            {/* Epic R R-06 / US-R10: the opted-in "visible support" count is a separate,
+                smaller population than the respondents above, and is labelled as such.
+                It is frozen at publish time like the rest of the snapshot. */}
+            <span>{t("publicLedger.visibleSupportCount", { count: ledger.optin_count ?? 0 })}</span>
             <span>
               {formatDate(ledger.time_window_start)} – {formatDate(ledger.time_window_end)}
             </span>
