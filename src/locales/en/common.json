@@ -1869,7 +1869,10 @@
     "yourArea": "Your area",
     "vsNational": "vs national:",
     "opinionShifted": "{{scope}} opinion shifted by {{delta}} points",
-    "opinionShiftedHere": "Opinion shifted by {{delta}} points in your area"
+    "opinionShiftedHere": "Opinion shifted by {{delta}} points in your area",
+    "accountabilityUpdateTitle": "Accountability update",
+    "accountabilityUpdateBody": "An update is available on {{title}}: status is now {{status}}.",
+    "accountabilityUpdateBodyNoTitle": "An update is available: status is now {{status}}."
   },
   "weeklyDigest": {
     "noDigestAvailableYet": "No digest available yet.",

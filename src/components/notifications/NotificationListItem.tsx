@@ -22,6 +22,7 @@ import { type UserNotification, type NotificationType } from "@/hooks/notificati
 import { cn } from "@/lib/utils";
 import { getSupabase } from "@/lib/supabaseClient";
 import { useTranslation } from "react-i18next";
+import { STATUS_LABEL_KEYS } from "@/components/question/AuthorityResponseStatusBlock";
 
 // ── Icon selection ────────────────────────────────────────────────────────────
 
@@ -168,6 +169,25 @@ export function NotificationListItem({
   onClose,
 }: NotificationListItemProps) {
   const navigate = useNavigate();
+  const { t } = useTranslation();
+
+  // Epic R R-10: accountability updates are rendered from translated
+  // templates using the metadata the server stores (response_status,
+  // question_title), so they appear in the reader's language. The stored
+  // English title/body remain the fallback for anything unexpected.
+  let title = notification.title;
+  let body = notification.body;
+  if (notification.notificationType === "accountability_update") {
+    const status = String(notification.metadata?.response_status ?? "");
+    const statusLabel = STATUS_LABEL_KEYS[status] ? t(STATUS_LABEL_KEYS[status]) : null;
+    const questionTitle = notification.metadata?.question_title as string | undefined;
+    title = t("notificationListItem.accountabilityUpdateTitle");
+    if (statusLabel) {
+      body = questionTitle
+        ? t("notificationListItem.accountabilityUpdateBody", { title: questionTitle, status: statusLabel })
+        : t("notificationListItem.accountabilityUpdateBodyNoTitle", { status: statusLabel });
+    }
+  }
 
   // Extract eventKind from metadata for stance_change subtypes
   const eventKind = notification.notificationType === "stance_change"
@@ -215,7 +235,7 @@ export function NotificationListItem({
             !notification.isRead ? "font-medium text-foreground" : "font-normal text-foreground",
           )}
         >
-          {notification.title}
+          {title}
         </span>
 
         {/* S2: Subtype-specific metadata line for stance_change notifications */}
@@ -224,9 +244,9 @@ export function NotificationListItem({
         )}
 
         {/* Standard body for other notification types */}
-        {notification.body && notification.notificationType !== "stance_change" && (
+        {body && notification.notificationType !== "stance_change" && (
           <span className="block text-xs text-muted-foreground leading-snug line-clamp-2">
-            {notification.body}
+            {body}
           </span>
         )}
 

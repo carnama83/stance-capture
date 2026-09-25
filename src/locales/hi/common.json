@@ -1869,7 +1869,10 @@
     "yourArea": "आपका क्षेत्र",
     "vsNational": "बनाम राष्ट्रीय:",
     "opinionShifted": "{{scope}} राय {{delta}} अंक बदली",
-    "opinionShiftedHere": "आपके क्षेत्र में राय {{delta}} अंक बदली"
+    "opinionShiftedHere": "आपके क्षेत्र में राय {{delta}} अंक बदली",
+    "accountabilityUpdateTitle": "जवाबदेही अपडेट",
+    "accountabilityUpdateBody": "{{title}} पर एक अपडेट उपलब्ध है: स्थिति अब {{status}} है।",
+    "accountabilityUpdateBodyNoTitle": "एक अपडेट उपलब्ध है: स्थिति अब {{status}} है।"
   },
   "weeklyDigest": {
     "noDigestAvailableYet": "अभी कोई सारांश उपलब्ध नहीं।",
