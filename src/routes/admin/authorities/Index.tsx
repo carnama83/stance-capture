@@ -352,6 +352,102 @@ function useVoidResponseEvent(questionId: string) {
   });
 }
 
+// Epic R R-FR-15: an expectation outcome links an announced / completed action
+// (a response event) to an expected action in the region's published ledger.
+// Structured only — no public free text and no met / not-met verdict.
+interface OutcomeRow {
+  id: string;
+  response_event_id: string;
+  expectation_type: string;
+  ledger_version: number;
+  notes: string | null;
+  voided_at: string | null;
+  void_reason: string | null;
+}
+
+const OUTCOME_EVENT_STATUSES = new Set(["action_announced", "action_completed"]);
+const NON_ACTION_TYPES = new Set(["no_action", "unsure", "no_accountability_expected"]);
+
+function useExpectationOutcomes(questionId: string | null) {
+  return useQuery<OutcomeRow[]>({
+    queryKey: ["admin-authorities-expectation-outcomes", questionId],
+    enabled: !!questionId,
+    staleTime: 10_000,
+    queryFn: async () => {
+      const sb = getSupabase();
+      if (!sb) throw new Error("Supabase not available");
+      const { data, error } = await sb
+        .from("expectation_outcomes")
+        .select("id, response_event_id, expectation_type, ledger_version, notes, voided_at, void_reason")
+        .eq("question_id", questionId as string)
+        .order("recorded_at", { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as OutcomeRow[];
+    },
+  });
+}
+
+// The action types respondents selected in the region's current ledger version
+// (the latest version is the current one; versions are append-only).
+function useLedgerActionTypes(questionId: string, regionId: string | null, enabled: boolean) {
+  return useQuery<{ version: number; types: string[] } | null>({
+    queryKey: ["admin-ledger-action-types", questionId, regionId],
+    enabled: enabled && !!regionId,
+    staleTime: 30_000,
+    queryFn: async () => {
+      const sb = getSupabase();
+      if (!sb) throw new Error("Supabase not available");
+      const { data, error } = await sb
+        .from("expectation_ledger_versions")
+        .select("version, snapshot_summary")
+        .eq("question_id", questionId)
+        .eq("region_id", regionId as string)
+        .order("version", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) return null;
+      const types = ((data.snapshot_summary ?? []) as { expectation_type: string }[])
+        .map((s) => s.expectation_type)
+        .filter((t) => !NON_ACTION_TYPES.has(t));
+      return { version: data.version as number, types };
+    },
+  });
+}
+
+function useRecordOutcome(questionId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (vars: { eventId: string; expectationType: string; notes: string }) => {
+      const sb = getSupabase();
+      if (!sb) throw new Error("Supabase not available");
+      const { error } = await sb.rpc("admin_record_expectation_outcome", {
+        p_response_event_id: vars.eventId,
+        p_expectation_type: vars.expectationType,
+        p_notes: vars.notes || null,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-authorities-expectation-outcomes", questionId] }),
+  });
+}
+
+function useVoidOutcome(questionId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (vars: { outcomeId: string; reason: string }) => {
+      const sb = getSupabase();
+      if (!sb) throw new Error("Supabase not available");
+      const { error } = await sb.rpc("admin_void_expectation_outcome", {
+        p_outcome_id: vars.outcomeId,
+        p_reason: vars.reason,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-authorities-expectation-outcomes", questionId] }),
+  });
+}
+
 // ── Pending suggestions (M-R07) hooks ──────────────────────────────────────
 
 function usePendingSuggestions() {
@@ -636,18 +732,122 @@ const RESPONSE_STATUS_OPTIONS = [
 // for expectation-stakers with no location set) still gets a working
 // notification link via update_authority_response_status()'s /q/:id
 // fallback, it just isn't something this admin form manages directly.
+// R-FR-15: under an announced / completed action, the expected actions it has
+// been linked to, and a control to link it to another one.
+function EventOutcomes({
+  questionId,
+  event,
+  outcomes,
+}: {
+  questionId: string;
+  event: ResponseEventRow;
+  outcomes: OutcomeRow[];
+}) {
+  const { toast } = useToast();
+  const [linking, setLinking] = React.useState(false);
+  const [type, setType] = React.useState("");
+  const [notes, setNotes] = React.useState("");
+  const [voidingId, setVoidingId] = React.useState<string | null>(null);
+  const [voidReason, setVoidReason] = React.useState("");
+  const { data: ledger, isLoading } = useLedgerActionTypes(questionId, event.region_id, linking);
+  const record = useRecordOutcome(questionId);
+  const voidOutcome = useVoidOutcome(questionId);
+  const mine = outcomes.filter((o) => o.response_event_id === event.id);
+  const linkedTypes = new Set(mine.filter((o) => !o.voided_at && o.ledger_version === ledger?.version).map((o) => o.expectation_type));
+  const options = (ledger?.types ?? []).filter((t) => !linkedTypes.has(t));
+
+  async function handleLink() {
+    try {
+      await record.mutateAsync({ eventId: event.id, expectationType: type, notes: notes.trim() });
+      toast({ title: "Outcome linked", description: "Shown on the public ledger under What followed." });
+      setLinking(false);
+      setType("");
+      setNotes("");
+    } catch (err: any) {
+      toast({ title: "Link failed", description: err?.message, variant: "destructive" });
+    }
+  }
+
+  async function handleVoid(outcomeId: string) {
+    if (!voidReason.trim()) {
+      toast({ title: "Give a reason for voiding", variant: "destructive" });
+      return;
+    }
+    try {
+      await voidOutcome.mutateAsync({ outcomeId, reason: voidReason.trim() });
+      toast({ title: "Outcome voided" });
+      setVoidingId(null);
+      setVoidReason("");
+    } catch (err: any) {
+      toast({ title: "Void failed", description: err?.message, variant: "destructive" });
+    }
+  }
+
+  return (
+    <div className="ml-2 mt-0.5 no-underline" style={{ textDecoration: "none" }}>
+      {mine.map((o) => (
+        <div key={o.id} className={o.voided_at ? "text-slate-300" : "text-emerald-700"}>
+          ↳ outcome for <span className="font-medium">{o.expectation_type.replace(/_/g, " ")}</span> (ledger v{o.ledger_version})
+          {o.notes && <span className="text-slate-400"> · {o.notes}</span>}
+          {o.voided_at ? (
+            <span className="text-slate-400"> (voided: {o.void_reason})</span>
+          ) : voidingId === o.id ? (
+            <span className="inline-flex items-center gap-1 ml-1">
+              <Input value={voidReason} onChange={(ev) => setVoidReason(ev.target.value)} placeholder="Reason" className="h-6 w-40 text-[10px]" />
+              <button onClick={() => handleVoid(o.id)} className="text-red-600" disabled={voidOutcome.isPending}>Void</button>
+              <button onClick={() => { setVoidingId(null); setVoidReason(""); }} className="text-slate-400">Cancel</button>
+            </span>
+          ) : (
+            <button onClick={() => setVoidingId(o.id)} className="ml-1 text-slate-400 hover:text-red-600">void</button>
+          )}
+        </div>
+      ))}
+      {!linking ? (
+        <button onClick={() => setLinking(true)} className="text-slate-400 hover:text-slate-700 underline underline-offset-2">
+          link to an expected action
+        </button>
+      ) : isLoading ? (
+        <span className="text-slate-400">Loading ledger…</span>
+      ) : !ledger ? (
+        <span className="text-slate-400">
+          No published ledger for this region yet.{" "}
+          <button onClick={() => setLinking(false)} className="underline">Close</button>
+        </span>
+      ) : (
+        <span className="inline-flex flex-wrap items-center gap-1">
+          <Select value={type} onValueChange={setType}>
+            <SelectTrigger className="h-6 w-44 text-[10px]"><SelectValue placeholder={`Expected action (ledger v${ledger.version})`} /></SelectTrigger>
+            <SelectContent>
+              {options.map((t) => (
+                <SelectItem key={t} value={t} className="text-xs">{t.replace(/_/g, " ")}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notes (internal)" className="h-6 w-36 text-[10px]" />
+          <button onClick={handleLink} disabled={!type || record.isPending} className="text-slate-700 font-medium disabled:text-slate-300">
+            Link
+          </button>
+          <button onClick={() => setLinking(false)} className="text-slate-400">Cancel</button>
+        </span>
+      )}
+    </div>
+  );
+}
+
 function ResponseStatusTracker({
   questionId,
   authorityId,
   authorityName,
   existing,
   events,
+  outcomes,
 }: {
   questionId: string;
   authorityId: string;
   authorityName: string;
   existing: ResponseStatusRow[];
   events: ResponseEventRow[];
+  outcomes: OutcomeRow[];
 }) {
   const { toast } = useToast();
   const [expanded, setExpanded] = React.useState(false);
@@ -764,6 +964,9 @@ function ResponseStatusTracker({
                 </span>
               ) : (
                 <button onClick={() => setVoidingId(e.id)} className="ml-1 text-slate-400 hover:text-red-600">void</button>
+              )}
+              {!e.voided_at && e.region_id && OUTCOME_EVENT_STATUSES.has(e.response_status) && (
+                <EventOutcomes questionId={questionId} event={e} outcomes={outcomes} />
               )}
             </li>
           ))}
@@ -943,6 +1146,7 @@ function QuestionAssignmentPanel({ authorities }: { authorities: Authority[] }) 
   );
   const { data: responseStatuses = [] } = useResponseStatuses(selectedQuestion?.id ?? null);
   const { data: responseEvents = [] } = useResponseEvents(selectedQuestion?.id ?? null);
+  const { data: outcomes = [] } = useExpectationOutcomes(selectedQuestion?.id ?? null);
   const assign = useAssignAuthority();
   const unassign = useUnassignAuthority();
 
@@ -1034,6 +1238,7 @@ function QuestionAssignmentPanel({ authorities }: { authorities: Authority[] }) 
                     authorityName={a.authority_registry?.name ?? "Authority"}
                     existing={responseStatuses}
                     events={responseEvents}
+                    outcomes={outcomes}
                   />
                 </div>
               ))}
