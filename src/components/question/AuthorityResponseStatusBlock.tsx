@@ -13,6 +13,11 @@
 // STATUS_LABELS/STATUS_COLORS are exported so PublicLedgerPage (which needs
 // the exact same status vocabulary, filtered to one region) doesn't
 // maintain a second, driftable copy — same reasoning as EXPECTATION_LABELS.
+//
+// Epic R M-R11 (BR-R13): the current status is derived from the append-only
+// authority_response_events history, and status_updated_at is the date of the
+// latest valid event. 'no_response' is not a final state: it is shown as
+// "No response recorded as of <date>" (responseStatusLabel).
 
 import * as React from "react";
 import { localeFor } from "@/lib/intlFormat";
@@ -50,6 +55,12 @@ export const STATUS_COLORS: Record<string, string> = {
 
 export function formatResponseDate(iso: string): string {
   return new Date(iso).toLocaleDateString(localeFor(i18n.language), { dateStyle: "medium" });
+}
+
+/** Status label; 'no_response' reads "No response recorded as of <date>" (BR-R13). */
+export function responseStatusLabel(t: (key: string, opts?: Record<string, unknown>) => string, status: string, dateIso?: string | null): string {
+  if (status === "no_response" && dateIso) return t("authorityStatus.noResponseAsOf", { date: formatResponseDate(dateIso) });
+  return STATUS_LABEL_KEYS[status] ? t(STATUS_LABEL_KEYS[status]) : status;
 }
 
 function useAuthorityResponses(questionId: string) {
@@ -108,11 +119,11 @@ export function AuthorityResponseStatusBlock({ questionId }: { questionId: strin
                   STATUS_COLORS[r.response_status] ?? "bg-slate-100 text-slate-600"
                 }`}
               >
-                {STATUS_LABEL_KEYS[r.response_status]
-                  ? t(STATUS_LABEL_KEYS[r.response_status])
-                  : r.response_status}
+                {responseStatusLabel(t, r.response_status, r.status_updated_at)}
               </span>
-              <span className="text-[10px] text-slate-400">{formatResponseDate(r.status_updated_at)}</span>
+              {r.response_status !== "no_response" && (
+                <span className="text-[10px] text-slate-400">{formatResponseDate(r.status_updated_at)}</span>
+              )}
             </div>
           </div>
         ))}
