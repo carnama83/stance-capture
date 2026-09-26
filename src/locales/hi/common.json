@@ -1809,7 +1809,15 @@
     "outcomeDaysAfter_other": "संस्करण {{n}} के {{count}} दिन बाद",
     "outcomeSameDay": "संस्करण {{n}} के दिन ही",
     "outcomeBeforeVersion": "संस्करण {{n}} के प्रकाशन से पहले",
-    "noOutcomeRecorded": "{{date}} तक इनके लिए कोई परिणाम दर्ज नहीं: {{types}}"
+    "noOutcomeRecorded": "{{date}} तक इनके लिए कोई परिणाम दर्ज नहीं: {{types}}",
+    "briefDelivered": "ज़िम्मेदार संस्था को भेजा गया सारांश",
+    "briefDeliveredLine": "इन अपेक्षाओं का सारांश {{date}} को {{channel}} के माध्यम से {{authority}} को भेजा गया।",
+    "briefChannelEmail": "ईमेल",
+    "briefChannelPortal": "उसके आधिकारिक पोर्टल",
+    "briefChannelLetter": "पत्र",
+    "briefChannelInPerson": "व्यक्तिगत रूप से सौंपने",
+    "briefChannelRti": "आरटीआई आवेदन",
+    "briefChannelOther": "किसी अन्य आधिकारिक माध्यम"
   },
   "socialAuthButtons": {
     "continueWithGoogle": "Google से जारी रखें",
@@ -2220,5 +2228,16 @@
     "couldNotSave": "आपके पद सहेजे नहीं जा सके। कृपया फिर से कोशिश करें।",
     "associatedOfficesTitle": "उत्तरदाताओं ने इन कार्रवाइयों से किन पदों को जोड़ा",
     "associationLine": "“{{action}}” की अपेक्षा रखने वालों में से {{pct}}% ने इसे {{role}} से जोड़ा"
+  },
+  "publicBrief": {
+    "title": "सार्वजनिक अपेक्षाओं पर सारांश",
+    "print": "प्रिंट करें",
+    "to": "प्रति",
+    "region": "क्षेत्र",
+    "date": "तारीख़",
+    "question": "प्रश्न",
+    "aboutThis": "यह सारांश बताता है कि इस क्षेत्र के उत्तरदाताओं ने क्या अपेक्षा जताई। इसे AI की सहायता से तैयार किया गया और भेजे जाने से पहले Stance Capture ने इसे स्वीकृत किया। यह केवल जवाबों की जानकारी देता है; कोई माँग नहीं करता।",
+    "ledgerLink": "पूरी प्रकाशित बही:",
+    "notAvailable": "यह सारांश उपलब्ध नहीं है।"
   }
 }
