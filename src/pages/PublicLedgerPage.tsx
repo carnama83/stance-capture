@@ -27,6 +27,11 @@
 // Below the current response status, the response history comes from the
 // append-only authority_response_events (get_authority_response_history —
 // no internal notes, no voided events).
+//
+// Epic R R-FR-15 (expectation_outcomes): "What followed" links each expected
+// action to the recorded actions an admin matched to it
+// (get_expectation_outcomes). Structured only — type, institution, status,
+// date, source — with no verdict on whether the action was enough (BR-R08).
 
 import * as React from "react";
 import { localeFor } from "@/lib/intlFormat";
@@ -39,7 +44,7 @@ import { ShareButton } from "@/components/share/ShareButton";
 import { useLanguage } from "@/hooks/useLanguage";
 import { EXPECTATION_LABEL_KEYS } from "@/components/question/ExpectationPrompt";
 import { STATUS_COLORS, formatResponseDate, responseStatusLabel } from "@/components/question/AuthorityResponseStatusBlock";
-import { Loader2, ClipboardCheck, Landmark, History, ExternalLink } from "lucide-react";
+import { Loader2, ClipboardCheck, Landmark, History, ExternalLink, Target } from "lucide-react";
 import { useQuestionAuthorities } from "@/hooks/useQuestionAuthorities";
 import { RoleAssociationList, type RoleAssociation } from "@/components/question/RoleAssociationList";
 
@@ -124,6 +129,39 @@ function useResponseHistory(questionId: string, regionId: string) {
     },
   });
 }
+
+interface OutcomeRow {
+  id: string;
+  expectation_type: string;
+  ledger_version: number;
+  ledger_snapshot_at: string;
+  authority_name: string;
+  government_role_name: string | null;
+  response_status: string;
+  effective_at: string;
+  source_url: string | null;
+}
+
+function useExpectationOutcomes(questionId: string, regionId: string, enabled: boolean) {
+  return useQuery<OutcomeRow[]>({
+    queryKey: ["ledger-expectation-outcomes", questionId, regionId],
+    enabled: enabled && !!questionId && !!regionId,
+    staleTime: 15_000,
+    queryFn: async () => {
+      const sb = getSupabase();
+      if (!sb) return [];
+      const { data, error } = await sb.rpc("get_expectation_outcomes", {
+        p_question_id: questionId,
+        p_region_id: regionId,
+      });
+      if (error) return [];
+      return (data ?? []) as OutcomeRow[];
+    },
+  });
+}
+
+// Types that are not an action have no outcome to record.
+const NON_ACTION_TYPES = new Set(["no_action", "unsure", "no_accountability_expected"]);
 
 function useLedger(questionId: string, regionId: string) {
   return useQuery<LedgerData | null>({
@@ -221,6 +259,7 @@ export default function PublicLedgerPage() {
   const { data: institutions = [] } = useQuestionAuthorities(questionId ?? "");
   const { data: versions = [] } = useLedgerVersions(questionId ?? "", regionId ?? "", !!ledger);
   const { data: history = [] } = useResponseHistory(questionId ?? "", regionId ?? "");
+  const { data: outcomes = [] } = useExpectationOutcomes(questionId ?? "", regionId ?? "", !!ledger);
   const [searchParams] = useSearchParams();
   const requestedVersion = Number(searchParams.get("v")) || null;
 
@@ -273,6 +312,32 @@ export default function PublicLedgerPage() {
   // into the snapshot by publish_expectation_ledger). Snapshots published
   // before the flag existed emphasise nothing rather than guessing.
   const thresholdPct = breakdown.find((r) => r.threshold_pct != null)?.threshold_pct ?? null;
+
+  // R-FR-15: outcomes grouped by expected action, oldest first (the progression).
+  // They are shown whichever version is being viewed; one recorded against a
+  // different version says so.
+  const typeLabel = (type: string) => {
+    const key = EXPECTATION_LABEL_KEYS[type];
+    return key ? t(key) : type;
+  };
+  const outcomesByType = new Map<string, OutcomeRow[]>();
+  for (const o of outcomes) {
+    outcomesByType.set(o.expectation_type, [...(outcomesByType.get(o.expectation_type) ?? []), o]);
+  }
+  // Expected actions with nothing recorded yet: those that met the threshold, or
+  // every action type on snapshots published before the threshold flag existed.
+  const hasFlags = breakdown.some((r) => r.meets_threshold != null);
+  const awaiting = breakdown
+    .filter((r) => !NON_ACTION_TYPES.has(r.expectation_type) && !outcomesByType.has(r.expectation_type))
+    .filter((r) => (hasFlags ? r.meets_threshold === true : true))
+    .map((r) => typeLabel(r.expectation_type));
+  const showOutcomes = outcomesByType.size > 0 || (awaiting.length > 0 && (responses.length > 0 || history.length > 0));
+  const timing = (o: OutcomeRow) => {
+    const days = Math.floor((Date.parse(o.effective_at) - Date.parse(o.ledger_snapshot_at)) / 86_400_000);
+    if (days < 0) return t("publicLedger.outcomeBeforeVersion", { n: o.ledger_version });
+    if (days === 0) return t("publicLedger.outcomeSameDay", { n: o.ledger_version });
+    return t("publicLedger.outcomeDaysAfter", { count: days, n: o.ledger_version });
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-10">
@@ -424,6 +489,54 @@ export default function PublicLedgerPage() {
                   </li>
                 ))}
               </ol>
+            </div>
+          )}
+
+          {showOutcomes && (
+            <div className="mb-5">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Target className="h-3.5 w-3.5 text-slate-400" />
+                <p className="text-xs font-medium text-slate-600">{t("publicLedger.outcomesTitle")}</p>
+              </div>
+              <p className="text-[11px] text-slate-400 mb-2">{t("publicLedger.outcomesIntro")}</p>
+              <div className="space-y-2">
+                {[...outcomesByType.entries()].map(([type, rows]) => (
+                  <div key={type}>
+                    <p className="text-xs font-medium text-slate-700 mb-0.5">{typeLabel(type)}</p>
+                    <ol className="space-y-0.5 border-l border-slate-200 pl-3">
+                      {rows.map((o) => (
+                        <li key={o.id} className="text-[11px] text-slate-600">
+                          <span className="text-slate-400">{formatResponseDate(o.effective_at)}</span>
+                          {" · "}
+                          {o.authority_name}
+                          {o.government_role_name && <span className="text-slate-400"> ({o.government_role_name})</span>}
+                          {" · "}
+                          <span className="font-medium">{responseStatusLabel(t, o.response_status)}</span>
+                          <span className="text-slate-400"> · {timing(o)}</span>
+                          {o.source_url && (
+                            <a
+                              href={o.source_url}
+                              target="_blank"
+                              rel="noreferrer noopener"
+                              className="inline-flex items-center gap-0.5 text-slate-400 hover:text-slate-600 ml-1"
+                            >
+                              {t("publicLedger.source")} <ExternalLink className="h-2.5 w-2.5" />
+                            </a>
+                          )}
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                ))}
+                {awaiting.length > 0 && (
+                  <p className="text-[11px] text-slate-500">
+                    {t("publicLedger.noOutcomeRecorded", {
+                      date: formatDate(new Date().toISOString()),
+                      types: awaiting.join(", "),
+                    })}
+                  </p>
+                )}
+              </div>
             </div>
           )}
 
