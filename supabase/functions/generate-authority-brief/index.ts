@@ -40,7 +40,8 @@ const HARDCODED_SYSTEM_PROMPT = `You write short, neutral, factual briefs for ci
 
 STRICT RULES:
 - Use phrasing like "a majority expect" or "X% expect" — NEVER "residents are demanding", "the public demands", or any accusatory/activist framing.
-- State facts only: participation count, region, the dominant expectation type and its percentage.
+- State facts only: participation count, region, and each expectation type that meets the threshold with its percentage.
+- Respondents could choose several expectations, so percentages are independent and can add up to more than 100%. Never call one expectation "dominant", "top" or "main" when several meet the threshold; report them side by side.
 - Do NOT editorialise, do NOT imply wrongdoing, do NOT use emotionally charged language.
 - Do NOT address the authority directly ("you should...") — describe what respondents expect, in the third person.
 - Output 2-4 sentences, plain prose, no markdown, no headers.`;
@@ -49,7 +50,7 @@ const HARDCODED_USER_TEMPLATE = `Question: {{question_text}}
 Region: {{region_name}}
 Participation: {{participation_count}} respondents
 Time window: {{time_window_start}} to {{time_window_end}}
-Expectation distribution: {{expectation_breakdown}}
+Expectation selection rates (multi-select, independent): {{expectation_breakdown}}
 Anonymous opt-in count (people who chose to make this expectation visible): {{optin_count}}
 
 Write the brief now, following the system rules exactly.`;
@@ -62,10 +63,13 @@ function fillTemplate(template, vars) {
   return out;
 }
 
+// Epic R R-12: mark the types that met the threshold at publish time (frozen
+// in the snapshot), so the model reports them side by side instead of picking
+// a "dominant" one. Older snapshots without the flag are listed plainly.
 function formatBreakdown(snapshot) {
   if (!Array.isArray(snapshot) || snapshot.length === 0) return "no data";
   return snapshot
-    .map((row) => `${row.expectation_type}: ${row.pct_of_respondents}%`)
+    .map((row) => `${row.expectation_type}: ${row.pct_of_respondents}%${row.meets_threshold === true ? " (meets threshold)" : ""}`)
     .join(", ");
 }
 
