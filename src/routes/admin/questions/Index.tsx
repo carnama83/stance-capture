@@ -882,10 +882,47 @@ function EditQuestionDialog({
   const [tags, setTags] = React.useState((row.tags ?? []).join(", "));
   const [location, setLocation] = React.useState(row.location_label ?? "");
   const [contentType, setContentType] = React.useState<ContentType>(row.content_type ?? "general");
+  const [loadingFresh, setLoadingFresh] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
+  // The values the form was last filled with, so Save sends only what the admin changed.
+  const baseline = React.useRef({ question: "", summary: "", tags: "", location: "", contentType: "general" as ContentType });
+
+  const fill = (r: Pick<QuestionDraftRow, "question" | "summary" | "tags" | "location_label" | "content_type">) => {
+    const next = {
+      question: r.question,
+      summary: r.summary ?? "",
+      tags: (r.tags ?? []).join(", "),
+      location: r.location_label ?? "",
+      contentType: (r.content_type ?? "general") as ContentType,
+    };
+    baseline.current = next;
+    setQuestion(next.question);
+    setSummary(next.summary);
+    setTags(next.tags);
+    setLocation(next.location);
+    setContentType(next.contentType);
+  };
+
+  // The list (and so `row`) can be stale: a background reframe may have rewritten the
+  // draft since the page loaded, and useState only reads `row` on first mount. Saving
+  // stale fields used to write the pre-reframe question back. So every open re-reads
+  // the draft from the database before the form is editable.
+  const onOpenChange = async (next: boolean) => {
+    setOpen(next);
+    if (!next) return;
+    fill(row);
+    setLoadingFresh(true);
+    const { data, error } = await supabase
+      .from("question_drafts")
+      .select("question, summary, tags, location_label, content_type")
+      .eq("id", row.id)
+      .maybeSingle();
+    if (!error && data) fill(data as QuestionDraftRow);
+    setLoadingFresh(false);
+  };
 
   const save = async () => {
-    if (saving) return;
+    if (saving || loadingFresh) return;
     setSaving(true);
 
     const tagsArray = tags
@@ -893,15 +930,24 @@ function EditQuestionDialog({
       .map((t) => t.trim())
       .filter(Boolean);
 
+    // Only the fields the admin changed, so a concurrent update to the others is kept.
+    const b = baseline.current;
+    const patch: Record<string, unknown> = {};
+    if (question !== b.question) patch.question = question;
+    if (summary !== b.summary) patch.summary = summary;
+    if (tags !== b.tags) patch.tags = tagsArray;
+    if (location !== b.location) patch.location_label = location || null;
+    if (contentType !== b.contentType) patch.content_type = contentType;
+
+    if (Object.keys(patch).length === 0) {
+      setOpen(false);
+      setSaving(false);
+      return;
+    }
+
     const { error } = await supabase
       .from("question_drafts")
-      .update({
-        question,
-        summary,
-        tags: tagsArray,
-        location_label: location || null,
-        content_type: contentType,
-      })
+      .update(patch)
       .eq("id", row.id);
 
     if (error) {
@@ -925,7 +971,7 @@ function EditQuestionDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
         <Button variant="outline" size="sm">
           <Edit2 className="h-4 w-4 mr-1" /> Edit
@@ -979,8 +1025,8 @@ function EditQuestionDialog({
           </div>
         </div>
         <DialogFooter>
-          <Button onClick={save} disabled={saving}>
-            {saving ? "Saving…" : "Save"}
+          <Button onClick={save} disabled={saving || loadingFresh}>
+            {saving ? "Saving…" : loadingFresh ? "Loading latest…" : "Save"}
           </Button>
         </DialogFooter>
       </DialogContent>
