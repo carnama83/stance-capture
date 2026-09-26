@@ -262,7 +262,9 @@ export default function AdminLiveQuestionShowPage() {
     <Card className="max-w-4xl mx-auto"><CardHeader><CardTitle>Live Question</CardTitle></CardHeader>
       <CardContent>Missing question id.</CardContent></Card>
   );
-  if (loading) return (
+  // Only on first load: a reload after a save must not unmount the panels,
+  // or their "saved" confirmation disappears before anyone sees it.
+  if (loading && !row) return (
     <Card className="max-w-4xl mx-auto"><CardHeader><CardTitle>Live Question</CardTitle></CardHeader>
       <CardContent>Loading…</CardContent></Card>
   );
