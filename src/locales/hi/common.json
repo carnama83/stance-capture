@@ -1802,7 +1802,14 @@
     "otherVersions": "अन्य प्रकाशित संस्करण",
     "versionShort": "संस्करण {{n}} ({{date}})",
     "responseHistory": "जवाब का इतिहास",
-    "source": "स्रोत"
+    "source": "स्रोत",
+    "outcomesTitle": "इसके बाद क्या हुआ",
+    "outcomesIntro": "सार्वजनिक स्रोतों से दर्ज की गई कार्रवाइयाँ, जिन्हें उत्तरदाताओं की अपेक्षाओं से मिलाया गया है। यह केवल दर्ज करता है कि क्या हुआ; यह तय नहीं करता कि वह पर्याप्त था या नहीं।",
+    "outcomeDaysAfter_one": "संस्करण {{n}} के {{count}} दिन बाद",
+    "outcomeDaysAfter_other": "संस्करण {{n}} के {{count}} दिन बाद",
+    "outcomeSameDay": "संस्करण {{n}} के दिन ही",
+    "outcomeBeforeVersion": "संस्करण {{n}} के प्रकाशन से पहले",
+    "noOutcomeRecorded": "{{date}} तक इनके लिए कोई परिणाम दर्ज नहीं: {{types}}"
   },
   "socialAuthButtons": {
     "continueWithGoogle": "Google से जारी रखें",

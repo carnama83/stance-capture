@@ -1802,7 +1802,14 @@
     "otherVersions": "Other published versions",
     "versionShort": "Version {{n}} ({{date}})",
     "responseHistory": "Response history",
-    "source": "source"
+    "source": "source",
+    "outcomesTitle": "What followed",
+    "outcomesIntro": "Actions recorded from public sources, matched to what respondents expected. This records what happened; it does not judge whether it was enough.",
+    "outcomeDaysAfter_one": "{{count}} day after version {{n}}",
+    "outcomeDaysAfter_other": "{{count}} days after version {{n}}",
+    "outcomeSameDay": "same day as version {{n}}",
+    "outcomeBeforeVersion": "before version {{n}} was published",
+    "noOutcomeRecorded": "No outcome recorded as of {{date}} for: {{types}}"
   },
   "socialAuthButtons": {
     "continueWithGoogle": "Continue with Google",
