@@ -32,6 +32,9 @@ interface SnapshotEntry {
   expectation_type: string;
   response_count: number;
   pct_of_respondents: number;
+  /** Epic R R-12: frozen at publish time; absent on snapshots published before the fix. */
+  meets_threshold?: boolean;
+  threshold_pct?: number;
 }
 
 interface LedgerData {
@@ -163,7 +166,11 @@ export default function PublicLedgerPage() {
   const breakdown = [...(ledger.snapshot_summary ?? [])].sort(
     (a, b) => b.pct_of_respondents - a.pct_of_respondents
   );
-  const dominant = breakdown[0]?.expectation_type ?? null;
+  // Epic R R-12 / BR-R09: no single winner. Every type that met the threshold
+  // when the ledger was published is emphasised equally (the flag is frozen
+  // into the snapshot by publish_expectation_ledger). Snapshots published
+  // before the flag existed emphasise nothing rather than guessing.
+  const thresholdPct = breakdown.find((r) => r.threshold_pct != null)?.threshold_pct ?? null;
 
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-10">
@@ -188,28 +195,34 @@ export default function PublicLedgerPage() {
 
           <div className="space-y-2.5 mb-5">
             {breakdown.map((row) => {
-              const isDominant = row.expectation_type === dominant;
+              const qualifies = row.meets_threshold === true;
               const labelKey = EXPECTATION_LABEL_KEYS[row.expectation_type];
               const label = labelKey ? t(labelKey) : row.expectation_type;
               return (
                 <div key={row.expectation_type}>
                   <div className="flex items-center justify-between text-xs mb-1">
-                    <span className={isDominant ? "font-semibold text-slate-800" : "text-slate-600"}>
+                    <span className={qualifies ? "font-semibold text-slate-800" : "text-slate-600"}>
                       {label}
                     </span>
-                    <span className={isDominant ? "font-semibold text-slate-800" : "text-slate-400"}>
+                    <span className={qualifies ? "font-semibold text-slate-800" : "text-slate-400"}>
                       {row.pct_of_respondents}%
                     </span>
                   </div>
                   <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
                     <div
-                      className={isDominant ? "h-full bg-slate-900" : "h-full bg-slate-300"}
+                      className={qualifies ? "h-full bg-slate-900" : "h-full bg-slate-300"}
                       style={{ width: `${Math.min(100, Math.max(0, row.pct_of_respondents))}%` }}
                     />
                   </div>
                 </div>
               );
             })}
+            {/* BR-R09: rates are independent (multi-select), so they can sum past 100%. */}
+            <p className="text-[11px] text-slate-400 pt-1">
+              {thresholdPct != null
+                ? t("expectationSignalBlock.multiSelectNoteWithThreshold", { pct: thresholdPct })
+                : t("expectationSignalBlock.multiSelectNote")}
+            </p>
           </div>
 
           {responses.length > 0 && (
