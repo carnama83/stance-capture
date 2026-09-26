@@ -1145,7 +1145,8 @@
     "searchForACityE": "कोई शहर खोजें (जैसे, बोस्टन)",
     "noMatchingCitiesFound": "कोई मेल खाता शहर नहीं मिला।",
     "savingYourLocation": "आपका स्थान सहेजा जा रहा है…",
-    "locationUpdatedYourRegionalStats": "स्थान अपडेट हुआ। आपके क्षेत्रीय आँकड़े जल्द ही ताज़ा हो जाएँगे।"
+    "locationUpdatedYourRegionalStats": "स्थान अपडेट हुआ। आपके क्षेत्रीय आँकड़े जल्द ही ताज़ा हो जाएँगे।",
+    "couldNotSaveLocation": "आपका स्थान सहेजा नहीं जा सका। कृपया फिर से कोशिश करें।"
   },
   "insights": {
     "questionsAnswered": "उत्तर दिए गए सवाल",
