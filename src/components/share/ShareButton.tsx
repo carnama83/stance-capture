@@ -459,6 +459,11 @@ export function ShareButton({
     }
   }
 
+  // X and LinkedIn aren't enabled for launch yet: shown greyed out with a
+  // "Coming soon" label and not clickable. Remove a platform from this list
+  // to switch it back on.
+  const COMING_SOON: Platform[] = ["twitter_direct", "linkedin"];
+
   // Build platform list shown in the panel
   const showNative = typeof navigator !== "undefined" && !!navigator.share;
   // Always show twitter_direct first (it adapts its label/appearance based on token)
@@ -517,8 +522,9 @@ export function ShareButton({
             </p>
           </div>
 
-          {/* X connect nudge — only shown when no X token and not loading */}
-          {!tokenLoading && !hasToken && (
+          {/* X connect nudge — only shown when no X token and not loading,
+              and hidden while X sharing is "Coming soon" */}
+          {!COMING_SOON.includes("twitter_direct") && !tokenLoading && !hasToken && (
             <a
               href="/settings/account"
               className="flex items-center gap-2.5 px-3 py-2 bg-amber-50 border-b border-amber-100 hover:bg-amber-100 transition-colors"
@@ -543,7 +549,10 @@ export function ShareButton({
               const isCopy = platform === "copy";
               const isDirectX = platform === "twitter_direct";
               const isLoading = sharing === platform;
-              const isDisabled = isLoading || (isDirectX && tokenLoading);
+              const isComingSoon = COMING_SOON.includes(platform);
+              const isDisabled = isComingSoon || isLoading || (isDirectX && tokenLoading);
+              const sublabel = isComingSoon ? t("share.comingSoon") : cfg.sublabel;
+              const badgeIcon = isComingSoon ? null : cfg.badgeIcon;
 
               return (
                 <button
@@ -551,14 +560,20 @@ export function ShareButton({
                   type="button"
                   onClick={() => handleShare(platform)}
                   disabled={isDisabled}
-                  className="w-full flex items-center gap-3 px-2.5 py-2 rounded-lg text-sm text-slate-700 hover:bg-slate-50 transition-colors disabled:opacity-50 text-left"
+                  aria-disabled={isDisabled}
+                  className={[
+                    "w-full flex items-center gap-3 px-2.5 py-2 rounded-lg text-sm text-slate-700 transition-colors text-left",
+                    isComingSoon
+                      ? "cursor-not-allowed opacity-60"
+                      : "hover:bg-slate-50 disabled:opacity-50",
+                  ].join(" ")}
                 >
                   {/* Icon */}
                   <span
                     className={[
                       "flex h-8 w-8 items-center justify-center rounded-lg shrink-0 transition-colors",
-                      cfg.textClass,
-                      isCopy || platform === "native" ? "bg-slate-100" : cfg.bgClass,
+                      isComingSoon ? "text-slate-400 bg-slate-100" : cfg.textClass,
+                      isComingSoon ? "" : isCopy || platform === "native" ? "bg-slate-100" : cfg.bgClass,
                     ].join(" ")}
                   >
                     {isLoading ? (
@@ -575,16 +590,16 @@ export function ShareButton({
                     <span className="block font-medium text-slate-800 text-sm">
                       {isCopy && copied ? t("share.copied") : cfg.label}
                     </span>
-                    {cfg.sublabel && (
+                    {sublabel && (
                       <span className="block text-[11px] text-slate-400 mt-0.5">
-                        {cfg.sublabel}
+                        {sublabel}
                       </span>
                     )}
                   </span>
 
                   {/* Badge (Zap for direct, Lock for locked) */}
-                  {cfg.badgeIcon && (
-                    <span className="shrink-0">{cfg.badgeIcon}</span>
+                  {badgeIcon && (
+                    <span className="shrink-0">{badgeIcon}</span>
                   )}
                 </button>
               );
