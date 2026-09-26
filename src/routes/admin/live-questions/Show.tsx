@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { ExternalLink, RefreshCw, CheckCircle2, CornerDownRight } from "lucide-react";
+import { EditQuestionWordingPanel } from "@/components/question/EditQuestionWordingPanel";
 
 type QuestionStatus = "active" | "archived";
 type QuestionPhase  = "initial" | "update" | "resolution" | "follow_up";
@@ -428,6 +429,14 @@ export default function AdminLiveQuestionShowPage() {
               <AddContextPanel questionId={row.id} onSuccess={loadQuestion} />
               <UpdatePhasePanel questionId={row.id} currentPhase={row.phase ?? "initial"} onSuccess={loadQuestion} />
             </div>
+            <section className="space-y-2">
+              <h2 className="text-sm font-semibold">Edit Wording</h2>
+              <p className="text-xs text-muted-foreground">
+                Only until the first answer. Describe the change, or use "Suggest from Background" after
+                adding context; review the AI suggestion, then apply. Other languages are re-translated.
+              </p>
+              <EditQuestionWordingPanel questionId={row.id} mode="admin" onApplied={loadQuestion} />
+            </section>
           </>
         )}
       </CardContent>

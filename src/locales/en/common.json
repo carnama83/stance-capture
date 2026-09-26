@@ -2238,5 +2238,43 @@
     "aboutThis": "This brief summarises what respondents in this region said they expect. It was drafted with AI assistance and approved by Stance Capture before it was sent. It reports responses; it does not make demands.",
     "ledgerLink": "The full published ledger:",
     "notAvailable": "This brief is not available."
+  },
+  "questionEdit": {
+    "editButton": "Edit question",
+    "intro": "Nobody has answered yet, so you can still improve the wording. Say what to add or change, and you'll get a suggested update to approve.",
+    "locked": "People have started answering, so the wording is now fixed. This keeps every answer tied to the same question.",
+    "changeLabel": "What do you want to add or change?",
+    "changePlaceholder": "e.g. Mention that the report came out last week",
+    "useBackground": "Suggest from Background",
+    "suggest": "Suggest updated question",
+    "suggesting": "Writing a suggestion…",
+    "current": "Current",
+    "suggested": "Suggested",
+    "scaleEnds": "Slider ends",
+    "background": "Background",
+    "whatChanged": "What changed",
+    "apply": "Update question",
+    "applying": "Updating…",
+    "tryAgain": "Try a different change",
+    "cancel": "Cancel",
+    "applied": "Question updated. Other languages will refresh in a minute or two.",
+    "adminWarning": "Check before applying:",
+    "errors": {
+      "QUESTION_LOCKED": "Someone has just answered this question, so its wording can no longer change.",
+      "QUESTION_CHANGED": "This question was changed after the suggestion was made. Please ask for a new suggestion.",
+      "SUGGESTION_EXPIRED": "This suggestion has expired. Please ask for a new one.",
+      "SUGGESTION_NOT_PENDING": "This suggestion has already been used or replaced. Please ask for a new one.",
+      "CHANGE_TOO_SHORT": "Add a little more detail (at least 5 characters).",
+      "CHANGE_TOO_LONG": "Keep it under 500 characters.",
+      "TOO_MANY_SUGGESTIONS": "You've asked for a lot of suggestions this hour. Please try again later.",
+      "NEEDS_CHANGES": "The suggested wording didn't pass our fairness check. Try describing the change differently.",
+      "UNSAFE": "That change can't be made because it breaks our content rules.",
+      "CANNOT_REVISE": "That change couldn't be turned into a fair single question.",
+      "NO_CHANGE": "The suggestion came out the same as the current question. Try describing the change more specifically.",
+      "LANGUAGE_NOT_SUPPORTED": "Editing is currently available only for questions first written in English.",
+      "FORBIDDEN": "Only the person who posted this question or an admin can edit it.",
+      "NO_BACKGROUND": "This question has no background to work from yet.",
+      "generic": "Something went wrong. Please try again."
+    }
   }
 }

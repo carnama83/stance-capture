@@ -16,8 +16,11 @@
 //     "ready to publish" action MyProposalsPage's list already offers —
 //     Publish is a status transition, not a text edit, so it stays
 //     available even though this view has no text-editing controls.
-//   - everything else (proposed/screening/rejected/published/withdrawn/
-//     reframing/approved): fully read-only.
+//   - published: read-only, except that until anyone answers, the proposer
+//     can ask for an AI-suggested rewording and approve it
+//     (EditQuestionWordingPanel -> question-edit edge function).
+//   - everything else (proposed/screening/rejected/withdrawn/reframing/
+//     approved): fully read-only.
 
 import * as React from "react";
 import { useParams, Link } from "react-router-dom";
@@ -31,6 +34,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SUPABASE_URL, getJwt, supabaseHeaders } from "@/lib/env";
 import { VideoRecorderPanel } from "@/components/ugq/VideoRecorderPanel";
+import { EditQuestionWordingPanel } from "@/components/question/EditQuestionWordingPanel";
 import { useTranslation } from "react-i18next";
 
 // Same shape as MyProposalsPage/ProposeQuestionModal's PreviewReframe,
@@ -358,6 +362,18 @@ export default function ProposalDetailPage() {
                         </Link>
                       </Button>
                     )}
+                  </div>
+                )}
+
+                {/* Sep 2026: the wording can still be improved until someone
+                    answers; the panel shows a locked note after that. */}
+                {proposal.status === "published" && proposal.reframed_question_id && (
+                  <div className="pt-2 border-t border-slate-100">
+                    <EditQuestionWordingPanel
+                      questionId={proposal.reframed_question_id}
+                      mode="proposer"
+                      onApplied={refetchAll}
+                    />
                   </div>
                 )}
 
