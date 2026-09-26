@@ -9,6 +9,9 @@
 // Every write goes through set_my_question_expectations(), which replaces the
 // set in one transaction and appends a private revision row. An empty set is
 // a withdrawal: the rows leave the aggregates immediately, the history stays.
+//
+// Epic R M-R10: once the user holds an action-type expectation, the optional
+// government-office tags (ExpectationRoleTags) appear below it.
 
 import * as React from "react";
 import { useTranslation } from "react-i18next";
@@ -22,6 +25,7 @@ import {
   isExpectationPromptHandled,
   type ExpectationType,
 } from "@/components/question/ExpectationPrompt";
+import { ExpectationRoleTags } from "@/components/question/ExpectationRoleTags";
 
 const PROMPT_HANDLED_KEY_PREFIX = "sc_expectation_handled_";
 
@@ -123,6 +127,9 @@ export function MyExpectations({
       const saved = await saveMyExpectations(questionId, types);
       qc.setQueryData(["my-expectations", userId, questionId], [...saved].sort());
       qc.invalidateQueries({ queryKey: ["expectation-signal", questionId] });
+      // Withdrawn expectations withdraw their office tags on the server.
+      qc.invalidateQueries({ queryKey: ["my-role-tags", userId, questionId] });
+      qc.invalidateQueries({ queryKey: ["expectation-role-options", userId, questionId] });
       setEditing(false);
     } catch (err: any) {
       console.error("[MyExpectations] save failed", err);
@@ -169,13 +176,16 @@ export function MyExpectations({
 
       {!editing ? (
         current.length > 0 ? (
-          <div className="flex flex-wrap gap-1">
-            {current.map((type) => (
-              <span key={type} className="text-[10px] rounded-full bg-slate-100 text-slate-700 px-2 py-0.5">
-                {label(type)}
-              </span>
-            ))}
-          </div>
+          <>
+            <div className="flex flex-wrap gap-1">
+              {current.map((type) => (
+                <span key={type} className="text-[10px] rounded-full bg-slate-100 text-slate-700 px-2 py-0.5">
+                  {label(type)}
+                </span>
+              ))}
+            </div>
+            <ExpectationRoleTags questionId={questionId} userId={userId} expectationTypes={current} />
+          </>
         ) : (
           <p className="text-[11px] text-slate-400">{t("myExpectations.none")}</p>
         )

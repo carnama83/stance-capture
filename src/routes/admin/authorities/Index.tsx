@@ -2,6 +2,7 @@
 // Epic R — M-R02: Admin Authority Management (/admin/authorities)
 // Epic R — M-R07: Pending Suggestions tab (QA-R19)
 // Epic R — M-R09: Government Roles tab (GovernmentRolesPanel)
+// Epic R — M-R10: government-role suggestions per question (RoleSuggestionsSection)
 //
 // Two-panel layout per Epic R doc §6.4:
 //   Left  — authority_registry CRUD
@@ -29,6 +30,7 @@ import {
 } from "@/components/ui/select";
 import { RegionMultiSelect } from "@/components/admin/RegionMultiSelect";
 import { GovernmentRolesPanel } from "@/components/admin/GovernmentRolesPanel";
+import { RoleSuggestionsSection } from "@/components/admin/RoleSuggestionsSection";
 import { Landmark, Plus, Trash2, Pencil, Search, X, Loader2, Check, ExternalLink, Inbox } from "lucide-react";
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -892,6 +894,8 @@ function QuestionAssignmentPanel({ authorities }: { authorities: Authority[] }) 
               </div>
             </div>
           )}
+
+          <RoleSuggestionsSection questionId={selectedQuestion.id} contentType={selectedQuestion.content_type} />
         </div>
       )}
     </div>

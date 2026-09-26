@@ -12,6 +12,10 @@
 // answered — per doc §6.2, this sits in the same "Expectation & Authority
 // Section" as AuthorityBlock, which also isn't stance-gated. BR-R01 governs
 // the CAPTURE prompt (post-stance only), not this display.
+//
+// Epic R M-R10 (US-R19): below the breakdown, the offices respondents
+// associated with each action (get_expectation_role_signal — aggregate only,
+// same crossed-signal gate, minimum count per office).
 
 import * as React from "react";
 import { useTranslation } from "react-i18next";
@@ -19,6 +23,7 @@ import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getSupabase } from "@/lib/supabaseClient";
 import { fetchUserRegionId } from "@/lib/userRegion";
+import { RoleAssociationList, type RoleAssociation } from "@/components/question/RoleAssociationList";
 import { SUPABASE_URL, getJwt, supabaseHeaders } from "@/lib/env";
 import { BarChart3, Megaphone, Check } from "lucide-react";
 import { EXPECTATION_LABEL_KEYS } from "@/components/question/ExpectationPrompt";
@@ -56,6 +61,24 @@ interface SignalData {
   qualifyingTypes: string[];
   thresholdPct: number | null;
   regionName: string | null;
+}
+
+function useExpectationRoleSignal(questionId: string, regionId: string | null, enabled: boolean) {
+  return useQuery<RoleAssociation[]>({
+    queryKey: ["expectation-role-signal", questionId, regionId],
+    enabled: !!questionId && enabled,
+    staleTime: 30_000,
+    queryFn: async () => {
+      const sb = getSupabase();
+      if (!sb) return [];
+      const { data, error } = await sb.rpc("get_expectation_role_signal", {
+        p_question_id: questionId,
+        p_region_id: regionId,
+      });
+      if (error) throw error;
+      return (Array.isArray(data) ? data : []) as RoleAssociation[];
+    },
+  });
 }
 
 function useExpectationSignal(questionId: string, regionId: string | null, regionResolved: boolean) {
@@ -333,6 +356,7 @@ export function ExpectationSignalBlock({ questionId }: { questionId: string }) {
   }, [userId]);
 
   const { data } = useExpectationSignal(questionId, regionId, regionResolved);
+  const { data: roleSignal = [] } = useExpectationRoleSignal(questionId, regionId, !!data?.signalCrossed);
 
   if (!data?.signalCrossed || data.breakdown.length === 0) return null;
 
@@ -384,6 +408,8 @@ export function ExpectationSignalBlock({ questionId }: { questionId: string }) {
           ? t("expectationSignalBlock.multiSelectNoteWithThreshold", { pct: data.thresholdPct })
           : t("expectationSignalBlock.multiSelectNote")}
       </p>
+
+      <RoleAssociationList entries={roleSignal} title={t("expectationRoles.associatedOfficesTitle")} />
 
       {userId && regionId && (
         <CollectiveActionOptIn questionId={questionId} regionId={regionId} userId={userId} />
