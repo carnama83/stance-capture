@@ -141,8 +141,6 @@ export default function PrivacyPolicy() {
           <p style={styles.body}>
             {t("privacy.s13.org")}
             <br />
-            {t("privacy.s13.address")}
-            <br />
             {t("privacy.s13.emailLabel")}{" "}
             <a style={styles.link} href={CONTACT_MAILTO}>
               {CONTACT_EMAIL}
