@@ -44,7 +44,7 @@ import { ShareButton } from "@/components/share/ShareButton";
 import { useLanguage } from "@/hooks/useLanguage";
 import { EXPECTATION_LABEL_KEYS } from "@/components/question/ExpectationPrompt";
 import { STATUS_COLORS, formatResponseDate, responseStatusLabel } from "@/components/question/AuthorityResponseStatusBlock";
-import { Loader2, ClipboardCheck, Landmark, History, ExternalLink, Target } from "lucide-react";
+import { Loader2, ClipboardCheck, Landmark, History, ExternalLink, Target, Send } from "lucide-react";
 import { useQuestionAuthorities } from "@/hooks/useQuestionAuthorities";
 import { RoleAssociationList, type RoleAssociation } from "@/components/question/RoleAssociationList";
 
@@ -160,6 +160,42 @@ function useExpectationOutcomes(questionId: string, regionId: string, enabled: b
   });
 }
 
+// Epic R M-R06: an approved brief delivered by an admin through an official
+// channel. Institution, date and channel only — no recipient and no brief text.
+interface BriefDeliveryRow {
+  id: string;
+  authority_name: string;
+  channel: string;
+  delivered_at: string;
+}
+
+const BRIEF_CHANNEL_KEYS: Record<string, string> = {
+  email: "publicLedger.briefChannelEmail",
+  official_portal: "publicLedger.briefChannelPortal",
+  letter: "publicLedger.briefChannelLetter",
+  in_person: "publicLedger.briefChannelInPerson",
+  rti: "publicLedger.briefChannelRti",
+  other: "publicLedger.briefChannelOther",
+};
+
+function useBriefDeliveries(questionId: string, regionId: string, enabled: boolean) {
+  return useQuery<BriefDeliveryRow[]>({
+    queryKey: ["ledger-brief-deliveries", questionId, regionId],
+    enabled: enabled && !!questionId && !!regionId,
+    staleTime: 15_000,
+    queryFn: async () => {
+      const sb = getSupabase();
+      if (!sb) return [];
+      const { data, error } = await sb.rpc("get_brief_deliveries", {
+        p_question_id: questionId,
+        p_region_id: regionId,
+      });
+      if (error) return [];
+      return (data ?? []) as BriefDeliveryRow[];
+    },
+  });
+}
+
 // Types that are not an action have no outcome to record.
 const NON_ACTION_TYPES = new Set(["no_action", "unsure", "no_accountability_expected"]);
 
@@ -260,6 +296,7 @@ export default function PublicLedgerPage() {
   const { data: versions = [] } = useLedgerVersions(questionId ?? "", regionId ?? "", !!ledger);
   const { data: history = [] } = useResponseHistory(questionId ?? "", regionId ?? "");
   const { data: outcomes = [] } = useExpectationOutcomes(questionId ?? "", regionId ?? "", !!ledger);
+  const { data: deliveries = [] } = useBriefDeliveries(questionId ?? "", regionId ?? "", !!ledger);
   const [searchParams] = useSearchParams();
   const requestedVersion = Number(searchParams.get("v")) || null;
 
@@ -489,6 +526,26 @@ export default function PublicLedgerPage() {
                   </li>
                 ))}
               </ol>
+            </div>
+          )}
+
+          {deliveries.length > 0 && (
+            <div className="mb-5">
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <Send className="h-3.5 w-3.5 text-slate-400" />
+                <p className="text-xs font-medium text-slate-600">{t("publicLedger.briefDelivered")}</p>
+              </div>
+              <ul className="space-y-0.5">
+                {deliveries.map((d) => (
+                  <li key={d.id} className="text-[11px] text-slate-600">
+                    {t("publicLedger.briefDeliveredLine", {
+                      authority: d.authority_name,
+                      date: formatResponseDate(d.delivered_at),
+                      channel: BRIEF_CHANNEL_KEYS[d.channel] ? t(BRIEF_CHANNEL_KEYS[d.channel]) : d.channel,
+                    })}
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
 

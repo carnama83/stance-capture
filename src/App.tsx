@@ -41,6 +41,7 @@ import Footer from "./components/Footer";
 // Question detail page (user-facing)
 import QuestionDetailPage from "./pages/QuestionDetailPage";
 import PublicLedgerPage from "./pages/PublicLedgerPage";
+import PublicBriefPage from "./pages/PublicBriefPage";
 
 // Topics
 import TopicsIndex from "@/routes/topics/Index";
@@ -249,6 +250,8 @@ const App: React.FC = () => {
               {/* Epic R — M-R04: Public Expectation Ledger. Fully public,
                   no login, no AppTopBar chrome — mirrors /embed's posture. */}
               <Route path="/ledger/:questionId/:regionId" element={<PublicLedgerPage />} />
+              {/* Epic R — M-R06: printable approved authority brief, link-only. */}
+              <Route path="/brief/:briefId" element={<PublicBriefPage />} />
 
               {/* Topics */}
               <Route path={ROUTES.TOPICS} element={<TopicsIndex />} />

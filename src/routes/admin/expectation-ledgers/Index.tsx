@@ -237,24 +237,121 @@ function useAllBriefs() {
   });
 }
 
-// Plain table write — approving/marking delivered is just a status change,
-// no external call or fan-out involved (unlike generation itself).
-function useUpdateBriefStatus() {
+// Approving is a plain table write (a status change, no fan-out). Delivery is
+// not: since M-R06 "delivered" is derived from recorded deliveries (below), and
+// the database refuses a bare status change to 'delivered'.
+function useApproveBrief() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (vars: { id: string; status: "approved" | "delivered" }) => {
+    mutationFn: async (vars: { id: string }) => {
       const sb = getSupabase();
       if (!sb) throw new Error("Supabase not available");
       const { data: userData } = await sb.auth.getUser();
-      const updates: Record<string, unknown> = { status: vars.status };
-      if (vars.status === "approved") {
-        updates.approved_by = userData?.user?.id ?? null;
-        updates.approved_at = new Date().toISOString();
-      }
-      const { error } = await sb.from("authority_briefs").update(updates).eq("id", vars.id);
+      const { error } = await sb
+        .from("authority_briefs")
+        .update({ status: "approved", approved_by: userData?.user?.id ?? null, approved_at: new Date().toISOString() })
+        .eq("id", vars.id);
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-briefs-all"] }),
+  });
+}
+
+// Epic R M-R06 (decided 26 Sep 2026): the platform never contacts an
+// institution. An admin sends the approved brief (its printable /brief/:id page)
+// through the institution's official channel and records each delivery here.
+// Deliveries are append-only; a mistaken one is voided with a reason.
+interface DeliveryRow {
+  id: string;
+  brief_id: string;
+  channel: string;
+  recipient: string;
+  delivered_at: string;
+  reference: string | null;
+  evidence_url: string | null;
+  notes: string | null;
+  voided_at: string | null;
+  void_reason: string | null;
+}
+
+const DELIVERY_CHANNELS = [
+  { value: "email", label: "Email" },
+  { value: "official_portal", label: "Official portal" },
+  { value: "letter", label: "Letter" },
+  { value: "in_person", label: "In person" },
+  { value: "rti", label: "RTI application" },
+  { value: "other", label: "Other official channel" },
+];
+
+function useBriefDeliveries() {
+  return useQuery<DeliveryRow[]>({
+    queryKey: ["admin-brief-deliveries"],
+    staleTime: 10_000,
+    queryFn: async () => {
+      const sb = getSupabase();
+      if (!sb) throw new Error("Supabase not available");
+      const { data, error } = await sb
+        .from("authority_brief_deliveries")
+        .select("id, brief_id, channel, recipient, delivered_at, reference, evidence_url, notes, voided_at, void_reason")
+        .order("delivered_at", { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as DeliveryRow[];
+    },
+  });
+}
+
+function useRecordDelivery() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (vars: {
+      briefId: string;
+      channel: string;
+      recipient: string;
+      date: string;
+      reference: string;
+      evidenceUrl: string;
+      notes: string;
+    }) => {
+      const sb = getSupabase();
+      if (!sb) throw new Error("Supabase not available");
+      // A date-only value is recorded at the end of that day in UTC, capped at now.
+      const when = vars.date
+        ? new Date(Math.min(Date.parse(`${vars.date}T23:59:59Z`), Date.now())).toISOString()
+        : null;
+      const { error } = await sb.rpc("admin_record_brief_delivery", {
+        p_brief_id: vars.briefId,
+        p_channel: vars.channel,
+        p_recipient: vars.recipient,
+        p_delivered_at: when,
+        p_reference: vars.reference || null,
+        p_evidence_url: vars.evidenceUrl || null,
+        p_notes: vars.notes || null,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-briefs-all"] });
+      qc.invalidateQueries({ queryKey: ["admin-brief-deliveries"] });
+    },
+  });
+}
+
+function useVoidDelivery() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (vars: { deliveryId: string; reason: string }) => {
+      const sb = getSupabase();
+      if (!sb) throw new Error("Supabase not available");
+      const { error } = await sb.rpc("admin_void_brief_delivery", {
+        p_delivery_id: vars.deliveryId,
+        p_reason: vars.reason,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-briefs-all"] });
+      qc.invalidateQueries({ queryKey: ["admin-brief-deliveries"] });
+    },
   });
 }
 
@@ -563,9 +660,59 @@ function LedgerListPanel() {
 
 // ── Briefs review panel (M-R06) ─────────────────────────────────────────
 
-function BriefCard({ brief }: { brief: BriefRow }) {
+function BriefCard({ brief, deliveries }: { brief: BriefRow; deliveries: DeliveryRow[] }) {
   const { toast } = useToast();
-  const updateStatus = useUpdateBriefStatus();
+  const approve = useApproveBrief();
+  const record = useRecordDelivery();
+  const voidDelivery = useVoidDelivery();
+  const [recording, setRecording] = React.useState(false);
+  const [channel, setChannel] = React.useState("email");
+  const [recipient, setRecipient] = React.useState("");
+  const [date, setDate] = React.useState(() => new Date().toISOString().slice(0, 10));
+  const [reference, setReference] = React.useState("");
+  const [evidenceUrl, setEvidenceUrl] = React.useState("");
+  const [notes, setNotes] = React.useState("");
+  const [voidingId, setVoidingId] = React.useState<string | null>(null);
+  const [voidReason, setVoidReason] = React.useState("");
+  const mine = deliveries.filter((d) => d.brief_id === brief.id);
+  const deliverable = brief.status === "approved" || brief.status === "delivered";
+
+  async function handleRecord() {
+    if (!recipient.trim()) {
+      toast({ title: "Say who it was delivered to", variant: "destructive" });
+      return;
+    }
+    if (evidenceUrl && !/^https?:\/\//i.test(evidenceUrl.trim())) {
+      toast({ title: "Evidence must be an http(s) URL", variant: "destructive" });
+      return;
+    }
+    try {
+      await record.mutateAsync({
+        briefId: brief.id, channel, recipient: recipient.trim(), date,
+        reference: reference.trim(), evidenceUrl: evidenceUrl.trim(), notes: notes.trim(),
+      });
+      toast({ title: "Delivery recorded", description: "The public ledger now says the brief was delivered." });
+      setRecording(false);
+      setRecipient(""); setReference(""); setEvidenceUrl(""); setNotes("");
+    } catch (err: any) {
+      toast({ title: "Record failed", description: err?.message, variant: "destructive" });
+    }
+  }
+
+  async function handleVoid(deliveryId: string) {
+    if (!voidReason.trim()) {
+      toast({ title: "Give a reason for voiding", variant: "destructive" });
+      return;
+    }
+    try {
+      await voidDelivery.mutateAsync({ deliveryId, reason: voidReason.trim() });
+      toast({ title: "Delivery voided" });
+      setVoidingId(null);
+      setVoidReason("");
+    } catch (err: any) {
+      toast({ title: "Void failed", description: err?.message, variant: "destructive" });
+    }
+  }
 
   return (
     <div className="rounded-lg border border-slate-100 p-3">
@@ -590,17 +737,43 @@ function BriefCard({ brief }: { brief: BriefRow }) {
         {brief.brief_text}
       </p>
 
-      <div className="flex gap-2">
+      {mine.length > 0 && (
+        <ul className="mb-2 space-y-1 border-l border-slate-200 pl-2.5">
+          {mine.map((d) => (
+            <li key={d.id} className={`text-[10px] ${d.voided_at ? "text-slate-300" : "text-slate-600"}`}>
+              {new Date(d.delivered_at).toLocaleDateString()} · {DELIVERY_CHANNELS.find((c) => c.value === d.channel)?.label ?? d.channel} · {d.recipient}
+              {d.reference && <span className="text-slate-400"> · ref {d.reference}</span>}
+              {d.evidence_url && (
+                <a href={d.evidence_url} target="_blank" rel="noreferrer" className="ml-1 text-slate-400 hover:text-slate-700">evidence</a>
+              )}
+              {d.notes && <span className="text-slate-400"> · {d.notes}</span>}
+              {d.voided_at ? (
+                <span className="text-slate-400"> (voided: {d.void_reason})</span>
+              ) : voidingId === d.id ? (
+                <span className="inline-flex items-center gap-1 ml-1">
+                  <Input value={voidReason} onChange={(e) => setVoidReason(e.target.value)} placeholder="Reason" className="h-6 w-40 text-[10px]" />
+                  <button onClick={() => handleVoid(d.id)} className="text-red-600" disabled={voidDelivery.isPending}>Void</button>
+                  <button onClick={() => { setVoidingId(null); setVoidReason(""); }} className="text-slate-400">Cancel</button>
+                </span>
+              ) : (
+                <button onClick={() => setVoidingId(d.id)} className="ml-1 text-slate-400 hover:text-red-600">void</button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="flex flex-wrap gap-2">
         {brief.status === "draft" && (
           <Button
             size="sm"
             variant="outline"
             className="gap-1.5 text-xs h-7"
-            disabled={updateStatus.isPending}
+            disabled={approve.isPending}
             onClick={async () => {
               try {
-                await updateStatus.mutateAsync({ id: brief.id, status: "approved" });
-                toast({ title: "Brief approved" });
+                await approve.mutateAsync({ id: brief.id });
+                toast({ title: "Brief approved", description: "Its text is now frozen. Open the printable page to send it." });
               } catch (err: any) {
                 toast({ title: "Approve failed", description: err?.message, variant: "destructive" });
               }
@@ -609,31 +782,66 @@ function BriefCard({ brief }: { brief: BriefRow }) {
             <Check className="h-3 w-3" /> Approve
           </Button>
         )}
-        {brief.status === "approved" && (
-          <Button
-            size="sm"
-            variant="outline"
-            className="gap-1.5 text-xs h-7"
-            disabled={updateStatus.isPending}
-            onClick={async () => {
-              try {
-                await updateStatus.mutateAsync({ id: brief.id, status: "delivered" });
-                toast({ title: "Marked delivered" });
-              } catch (err: any) {
-                toast({ title: "Update failed", description: err?.message, variant: "destructive" });
-              }
-            }}
-          >
-            <Send className="h-3 w-3" /> Mark delivered
-          </Button>
+        {deliverable && (
+          <>
+            <Button asChild size="sm" variant="outline" className="gap-1.5 text-xs h-7">
+              <Link to={`/brief/${brief.id}`} target="_blank" rel="noreferrer">
+                <ExternalLink className="h-3 w-3" /> Printable page
+              </Link>
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5 text-xs h-7"
+              onClick={() => setRecording((v) => !v)}
+            >
+              <Send className="h-3 w-3" /> {recording ? "Cancel" : "Record a delivery"}
+            </Button>
+          </>
         )}
       </div>
+
+      {recording && (
+        <div className="mt-2 p-2.5 rounded-lg bg-slate-50 border border-slate-100 space-y-2">
+          <p className="text-[10px] text-slate-500">
+            Stance Capture never sends briefs itself. Send the printable page through the institution's official
+            channel, then record it here. Recipient, reference, evidence and notes stay internal; the public ledger
+            shows only the institution, date and channel.
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <Select value={channel} onValueChange={setChannel}>
+              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {DELIVERY_CHANNELS.map((c) => (
+                  <SelectItem key={c.value} value={c.value} className="text-xs">{c.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Input
+              type="date"
+              value={date}
+              max={new Date().toISOString().slice(0, 10)}
+              onChange={(e) => setDate(e.target.value)}
+              className="h-8 text-xs"
+              title="When it was delivered"
+            />
+          </div>
+          <Input value={recipient} onChange={(e) => setRecipient(e.target.value)} placeholder="Delivered to (office, address or portal)" className="h-8 text-xs" />
+          <Input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Reference / acknowledgement no. (optional)" className="h-8 text-xs" />
+          <Input value={evidenceUrl} onChange={(e) => setEvidenceUrl(e.target.value)} placeholder="Evidence URL (optional)" className="h-8 text-xs" />
+          <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notes (optional)" className="h-8 text-xs" />
+          <Button size="sm" className="w-full" disabled={record.isPending} onClick={handleRecord}>
+            {record.isPending ? "Saving…" : "Record delivery"}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
 
 function BriefsPanel() {
   const { data: briefs = [], isLoading } = useAllBriefs();
+  const { data: deliveries = [] } = useBriefDeliveries();
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4">
@@ -642,7 +850,8 @@ function BriefsPanel() {
         <h2 className="text-sm font-semibold text-slate-800">Authority Briefs (Phase 2)</h2>
       </div>
       <p className="text-[11px] text-slate-400 mb-3">
-        AI-generated, never shown publicly — admin approval required before "delivered" (BR-R04).
+        AI-generated. A draft is never shown publicly; an approved brief gets a link-only printable page to send
+        through the institution's official channel. Record each delivery (BR-R04; M-R06).
       </p>
 
       {isLoading ? (
@@ -654,7 +863,7 @@ function BriefsPanel() {
       ) : (
         <div className="space-y-2 max-h-[500px] overflow-y-auto">
           {briefs.map((b) => (
-            <BriefCard key={b.id} brief={b} />
+            <BriefCard key={b.id} brief={b} deliveries={deliveries} />
           ))}
         </div>
       )}
