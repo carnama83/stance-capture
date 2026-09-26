@@ -14,6 +14,52 @@ const VALID_FRAMING_STYLES = new Set([
 ]);
 const QUALITY_THRESHOLD = 8;
 const MAX_WORDS = 65;
+// Epic R M-R07: incident drafts (question_drafts.content_type='incident') are reframed
+// with the ai_prompts "incident_accountability" template instead of the QF prompt, so a
+// reframe run cannot flatten an incident into policy framing or name an individual
+// (BR-R07). Fallback text kept in sync with admin-create-question-draft/index.ts.
+const HARDCODED_INCIDENT_PROMPT = `You are a civic question writer for INCIDENT questions: a specific event in which people were harmed or put at risk (a death, injury, illness, displacement, or loss of an essential service) and a public body's duty, maintenance, or oversight is in question. Your job is to state what happened plainly and ask what accountability the user expects — not to debate policy.
+
+REQUIRED STRUCTURE — all three parts, in this order:
+1. What happened: ONE factual sentence — who was harmed (by number or description, not by name unless the context names them), what happened, where, and when if the date is in the context. Plain, neutral words. No adjectives such as "tragic", "shocking", "horrific", "senseless".
+2. Who was responsible for the thing that failed: ONE sentence naming the responsible INSTITUTION (the municipal corporation, the state health department, the railway authority, the police department) and what it was responsible for (maintaining the drain, supplying oxygen, inspecting the bridge). Institutional level only — never name an individual official, even if the context names one. If the context does not make responsibility clear, say which body is responsible for that kind of infrastructure or service in that place, as a fact, without implying guilt.
+3. Stance trigger: ONE question ending with "you" that asks what level of accountability the user expects, resolving into a single spectrum — from "an explanation and a fix are enough" to "those responsible should face criminal charges". Never a menu of options.
+
+LENGTH: Target 30–45 words. 65 words is the hard ceiling.
+
+PROHIBITED:
+- No accusatory or activist framing: never "demand", "outrage", "cover-up", "criminal negligence" (unless a court or investigation has already found it and the context says so), "blood on their hands".
+- Do not state or imply that anyone is guilty; describe the duty, not the verdict.
+- Do not use "Do you support", "Are you for/against", "Should the government", "Should we", "How much should".
+- Do not ask two questions at once; do not list options.
+- Do not name individual people, officials or victims; institutions only.
+- Do not invent facts, dates or numbers that are not in the provided context.
+
+If the context does not describe a specific harm event (for example, it is a policy debate or a proposal), still write the best incident-style question you can, but set quality_score to at most 5 and quality_notes to "not_an_incident — consider content_type policy/general".
+
+OUTPUT — return ONLY valid JSON, no markdown, no backticks:
+{
+  "question": "The incident question (target 30–45 words, max 65)",
+  "framing_style": "boundary_line",
+  "core_tension": "one sentence: the duty that was not met and the accountability question it raises",
+  "primary_value": "e.g. public_safety",
+  "secondary_value": "e.g. institutional_accountability",
+  "slider_low_label": "3-6 word noun phrase for the low end — e.g. 'An explanation and fix suffice'",
+  "slider_high_label": "3-6 word noun phrase for the high end — e.g. 'Criminal charges for those responsible'",
+  "share_headline": "A factual teaser under 70 characters, different wording from the question",
+  "quality_score": <number 0-10>,
+  "quality_notes": "brief reason for score"
+}
+
+QUALITY SCORING (0–10):
+- Specific, factual account of what happened (place, harm, date or number from the context): 3 points
+- Responsible institution named at institutional level, no individual named: 2 points
+- Neutral, non-accusatory plain language: 2 points
+- Slider-compatible accountability trigger ending with "you" (single spectrum): 2 points
+- Concise — at or under 45 words scores full point, 46–65 words scores half: 1 point
+
+Minimum acceptable score: 8. Flag anything below 8 in quality_notes.`;
+
 const HARDCODED_REFRAME_PROMPT = `You are a civic question framing specialist. Your job is to take a raw draft question and rewrite it so it reads like a genuine reflection prompt — the kind a smart friend would ask over coffee, not a policy exam or a briefing document.
 
 CORE RULE:
@@ -341,10 +387,19 @@ export async function run(ctx) {
       error: e?.message
     });
   }
+  // Epic R M-R07: the incident template, used for drafts whose content_type is 'incident'.
+  let incidentSystemPrompt = HARDCODED_INCIDENT_PROMPT;
+  try {
+    const { data: incRow, error: incErr } = await supabaseAdmin.from("ai_prompts").select("id, system_prompt").eq("prompt_key", "incident_accountability").eq("is_active", true).maybeSingle();
+    if (incErr) log("warn", "ai_prompts.incident_read_failed_using_hardcoded", { error: incErr.message });
+    else if (incRow) incidentSystemPrompt = incRow.system_prompt ?? HARDCODED_INCIDENT_PROMPT;
+  } catch (e) {
+    log("warn", "ai_prompts.incident_exception_using_hardcoded", { error: e?.message });
+  }
   const { data: draftsData, error: fetchError } = await supabaseAdmin
     .from("question_drafts")
     .select(`
-      id, question, summary, tags, location_label, topic_draft_id,
+      id, question, summary, tags, location_label, topic_draft_id, content_type,
       topic_drafts!inner (
         title,
         news_items!inner ( title )
@@ -394,6 +449,8 @@ export async function run(ctx) {
       }).eq("id", draft.id);
       const topicTitle: string = (draft as any).topic_drafts?.title ?? "(none)";
       const newsHeadline: string = (draft as any).topic_drafts?.news_items?.title ?? "(none)";
+      const isIncident = (draft as any).content_type === "incident";
+      const draftSystemPrompt = isIncident ? incidentSystemPrompt : activeSystemPrompt;
 
       const userPrompt =
         `Raw question to reframe:\n"${draft.question}"\n\n` +
@@ -406,14 +463,18 @@ export async function run(ctx) {
         `1. Use the news headline as your primary anchor — the question must be rooted in this specific event.\n` +
         `2. If the topic title is a generic category label (not a specific event), set quality_score = 0 and flag as topic_too_generic.\n` +
         `3. Check the state of play: has a decision already been made? Has someone already acted? Start from that reality.\n` +
-        `4. Name any specific accountable person (head of government, minister, official) responsible for the location — use your knowledge to identify them.\n` +
-        `5. Rewrite using the Context + Tension + Stance Trigger structure. Target 30–45 words.\n` +
-        `6. Choose the most appropriate framing style from the 8 options.\n` +
+        (isIncident
+          ? `4. This is an INCIDENT: name the responsible institution, never an individual official, and do not add names from your own knowledge.\n` +
+            `5. Rewrite as: what happened, who was responsible for the thing that failed, then the accountability question ending with "you". Target 30–45 words.\n` +
+            `6. Use framing_style "boundary_line" unless another style clearly fits better.\n`
+          : `4. Name any specific accountable person (head of government, minister, official) responsible for the location — use your knowledge to identify them.\n` +
+            `5. Rewrite using the Context + Tension + Stance Trigger structure. Target 30–45 words.\n` +
+            `6. Choose the most appropriate framing style from the 8 options.\n`) +
         `Return only valid JSON — no markdown, no backticks.`;
       let rawText = "";
       let result = null;
       try {
-        rawText = await callLLM(provider, modelName, activeSystemPrompt, userPrompt, apiKey);
+        rawText = await callLLM(provider, modelName, draftSystemPrompt, userPrompt, apiKey);
         result = parseReframeResult(rawText);
       } catch (err) {
         const msg = err?.message ?? String(err);

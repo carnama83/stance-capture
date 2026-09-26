@@ -19,6 +19,9 @@ import { ExternalLink, Edit2, RefreshCw, Loader2 } from "lucide-react";
 
 type QuestionStatus = "draft" | "approved" | "rejected" | "reframing" | "reframed" | "reframe_failed";
 
+type ContentType = "incident" | "policy" | "election" | "general";
+const CONTENT_TYPES: ContentType[] = ["general", "incident", "policy", "election"];
+
 type QuestionDraftRow = {
   id: string;
   topic_draft_id: string;
@@ -29,6 +32,9 @@ type QuestionDraftRow = {
   tags: string[] | null;
   location_label: string | null;
   scope: "global" | "national" | "local" | null;
+  // Epic R M-R07: chosen by the pipeline classifier, editable here; copied to
+  // questions.content_type on publish (incident drives the incident card).
+  content_type: ContentType | null;
   status: QuestionStatus;
   reason: string | null;
   // Guardrail / QA
@@ -167,6 +173,7 @@ export default function QuestionDraftsPage() {
         tags,
         location_label,
         scope,
+        content_type,
         status,
         reason,
         guardrail_flags,
@@ -683,6 +690,19 @@ function QuestionDraftRowView({
 
           <h3 className="text-base font-semibold break-words">{row.question}</h3>
 
+          {row.content_type && row.content_type !== "general" && (
+            <div className="mt-1">
+              <span
+                className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                  row.content_type === "incident" ? "bg-amber-100 text-amber-800" : "bg-slate-100 text-slate-700"
+                }`}
+                title="Content type — set by the pipeline classifier; change it with Edit before approving"
+              >
+                {row.content_type === "incident" ? "Incident (accountability framing)" : row.content_type}
+              </span>
+            </div>
+          )}
+
           {/* Epic QF: framing metadata */}
           {(row.framing_style || row.question_quality_score != null || row.core_tension) && (
             <div className="mt-1 space-y-1">
@@ -861,6 +881,7 @@ function EditQuestionDialog({
   const [summary, setSummary] = React.useState(row.summary ?? "");
   const [tags, setTags] = React.useState((row.tags ?? []).join(", "));
   const [location, setLocation] = React.useState(row.location_label ?? "");
+  const [contentType, setContentType] = React.useState<ContentType>(row.content_type ?? "general");
   const [saving, setSaving] = React.useState(false);
 
   const save = async () => {
@@ -879,6 +900,7 @@ function EditQuestionDialog({
         summary,
         tags: tagsArray,
         location_label: location || null,
+        content_type: contentType,
       })
       .eq("id", row.id);
 
@@ -937,6 +959,23 @@ function EditQuestionDialog({
               onChange={(e) => setLocation(e.target.value)}
               placeholder="e.g., New Jersey"
             />
+          </div>
+          <div>
+            <Label>Content type</Label>
+            <select
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+              value={contentType}
+              onChange={(e) => setContentType(e.target.value as ContentType)}
+            >
+              {CONTENT_TYPES.map((ct) => (
+                <option key={ct} value={ct}>{ct}</option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground mt-1">
+              Incident questions publish with the incident card and the accountability prompt, and get authority
+              suggestions. Changing the type does not rewrite the question — reject and re-create the draft to
+              re-author it with the other template.
+            </p>
           </div>
         </div>
         <DialogFooter>
