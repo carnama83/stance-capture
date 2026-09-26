@@ -1,6 +1,7 @@
 // src/routes/admin/authorities/Index.tsx
 // Epic R — M-R02: Admin Authority Management (/admin/authorities)
 // Epic R — M-R07: Pending Suggestions tab (QA-R19)
+// Epic R — M-R09: Government Roles tab (GovernmentRolesPanel)
 //
 // Two-panel layout per Epic R doc §6.4:
 //   Left  — authority_registry CRUD
@@ -27,6 +28,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { RegionMultiSelect } from "@/components/admin/RegionMultiSelect";
+import { GovernmentRolesPanel } from "@/components/admin/GovernmentRolesPanel";
 import { Landmark, Plus, Trash2, Pencil, Search, X, Loader2, Check, ExternalLink, Inbox } from "lucide-react";
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -1026,7 +1028,7 @@ function PendingSuggestionsPanel({ authorities }: { authorities: Authority[] }) 
 export default function AdminAuthoritiesPage() {
   const { data: authorities = [], isLoading } = useAuthorities();
   const [editing, setEditing] = React.useState<Authority | "new" | null>(null);
-  const [tab, setTab] = React.useState<"manage" | "pending">("manage");
+  const [tab, setTab] = React.useState<"manage" | "pending" | "roles">("manage");
   const { data: pendingSuggestions = [] } = usePendingSuggestions();
 
   return (
@@ -1062,6 +1064,15 @@ export default function AdminAuthoritiesPage() {
             <Badge variant="secondary" className="text-[10px] h-4 px-1.5">{pendingSuggestions.length}</Badge>
           )}
         </button>
+        <button
+          onClick={() => setTab("roles")}
+          className={[
+            "text-xs font-medium px-3 py-2 border-b-2 -mb-px transition-colors",
+            tab === "roles" ? "border-slate-900 text-slate-900" : "border-transparent text-slate-400 hover:text-slate-600",
+          ].join(" ")}
+        >
+          Government Roles
+        </button>
       </div>
 
       {tab === "manage" ? (
@@ -1069,8 +1080,10 @@ export default function AdminAuthoritiesPage() {
           <AuthorityRegistryPanel authorities={authorities} isLoading={isLoading} onEdit={setEditing} />
           <QuestionAssignmentPanel authorities={authorities} />
         </div>
-      ) : (
+      ) : tab === "pending" ? (
         <PendingSuggestionsPanel authorities={authorities} />
+      ) : (
+        <GovernmentRolesPanel authorities={authorities} />
       )}
 
       <AuthorityFormDialog editing={editing} onClose={() => setEditing(null)} />
