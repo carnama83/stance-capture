@@ -63,7 +63,7 @@ export function QuestionContextCard({
           </p>
 
           <p
-            className="text-sm text-slate-700 leading-relaxed"
+            className="text-sm text-slate-700 leading-relaxed whitespace-pre-line"
             data-instrument-language={instrumentLanguageCode ?? undefined}
           >
             {text}

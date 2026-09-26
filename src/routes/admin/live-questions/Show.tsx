@@ -61,13 +61,17 @@ function AddContextPanel({ questionId, onSuccess }: { questionId: string; onSucc
   const handleSubmit = async () => {
     if (!newContext.trim()) { setError("Context text is required."); return; }
     setLoading(true); setError(null); setSuccess(false);
-    const { error: rpcErr } = await sb.rpc("add_context_to_existing_question", {
+    const { data, error: rpcErr } = await sb.rpc("add_context_to_existing_question", {
       p_question_id:       questionId,
       p_new_context:       newContext.trim(),
       p_supporting_link:   supportingLink.trim() || null,
       p_should_reactivate: reactivate,
     });
+    // The RPC reports failure in its result row, not only as an HTTP error.
+    // Treating "no rpcErr" as success once hid an RLS failure behind a green banner.
+    const result = Array.isArray(data) ? data[0] : data;
     if (rpcErr) { setError(rpcErr.message); }
+    else if (!result?.success) { setError(result?.message ?? "Context was not saved."); }
     else { setSuccess(true); setNewContext(""); setSupportingLink(""); setReactivate(false); onSuccess(); }
     setLoading(false);
   };
