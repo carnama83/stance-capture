@@ -11,20 +11,24 @@
 
 import { getSupabase } from "@/lib/supabaseClient";
 
+//
+// A user has one user_location_settings row per level (city, county, state,
+// country). The region is the most specific level, decided on the server by
+// get_my_primary_region() — the same rule set_my_question_expectations() uses
+// to store an expectation's region, so the signal shown is always the one the
+// user's own expectation counts towards. (It used to be an unordered LIMIT 1
+// here and in the RPC, which could disagree.)
+
 export async function fetchUserRegionId(userId: string): Promise<string | null> {
   const sb = getSupabase();
-  if (!sb) return null;
+  if (!sb || !userId) return null;
 
-  const { data, error } = await sb
-    .from("user_location_settings")
-    .select("location_id")
-    .eq("user_id", userId)
-    .limit(1)
-    .maybeSingle();
+  // The RPC answers for the signed-in caller (auth.uid()); userId only gates the call.
+  const { data, error } = await sb.rpc("get_my_primary_region");
 
   if (error) {
     console.error("[fetchUserRegionId] region lookup failed (non-blocking)", error);
     return null;
   }
-  return data?.location_id ?? null;
+  return (data as string | null) ?? null;
 }
