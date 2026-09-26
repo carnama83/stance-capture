@@ -59,9 +59,6 @@ export default function About() {
             </a>
             .
           </p>
-
-          <hr style={styles.rule} />
-          <p style={styles.meta}>{t("about.stanceCaptureBhopalIndia")}</p>
         </article>
       </div>
     </PageLayout>
@@ -132,15 +129,5 @@ const styles: Record<string, CSSProperties> = {
     color: "#6D28D9",
     textDecoration: "underline",
     textUnderlineOffset: "2px",
-  },
-  rule: {
-    border: "none",
-    borderTop: "1px solid #E4E4E7",
-    margin: "2.5rem 0 1.25rem",
-  },
-  meta: {
-    fontSize: "0.9rem",
-    color: "#71717A",
-    margin: 0,
   },
 };

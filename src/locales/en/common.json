@@ -567,7 +567,6 @@
     "contact": "Contact",
     "privacy": "Privacy",
     "tagline": "A civic-technology platform for capturing public opinion and revealing how views shift.",
-    "location": "Bhopal, India",
     "footer": "Footer"
   },
   "notFound": {
@@ -1550,8 +1549,7 @@
     "showHowYourViewCompares": "Show how your view compares with your region, your country, and the world.",
     "trackHowOpinionsMoveOver": "Track how opinions move over time, so shifts in sentiment become visible.",
     "helpYouBuildAPersonal": "Help you build a personal stance profile that is yours to revisit.",
-    "forQuestionsFeedbackOrPress": "For questions, feedback, or press enquiries, reach us at",
-    "stanceCaptureBhopalIndia": "Stance Capture · Bhopal, India"
+    "forQuestionsFeedbackOrPress": "For questions, feedback, or press enquiries, reach us at"
   },
   "embed": {
     "questionNotAvailable": "Question not available.",
@@ -2197,7 +2195,7 @@
     "s8.heading": "8. Children’s privacy",
     "s8.body": "Stance Capture is not directed to children under 13, and we do not knowingly collect personal information from them. If you believe a child has provided us information, contact us and we will delete it.",
     "s9.heading": "9. Data location",
-    "s9.body": "We are based in India and may process and store information in India and in other countries where we or our service providers operate.",
+    "s9.body": "Your information is processed and stored on global servers operated by us and our service providers, which may be located outside the country where you live.",
     "s10.heading": "10. Security",
     "s10.body": "We use reasonable technical and organizational measures to protect your information. No method of transmission or storage is completely secure, and we cannot guarantee absolute security.",
     "s11.heading": "11. Changes to this policy",
@@ -2206,7 +2204,6 @@
     "s12.body": "This Privacy Policy is published in English and in Hindi. The English version is the original. If there is any difference in meaning between the two versions, the English version governs.",
     "s13.heading": "13. Contact us",
     "s13.org": "Stance Capture",
-    "s13.address": "Bhopal, India",
     "s13.emailLabel": "Email:",
     "s1.location": "<b>Approximate location</b> — so we can show questions and comparisons relevant to your area, our servers read the approximate region or country that our hosting provider derives from your connection. Your IP address is not sent to any third party for this, and we do not store it. If you create an account, the country is saved as your default region, and you can change it in your settings at any time."
   },

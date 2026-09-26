@@ -48,8 +48,6 @@ export default function Footer() {
 
       <div style={styles.bottomBar}>
         <span>© {new Date().getFullYear()} {t("about.stanceCapture")}</span>
-        <span style={styles.dot}>·</span>
-        <span>{t("footer.location")}</span>
       </div>
     </footer>
   );
@@ -111,8 +109,5 @@ const styles: Record<string, CSSProperties> = {
     gap: "0.5rem",
     fontSize: "0.85rem",
     color: "#71717A",
-  },
-  dot: {
-    color: "#A1A1AA",
   },
 };
