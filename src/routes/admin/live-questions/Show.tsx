@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { ExternalLink, RefreshCw, CheckCircle2, CornerDownRight } from "lucide-react";
+import { EditQuestionWordingPanel } from "@/components/question/EditQuestionWordingPanel";
 
 type QuestionStatus = "active" | "archived";
 type QuestionPhase  = "initial" | "update" | "resolution" | "follow_up";
@@ -61,13 +62,17 @@ function AddContextPanel({ questionId, onSuccess }: { questionId: string; onSucc
   const handleSubmit = async () => {
     if (!newContext.trim()) { setError("Context text is required."); return; }
     setLoading(true); setError(null); setSuccess(false);
-    const { error: rpcErr } = await sb.rpc("add_context_to_existing_question", {
+    const { data, error: rpcErr } = await sb.rpc("add_context_to_existing_question", {
       p_question_id:       questionId,
       p_new_context:       newContext.trim(),
       p_supporting_link:   supportingLink.trim() || null,
       p_should_reactivate: reactivate,
     });
+    // The RPC reports failure in its result row, not only as an HTTP error.
+    // Treating "no rpcErr" as success once hid an RLS failure behind a green banner.
+    const result = Array.isArray(data) ? data[0] : data;
     if (rpcErr) { setError(rpcErr.message); }
+    else if (!result?.success) { setError(result?.message ?? "Context was not saved."); }
     else { setSuccess(true); setNewContext(""); setSupportingLink(""); setReactivate(false); onSuccess(); }
     setLoading(false);
   };
@@ -257,7 +262,9 @@ export default function AdminLiveQuestionShowPage() {
     <Card className="max-w-4xl mx-auto"><CardHeader><CardTitle>Live Question</CardTitle></CardHeader>
       <CardContent>Missing question id.</CardContent></Card>
   );
-  if (loading) return (
+  // Only on first load: a reload after a save must not unmount the panels,
+  // or their "saved" confirmation disappears before anyone sees it.
+  if (loading && !row) return (
     <Card className="max-w-4xl mx-auto"><CardHeader><CardTitle>Live Question</CardTitle></CardHeader>
       <CardContent>Loading…</CardContent></Card>
   );
@@ -424,6 +431,14 @@ export default function AdminLiveQuestionShowPage() {
               <AddContextPanel questionId={row.id} onSuccess={loadQuestion} />
               <UpdatePhasePanel questionId={row.id} currentPhase={row.phase ?? "initial"} onSuccess={loadQuestion} />
             </div>
+            <section className="space-y-2">
+              <h2 className="text-sm font-semibold">Edit Wording</h2>
+              <p className="text-xs text-muted-foreground">
+                Only until the first answer. Describe the change, or use "Suggest from Background" after
+                adding context; review the AI suggestion, then apply. Other languages are re-translated.
+              </p>
+              <EditQuestionWordingPanel questionId={row.id} mode="admin" onApplied={loadQuestion} />
+            </section>
           </>
         )}
       </CardContent>
