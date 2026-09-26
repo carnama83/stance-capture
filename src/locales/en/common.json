@@ -1795,7 +1795,14 @@
     "visibleSupportCount_other": "{{count}} of them opted in to be counted as visible support",
     "responsibleInstitution": "Responsible institution",
     "relevantOffices": "Government offices respondents associated with these actions",
-    "unconfirmed": "(unconfirmed)"
+    "unconfirmed": "(unconfirmed)",
+    "versionPublished": "Version {{n}} · published {{date}}",
+    "viewingOlderVersion": "You are viewing version {{n}} exactly as published. The current version is {{latest}}.",
+    "viewCurrentVersion": "View the current version",
+    "otherVersions": "Other published versions",
+    "versionShort": "Version {{n}} ({{date}})",
+    "responseHistory": "Response history",
+    "source": "source"
   },
   "socialAuthButtons": {
     "continueWithGoogle": "Continue with Google",
@@ -2117,7 +2124,8 @@
     "underReview": "Under review",
     "actionAnnounced": "Action announced",
     "actionCompleted": "Action completed",
-    "noResponse": "No response"
+    "noResponse": "No response",
+    "noResponseAsOf": "No response recorded as of {{date}}"
   },
   "consentKey": {
     "analytics": "Analytics",
