@@ -1795,7 +1795,14 @@
     "visibleSupportCount_other": "इनमें से {{count}} ने दृश्यमान समर्थन के रूप में गिने जाने का विकल्प चुना",
     "responsibleInstitution": "ज़िम्मेदार संस्था",
     "relevantOffices": "उत्तरदाताओं ने इन कार्रवाइयों से जिन सरकारी पदों को जोड़ा",
-    "unconfirmed": "(अपुष्ट)"
+    "unconfirmed": "(अपुष्ट)",
+    "versionPublished": "संस्करण {{n}} · {{date}} को प्रकाशित",
+    "viewingOlderVersion": "आप संस्करण {{n}} ठीक वैसा ही देख रहे हैं जैसा वह प्रकाशित हुआ था। वर्तमान संस्करण {{latest}} है।",
+    "viewCurrentVersion": "वर्तमान संस्करण देखें",
+    "otherVersions": "अन्य प्रकाशित संस्करण",
+    "versionShort": "संस्करण {{n}} ({{date}})",
+    "responseHistory": "जवाब का इतिहास",
+    "source": "स्रोत"
   },
   "socialAuthButtons": {
     "continueWithGoogle": "Google से जारी रखें",
@@ -2117,7 +2124,8 @@
     "underReview": "समीक्षाधीन",
     "actionAnnounced": "कार्रवाई की घोषणा",
     "actionCompleted": "कार्रवाई पूरी",
-    "noResponse": "कोई प्रतिक्रिया नहीं"
+    "noResponse": "कोई प्रतिक्रिया नहीं",
+    "noResponseAsOf": "{{date}} तक कोई जवाब दर्ज नहीं"
   },
   "consentKey": {
     "analytics": "विश्लेषण",

@@ -20,19 +20,26 @@
 // offices respondents associated with each action (frozen role_summary, set
 // at publish), and a current office-holder only where one was verified and
 // current at publish time (BR-R11).
+//
+// Epic R M-R11 (R-FR-22, R-FR-23, BR-R12, BR-R13): every publish is kept as an
+// immutable version (expectation_ledger_versions). The page shows the current
+// version and lists earlier ones; ?v=N shows version N exactly as published.
+// Below the current response status, the response history comes from the
+// append-only authority_response_events (get_authority_response_history —
+// no internal notes, no voided events).
 
 import * as React from "react";
 import { localeFor } from "@/lib/intlFormat";
 import i18n from "@/lib/i18n";
 import { useTranslation } from "react-i18next";
-import { useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getSupabase } from "@/lib/supabaseClient";
 import { ShareButton } from "@/components/share/ShareButton";
 import { useLanguage } from "@/hooks/useLanguage";
 import { EXPECTATION_LABEL_KEYS } from "@/components/question/ExpectationPrompt";
-import { STATUS_LABEL_KEYS, STATUS_COLORS, formatResponseDate } from "@/components/question/AuthorityResponseStatusBlock";
-import { Loader2, ClipboardCheck, Landmark } from "lucide-react";
+import { STATUS_COLORS, formatResponseDate, responseStatusLabel } from "@/components/question/AuthorityResponseStatusBlock";
+import { Loader2, ClipboardCheck, Landmark, History, ExternalLink } from "lucide-react";
 import { useQuestionAuthorities } from "@/hooks/useQuestionAuthorities";
 import { RoleAssociationList, type RoleAssociation } from "@/components/question/RoleAssociationList";
 
@@ -55,6 +62,67 @@ interface LedgerData {
   questionText: string | null;
   questionSummary: string | null;
   regionName: string | null;
+  current_version: number | null;
+  published_at: string | null;
+}
+
+interface LedgerVersion {
+  version: number;
+  snapshot_at: string;
+  snapshot_summary: SnapshotEntry[] | null;
+  role_summary: RoleAssociation[] | null;
+  participation_count: number | null;
+  optin_count: number | null;
+  collection_window_start: string | null;
+  collection_window_end: string | null;
+}
+
+function useLedgerVersions(questionId: string, regionId: string, enabled: boolean) {
+  return useQuery<LedgerVersion[]>({
+    queryKey: ["public-ledger-versions", questionId, regionId],
+    enabled: enabled && !!questionId && !!regionId,
+    queryFn: async () => {
+      const sb = getSupabase();
+      if (!sb) return [];
+      const { data, error } = await sb
+        .from("expectation_ledger_versions")
+        .select(
+          "version, snapshot_at, snapshot_summary, role_summary, participation_count, optin_count, collection_window_start, collection_window_end"
+        )
+        .eq("question_id", questionId)
+        .eq("region_id", regionId)
+        .order("version", { ascending: false });
+      if (error) return [];
+      return (data ?? []) as LedgerVersion[];
+    },
+  });
+}
+
+interface ResponseHistoryRow {
+  id: string;
+  authority_name: string;
+  government_role_name: string | null;
+  response_status: string;
+  effective_at: string;
+  source_url: string | null;
+}
+
+function useResponseHistory(questionId: string, regionId: string) {
+  return useQuery<ResponseHistoryRow[]>({
+    queryKey: ["ledger-response-history", questionId, regionId],
+    enabled: !!questionId && !!regionId,
+    staleTime: 15_000,
+    queryFn: async () => {
+      const sb = getSupabase();
+      if (!sb) return [];
+      const { data, error } = await sb.rpc("get_authority_response_history", {
+        p_question_id: questionId,
+        p_region_id: regionId,
+      });
+      if (error) return [];
+      return (data ?? []) as ResponseHistoryRow[];
+    },
+  });
 }
 
 function useLedger(questionId: string, regionId: string) {
@@ -72,7 +140,7 @@ function useLedger(questionId: string, regionId: string) {
       const { data: ledger, error } = await sb
         .from("expectation_ledgers")
         .select(
-          "snapshot_summary, role_summary, participation_count, optin_count, time_window_start, time_window_end, status, questions(question, summary)"
+          "snapshot_summary, role_summary, participation_count, optin_count, time_window_start, time_window_end, status, current_version, published_at, questions(question, summary)"
         )
         .eq("question_id", questionId)
         .eq("region_id", regionId)
@@ -94,6 +162,8 @@ function useLedger(questionId: string, regionId: string) {
         questionText: q?.question ?? null,
         questionSummary: q?.summary ?? null,
         regionName: region?.name ?? null,
+        current_version: (ledger as any).current_version ?? null,
+        published_at: (ledger as any).published_at ?? null,
       };
     },
   });
@@ -149,6 +219,10 @@ export default function PublicLedgerPage() {
   const { data: ledger, isLoading } = useLedger(questionId ?? "", regionId ?? "");
   const { data: responses = [] } = useRegionAuthorityResponses(questionId ?? "", regionId ?? "");
   const { data: institutions = [] } = useQuestionAuthorities(questionId ?? "");
+  const { data: versions = [] } = useLedgerVersions(questionId ?? "", regionId ?? "", !!ledger);
+  const { data: history = [] } = useResponseHistory(questionId ?? "", regionId ?? "");
+  const [searchParams] = useSearchParams();
+  const requestedVersion = Number(searchParams.get("v")) || null;
 
   if (isLoading) {
     return (
@@ -174,7 +248,24 @@ export default function PublicLedgerPage() {
     );
   }
 
-  const breakdown = [...(ledger.snapshot_summary ?? [])].sort(
+  // M-R11: ?v=N shows that immutable version exactly as published.
+  const viewing = requestedVersion ? versions.find((v) => v.version === requestedVersion) ?? null : null;
+  const latestVersion = ledger.current_version ?? versions[0]?.version ?? null;
+  const shown = viewing
+    ? {
+        snapshot_summary: viewing.snapshot_summary,
+        role_summary: viewing.role_summary,
+        participation_count: viewing.participation_count,
+        optin_count: viewing.optin_count,
+        time_window_start: viewing.collection_window_start,
+        time_window_end: viewing.collection_window_end,
+      }
+    : ledger;
+  const shownVersion = viewing?.version ?? latestVersion;
+  const shownPublishedAt = viewing?.snapshot_at ?? ledger.published_at;
+  const earlier = versions.filter((v) => v.version !== shownVersion);
+
+  const breakdown = [...(shown.snapshot_summary ?? [])].sort(
     (a, b) => b.pct_of_respondents - a.pct_of_respondents
   );
   // Epic R R-12 / BR-R09: no single winner. Every type that met the threshold
@@ -199,9 +290,22 @@ export default function PublicLedgerPage() {
           )}
 
           {ledger.regionName && (
-            <p className="text-xs text-slate-500 mb-5">
+            <p className="text-xs text-slate-500 mb-1">
               {t("publicLedger.region")} <span className="font-medium text-slate-700">{ledger.regionName}</span>
             </p>
+          )}
+          {shownVersion != null && (
+            <p className="text-[11px] text-slate-400 mb-5">
+              {t("publicLedger.versionPublished", { n: shownVersion, date: formatDate(shownPublishedAt) })}
+            </p>
+          )}
+          {viewing && latestVersion != null && viewing.version !== latestVersion && (
+            <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 mb-5 text-[11px] text-amber-800">
+              {t("publicLedger.viewingOlderVersion", { n: viewing.version, latest: latestVersion })}{" "}
+              <Link to={`/ledger/${questionId}/${regionId}`} className="underline underline-offset-2">
+                {t("publicLedger.viewCurrentVersion")}
+              </Link>
+            </div>
           )}
 
           <div className="space-y-2.5 mb-5">
@@ -255,9 +359,9 @@ export default function PublicLedgerPage() {
             </div>
           )}
 
-          {ledger.role_summary && ledger.role_summary.length > 0 && (
+          {shown.role_summary && shown.role_summary.length > 0 && (
             <div className="mb-5 -mt-2">
-              <RoleAssociationList entries={ledger.role_summary} title={t("publicLedger.relevantOffices")} />
+              <RoleAssociationList entries={shown.role_summary} title={t("publicLedger.relevantOffices")} />
             </div>
           )}
 
@@ -279,11 +383,11 @@ export default function PublicLedgerPage() {
                           STATUS_COLORS[r.response_status] ?? "bg-slate-100 text-slate-600"
                         }`}
                       >
-                        {STATUS_LABEL_KEYS[r.response_status]
-                          ? t(STATUS_LABEL_KEYS[r.response_status])
-                          : r.response_status}
+                        {responseStatusLabel(t, r.response_status, r.status_updated_at)}
                       </span>
-                      <span className="text-[10px] text-slate-400">{formatResponseDate(r.status_updated_at)}</span>
+                      {r.response_status !== "no_response" && (
+                        <span className="text-[10px] text-slate-400">{formatResponseDate(r.status_updated_at)}</span>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -291,18 +395,67 @@ export default function PublicLedgerPage() {
             </div>
           )}
 
+          {history.length > 0 && (
+            <div className="mb-5">
+              <div className="flex items-center gap-1.5 mb-2">
+                <History className="h-3.5 w-3.5 text-slate-400" />
+                <p className="text-xs font-medium text-slate-600">{t("publicLedger.responseHistory")}</p>
+              </div>
+              <ol className="space-y-1 border-l border-slate-200 pl-3">
+                {history.map((h) => (
+                  <li key={h.id} className="text-[11px] text-slate-600">
+                    <span className="text-slate-400">{formatResponseDate(h.effective_at)}</span>
+                    {" · "}
+                    {h.authority_name}
+                    {h.government_role_name && <span className="text-slate-400"> ({h.government_role_name})</span>}
+                    {" · "}
+                    <span className="font-medium">{responseStatusLabel(t, h.response_status, h.effective_at)}</span>
+                    {h.source_url && (
+                      <a
+                        href={h.source_url}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        className="inline-flex items-center gap-0.5 text-slate-400 hover:text-slate-600 ml-1"
+                      >
+                        {t("publicLedger.source")} <ExternalLink className="h-2.5 w-2.5" />
+                      </a>
+                    )}
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+
           {/* Participation count + time window shown as data metadata, not
               social proof (BR-R04 / §6.3 — no "X people signed" language). */}
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500 border-t border-slate-100 pt-4 mb-5">
-            <span>{t("publicLedger.respondentCount", { count: ledger.participation_count ?? 0 })}</span>
+            <span>{t("publicLedger.respondentCount", { count: shown.participation_count ?? 0 })}</span>
             {/* Epic R R-06 / US-R10: the opted-in "visible support" count is a separate,
                 smaller population than the respondents above, and is labelled as such.
                 It is frozen at publish time like the rest of the snapshot. */}
-            <span>{t("publicLedger.visibleSupportCount", { count: ledger.optin_count ?? 0 })}</span>
+            <span>{t("publicLedger.visibleSupportCount", { count: shown.optin_count ?? 0 })}</span>
             <span>
-              {formatDate(ledger.time_window_start)} – {formatDate(ledger.time_window_end)}
+              {formatDate(shown.time_window_start)} – {formatDate(shown.time_window_end)}
             </span>
           </div>
+
+          {earlier.length > 0 && (
+            <div className="mb-5 -mt-2">
+              <p className="text-[11px] font-medium text-slate-500 mb-1">{t("publicLedger.otherVersions")}</p>
+              <ul className="flex flex-wrap gap-x-3 gap-y-1">
+                {earlier.map((v) => (
+                  <li key={v.version}>
+                    <Link
+                      to={v.version === latestVersion ? `/ledger/${questionId}/${regionId}` : `/ledger/${questionId}/${regionId}?v=${v.version}`}
+                      className="text-[11px] text-slate-500 hover:text-slate-800 underline underline-offset-2"
+                    >
+                      {t("publicLedger.versionShort", { n: v.version, date: formatDate(v.snapshot_at) })}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {questionId && (
             <ShareButton

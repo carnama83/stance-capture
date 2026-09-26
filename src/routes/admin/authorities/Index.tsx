@@ -3,6 +3,7 @@
 // Epic R — M-R07: Pending Suggestions tab (QA-R19)
 // Epic R — M-R09: Government Roles tab (GovernmentRolesPanel)
 // Epic R — M-R10: government-role suggestions per question (RoleSuggestionsSection)
+// Epic R — M-R11: response statuses are recorded as append-only events
 //
 // Two-panel layout per Epic R doc §6.4:
 //   Left  — authority_registry CRUD
@@ -232,12 +233,66 @@ function useResponseStatuses(questionId: string | null) {
   });
 }
 
-// Calls the M-R08 SQL function directly — this is NOT a plain table write.
-// update_authority_response_status() does the upsert AND the notification
-// fan-out to every question_expectations staker in one call; a raw
-// .from("authority_responses").upsert() would silently skip the
-// notification entirely, defeating the whole point of the milestone.
-function useUpdateResponseStatus() {
+// Epic R M-R11 (R-FR-23): statuses are recorded as append-only events through
+// admin_record_authority_response_event(), which derives the current status and
+// calls update_authority_response_status() only when it changes — so the
+// notification fan-out (change-only, R-04) still happens in one call. A raw
+// table write would skip both the history and the notifications.
+interface ResponseEventRow {
+  id: string;
+  authority_id: string;
+  region_id: string | null;
+  government_role_id: string | null;
+  response_status: string;
+  effective_at: string;
+  recorded_at: string;
+  source_url: string | null;
+  notes: string | null;
+  origin: "event" | "legacy" | "backfill";
+  voided_at: string | null;
+  void_reason: string | null;
+}
+
+function useResponseEvents(questionId: string | null) {
+  return useQuery<ResponseEventRow[]>({
+    queryKey: ["admin-authorities-response-events", questionId],
+    enabled: !!questionId,
+    staleTime: 10_000,
+    queryFn: async () => {
+      const sb = getSupabase();
+      if (!sb) throw new Error("Supabase not available");
+      const { data, error } = await sb
+        .from("authority_response_events")
+        .select("id, authority_id, region_id, government_role_id, response_status, effective_at, recorded_at, source_url, notes, origin, voided_at, void_reason")
+        .eq("question_id", questionId as string)
+        .order("effective_at", { ascending: false })
+        .order("recorded_at", { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as ResponseEventRow[];
+    },
+  });
+}
+
+function useAuthorityRoles(authorityId: string) {
+  return useQuery<{ id: string; role_name: string }[]>({
+    queryKey: ["admin-authority-roles", authorityId],
+    staleTime: 30_000,
+    queryFn: async () => {
+      const sb = getSupabase();
+      if (!sb) throw new Error("Supabase not available");
+      const { data, error } = await sb
+        .from("government_role_registry")
+        .select("id, role_name")
+        .eq("authority_id", authorityId)
+        .neq("verification_status", "retired")
+        .order("role_name");
+      if (error) throw error;
+      return (data ?? []) as { id: string; role_name: string }[];
+    },
+  });
+}
+
+function useRecordResponseEvent() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (vars: {
@@ -245,22 +300,53 @@ function useUpdateResponseStatus() {
       authorityId: string;
       regionId: string;
       status: string;
+      effectiveDate: string;
+      sourceUrl: string;
+      roleId: string | null;
       notes: string;
     }) => {
       const sb = getSupabase();
       if (!sb) throw new Error("Supabase not available");
-      const { data, error } = await sb.rpc("update_authority_response_status", {
+      // A date-only value is recorded at the end of that day in UTC, capped at now.
+      const effective = vars.effectiveDate
+        ? new Date(Math.min(Date.parse(`${vars.effectiveDate}T23:59:59Z`), Date.now())).toISOString()
+        : null;
+      const { data, error } = await sb.rpc("admin_record_authority_response_event", {
         p_question_id: vars.questionId,
         p_authority_id: vars.authorityId,
         p_region_id: vars.regionId,
         p_response_status: vars.status,
+        p_effective_at: effective,
+        p_source_url: vars.sourceUrl || null,
         p_notes: vars.notes || null,
+        p_government_role_id: vars.roleId,
       });
       if (error) throw error;
-      return data;
+      return data as { status_changed: boolean; current_status: string | null };
     },
-    onSuccess: (_d, vars) =>
-      qc.invalidateQueries({ queryKey: ["admin-authorities-response-statuses", vars.questionId] }),
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ["admin-authorities-response-statuses", vars.questionId] });
+      qc.invalidateQueries({ queryKey: ["admin-authorities-response-events", vars.questionId] });
+    },
+  });
+}
+
+function useVoidResponseEvent(questionId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (vars: { eventId: string; reason: string }) => {
+      const sb = getSupabase();
+      if (!sb) throw new Error("Supabase not available");
+      const { error } = await sb.rpc("admin_void_authority_response_event", {
+        p_event_id: vars.eventId,
+        p_reason: vars.reason,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-authorities-response-statuses", questionId] });
+      qc.invalidateQueries({ queryKey: ["admin-authorities-response-events", questionId] });
+    },
   });
 }
 
@@ -553,39 +639,72 @@ function ResponseStatusTracker({
   authorityId,
   authorityName,
   existing,
+  events,
 }: {
   questionId: string;
   authorityId: string;
   authorityName: string;
   existing: ResponseStatusRow[];
+  events: ResponseEventRow[];
 }) {
   const { toast } = useToast();
   const [expanded, setExpanded] = React.useState(false);
+  const [showHistory, setShowHistory] = React.useState(false);
   const [regionIds, setRegionIds] = React.useState<string[]>([]);
   const [status, setStatus] = React.useState("unacknowledged");
+  const [effectiveDate, setEffectiveDate] = React.useState(() => new Date().toISOString().slice(0, 10));
+  const [sourceUrl, setSourceUrl] = React.useState("");
+  const [roleId, setRoleId] = React.useState<string>("none");
   const [notes, setNotes] = React.useState("");
-  const update = useUpdateResponseStatus();
+  const [voidingId, setVoidingId] = React.useState<string | null>(null);
+  const [voidReason, setVoidReason] = React.useState("");
+  const record = useRecordResponseEvent();
+  const voidEvent = useVoidResponseEvent(questionId);
+  const { data: roles = [] } = useAuthorityRoles(authorityId);
 
   const regionId = regionIds[0] ?? null;
   const rowsForThisAuthority = existing.filter((r) => r.authority_id === authorityId);
+  const eventsForThisAuthority = events.filter((e) => e.authority_id === authorityId);
+  const roleName = new Map(roles.map((r) => [r.id, r.role_name]));
 
   async function handleSubmit() {
     if (!regionId) return;
-    // Epic R R-04: the RPC notifies only when the status actually changes.
-    const unchanged = rowsForThisAuthority.some(
-      (r) => r.region_id === regionId && r.response_status === status
-    );
+    if (sourceUrl && !/^https?:\/\//i.test(sourceUrl.trim())) {
+      toast({ title: "Source must be an http(s) URL", variant: "destructive" });
+      return;
+    }
     try {
-      await update.mutateAsync({ questionId, authorityId, regionId, status, notes });
+      const res = await record.mutateAsync({
+        questionId, authorityId, regionId, status, effectiveDate,
+        sourceUrl: sourceUrl.trim(), roleId: roleId === "none" ? null : roleId, notes,
+      });
+      // Epic R R-04: notifications go out only when the derived status changes.
       toast(
-        unchanged
-          ? { title: "Notes saved", description: "Status unchanged, so no notifications were sent." }
-          : { title: "Response status updated", description: "Stakers in this region have been notified." }
+        res?.status_changed
+          ? { title: "Response recorded", description: "The current status changed, so stakers in this region have been notified." }
+          : { title: "Response recorded", description: "Added to the history. The current status did not change, so no notifications were sent." }
       );
       setExpanded(false);
       setNotes("");
+      setSourceUrl("");
+      setRoleId("none");
     } catch (err: any) {
       toast({ title: "Update failed", description: err?.message, variant: "destructive" });
+    }
+  }
+
+  async function handleVoid(eventId: string) {
+    if (!voidReason.trim()) {
+      toast({ title: "Give a reason for voiding", variant: "destructive" });
+      return;
+    }
+    try {
+      await voidEvent.mutateAsync({ eventId, reason: voidReason.trim() });
+      toast({ title: "Event voided", description: "The current status was re-derived from the remaining events." });
+      setVoidingId(null);
+      setVoidReason("");
+    } catch (err: any) {
+      toast({ title: "Void failed", description: err?.message, variant: "destructive" });
     }
   }
 
@@ -600,12 +719,54 @@ function ResponseStatusTracker({
           ))}
         </div>
       )}
-      <button
-        onClick={() => setExpanded((v) => !v)}
-        className="text-[10px] text-slate-400 hover:text-slate-600 underline underline-offset-2"
-      >
-        {expanded ? "Cancel" : "Update response status"}
-      </button>
+      <div className="flex gap-3">
+        <button
+          onClick={() => setExpanded((v) => !v)}
+          className="text-[10px] text-slate-400 hover:text-slate-600 underline underline-offset-2"
+        >
+          {expanded ? "Cancel" : "Record a response"}
+        </button>
+        {eventsForThisAuthority.length > 0 && (
+          <button
+            onClick={() => setShowHistory((v) => !v)}
+            className="text-[10px] text-slate-400 hover:text-slate-600 underline underline-offset-2"
+          >
+            {showHistory ? "Hide history" : `History (${eventsForThisAuthority.length})`}
+          </button>
+        )}
+      </div>
+
+      {showHistory && (
+        <ol className="mt-1.5 space-y-1 border-l border-slate-200 pl-2.5">
+          {eventsForThisAuthority.map((e) => (
+            <li key={e.id} className={`text-[10px] ${e.voided_at ? "text-slate-300 line-through" : "text-slate-600"}`}>
+              {new Date(e.effective_at).toLocaleDateString()} · {e.response_status.replace(/_/g, " ")}
+              {e.government_role_id && roleName.get(e.government_role_id) && <> · {roleName.get(e.government_role_id)}</>}
+              {e.origin !== "event" && <span className="text-slate-400"> · {e.origin}</span>}
+              {e.source_url && (
+                <a href={e.source_url} target="_blank" rel="noreferrer" className="ml-1 text-slate-400 hover:text-slate-700">source</a>
+              )}
+              {e.notes && <span className="text-slate-400"> · {e.notes}</span>}
+              {e.voided_at ? (
+                <span className="no-underline text-slate-400" style={{ textDecoration: "none" }}> (voided: {e.void_reason})</span>
+              ) : voidingId === e.id ? (
+                <span className="inline-flex items-center gap-1 ml-1">
+                  <Input
+                    value={voidReason}
+                    onChange={(ev) => setVoidReason(ev.target.value)}
+                    placeholder="Reason"
+                    className="h-6 w-40 text-[10px]"
+                  />
+                  <button onClick={() => handleVoid(e.id)} className="text-red-600" disabled={voidEvent.isPending}>Void</button>
+                  <button onClick={() => { setVoidingId(null); setVoidReason(""); }} className="text-slate-400">Cancel</button>
+                </span>
+              ) : (
+                <button onClick={() => setVoidingId(e.id)} className="ml-1 text-slate-400 hover:text-red-600">void</button>
+              )}
+            </li>
+          ))}
+        </ol>
+      )}
 
       {expanded && (
         <div className="mt-2 p-2.5 rounded-lg bg-slate-50 border border-slate-100 space-y-2">
@@ -622,6 +783,31 @@ function ResponseStatusTracker({
               ))}
             </SelectContent>
           </Select>
+          <div className="grid grid-cols-2 gap-2">
+            <Input
+              type="date"
+              value={effectiveDate}
+              max={new Date().toISOString().slice(0, 10)}
+              onChange={(e) => setEffectiveDate(e.target.value)}
+              className="h-8 text-xs"
+              title="When the response happened"
+            />
+            <Select value={roleId} onValueChange={setRoleId}>
+              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Office (optional)" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none" className="text-xs">No specific office</SelectItem>
+                {roles.map((r) => (
+                  <SelectItem key={r.id} value={r.id} className="text-xs">{r.role_name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Input
+            value={sourceUrl}
+            onChange={(e) => setSourceUrl(e.target.value)}
+            placeholder="Source URL (optional, shown publicly)"
+            className="h-8 text-xs"
+          />
           <Input
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
@@ -631,10 +817,10 @@ function ResponseStatusTracker({
           <Button
             size="sm"
             className="w-full"
-            disabled={!regionId || update.isPending}
+            disabled={!regionId || record.isPending}
             onClick={handleSubmit}
           >
-            {update.isPending ? "Saving…" : `Update — notifies stakers in this region if the status changes`}
+            {record.isPending ? "Saving…" : `Record — notifies stakers in this region if the current status changes`}
           </Button>
         </div>
       )}
@@ -754,6 +940,7 @@ function QuestionAssignmentPanel({ authorities }: { authorities: Authority[] }) 
     selectedQuestion?.id ?? null
   );
   const { data: responseStatuses = [] } = useResponseStatuses(selectedQuestion?.id ?? null);
+  const { data: responseEvents = [] } = useResponseEvents(selectedQuestion?.id ?? null);
   const assign = useAssignAuthority();
   const unassign = useUnassignAuthority();
 
@@ -844,6 +1031,7 @@ function QuestionAssignmentPanel({ authorities }: { authorities: Authority[] }) 
                     authorityId={a.authority_id}
                     authorityName={a.authority_registry?.name ?? "Authority"}
                     existing={responseStatuses}
+                    events={responseEvents}
                   />
                 </div>
               ))}
