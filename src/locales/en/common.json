@@ -470,6 +470,7 @@
   },
   "share": {
     "button": "Share",
+    "comingSoon": "Coming soon",
     "panelTitle": "Share this question",
     "postToX": "Post to X",
     "postToXSublabel": "Posts with image card",
