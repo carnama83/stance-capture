@@ -77,7 +77,8 @@ export function EditQuestionWordingPanel({
   const [status, setStatus] = React.useState<Status | null>(null);
   const [open, setOpen] = React.useState(false);
   const [change, setChange] = React.useState("");
-  const [busy, setBusy] = React.useState<null | "suggest" | "apply">(null);
+  const [busy, setBusy] = React.useState<null | "suggest" | "refine" | "apply">(null);
+  const [refineText, setRefineText] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
   const [current, setCurrent] = React.useState<Version | null>(null);
   const [suggestion, setSuggestion] = React.useState<Suggestion | null>(null);
@@ -122,6 +123,30 @@ export function EditQuestionWordingPanel({
     }
   }
 
+  // Adjusts the suggestion on screen rather than starting again from the live
+  // question. On failure the current suggestion stays, so nothing is lost.
+  async function refine() {
+    if (!suggestion) return;
+    setBusy("refine"); setError(null);
+    try {
+      const { ok, body } = await callEdit({
+        action: "refine", suggestion_id: suggestion.id, change_request: refineText.trim(),
+      });
+      if (!ok) {
+        setError(explain(body));
+        if (body?.error === "QUESTION_LOCKED") loadStatus();
+        return;
+      }
+      setCurrent(body.current);
+      setSuggestion(body.suggestion);
+      setRefineText("");
+    } catch {
+      setError(t("questionEdit.errors.generic"));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function apply() {
     if (!suggestion) return;
     setBusy("apply"); setError(null);
@@ -144,7 +169,7 @@ export function EditQuestionWordingPanel({
 
   function reset() {
     if (suggestion) callEdit({ action: "discard", suggestion_id: suggestion.id }).catch(() => {});
-    setSuggestion(null); setError(null);
+    setSuggestion(null); setError(null); setRefineText("");
   }
 
   if (!status) return null;
@@ -231,6 +256,27 @@ export function EditQuestionWordingPanel({
                   <span><span className="font-medium">{t("questionEdit.adminWarning")}</span> {suggestion.warning}</span>
                 </p>
               )}
+              <div className="rounded-md border border-slate-200 bg-slate-50 p-3 space-y-2">
+                <label className="block text-xs font-medium text-slate-700" htmlFor={`qe-refine-${questionId}`}>
+                  {t("questionEdit.refineLabel")}
+                </label>
+                <p className="text-[11px] text-slate-500">{t("questionEdit.refineHint")}</p>
+                <Textarea
+                  id={`qe-refine-${questionId}`}
+                  value={refineText}
+                  onChange={(e) => setRefineText(e.target.value)}
+                  placeholder={t("questionEdit.refinePlaceholder")}
+                  rows={2}
+                  maxLength={500}
+                  className="text-sm resize-none bg-white"
+                  disabled={!!busy}
+                />
+                <Button size="sm" variant="outline" onClick={refine} disabled={!!busy || refineText.trim().length < 5}>
+                  {busy === "refine"
+                    ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> {t("questionEdit.refining")}</>
+                    : <><Sparkles className="h-3.5 w-3.5 mr-1.5" /> {t("questionEdit.refine")}</>}
+                </Button>
+              </div>
               <div className="flex flex-wrap items-center gap-2">
                 <Button size="sm" onClick={apply} disabled={!!busy}>
                   {busy === "apply"
