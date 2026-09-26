@@ -458,7 +458,20 @@ Deno.serve(async (req) => {
         if (sliderLow !== undefined) updatePayload.slider_low_label = sliderLow || null;
         if (sliderHigh !== undefined) updatePayload.slider_high_label = sliderHigh || null;
 
-        await adminSb.from("questions").update(updatePayload).eq("id", questionId);
+        // Sep 2026: wording is frozen once anyone has answered
+        // (trg_questions_lock_wording). The result used to be ignored, so a
+        // refused edit reported success; surface it instead.
+        const { error: editErr } = await adminSb.from("questions").update(updatePayload).eq("id", questionId);
+        if (editErr) {
+          const locked = (editErr.message ?? "").includes("QUESTION_LOCKED");
+          console.error(`[ugq-moderate] edit_published refused for ${questionId}: ${editErr.message}`);
+          return json(locked ? 409 : 500, {
+            ok: false, error: locked ? "QUESTION_LOCKED" : "EDIT_FAILED",
+            message: locked
+              ? "People have already answered this question, so its wording can no longer change. Background can still be added from Live Questions."
+              : editErr.message,
+          });
+        }
         // Mirror the edit back onto the proposal for audit, same convention
         // edit_and_approve uses for the fact-checked path.
         await adminSb.from("user_question_proposals").update({

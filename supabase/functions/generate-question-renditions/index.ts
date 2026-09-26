@@ -48,6 +48,14 @@
 // after 5 consecutive failures. Before this a permanently failing rendition
 // retried every minute forever, silently.
 //
+// Sep 2026: model output is parsed tolerantly — see callClaude. A fenced reply
+// used to be a hard parse failure that retried forever for the same reason.
+//
+// Sep 2026: raw line breaks inside JSON strings are now escaped before parsing
+// (a multi-paragraph background used to fail every faithful translation), a
+// parse failure records stop_reason/usage, and a translation whose background
+// drops paragraphs is retried and never auto-publishes.
+//
 // Auth: x-cron-secret header must match CRON_SECRET.
 // Env required: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, CRON_SECRET,
 //               ANTHROPIC_API_KEY, ANTHROPIC_VERSION (optional, defaults below)
@@ -207,27 +215,92 @@ async function callClaude(
   // from a genuinely malformed response.
   const raw = String(textBlock.text ?? "").trim();
   const unfenced = raw
-    .replace(/^```(?:json)?s*/i, "")
-    .replace(/s*```$/, "")
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/, "")
     .trim();
 
-  for (const candidate of [unfenced, raw]) {
-    try {
-      return JSON.parse(candidate);
-    } catch { /* fall through to the next shape */ }
-  }
-
-  // Last resort: the outermost {...} in the reply. Covers a model that prefixes
-  // prose before the object.
+  // Sep 2026: a multi-paragraph context_summary (admin "Add Context" appends a
+  // new paragraph) comes back with RAW line breaks inside the JSON string.
+  // JSON.parse rejects those, so every faithful translation failed and the only
+  // reply that parsed was one that had dropped the second paragraph -- which
+  // then auto-published. Escaping control characters inside strings lets the
+  // faithful reply through.
   const first = unfenced.indexOf("{");
   const last = unfenced.lastIndexOf("}");
-  if (first >= 0 && last > first) {
-    try {
-      return JSON.parse(unfenced.slice(first, last + 1));
-    } catch { /* genuinely unparseable */ }
+  const outermost = first >= 0 && last > first ? unfenced.slice(first, last + 1) : null;
+
+  for (const candidate of [unfenced, raw, outermost]) {
+    if (!candidate) continue;
+    for (const text of [candidate, escapeControlCharsInStrings(candidate)]) {
+      try {
+        return JSON.parse(text);
+      } catch { /* fall through to the next shape */ }
+    }
   }
 
-  throw new Error(`Failed to parse JSON from model output: ${raw.slice(0, 300)}`);
+  // Say WHY: a truncated reply (stop_reason=max_tokens) and a malformed one need
+  // different fixes, and the 300-char excerpt alone cannot tell them apart.
+  throw new Error(
+    `Failed to parse JSON from model output ` +
+    `(stop_reason=${data.stop_reason ?? "unknown"}, chars=${raw.length}, ` +
+    `max_tokens=${prompt.max_tokens}, usage=${JSON.stringify(data.usage ?? {})}): ` +
+    raw.slice(0, 300),
+  );
+}
+
+// Escapes raw control characters (newline, tab, CR ...) that appear INSIDE JSON
+// string literals, leaving structural whitespace between tokens untouched.
+function escapeControlCharsInStrings(text: string): string {
+  let out = "";
+  let inString = false;
+  let escaped = false;
+  for (const ch of text) {
+    if (inString) {
+      if (escaped) { escaped = false; out += ch; continue; }
+      if (ch === "\\") { escaped = true; out += ch; continue; }
+      if (ch === '"') { inString = false; out += ch; continue; }
+      const code = ch.charCodeAt(0);
+      if (code < 0x20) {
+        out += ch === "\n" ? "\\n" : ch === "\r" ? "\\r" : ch === "\t" ? "\\t"
+          : "\\u" + code.toString(16).padStart(4, "0");
+        continue;
+      }
+      out += ch;
+    } else {
+      if (ch === '"') inString = true;
+      out += ch;
+    }
+  }
+  return out;
+}
+
+// A translated background must carry every paragraph of the source. The
+// equivalence check covers only the question and slider labels, so without this
+// a translation that silently drops an admin-added paragraph auto-publishes.
+function paragraphCount(text: string | null | undefined): number {
+  const t = (text ?? "").trim();
+  if (!t) return 0;
+  return t.split(/\n\s*\n/).filter((p) => p.trim().length > 0).length;
+}
+
+function contextCompletenessProblem(
+  sourceContext: string | null | undefined,
+  renderedContext: unknown,
+): string | null {
+  const source = (sourceContext ?? "").trim();
+  if (!source) return null;
+  const rendered = typeof renderedContext === "string" ? renderedContext.trim() : "";
+  if (!rendered) {
+    return "The background/context text was not translated: rendered_context_summary came back empty.";
+  }
+  const want = paragraphCount(source);
+  const got = paragraphCount(rendered);
+  if (got < want) {
+    return `The background/context text has ${want} paragraphs separated by blank lines but the ` +
+      `translation returned ${got}. Translate EVERY paragraph, keep them in order, and separate ` +
+      `them with a blank line (write it as \\n\\n inside the JSON string).`;
+  }
+  return null;
 }
 
 interface OriginalRow {
@@ -318,6 +391,7 @@ async function processRendition(
   let equivalenceResult: any = null;
   let attempts = 0;
   let lastFailureNote: string | null = null;
+  let contextProblem: string | null = null;
 
   // Bounded repair loop. Each retry carries the checker's own explanation back
   // in as a correction target -- a blind retry of a non-deterministic call is
@@ -359,11 +433,20 @@ async function processRendition(
     const equivalenceUserPrompt = fillTemplate(equivalencePrompt.user_prompt_template, equivalenceVars);
     equivalenceResult = await callClaude(equivalencePrompt, equivalenceUserPrompt, equivalenceVars);
 
-    if (equivalenceResult.result === "pass") break;
-    lastFailureNote = equivalenceResult.notes ?? "No explanation returned by the checker.";
+    contextProblem = contextCompletenessProblem(
+      transformVars.context_summary,
+      transformResult.rendered_context_summary,
+    );
+
+    if (equivalenceResult.result === "pass" && !contextProblem) break;
+    lastFailureNote = equivalenceResult.result !== "pass"
+      ? (equivalenceResult.notes ?? "No explanation returned by the checker.")
+      : contextProblem;
   }
 
-  const passed = equivalenceResult?.result === "pass";
+  // An incomplete background never auto-publishes: it goes to Rendition Review
+  // like any other flagged rendition, and the previous version stays live.
+  const passed = equivalenceResult?.result === "pass" && !contextProblem;
 
   // community_proposer: a pass goes live immediately, matching the source
   // language's own instant-publish path. Everything else lands in the admin
@@ -380,9 +463,11 @@ async function processRendition(
     transform_status: passed ? "transformed" : "flagged",
     transform_model: transformPrompt.model,
     axis_equivalence_check: equivalenceResult.result,
-    axis_equivalence_notes: attempts > 1
-      ? "[" + attempts + " attempts] " + (equivalenceResult.notes ?? "")
-      : (equivalenceResult.notes ?? null),
+    axis_equivalence_notes: [
+      attempts > 1 ? "[" + attempts + " attempts]" : null,
+      equivalenceResult.notes ?? null,
+      contextProblem ? "[background incomplete] " + contextProblem : null,
+    ].filter(Boolean).join(" ") || null,
     derived_from_rendition_id: original.id,
   });
 
