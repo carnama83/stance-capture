@@ -1,5 +1,14 @@
 // supabase/functions/admin-create-question-draft/index.ts
 //
+// v12 — Epic R M-R07: content-type classification + incident template
+//   • A classifier call picks content_type (incident/policy/election/general) unless the
+//     admin passes content_type. Incident drafts are authored with the ai_prompts
+//     "incident_accountability" template (fallback HARDCODED_INCIDENT_PROMPT): what
+//     happened, the responsible institution (never an individual, BR-R07), and an
+//     accountability stance trigger. content_type is saved on the draft and copied to
+//     questions.content_type by admin_publish_question_draft.
+//   • Re-creating a rejected draft keeps a content type the admin changed by hand.
+//
 // v11 — Epic QF authoring merged into creation (single LLM call)
 //   • v10.2: added open/definitional closes ("mean to you", "tell you about", etc.) to
 //     FORBIDDEN_PHRASES — these aren't slider-compatible and the self-score can miss them.
@@ -307,6 +316,87 @@ QUALITY SCORING (0–10):
 HARD REQUIREMENT: A question scoring 0 on slider compatibility must be flagged regardless of total score. A question on a generic topic (quality_score = 0) must also be flagged.
 
 Minimum acceptable score: 8. Flag anything below 8 in quality_notes.`;
+// ── Epic R M-R07: incident accountability template ─────────────────────
+// Used instead of the QF prompt when the draft's content_type is 'incident'
+// (a specific civic harm event where a public body's duty is in question).
+// Loaded from ai_prompts (key "incident_accountability"; seeded by migration
+// 20260926020000 with this same text) — this constant is the fallback. The
+// reframe function uses the same key for incident drafts.
+const HARDCODED_INCIDENT_PROMPT = `You are a civic question writer for INCIDENT questions: a specific event in which people were harmed or put at risk (a death, injury, illness, displacement, or loss of an essential service) and a public body's duty, maintenance, or oversight is in question. Your job is to state what happened plainly and ask what accountability the user expects — not to debate policy.
+
+REQUIRED STRUCTURE — all three parts, in this order:
+1. What happened: ONE factual sentence — who was harmed (by number or description, not by name unless the context names them), what happened, where, and when if the date is in the context. Plain, neutral words. No adjectives such as "tragic", "shocking", "horrific", "senseless".
+2. Who was responsible for the thing that failed: ONE sentence naming the responsible INSTITUTION (the municipal corporation, the state health department, the railway authority, the police department) and what it was responsible for (maintaining the drain, supplying oxygen, inspecting the bridge). Institutional level only — never name an individual official, even if the context names one. If the context does not make responsibility clear, say which body is responsible for that kind of infrastructure or service in that place, as a fact, without implying guilt.
+3. Stance trigger: ONE question ending with "you" that asks what level of accountability the user expects, resolving into a single spectrum — from "an explanation and a fix are enough" to "those responsible should face criminal charges". Never a menu of options.
+
+LENGTH: Target 30–45 words. 65 words is the hard ceiling.
+
+PROHIBITED:
+- No accusatory or activist framing: never "demand", "outrage", "cover-up", "criminal negligence" (unless a court or investigation has already found it and the context says so), "blood on their hands".
+- Do not state or imply that anyone is guilty; describe the duty, not the verdict.
+- Do not use "Do you support", "Are you for/against", "Should the government", "Should we", "How much should".
+- Do not ask two questions at once; do not list options.
+- Do not name individual people, officials or victims; institutions only.
+- Do not invent facts, dates or numbers that are not in the provided context.
+
+If the context does not describe a specific harm event (for example, it is a policy debate or a proposal), still write the best incident-style question you can, but set quality_score to at most 5 and quality_notes to "not_an_incident — consider content_type policy/general".
+
+OUTPUT — return ONLY valid JSON, no markdown, no backticks:
+{
+  "question": "The incident question (target 30–45 words, max 65)",
+  "framing_style": "boundary_line",
+  "core_tension": "one sentence: the duty that was not met and the accountability question it raises",
+  "primary_value": "e.g. public_safety",
+  "secondary_value": "e.g. institutional_accountability",
+  "slider_low_label": "3-6 word noun phrase for the low end — e.g. 'An explanation and fix suffice'",
+  "slider_high_label": "3-6 word noun phrase for the high end — e.g. 'Criminal charges for those responsible'",
+  "share_headline": "A factual teaser under 70 characters, different wording from the question",
+  "quality_score": <number 0-10>,
+  "quality_notes": "brief reason for score"
+}
+
+QUALITY SCORING (0–10):
+- Specific, factual account of what happened (place, harm, date or number from the context): 3 points
+- Responsible institution named at institutional level, no individual named: 2 points
+- Neutral, non-accusatory plain language: 2 points
+- Slider-compatible accountability trigger ending with "you" (single spectrum): 2 points
+- Concise — at or under 45 words scores full point, 46–65 words scores half: 1 point
+
+Minimum acceptable score: 8. Flag anything below 8 in quality_notes.`;
+
+// Epic R M-R07: content-type classifier. Runs before authoring (unless the admin
+// passes content_type) so the template can be chosen by type. Conservative by
+// design: an incident needs concrete harm AND a public body's duty in question.
+const CONTENT_TYPE_CLASSIFIER_PROMPT = `Classify a news topic for a civic stance platform. Return ONLY valid JSON: {"content_type": "incident" | "policy" | "election" | "general", "reason": "one short sentence"}.
+
+- incident: a specific event that has already happened in which people were harmed or put at risk (death, injury, illness, displacement, loss of an essential service such as water, power or hospital care) AND a public body's duty, maintenance, oversight or response is in question. Examples: a man drowned in an uncovered municipal drain; a bridge collapsed; a hospital ran out of oxygen; a water supply was contaminated; a death in police custody; a building collapse after inspections were skipped.
+- election: about an election, candidates, campaigns, polling, voting or results.
+- policy: a proposed, debated or enacted law, policy, budget, regulation, programme, or a court ruling about what government should do.
+- general: anything else (culture, business, technology, sport, international affairs without a local harm event, opinion pieces).
+
+Be conservative: choose incident only when BOTH a concrete harm event AND a public body's responsibility are present in the text. Natural disasters with no question about a public body's preparation or response, crimes by private individuals, and accidents with no public-body duty are NOT incidents. When unsure, choose policy or general.`;
+
+const VALID_CONTENT_TYPES = new Set(["incident", "policy", "election", "general"]);
+
+async function classifyContentType(provider, modelName, apiKey, topic) {
+  const userPrompt =
+    `Topic label: ${topic.title ?? "(none)"}\n` +
+    `News headline: ${topic.headline ?? "(none)"}\n` +
+    `Context: ${topic.summary ?? "(none)"}\n` +
+    `Tags: ${JSON.stringify(topic.tags ?? [])}`;
+  try {
+    const raw = await callLLM(provider, modelName, CONTENT_TYPE_CLASSIFIER_PROMPT, userPrompt, apiKey, 0);
+    const parsed = JSON.parse(String(raw).replace(/```json|```/g, "").trim());
+    const ct = String(parsed?.content_type ?? "").toLowerCase().trim();
+    return VALID_CONTENT_TYPES.has(ct)
+      ? { content_type: ct, reason: String(parsed?.reason ?? "").slice(0, 300), source: "classifier" }
+      : { content_type: "general", reason: `classifier returned '${ct}'`, source: "classifier_invalid" };
+  } catch (e) {
+    // Non-fatal: an unclassified draft is authored as before (general).
+    return { content_type: "general", reason: `classifier_failed: ${e?.message ?? String(e)}`.slice(0, 300), source: "classifier_failed" };
+  }
+}
+
 // Addendum: adapts the QF prompt for first-pass AUTHORING and adds the fields this
 // function needs that the QF prompt alone doesn't emit (scope, location_label, audience_fit).
 const OUTPUT_ADDENDUM = `
@@ -355,11 +445,11 @@ function parseQfResult(raw) {
   }
 }
 // ── Provider abstraction with retries (ported from reframe + maxRetries) ───────
-async function callLLM(provider, modelName, systemPrompt, userPrompt, apiKey) {
+async function callLLM(provider, modelName, systemPrompt, userPrompt, apiKey, temperature = 0.7) {
   if (provider === "anthropic") {
     const client = new Anthropic({ apiKey, maxRetries: 4 });
     const message = await client.messages.create({
-      model: modelName, max_tokens: 1024, temperature: 0.7,
+      model: modelName, max_tokens: 1024, temperature,
       system: systemPrompt, messages: [{ role: "user", content: userPrompt }]
     });
     if (!message.content || message.content.length === 0) {
@@ -372,7 +462,7 @@ async function callLLM(provider, modelName, systemPrompt, userPrompt, apiKey) {
   // Default: OpenAI
   const client = new OpenAI({ apiKey, maxRetries: 4, timeout: 30_000 });
   const completion = await client.chat.completions.create({
-    model: modelName, temperature: 0.7,
+    model: modelName, temperature,
     messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }]
     // NOTE: no response_format here — the Anthropic path can't use it and the QF prompt
     // already instructs strict JSON; parseQfResult strips any stray backticks defensively.
@@ -419,13 +509,15 @@ serve(async (req)=>{
     try { body = await req.json(); } catch { body = {}; }
     if (!body?.topic_draft_id) return jsonResponse({ error: "topic_draft_id is required" }, 400);
     const topicDraftId = String(body.topic_draft_id);
+    // Epic R M-R07: optional admin override of the content type (skips the classifier).
+    let requestedContentType = VALID_CONTENT_TYPES.has(String(body?.content_type ?? "")) ? String(body.content_type) : null;
 
     pipelineJobId = await startPipelineJob(supabaseAdmin, "question_draft", topicDraftId);
 
     // 2b) Idempotency guard
     {
       const { data: existing, error: exErr } = await supabaseAdmin.from("question_drafts")
-        .select("id, topic_draft_id, question, summary, tags, location_label, scope, status, guardrail_flags, qa_passed, created_at")
+        .select("id, topic_draft_id, question, summary, tags, location_label, scope, status, guardrail_flags, qa_passed, created_at, content_type, ai_output")
         .eq("topic_draft_id", topicDraftId).maybeSingle();
       if (exErr) {
         console.warn("Idempotency check failed (continuing):", exErr);
@@ -441,6 +533,13 @@ serve(async (req)=>{
           return jsonResponse({ error: "Failed to replace rejected draft", details: delErr.message }, 500);
         }
         console.log(`Replaced rejected question_draft ${existing.id} for topic ${topicDraftId} — re-authoring.`);
+        // Epic R M-R07: if the admin changed the rejected draft's content type by hand
+        // (it differs from what the classifier chose), re-author with that type instead
+        // of letting the classifier pick the same template again.
+        const classifiedAs = existing.ai_output?.classification?.content_type ?? null;
+        if (!requestedContentType && VALID_CONTENT_TYPES.has(String(existing.content_type ?? "")) && existing.content_type !== (classifiedAs ?? "general")) {
+          requestedContentType = existing.content_type;
+        }
         // (fall through — no return — so a fresh draft is created below)
       } else if (existing?.id) {
         // Non-rejected existing draft → keep idempotent behavior (return it, backfill cover)
@@ -498,6 +597,11 @@ serve(async (req)=>{
     let shareHeadline = null;
     let audienceFitRaw = null;
     let audienceLocationLabel = "Global", audienceReason = "";
+    // Epic R M-R07: content type drives the template; saved on the draft, copied on publish.
+    let contentType = requestedContentType ?? "general";
+    let classification = requestedContentType
+      ? { content_type: requestedContentType, reason: "set by admin", source: "admin" }
+      : { content_type: "general", reason: "not classified", source: "none" };
 
     if (!apiKey) {
       // No key → minimal fallback, flagged for review
@@ -510,14 +614,25 @@ serve(async (req)=>{
       const fb = inferAudienceLocation(question, summary, tags, locationLabel);
       audienceLocationLabel = fb.audience_label; audienceReason = fb.reason;
     } else {
-      // Load house-style prompt from ai_prompts (same key reframe uses) + authoring addendum
-      let activeSystemPrompt = HARDCODED_QF_PROMPT;
+      // Epic R M-R07: classify first (unless the admin chose the type), then pick the template.
+      if (!requestedContentType) {
+        classification = await classifyContentType(provider, modelName, apiKey, {
+          title: topicDraft.title, headline: newsHeadline, summary: topicDraft.summary, tags: topicDraft.tags
+        });
+        contentType = classification.content_type;
+      }
+      const isIncident = contentType === "incident";
+      const promptKey = isIncident ? "incident_accountability" : "question_reframing";
+      const fallbackPrompt = isIncident ? HARDCODED_INCIDENT_PROMPT : HARDCODED_QF_PROMPT;
+
+      // Load the template from ai_prompts (reframe uses the same keys) + authoring addendum
+      let activeSystemPrompt = fallbackPrompt;
       let activePromptId = null;
       try {
         const { data: promptRow, error: promptErr } = await supabaseAdmin.from("ai_prompts")
-          .select("id, system_prompt").eq("prompt_key", "question_reframing").eq("is_active", true).maybeSingle();
+          .select("id, system_prompt").eq("prompt_key", promptKey).eq("is_active", true).maybeSingle();
         if (promptErr) console.warn("ai_prompts.read_failed_using_hardcoded:", promptErr.message);
-        else if (promptRow) { activeSystemPrompt = promptRow.system_prompt ?? HARDCODED_QF_PROMPT; activePromptId = promptRow.id ?? null; }
+        else if (promptRow) { activeSystemPrompt = promptRow.system_prompt ?? fallbackPrompt; activePromptId = promptRow.id ?? null; }
       } catch (e) { console.warn("ai_prompts.exception_using_hardcoded:", e?.message); }
       const systemPrompt = activeSystemPrompt + OUTPUT_ADDENDUM;
 
@@ -533,8 +648,11 @@ serve(async (req)=>{
         `2. If the topic label is a generic category (not a specific event), set quality_score = 0 and quality_notes = "topic_too_generic".\n` +
         `3. Check the state of play: if a decision has already been made or a court has ruled, start from that reality.\n` +
         `4. Name only people/places/numbers that appear in the context above — never introduce names from your own knowledge.\n` +
-        `5. Use the Context + Tension + accountability-first stance trigger structure, ending with "you". Target 30–45 words.\n` +
-        `6. Choose the single best framing style.\n` +
+        (isIncident
+          ? `5. This is an INCIDENT: state what happened, name the responsible institution (never an individual), and end with the accountability question ending with "you". Target 30–45 words.\n` +
+            `6. Use framing_style "boundary_line" unless another style clearly fits better.\n`
+          : `5. Use the Context + Tension + accountability-first stance trigger structure, ending with "you". Target 30–45 words.\n` +
+            `6. Choose the single best framing style.\n`) +
         `Return ONLY the JSON object with all required keys.`;
 
       try {
@@ -583,7 +701,7 @@ serve(async (req)=>{
 
           aiOutput = {
             rawText: String(rawText).slice(0, 4000), parsed: result, provider, model: modelName,
-            prompt_id: activePromptId, word_count: wc, guardrail_flags: guardrailFlags,
+            prompt_key: promptKey, prompt_id: activePromptId, classification, word_count: wc, guardrail_flags: guardrailFlags,
             qa_passed: qaPassed, quality_score: qualityScore, audience_fit_raw: audienceFitRaw
           };
           const aud = sigCountry
@@ -610,7 +728,7 @@ serve(async (req)=>{
       p_summary: summary,
       p_tags: tags,
       p_location_label: locationLabel,
-      p_ai_version: "question-draft-v11-event-location",
+      p_ai_version: "question-draft-v12-incident-template",
       p_ai_input: aiInput,
       p_ai_output: aiOutput,
       p_scope: scope,
@@ -637,6 +755,7 @@ serve(async (req)=>{
       slider_low_label: sliderLow,
       slider_high_label: sliderHigh,
       share_headline: shareHeadline || null,
+      content_type: contentType,
       question_quality_score: qualityScore,
       quality_notes: qualityNotes || null
     }).eq("id", draft.id);
@@ -659,6 +778,7 @@ serve(async (req)=>{
     return jsonResponse({
       ok: true, existing: false, draft, status: "draft",
       framing_style: framingStyle, quality_score: qualityScore, qa_passed: qaPassed,
+      content_type: contentType, classification,
       guardrail_flags: guardrailFlags, audience_fit: parsedAudienceFit
     }, 200);
   } catch (err) {
