@@ -1145,7 +1145,8 @@
     "searchForACityE": "Search for a city (e.g., Boston)",
     "noMatchingCitiesFound": "No matching cities found.",
     "savingYourLocation": "Saving your location…",
-    "locationUpdatedYourRegionalStats": "Location updated. Your regional stats will refresh shortly."
+    "locationUpdatedYourRegionalStats": "Location updated. Your regional stats will refresh shortly.",
+    "couldNotSaveLocation": "Your location could not be saved. Please try again."
   },
   "insights": {
     "questionsAnswered": "Questions answered",

@@ -23,7 +23,8 @@ type RegionRow = {
 
 type LocationOption = {
   id: string;
-  iso_code: string;
+  /** Null for every city. */
+  iso_code: string | null;
   name: string;
   type: string;
 };
@@ -93,19 +94,25 @@ async function searchByType(
   return (data ?? []) as LocationOption[];
 }
 
-async function setUserLocationByIso(
-  isoCode: string,
+// Saves the chosen place by its location id — the same call Signup makes.
+// It used to go by ISO code (set_user_location_cascade_by_iso), which could not
+// work for cities (no city has an iso_code, so every city save failed) and was
+// ambiguous for the counties that share a code (Richmond / Richmond City).
+async function setUserLocationById(
+  userId: string,
+  locationId: string,
   precision: "country" | "state" | "county" | "city"
 ): Promise<void> {
   const sb = getSupabase();
   if (!sb) throw new Error("Supabase client not available");
 
-  const { error } = await sb.rpc("set_user_location_cascade_by_iso", {
-  p_iso_code: isoCode,
-  p_precision: precision,
-  p_source: "settings",
-  p_override: false,
-});
+  const { error } = await sb.rpc("set_user_location_cascade", {
+    p_user_id: userId,
+    p_location_id: locationId,
+    p_precision: precision,
+    p_override: false,
+    p_source: "settings",
+  });
 
   if (error) {
     console.error("Failed to set user location", error);
@@ -227,12 +234,15 @@ export default function SettingsLocation() {
 
   const setLocationMutation = useMutation({
     mutationFn: ({
-      isoCode,
+      locationId,
       precision,
     }: {
-      isoCode: string;
+      locationId: string;
       precision: "country" | "state" | "county" | "city";
-    }) => setUserLocationByIso(isoCode, precision),
+    }) => {
+      if (!userId) throw new Error("Not signed in");
+      return setUserLocationById(userId, locationId, precision);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["my-region"] });
       queryClient.invalidateQueries({
@@ -367,12 +377,12 @@ export default function SettingsLocation() {
           <div className="mt-2 max-h-64 overflow-y-auto border rounded">
             {countryResults.map((loc) => (
               <button
-                key={loc.iso_code}
+                key={loc.id}
                 type="button"
                 disabled={setLocationMutation.isPending}
                 onClick={() => {
                   setLocationMutation.mutate({
-                    isoCode: loc.iso_code,
+                    locationId: loc.id,
                     precision: "country",
                   });
                   setSelectedCountryCode(loc.iso_code);
@@ -435,12 +445,12 @@ export default function SettingsLocation() {
           <div className="mt-2 max-h-64 overflow-y-auto border rounded">
             {stateResults.map((loc) => (
               <button
-                key={loc.iso_code}
+                key={loc.id}
                 type="button"
                 disabled={setLocationMutation.isPending}
                 onClick={() => {
                   setLocationMutation.mutate({
-                    isoCode: loc.iso_code,
+                    locationId: loc.id,
                     precision: "state",
                   });
                   setSelectedStateId(loc.id);
@@ -502,12 +512,12 @@ export default function SettingsLocation() {
           <div className="mt-2 max-h-64 overflow-y-auto border rounded">
             {countyResults.map((loc) => (
               <button
-                key={loc.iso_code}
+                key={loc.id}
                 type="button"
                 disabled={setLocationMutation.isPending}
                 onClick={() => {
                   setLocationMutation.mutate({
-                    isoCode: loc.iso_code,
+                    locationId: loc.id,
                     precision: "county",
                   });
                   setCountySearchInput("");
@@ -571,12 +581,12 @@ export default function SettingsLocation() {
           <div className="mt-2 max-h-64 overflow-y-auto border rounded">
             {cityResults.map((loc) => (
               <button
-                key={loc.iso_code}
+                key={loc.id}
                 type="button"
                 disabled={setLocationMutation.isPending}
                 onClick={() => {
                   setLocationMutation.mutate({
-                    isoCode: loc.iso_code,
+                    locationId: loc.id,
                     precision: "city",
                   });
                   setCitySearchInput("");
@@ -609,6 +619,11 @@ export default function SettingsLocation() {
         {setLocationMutation.isSuccess && (
           <p className="text-[11px] text-emerald-600 mt-1">
             {t("settingsLocation.locationUpdatedYourRegionalStats")}
+          </p>
+        )}
+        {setLocationMutation.isError && (
+          <p className="text-[11px] text-red-600 mt-1">
+            {t("settingsLocation.couldNotSaveLocation")}
           </p>
         )}
       </section>
