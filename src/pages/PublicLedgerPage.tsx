@@ -14,6 +14,12 @@
 // region_id convention across every Epic R table so far), so the region
 // name needs its own query — PostgREST embedding requires a real FK
 // relationship, which doesn't exist here.
+//
+// Epic R M-R10 (US-R22): three separate accountability layers — the
+// responsible institution(s) (live question_authority_map), the government
+// offices respondents associated with each action (frozen role_summary, set
+// at publish), and a current office-holder only where one was verified and
+// current at publish time (BR-R11).
 
 import * as React from "react";
 import { localeFor } from "@/lib/intlFormat";
@@ -26,7 +32,9 @@ import { ShareButton } from "@/components/share/ShareButton";
 import { useLanguage } from "@/hooks/useLanguage";
 import { EXPECTATION_LABEL_KEYS } from "@/components/question/ExpectationPrompt";
 import { STATUS_LABEL_KEYS, STATUS_COLORS, formatResponseDate } from "@/components/question/AuthorityResponseStatusBlock";
-import { Loader2, ClipboardCheck } from "lucide-react";
+import { Loader2, ClipboardCheck, Landmark } from "lucide-react";
+import { useQuestionAuthorities } from "@/hooks/useQuestionAuthorities";
+import { RoleAssociationList, type RoleAssociation } from "@/components/question/RoleAssociationList";
 
 interface SnapshotEntry {
   expectation_type: string;
@@ -39,6 +47,7 @@ interface SnapshotEntry {
 
 interface LedgerData {
   snapshot_summary: SnapshotEntry[] | null;
+  role_summary: RoleAssociation[] | null;
   participation_count: number | null;
   optin_count: number | null;
   time_window_start: string | null;
@@ -63,7 +72,7 @@ function useLedger(questionId: string, regionId: string) {
       const { data: ledger, error } = await sb
         .from("expectation_ledgers")
         .select(
-          "snapshot_summary, participation_count, optin_count, time_window_start, time_window_end, status, questions(question, summary)"
+          "snapshot_summary, role_summary, participation_count, optin_count, time_window_start, time_window_end, status, questions(question, summary)"
         )
         .eq("question_id", questionId)
         .eq("region_id", regionId)
@@ -77,6 +86,7 @@ function useLedger(questionId: string, regionId: string) {
       const q = (ledger as any).questions;
       return {
         snapshot_summary: (ledger as any).snapshot_summary ?? null,
+        role_summary: (ledger as any).role_summary ?? null,
         participation_count: (ledger as any).participation_count,
         optin_count: (ledger as any).optin_count ?? null,
         time_window_start: (ledger as any).time_window_start,
@@ -138,6 +148,7 @@ export default function PublicLedgerPage() {
   const { languageCode } = useLanguage(null);
   const { data: ledger, isLoading } = useLedger(questionId ?? "", regionId ?? "");
   const { data: responses = [] } = useRegionAuthorityResponses(questionId ?? "", regionId ?? "");
+  const { data: institutions = [] } = useQuestionAuthorities(questionId ?? "");
 
   if (isLoading) {
     return (
@@ -224,6 +235,31 @@ export default function PublicLedgerPage() {
                 : t("expectationSignalBlock.multiSelectNote")}
             </p>
           </div>
+
+          {institutions.length > 0 && (
+            <div className="mb-4">
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <Landmark className="h-3.5 w-3.5 text-slate-400" />
+                <p className="text-xs font-medium text-slate-600">{t("publicLedger.responsibleInstitution")}</p>
+              </div>
+              <ul className="space-y-0.5">
+                {institutions.map((a) => (
+                  <li key={a.authority_id} className="text-xs text-slate-600">
+                    {a.authority_registry?.name ?? t("publicLedger.authority")}
+                    {a.confidence_level === "unclear" && (
+                      <span className="text-slate-400"> {t("publicLedger.unconfirmed")}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {ledger.role_summary && ledger.role_summary.length > 0 && (
+            <div className="mb-5 -mt-2">
+              <RoleAssociationList entries={ledger.role_summary} title={t("publicLedger.relevantOffices")} />
+            </div>
+          )}
 
           {responses.length > 0 && (
             <div className="mb-5">
