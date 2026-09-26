@@ -409,7 +409,8 @@ export default function PublicLedgerPage() {
                     {h.authority_name}
                     {h.government_role_name && <span className="text-slate-400"> ({h.government_role_name})</span>}
                     {" · "}
-                    <span className="font-medium">{responseStatusLabel(t, h.response_status, h.effective_at)}</span>
+                    {/* The date already leads the line, so the plain label (no "as of" date). */}
+                    <span className="font-medium">{responseStatusLabel(t, h.response_status)}</span>
                     {h.source_url && (
                       <a
                         href={h.source_url}
