@@ -1809,7 +1809,15 @@
     "outcomeDaysAfter_other": "{{count}} days after version {{n}}",
     "outcomeSameDay": "same day as version {{n}}",
     "outcomeBeforeVersion": "before version {{n}} was published",
-    "noOutcomeRecorded": "No outcome recorded as of {{date}} for: {{types}}"
+    "noOutcomeRecorded": "No outcome recorded as of {{date}} for: {{types}}",
+    "briefDelivered": "Brief to the responsible institution",
+    "briefDeliveredLine": "A brief summarising these expectations was delivered to {{authority}} on {{date}} by {{channel}}.",
+    "briefChannelEmail": "email",
+    "briefChannelPortal": "submission on its official portal",
+    "briefChannelLetter": "letter",
+    "briefChannelInPerson": "hand",
+    "briefChannelRti": "an RTI application",
+    "briefChannelOther": "another official channel"
   },
   "socialAuthButtons": {
     "continueWithGoogle": "Continue with Google",
@@ -2220,5 +2228,16 @@
     "couldNotSave": "Couldn’t save your offices. Please try again.",
     "associatedOfficesTitle": "Offices respondents associated with these actions",
     "associationLine": "{{pct}}% of those expecting “{{action}}” associated {{role}} with it"
+  },
+  "publicBrief": {
+    "title": "Brief on public expectations",
+    "print": "Print",
+    "to": "To",
+    "region": "Region",
+    "date": "Date",
+    "question": "Question",
+    "aboutThis": "This brief summarises what respondents in this region said they expect. It was drafted with AI assistance and approved by Stance Capture before it was sent. It reports responses; it does not make demands.",
+    "ledgerLink": "The full published ledger:",
+    "notAvailable": "This brief is not available."
   }
 }
