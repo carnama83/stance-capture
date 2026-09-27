@@ -1449,7 +1449,11 @@
     "opensWhatsappWithAPre": "Opens WhatsApp with a pre-filled \"SUBSCRIBE\" message. Send it to count your stance and get updates. Reply STOP anytime.",
     "stanceRecorded": "✓ Your stance is recorded",
     "stanceRecordedLabeled": "✓ Your stance — <v>{{label}}</v> — is recorded",
-    "couldnTSendTheLink": "Couldn't send the link. Check the address and try again."
+    "couldnTSendTheLink": "Couldn't send the link. Check the address and try again.",
+    "sheetTitle": "✓ Your answer is recorded",
+    "sheetBody": "It won't count in the results until you add your voice.",
+    "emailMeALink": "Email me a link",
+    "notNow": "Not now"
   },
   "settingsSessions": {
     "sessions": "Sessions",
