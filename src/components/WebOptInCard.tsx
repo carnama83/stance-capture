@@ -9,6 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getMyForwardRef, getDeviceId, authCallbackUrl } from "@/lib/webStance";
 import { buildWaHref } from "@/lib/whatsapp";
 import { Trans, useTranslation } from "react-i18next";
+import { Link } from "react-router-dom";
 
 const PENDING_ATTACH_KEY = "sc_pending_attach_ref";
 
@@ -134,6 +135,22 @@ export function WebOptInCard({
         >
           {t("webOptIn.addMyVoiceOnWhatsapp")}
         </a>
+        {/* Deliberately a quiet text link, not a third button: the full sign-up
+            form is more work than an email, and two clear choices convert
+            better than three. The held answer still commits after sign-up
+            (the confirmation link carries the device id; runBootstrap commits). */}
+        <p className="text-center text-xs text-slate-500">
+          {t("webOptIn.preferAPassword")}{" "}
+          <Link
+            to="/signup"
+            onClick={() => {
+              try { localStorage.setItem("return_to", `#/q/${questionId}`); } catch { /* ignore */ }
+            }}
+            className="font-medium text-violet-700 hover:underline"
+          >
+            {t("webOptIn.createAnAccount")}
+          </Link>
+        </p>
         {error && <p className="text-xs text-rose-600">{error}</p>}
       </div>
     );
