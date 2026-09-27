@@ -1453,7 +1453,9 @@
     "sheetTitle": "✓ Your answer is recorded",
     "sheetBody": "It won't count in the results until you add your voice.",
     "emailMeALink": "Email me a link",
-    "notNow": "Not now"
+    "notNow": "Not now",
+    "preferAPassword": "Prefer a password?",
+    "createAnAccount": "Create an account"
   },
   "settingsSessions": {
     "sessions": "Sessions",

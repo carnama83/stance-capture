@@ -1453,7 +1453,9 @@
     "sheetTitle": "✓ आपका जवाब दर्ज हो गया",
     "sheetBody": "जब तक आप अपनी आवाज़ नहीं जोड़ते, यह नतीजों में नहीं गिना जाएगा।",
     "emailMeALink": "मुझे लिंक ईमेल करें",
-    "notNow": "अभी नहीं"
+    "notNow": "अभी नहीं",
+    "preferAPassword": "पासवर्ड पसंद है?",
+    "createAnAccount": "खाता बनाएँ"
   },
   "settingsSessions": {
     "sessions": "सत्र",
