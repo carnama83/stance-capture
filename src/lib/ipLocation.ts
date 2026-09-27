@@ -22,6 +22,35 @@ export type IPLocationData = {
 
 const EMPTY: IPLocationData = { country: null, country_code: null, city: null, region: null };
 
+// Sep 2026, FIX: IP geolocation alone put a visitor in Pune on a "Singapore"
+// tab on launch day. iCloud Private Relay and some Indian mobile networks
+// (traffic routed via Singapore) make the IP's country wrong. The device's
+// time zone is read locally (nothing is sent anywhere) and, for a zone that
+// belongs to exactly one country, is a better signal than a relayed IP.
+// Only single-country zones belong here; multi-country or ambiguous zones
+// must never override the IP.
+const SINGLE_COUNTRY_TIME_ZONES: Record<string, { code: string; name: string }> = {
+  "Asia/Kolkata": { code: "IN", name: "India" },
+  "Asia/Calcutta": { code: "IN", name: "India" },
+};
+
+function timeZoneCountry(): { code: string; name: string } | null {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return (tz && SINGLE_COUNTRY_TIME_ZONES[tz]) || null;
+  } catch {
+    return null;
+  }
+}
+
+function withTimeZoneCorrection(ip: IPLocationData): IPLocationData {
+  const tz = timeZoneCountry();
+  if (!tz || ip.country_code === tz.code) return ip;
+  // The IP's city/region belong to the wrong country; drop them rather than
+  // pair "India" with a Singapore city.
+  return { country: tz.name, country_code: tz.code, city: null, region: null };
+}
+
 export async function fetchIPLocation(): Promise<IPLocationData> {
   try {
     const res = await fetch("/api/geo", {
@@ -31,13 +60,13 @@ export async function fetchIPLocation(): Promise<IPLocationData> {
     // expected: callers treat a null country_code as "skip".
     if (!res.ok) throw new Error("geo lookup failed");
     const data = await res.json();
-    return {
+    return withTimeZoneCorrection({
       country: data.country ?? null,
       country_code: data.country_code ?? null,
       city: data.city ?? null,
       region: data.region ?? null,
-    };
+    });
   } catch {
-    return { ...EMPTY };
+    return withTimeZoneCorrection({ ...EMPTY });
   }
 }
