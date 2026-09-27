@@ -6,7 +6,7 @@
 // the commit step, framed around what they gain by joining.
 import * as React from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { getMyForwardRef, getDeviceId } from "@/lib/webStance";
+import { getMyForwardRef, getDeviceId, authCallbackUrl } from "@/lib/webStance";
 import { buildWaHref } from "@/lib/whatsapp";
 import { Trans, useTranslation } from "react-i18next";
 
@@ -64,10 +64,11 @@ export function WebOptInCard({
       // Magic link must land on the app's /auth/callback route (which extracts the
       // token and calls setSession) — NOT directly on the question page, which has
       // no token-extraction logic under HashRouter.
-      const origin = window.location.origin;
+      // Carries this browser's device id so the staged stance commits even if
+      // the link is opened in a different browser (see authCallbackUrl).
       const { error } = await supabase.auth.signInWithOtp({
         email,
-        options: { emailRedirectTo: `${origin}/#/auth/callback` },
+        options: { emailRedirectTo: authCallbackUrl() },
       });
       if (error) throw error;
       setEmailSent(true);
