@@ -66,6 +66,15 @@ export interface CommunityStanceBarProps {
   myStanceScore?: number | null;
   /** When true, the viewer's stance is already counted (hides the 'not counted' note). */
   myStanceCounted?: boolean;
+  /**
+   * Sep 2026: how many of `responses` are anonymous (held until the person
+   * signs up). They're included in the percentages but drawn lighter and
+   * captioned, so a new question shows movement without passing them off as
+   * verified.
+   */
+  anonymousCount?: number;
+  /** Share (0..1) of each segment that is anonymous. */
+  anonymousShare?: { oppose: number; neutral: number; support: number };
 }
 
 // ── S3: Conviction vs noise indicator ────────────────────────────────────────
@@ -139,6 +148,8 @@ export function CommunityStanceBar({
   instrumentLanguageCode,
   myStanceScore,
   myStanceCounted = false,
+  anonymousCount = 0,
+  anonymousShare,
 }: CommunityStanceBarProps) {
 
   // Pole-aware labels: use the question's own poles when present, otherwise the
@@ -252,23 +263,20 @@ export function CommunityStanceBar({
         role="img"
         aria-label={`${t("stance.communityStance")}: ${formatPct(opposePct)} ${negFull}, ${formatPct(neutralPct)} ${t("stance.neutralLower")}, ${formatPct(supportPct)} ${posFull}`}
       >
+        {/* Each segment: verified part solid, anonymous part lighter. The
+            anonymous part sits on the inner side of the outer segments so
+            the solid colour stays anchored at the bar's ends. */}
         {oW > 0 && (
-          <div
-            className="bg-red-400 transition-all duration-500"
-            style={{ width: `${oW}%` }}
-          />
+          <Segment width={oW} anonShare={anonymousShare?.oppose ?? 0}
+            solid="bg-red-400" light="bg-red-200" anonFirst={false} />
         )}
         {nW > 0 && (
-          <div
-            className="bg-slate-300 transition-all duration-500"
-            style={{ width: `${nW}%` }}
-          />
+          <Segment width={nW} anonShare={anonymousShare?.neutral ?? 0}
+            solid="bg-slate-300" light="bg-slate-200" anonFirst={false} />
         )}
         {sW > 0 && (
-          <div
-            className="bg-emerald-400 transition-all duration-500"
-            style={{ width: `${sW}%` }}
-          />
+          <Segment width={sW} anonShare={anonymousShare?.support ?? 0}
+            solid="bg-emerald-400" light="bg-emerald-200" anonFirst={true} />
         )}
         {/* Full bar fallback if all zero */}
         {oW === 0 && nW === 0 && sW === 0 && (
@@ -315,12 +323,28 @@ export function CommunityStanceBar({
           compact ? "text-[11px]" : "text-xs"
         } text-slate-500`}
       >
-        <span>
-          {t("stance.stancesRecorded", {
-            count: responses,
-            formattedCount: formatNumber(responses, i18n.language),
-          })}
-        </span>
+        {anonymousCount > 0 ? (
+          <span title={t("stance.anonymousAnswersExplained")} className="cursor-help">
+            {anonymousCount >= responses
+              ? t("stance.answersAllAnonymous", {
+                  count: responses,
+                  formattedCount: formatNumber(responses, i18n.language),
+                })
+              : t("stance.answersSomeAnonymous", {
+                  count: responses,
+                  formattedCount: formatNumber(responses, i18n.language),
+                  anonCount: formatNumber(anonymousCount, i18n.language),
+                })}
+            {" "}ⓘ
+          </span>
+        ) : (
+          <span>
+            {t("stance.stancesRecorded", {
+              count: responses,
+              formattedCount: formatNumber(responses, i18n.language),
+            })}
+          </span>
+        )}
         {avgScore != null && (
           <span className="text-[10px] text-slate-400">
             {t("stance.avgScore", { avg: avgScore.toFixed(2) })}
@@ -330,7 +354,9 @@ export function CommunityStanceBar({
 
       {hasGhost && !myStanceCounted && (
         <p className={`${compact ? "text-[10px]" : "text-[11px]"} text-violet-600`}>
-          {t("communityStanceBar.yourStanceIsnTCounted")}
+          {anonymousCount > 0
+            ? t("communityStanceBar.yourAnswerShownAnonymous")
+            : t("communityStanceBar.yourStanceIsnTCounted")}
         </p>
       )}
 
@@ -349,6 +375,23 @@ export function CommunityStanceBar({
           </span>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Segment (verified solid + anonymous lighter) ─────────────────────────────
+
+function Segment({ width, anonShare, solid, light, anonFirst }: {
+  width: number; anonShare: number; solid: string; light: string; anonFirst: boolean;
+}) {
+  const a = Math.min(1, Math.max(0, anonShare));
+  const solidPart = <div className={solid} style={{ width: `${(1 - a) * 100}%` }} />;
+  const lightPart = <div className={light} style={{ width: `${a * 100}%` }} />;
+  return (
+    <div className="flex h-full transition-all duration-500" style={{ width: `${width}%` }}>
+      {a < 1 && !anonFirst && solidPart}
+      {a > 0 && lightPart}
+      {a < 1 && anonFirst && solidPart}
     </div>
   );
 }

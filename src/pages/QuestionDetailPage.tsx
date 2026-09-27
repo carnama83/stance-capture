@@ -1083,6 +1083,9 @@ export default function QuestionDetailPage() {
     queryKey: communityStatsKey(questionId),
     queryFn: () => fetchCommunityStats(questionId),
     staleTime: 30_000,
+    // Anonymous answers (question_stances_pending) have no realtime channel,
+    // so poll to pick up other visitors' anonymous answers.
+    refetchInterval: 30_000,
   });
 
   // ── Realtime: question_stance_stats_region → refresh community bar ──
@@ -1752,6 +1755,8 @@ export default function QuestionDetailPage() {
                 instrumentLanguageCode={languageOf(question.rendition_id) ?? null}
                 myStanceScore={myStance}
                 myStanceCounted={isAuthed}
+                anonymousCount={communityStats?.anonymousCount ?? 0}
+                anonymousShare={communityStats?.anonymousShare}
               />
 
               {isAuthed && stats?.regions && (

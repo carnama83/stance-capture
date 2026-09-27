@@ -297,10 +297,21 @@ function GuestPreviewCard({
             </span>
           </div>
           <p className="text-[10px] text-slate-400">
-            {t("stance.stancesRecorded", {
-              count: distribution.responses,
-              formattedCount: formatNumber(distribution.responses, i18n.language),
-            })}
+            {(distribution.anonymousCount ?? 0) > 0
+              ? t(
+                  (distribution.anonymousCount ?? 0) >= distribution.responses
+                    ? "stance.answersAllAnonymous"
+                    : "stance.answersSomeAnonymous",
+                  {
+                    count: distribution.responses,
+                    formattedCount: formatNumber(distribution.responses, i18n.language),
+                    anonCount: formatNumber(distribution.anonymousCount ?? 0, i18n.language),
+                  },
+                )
+              : t("stance.stancesRecorded", {
+                  count: distribution.responses,
+                  formattedCount: formatNumber(distribution.responses, i18n.language),
+                })}
           </p>
         </div>
       )}
@@ -1327,6 +1338,8 @@ function SectionAQuestion({
                 compact={true}
                 lowLabel={question.slider_low_label ?? null}
                 highLabel={question.slider_high_label ?? null}
+                anonymousCount={distribution?.anonymousCount ?? 0}
+                anonymousShare={distribution?.anonymousShare}
               />
               {status === "hero_answered_result" && hasQueue && (
                 <button

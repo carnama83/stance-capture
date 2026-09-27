@@ -3634,6 +3634,11 @@ export default function IndexPage() {
           next.add(questionId);
           return next;
         });
+        // The community bar now includes anonymous answers: let the hero
+        // refetch so this visitor sees their answer land.
+        window.dispatchEvent(new CustomEvent("stance-saved", {
+          detail: { questionId, value, communityStats: null },
+        }));
       } catch (err) {
         // BUG FIX: this used to be a bare `catch { loginRedirect(); }`.
         // Anonymous staging is explicitly designed to NOT require login — that
