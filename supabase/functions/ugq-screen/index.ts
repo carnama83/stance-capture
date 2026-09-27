@@ -512,7 +512,11 @@ serve(async (req) => {
   // between two copies of the same logic.
   function parsePreviewJson(rawContent: string, label: string): PreviewReframe | null {
     try {
-      const cleaned = stripFences(rawContent);
+      // Sep 2026, FIX: with web search on, the model wraps sourced sentences in
+      // <cite index="1-1,1-2">...</cite> markup, which reached a live Prod
+      // question's Background verbatim. Strip the tags (keep the words) before
+      // anything is parsed, so no field can carry them.
+      const cleaned = stripFences(rawContent.replace(/<\/?cite\b[^>]*>/gi, ""));
       // Pull the balanced {...} substring out of the (possibly multi-block,
       // possibly commentary-flanked) cleaned text; fall back to attempting
       // the raw cleaned string if no balanced object is found, so behavior
