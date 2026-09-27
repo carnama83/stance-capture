@@ -31,7 +31,55 @@ export type CommunityStanceData = {
   neutralPct: number | null;   // pct_neutral from DB
   avgScore: number | null;
   updatedAt: string;
+  // Sep 2026: the global bar also counts anonymous (held, not yet signed-up)
+  // answers, drawn lighter. Absent for regional rows, which stay verified-only.
+  verifiedCount?: number;
+  anonymousCount?: number;
+  /** Share (0..1) of each bucket that is anonymous. */
+  anonymousShare?: { oppose: number; neutral: number; support: number };
 };
+
+// ── get_question_community_stats (global bar incl. anonymous answers) ──
+
+type RawBucket = { verified: number; anonymous: number };
+export type RawCommunityStatsRpc = {
+  total: number;
+  verified: number;
+  anonymous: number;
+  oppose: RawBucket;
+  neutral: RawBucket;
+  support: RawBucket;
+  avg_score: number | null;
+};
+
+export function mapCommunityStatsRpc(
+  questionId: string,
+  raw: RawCommunityStatsRpc,
+): CommunityStanceData {
+  const total = raw.total || 0;
+  const n = (b: RawBucket) => (b?.verified ?? 0) + (b?.anonymous ?? 0);
+  const pct = (b: RawBucket) => (total > 0 ? (n(b) * 100) / total : 0);
+  const share = (b: RawBucket) => (n(b) > 0 ? (b.anonymous ?? 0) / n(b) : 0);
+  return {
+    questionId,
+    regionScope: COMMUNITY_STANCE_GLOBAL_SCOPE,
+    regionKey:   COMMUNITY_STANCE_GLOBAL_KEY,
+    regionLabel: COMMUNITY_STANCE_GLOBAL_LABEL,
+    responses:   total,
+    supportPct:  pct(raw.support),
+    opposePct:   pct(raw.oppose),
+    neutralPct:  pct(raw.neutral),
+    avgScore:    raw.avg_score == null ? null : Number(raw.avg_score),
+    updatedAt:   new Date().toISOString(),
+    verifiedCount:  raw.verified ?? 0,
+    anonymousCount: raw.anonymous ?? 0,
+    anonymousShare: {
+      oppose:  share(raw.oppose),
+      neutral: share(raw.neutral),
+      support: share(raw.support),
+    },
+  };
+}
 
 // ── Helper: map a raw question_stance_stats_region row to CommunityStanceData ──
 //

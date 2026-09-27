@@ -11,6 +11,8 @@ import {
   CommunityStanceData,
   RawStanceStatsRegionRow,
   mapToCommunityStanceData,
+  RawCommunityStatsRpc,
+  mapCommunityStatsRpc,
   COMMUNITY_STANCE_GLOBAL_SCOPE,
   COMMUNITY_STANCE_GLOBAL_KEY,
 } from "@/types/communityStance";
@@ -39,6 +41,33 @@ export async function fetchCommunityStats(
     select: "question_id,region_scope,region_key,region_label,total_responses,pct_agree,pct_disagree,pct_neutral,avg_score,updated_at",
     limit: "1",
   });
+
+  // Sep 2026: the global bar comes from get_question_community_stats, which
+  // also counts anonymous (held) answers so a new question doesn't look empty
+  // while people haven't signed up yet. Regional rows stay verified-only.
+  if (regionScope === COMMUNITY_STANCE_GLOBAL_SCOPE && regionKey === COMMUNITY_STANCE_GLOBAL_KEY) {
+    try {
+      const res = await fetch(`${supabaseUrl}/rest/v1/rpc/get_question_community_stats`, {
+        method: "POST",
+        headers: {
+          "apikey": anonKey,
+          "Authorization": `Bearer ${anonKey}`,
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+        },
+        body: JSON.stringify({ p_question_id: questionId }),
+      });
+      if (res.ok) {
+        const raw = await res.json() as RawCommunityStatsRpc | null;
+        if (!raw || !raw.total) return null;
+        return mapCommunityStatsRpc(questionId, raw);
+      }
+      // RPC missing (not yet migrated) → fall back to the verified-only row.
+      console.warn("[fetchCommunityStats] community RPC HTTP", res.status, "— falling back");
+    } catch (e) {
+      console.warn("[fetchCommunityStats] community RPC failed — falling back:", e);
+    }
+  }
 
   try {
     console.log(`[fetchCommunityStats] querying qId=${questionId.slice(0,8)} scope=${regionScope} key=${regionKey}`);
