@@ -746,6 +746,34 @@ function StanceCard({
   const stanceCardInstrumentLanguage = stanceCardLanguageOf(question?.rendition_id);
   const { t } = useTranslation();
   const { data: myExpectations = [] } = useMyExpectations(questionId, userId);
+
+  // Sep 2026: on a phone the email/WhatsApp opt-in card sits several screens
+  // below the slider, and on launch day no anonymous answerer scrolled to it,
+  // so every answer stayed uncounted. A bottom sheet now offers the same
+  // actions the moment they answer. It goes away for good once they dismiss
+  // it, ask for the email link, or scroll the full card into view (then they
+  // know where it is); "Not now" lasts for this visit (sessionStorage).
+  const sheetKey = `sc_optin_sheet_dismissed_${questionId}`;
+  const [sheetDismissed, setSheetDismissed] = React.useState(() => {
+    try { return sessionStorage.getItem(sheetKey) === "1"; } catch { return false; }
+  });
+  const dismissSheet = React.useCallback(() => {
+    setSheetDismissed(true);
+    try { sessionStorage.setItem(sheetKey, "1"); } catch { /* ignore */ }
+  }, [sheetKey]);
+  const inlineOptInRef = React.useRef<HTMLDivElement>(null);
+  const hasAnonStance = !isAuthed && myStance != null;
+  React.useEffect(() => {
+    const el = inlineOptInRef.current;
+    if (!hasAnonStance || !el || typeof IntersectionObserver === "undefined") return;
+    const io = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) dismissSheet();
+    }, { threshold: 0.5 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [hasAnonStance, dismissSheet]);
+  const showOptInSheet = hasAnonStance && !sheetDismissed;
+
   return (
     <section className="rounded-xl border border-slate-200 bg-slate-50 p-4 md:p-5 shadow-sm">
       <h3 className="text-[11px] font-semibold tracking-wide uppercase text-slate-500 mb-1">
@@ -862,8 +890,25 @@ function StanceCard({
           {/* Anonymous web visitor → email / WhatsApp opt-in, shown right after
               the slider so the "add your voice" prompt is in view the moment
               they answer (not buried below the rationale/confidence blocks). */}
-          {!isAuthed && myStance != null && (
-            <WebOptInCard questionId={questionId} />
+          {hasAnonStance && (
+            <div ref={inlineOptInRef}>
+              <WebOptInCard questionId={questionId} />
+            </div>
+          )}
+
+          {showOptInSheet && (
+            <div
+              role="dialog"
+              aria-label={t("webOptIn.sheetTitle")}
+              className="fixed inset-x-0 bottom-0 z-50 border-t border-violet-200 bg-white px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(15,23,42,0.15)] md:inset-x-auto md:right-6 md:bottom-6 md:w-96 md:rounded-xl md:border"
+            >
+              <WebOptInCard
+                questionId={questionId}
+                compact
+                onDismiss={dismissSheet}
+                onEmailSent={() => window.setTimeout(dismissSheet, 5000)}
+              />
+            </div>
           )}
 
           {/* W1: Post-stance share prompt */}

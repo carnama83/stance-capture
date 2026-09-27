@@ -1449,7 +1449,11 @@
     "opensWhatsappWithAPre": "पहले से भरे \"SUBSCRIBE\" संदेश के साथ WhatsApp खुलता है। अपना रुख गिनने और अपडेट पाने के लिए इसे भेजें। रोकने के लिए कभी भी STOP लिखें।",
     "stanceRecorded": "✓ आपका रुख दर्ज है",
     "stanceRecordedLabeled": "✓ आपका रुख — <v>{{label}}</v> — दर्ज है",
-    "couldnTSendTheLink": "लिंक नहीं भेजा जा सका। पता जाँचकर फिर प्रयास करें।"
+    "couldnTSendTheLink": "लिंक नहीं भेजा जा सका। पता जाँचकर फिर प्रयास करें।",
+    "sheetTitle": "✓ आपका जवाब दर्ज हो गया",
+    "sheetBody": "जब तक आप अपनी आवाज़ नहीं जोड़ते, यह नतीजों में नहीं गिना जाएगा।",
+    "emailMeALink": "मुझे लिंक ईमेल करें",
+    "notNow": "अभी नहीं"
   },
   "settingsSessions": {
     "sessions": "सत्र",
