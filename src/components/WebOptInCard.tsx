@@ -15,9 +15,19 @@ const PENDING_ATTACH_KEY = "sc_pending_attach_ref";
 export function WebOptInCard({
   questionId,
   stanceLabel,
+  compact = false,
+  onDismiss,
+  onEmailSent,
 }: {
   questionId: string;
   stanceLabel?: string | null; // e.g. "Strongly oppose" — shown back to them
+  // Sep 2026: compact = the bottom-sheet version shown the moment an anonymous
+  // visitor answers (the full card sits far below the slider on phones, and on
+  // launch day nobody scrolled to it). Same email/WhatsApp actions, no benefits
+  // list, plus a "Not now".
+  compact?: boolean;
+  onDismiss?: () => void;
+  onEmailSent?: () => void;
 }) {
   const { t } = useTranslation();
   const [email, setEmail] = React.useState("");
@@ -72,6 +82,7 @@ export function WebOptInCard({
       });
       if (error) throw error;
       setEmailSent(true);
+      onEmailSent?.();
     } catch {
       setError(t("webOptIn.couldnTSendTheLink"));
     } finally { setBusy(false); }
@@ -84,6 +95,49 @@ export function WebOptInCard({
   const deviceId = getDeviceId();
   const waText = deviceId ? `SUBSCRIBE ${deviceId}` : "SUBSCRIBE";
   const waHref = buildWaHref(waText);
+
+  if (compact) {
+    return (
+      <div className="space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-slate-800">{t("webOptIn.sheetTitle")}</p>
+            <p className="mt-0.5 text-[13px] text-slate-600">{t("webOptIn.sheetBody")}</p>
+          </div>
+          {onDismiss && (
+            <button type="button" onClick={onDismiss}
+              className="shrink-0 text-xs font-medium text-slate-500 hover:text-slate-800">
+              {t("webOptIn.notNow")}
+            </button>
+          )}
+        </div>
+        {emailSent ? (
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+            {t("webOptIn.checkYourEmailForA")}
+          </div>
+        ) : (
+          <div className="flex gap-2">
+            <input
+              type="email" inputMode="email" placeholder={t("webOptIn.youEmailCom")} value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            />
+            <button type="button" disabled={busy} onClick={sendMagicLink}
+              className="shrink-0 rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">
+              {busy ? t("webOptIn.sending") : t("webOptIn.emailMeALink")}
+            </button>
+          </div>
+        )}
+        <a
+          href={waHref} target="_blank" rel="noopener noreferrer"
+          className="flex w-full items-center justify-center gap-2 rounded-lg border border-emerald-500 px-3 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-50"
+        >
+          {t("webOptIn.addMyVoiceOnWhatsapp")}
+        </a>
+        {error && <p className="text-xs text-rose-600">{error}</p>}
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-xl border border-violet-200 bg-violet-50/40 p-4 space-y-4">
