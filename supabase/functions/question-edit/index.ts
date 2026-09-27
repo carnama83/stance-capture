@@ -46,6 +46,13 @@ const CHANGE_MIN_LEN = 5;
 const CHANGE_MAX_LEN = 500;
 const SUGGESTIONS_PER_HOUR = 10;
 
+// Output budgets. The model spends part of max_tokens on thinking before it
+// writes the JSON: on Prod the safety check used 431 of a 512 budget and was
+// cut off (stop_reason=max_tokens) with no answer, so the whole suggestion
+// failed; a web-search revise used 4,176 of 4,096. Keep generous headroom.
+const SAFETY_MAX_TOKENS = 4096;
+const REVISE_MAX_TOKENS = 16000;
+
 type QuestionRow = {
   id: string;
   question: string;
@@ -298,7 +305,7 @@ async function checkSafety(apiKey: string, model: string, r: Revision): Promise<
   const user =
     `Question: ${r.question}\nOppose end: ${r.slider_low_label ?? ""}\nSupport end: ${r.slider_high_label ?? ""}\n` +
     `Background:\n${r.context_summary ?? "(none)"}\n\nJudge it now.`;
-  const raw = await callClaude(apiKey, model, "safety", system, user, 512, false);
+  const raw = await callClaude(apiKey, model, "safety", system, user, SAFETY_MAX_TOKENS, false);
   const p = raw ? parseModelJson(raw) : null;
   if (!p) return null;
   const safety = ["clean", "review", "reject"].includes(p.safety_flag as string) ? p.safety_flag as SafetyVerdict["safety_flag"] : "review";
@@ -451,7 +458,7 @@ serve(async (req) => {
         supporting_links: parent.suggested_links,
       };
       const { system, user: usr } = refinePrompts(base, changeRequest);
-      const raw = await callClaude(ANTHROPIC_API_KEY, MODEL, "refine", system, usr, 4096, false);
+      const raw = await callClaude(ANTHROPIC_API_KEY, MODEL, "refine", system, usr, REVISE_MAX_TOKENS, false);
       revision = raw ? parseRevision(raw, base) : null;
       if (revision && !("refused" in revision) &&
           revision.question === base.question && revision.slider_low_label === base.slider_low_label &&
@@ -462,7 +469,7 @@ serve(async (req) => {
       // Revise: with web search first, then without if that fails to parse.
       for (const webSearch of [true, false]) {
         const { system, user: usr } = revisionPrompts(q, changeRequest, role, webSearch);
-        const raw = await callClaude(ANTHROPIC_API_KEY, MODEL, webSearch ? "revise" : "revise_nosearch", system, usr, 4096, webSearch);
+        const raw = await callClaude(ANTHROPIC_API_KEY, MODEL, webSearch ? "revise" : "revise_nosearch", system, usr, REVISE_MAX_TOKENS, webSearch);
         revision = raw ? parseRevision(raw, q) : null;
         if (revision) break;
       }
