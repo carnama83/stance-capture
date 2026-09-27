@@ -63,6 +63,7 @@ import { toast } from "sonner";
 import { ProposeQuestionButton } from "@/components/ugq/ProposeQuestionButton";
 import { useOnboardingTips } from "@/hooks/useOnboardingTips";
 import { CoachMark } from "@/components/onboarding/CoachMark";
+import { getEntryCountry } from "@/lib/entryCountry";
 
 // ─────────────────────────── Colour system (single source) ───────────────────
 // Four roles, no overlap. Stance is a teal→grey→ochre diverging scale rather
@@ -2453,7 +2454,11 @@ export default function IndexPage() {
 
   // ── IP-based country detection for anonymous users ──
   const { country: ipCountry, countryCode: ipCountryCode, region: ipRegion, city: ipCity, isLoading: ipLoading } = useIPLocation(!isAuthed);
-  const anonCountryLabel = !isAuthed ? (ipCountry ?? null) : null;
+  // Sep 2026: a signed-out visitor who came in through a shared question starts
+  // on that question's country; otherwise IP country (time-zone corrected in
+  // lib/ipLocation.ts).
+  const entryCountry = React.useMemo(() => (isAuthed ? null : getEntryCountry()), [isAuthed]);
+  const anonCountryLabel = !isAuthed ? (entryCountry ?? ipCountry ?? null) : null;
   const hasAnonCountry = !!anonCountryLabel;
   const effectiveHasCountry = isAuthed ? hasCountry : hasAnonCountry;
   const effectiveCountryLabel = isAuthed ? countryLabel : anonCountryLabel;

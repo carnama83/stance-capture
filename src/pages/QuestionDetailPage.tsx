@@ -452,6 +452,7 @@ import { buildStanceLabels } from "@/lib/stanceColors";
 import { formatDate, localeFor } from "@/lib/intlFormat";
 import { useTopicLabels } from "@/hooks/useTopicLabels";
 import { usePlaceLabels } from "@/hooks/usePlaceLabels";
+import { rememberEntryCountry } from "@/lib/entryCountry";
 
 function EditorialHeroImage({
   imageUrl,
@@ -967,6 +968,12 @@ export default function QuestionDetailPage() {
     queryFn: () => fetchQuestionById(questionId, languageCode),
     staleTime: 60_000,
   });
+
+  // Sep 2026: a signed-out visitor who arrived through this question's shared
+  // link starts the home feed on the question's country (see entryCountry.ts).
+  React.useEffect(() => {
+    if (!isAuthed && question?.location_label) rememberEntryCountry(question.location_label);
+  }, [isAuthed, question?.location_label]);
 
   // PR 1.9 — the language the displayed rendition is actually in, so the
   // content-language indicator can tell the reader when a question fell back
