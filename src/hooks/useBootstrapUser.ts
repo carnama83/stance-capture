@@ -51,6 +51,7 @@
 import { useEffect } from "react";
 import { getSupabase } from "../lib/supabaseClient";
 import { SUPABASE_URL, getJwt, supabaseHeaders } from "../lib/env";
+import { getDeviceId, takeStagedDeviceFromUrl } from "../lib/webStance";
 
 export type CurrentUser = { id: string; email: string | null };
 
@@ -256,6 +257,28 @@ async function mergeEmbeddedStancesIfPending(jwt: string) {
   }
 }
 
+// Sep 2026, FIX: commit stances answered before sign-in on EVERY sign-in path.
+// On launch night six people answered via WhatsApp links, some then signed up,
+// and none of their answers was committed: the only commit call lived in
+// OAuthCallbackPage, which password sign-in (confirm email -> /login) never
+// reaches, and it looked only at this browser's device id, while the answer was
+// often given in WhatsApp's in-app browser. Commit for both this browser's id
+// and any id carried in by an email link (?sd=). Idempotent: already-committed
+// rows are skipped server-side, so running again on a later login is harmless.
+async function commitStagedWebStances(userId: string, jwt: string) {
+  const deviceIds = [...new Set([takeStagedDeviceFromUrl(), getDeviceId()].filter(Boolean))] as string[];
+  for (const deviceId of deviceIds) {
+    const r = await rpcPost(
+      "commit_staged_stances_for_device_by_user",
+      { p_device_id: deviceId, p_user_id: userId },
+      jwt
+    );
+    if (r.error) {
+      console.error("[bootstrap][stance-commit-failed] staged stances were not committed:", r.error);
+    }
+  }
+}
+
 // Exported so OAuthCallbackPage.tsx can call it directly and deterministically
 // at the moment a social login completes, instead of relying solely on
 // onAuthStateChange — which does NOT fire for the manually-seeded-session path
@@ -302,6 +325,7 @@ export async function runBootstrap(user: CurrentUser, jwt: string, attempt = 1) 
 
   await applyOAuthStashIfPresent(user, jwt);
   await mergeEmbeddedStancesIfPending(jwt);
+  await commitStagedWebStances(user.id, jwt);
   await touchSessionAndDevice(jwt);
 
   // Signal to the feed that location/profile data is now written.

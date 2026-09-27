@@ -6,7 +6,7 @@
 // but only ONCE, so the feed stays uncluttered.
 import * as React from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { getDeviceId } from "@/lib/webStance";
+import { getDeviceId, authCallbackUrl } from "@/lib/webStance";
 import { buildWaHref } from "@/lib/whatsapp";
 import { useTranslation } from "react-i18next";
 
@@ -33,10 +33,11 @@ export function HomeOptInPrompt({
     try {
       // Return to the homepage after auth; OAuthCallbackPage reads return_to.
       try { localStorage.setItem("return_to", "#/"); } catch { /* ignore */ }
-      const origin = window.location.origin;
+      // Carries this browser's device id so staged stances commit even if the
+      // link is opened in a different browser (see authCallbackUrl).
       const { error } = await supabase.auth.signInWithOtp({
         email,
-        options: { emailRedirectTo: `${origin}/#/auth/callback` },
+        options: { emailRedirectTo: authCallbackUrl() },
       });
       if (error) throw error;
       setEmailSent(true);
