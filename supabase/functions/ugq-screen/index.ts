@@ -1112,8 +1112,22 @@ serve(async (req) => {
           ? await generateRefinedPreview(existingPreview, raw, additionalContext, false)
           : await generatePreviewOnce(newRaw, false);
       }
+      // Sep 2026, FIX: a refine must not lose what the draft already had. On
+      // UAT a refine came back with supporting_links = [] (despite the prompt
+      // asking to keep them), so attachCoverImage had 0 candidates and
+      // overwrote the draft's cover with null: the question published with no
+      // image and no sources. Keep the existing links when the refine returns
+      // none, and keep the existing cover when no new one is found.
+      if (refined && existingPreview && refined.supporting_links.length === 0 &&
+          existingPreview.supporting_links.length > 0) {
+        refined = { ...refined, supporting_links: existingPreview.supporting_links };
+      }
       if (refined) {
         refined = await attachCoverImage(refined, proposalSourceUrl);
+        if (!refined.cover_image_url && existingPreview?.cover_image_url) {
+          refined = { ...refined, cover_image_url: existingPreview.cover_image_url };
+          console.log(JSON.stringify({ tag: "ugq-screen.refine_kept_existing_cover", proposal_id: proposalId }));
+        }
       }
       const persisted = refined
         ? { ...refined, model: PREVIEW_MODEL, generated_at: new Date().toISOString() }
