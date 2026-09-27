@@ -1271,9 +1271,15 @@ function SectionAQuestion({
             {question.trend_micro_signal && (
               <Pill>{question.trend_micro_signal.toUpperCase()}</Pill>
             )}
+            {/* Shown when the reader's own region had nothing to answer and this
+                card came from another region. Name where it is from: "Global
+                conversation" read as if an India question were about the world.
+                Only a question whose audience really is Global keeps that label. */}
             {isFallbackMode && (
               <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-500 gap-1">
-                {t("hero.globalConversation")}
+                {question.audience_location_label && question.audience_location_label.toLowerCase() !== "global"
+                  ? t("hero.fromPlace", { place: placeLabel(question.audience_location_label) })
+                  : t("hero.globalConversation")}
               </span>
             )}
             <ContentLanguageIndicator renditionLanguageCode={instrumentLanguage} />
