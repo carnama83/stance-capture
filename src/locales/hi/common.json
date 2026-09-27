@@ -544,6 +544,7 @@
     "youVeAnsweredTodayKeep": "आपने आज उत्तर दिया — इसे जारी रखें",
     "youVeSharedAStance": "आपने हाल के हर दिन अपना रुख साझा किया है",
     "globalConversation": "🌐 वैश्विक चर्चा",
+    "fromPlace": "🌐 {{place}} से",
     "nextQuestion": "अगला सवाल →",
     "retry": "फिर से करें",
     "loadingNextQuestion": "अगला सवाल लोड हो रहा है…",

@@ -544,6 +544,7 @@
     "youVeAnsweredTodayKeep": "You've answered today — keep it up",
     "youVeSharedAStance": "You've shared a stance every day recently",
     "globalConversation": "🌐 Global conversation",
+    "fromPlace": "🌐 From {{place}}",
     "nextQuestion": "Next question →",
     "retry": "Retry",
     "loadingNextQuestion": "Loading next question…",
