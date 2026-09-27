@@ -134,6 +134,10 @@ function escapeControlCharsInStrings(text: string): string {
 }
 
 function parseModelJson(raw: string): Record<string, unknown> | null {
+  // With web search on, the model wraps sourced sentences in
+  // <cite index="1-1,1-2">...</cite>; that markup reached a live Prod
+  // Background verbatim. Strip the tags, keep the words.
+  raw = raw.replace(/<\/?cite\b[^>]*>/gi, "");
   const unfenced = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
   // Extract first (brace matching copes with raw newlines), THEN escape: a stray
   // quote in any prose before the object would otherwise throw off the escaper.
