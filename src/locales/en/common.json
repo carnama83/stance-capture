@@ -2280,6 +2280,7 @@
       "LANGUAGE_NOT_SUPPORTED": "Editing is currently available only for questions first written in English.",
       "FORBIDDEN": "Only the person who posted this question or an admin can edit it.",
       "NO_BACKGROUND": "This question has no background to work from yet.",
+      "SUGGEST_FAILED": "The AI couldn't finish a suggestion this time. Please try again.",
       "generic": "Something went wrong. Please try again."
     }
   }
