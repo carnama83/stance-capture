@@ -15,6 +15,9 @@
 // Actions (POST JSON, user JWT in Authorization):
 //   { action: "status",  question_id }
 //   { action: "suggest", question_id, change_request?, use_background? }
+//   { action: "refine",  suggestion_id, change_request }   (adjusts that pending
+//                        suggestion, keeping everything not asked about verbatim;
+//                        the old suggestion becomes 'superseded')
 //   { action: "apply",   suggestion_id }
 //   { action: "discard", suggestion_id }
 //
@@ -63,7 +66,22 @@ type Revision = {
   notes: string | null;
 };
 
-type SafetyVerdict = { safety_flag: "clean" | "review" | "reject"; framing_flag: "clean" | "leading"; reason: string };
+type SuggestionRow = {
+  id: string;
+  question_id: string;
+  requested_by: string;
+  change_request: string;
+  base_question: string;
+  suggested_question: string;
+  suggested_low: string | null;
+  suggested_high: string | null;
+  suggested_context: string | null;
+  suggested_links: string[] | null;
+  status: string;
+  created_at: string;
+};
+
+type SafetyVerdict ={ safety_flag: "clean" | "review" | "reject"; framing_flag: "clean" | "leading"; reason: string };
 
 // ── model plumbing ──────────────────────────────────────────────────────────
 function extractJsonObject(s: string): string | null {
@@ -154,7 +172,57 @@ const STRUCTURE_RULES =
   "Target 30-45 words, 65 max. Plain everyday language, no jargon. Neutral: no loaded adjectives, no built-in " +
   "premise the respondent cannot reject, nothing that suggests the 'right' answer. Write everything in ENGLISH. ";
 
-function revisionPrompts(q: QuestionRow, changeRequest: string, role: "proposer" | "admin", webSearch: boolean) {
+// Quoted wording is an instruction, not a suggestion: in testing, a request to
+// add a sentence saying authorities "often" act late came back as
+// "consistently", which turned a fair criticism into an accusation.
+const VERBATIM_RULE =
+  "If the request gives exact wording in quotation marks, use that wording VERBATIM, character for character; " +
+  "never strengthen, soften or paraphrase it. ";
+
+// The version being revised: the live question (suggest) or a pending
+// suggestion (refine).
+type BaseVersion = {
+  question: string;
+  slider_low_label: string | null;
+  slider_high_label: string | null;
+  context_summary: string | null;
+  supporting_links: string[] | null;
+};
+
+function describe(v: BaseVersion) {
+  return `Question: ${v.question}\n` +
+    `Oppose end of the slider: ${v.slider_low_label ?? "(none set)"}\n` +
+    `Support end of the slider: ${v.slider_high_label ?? "(none set)"}\n` +
+    `Background:\n${v.context_summary ?? "(none)"}\n\n` +
+    `Supporting links: ${(v.supporting_links ?? []).join(", ") || "(none)"}`;
+}
+
+// Refine: a small, targeted adjustment to a suggestion the person has already
+// seen. Everything they did not ask to change must come back untouched, or
+// each round re-rolls the parts they were happy with.
+function refinePrompts(base: BaseVersion, changeRequest: string) {
+  const system =
+    "You are making a SMALL, TARGETED adjustment to a DRAFT revision of a civic stance question that nobody has " +
+    "answered yet. The person has reviewed the draft and asked for one specific change. Apply ONLY that change. " +
+    "Copy every sentence, clause, slider end, background paragraph and link the request does not mention " +
+    "EXACTLY as it is in the draft; do not tighten, reorder or re-word them. " +
+    VERBATIM_RULE +
+    "No web search on this pass: never invent facts. The result must still follow these rules: " +
+    STRUCTURE_RULES +
+    "Keep separate background paragraphs separate (blank line between them). Slider ends stay true opposites " +
+    "on ONE axis. " +
+    "Return ONLY JSON: {\"question\":\"...\",\"slider_low_label\":\"...\",\"slider_high_label\":\"...\"," +
+    "\"context_summary\":\"... or null\",\"supporting_links\":[\"url\"],\"notes\":\"one short sentence, plain " +
+    "language, saying exactly what you changed\"}. If the requested change cannot be made while keeping a fair " +
+    "single-spectrum question, return {\"question\":null,\"notes\":\"one short plain-language sentence explaining why\"}.";
+  const user =
+    `DRAFT (adjust this):\n${describe(base)}\n\n` +
+    `REQUESTED ADJUSTMENT:\n"${changeRequest}"\n\n` +
+    "Return the adjusted draft now.";
+  return { system, user };
+}
+
+function revisionPrompts(q: BaseVersion, changeRequest: string, role: "proposer" | "admin", webSearch: boolean) {
   const current =
     `Question: ${q.question}\n` +
     `Oppose end of the slider: ${q.slider_low_label ?? "(none set)"}\n` +
@@ -162,6 +230,7 @@ function revisionPrompts(q: QuestionRow, changeRequest: string, role: "proposer"
     `Background:\n${q.context_summary ?? "(none)"}`;
 
   const system =
+    VERBATIM_RULE +
     "You are REVISING a live civic stance question that nobody has answered yet. The " +
     (role === "proposer" ? "person who posted it" : "platform's editor") +
     " realised it should say more, and has told you what to add or change. Unlike a background note, this " +
@@ -195,7 +264,7 @@ function revisionPrompts(q: QuestionRow, changeRequest: string, role: "proposer"
   return { system, user };
 }
 
-function parseRevision(raw: string, current: QuestionRow): Revision | { refused: string } | null {
+function parseRevision(raw: string, current: BaseVersion): Revision | { refused: string } | null {
   const p = parseModelJson(raw);
   if (!p) return null;
   const notes = typeof p.notes === "string" ? p.notes.trim().slice(0, 400) : null;
@@ -290,8 +359,26 @@ serve(async (req) => {
       return json(200, { ok: true, question: row });
     }
 
-    // ── status / suggest work on a question ──
-    const questionId = typeof body.question_id === "string" ? body.question_id : "";
+    // ── refine starts from a pending suggestion; resolve its question first ──
+    let parent: SuggestionRow | null = null;
+    let questionId = typeof body.question_id === "string" ? body.question_id : "";
+    if (action === "refine") {
+      const suggestionId = typeof body.suggestion_id === "string" ? body.suggestion_id : "";
+      if (!suggestionId) return json(400, { ok: false, error: "MISSING_SUGGESTION_ID" });
+      const { data: s } = await adminSb.from("question_edit_suggestions")
+        .select("id, question_id, requested_by, change_request, base_question, suggested_question, suggested_low, suggested_high, suggested_context, suggested_links, status, created_at")
+        .eq("id", suggestionId).maybeSingle<SuggestionRow>();
+      if (!s) return json(404, { ok: false, error: "SUGGESTION_NOT_FOUND" });
+      if (s.requested_by !== user.id) return json(403, { ok: false, error: "FORBIDDEN" });
+      if (s.status !== "pending") return json(409, { ok: false, error: "SUGGESTION_NOT_PENDING" });
+      if (Date.now() - new Date(s.created_at).getTime() > 60 * 60 * 1000) {
+        return json(410, { ok: false, error: "SUGGESTION_EXPIRED" });
+      }
+      parent = s;
+      questionId = s.question_id;
+    }
+
+    // ── status / suggest / refine work on a question ──
     if (!questionId) return json(400, { ok: false, error: "MISSING_QUESTION_ID" });
 
     const { data: q } = await adminSb.from("questions")
@@ -312,7 +399,12 @@ serve(async (req) => {
       });
     }
 
-    if (action !== "suggest") return json(400, { ok: false, error: "UNKNOWN_ACTION" });
+    if (action !== "suggest" && action !== "refine") return json(400, { ok: false, error: "UNKNOWN_ACTION" });
+    // Someone applied another edit after this suggestion was made; refining it
+    // would build on wording that is no longer live.
+    if (parent && parent.base_question !== q.question) {
+      return json(409, { ok: false, error: "QUESTION_CHANGED" });
+    }
     if (!role) return json(403, { ok: false, error: "FORBIDDEN", message: "Only the person who posted this question or an admin can edit it." });
     if (answers > 0) {
       return json(409, { ok: false, error: "QUESTION_LOCKED", answer_count: answers,
@@ -326,7 +418,7 @@ serve(async (req) => {
     }
     if (!ANTHROPIC_API_KEY) return json(503, { ok: false, error: "AI_UNAVAILABLE" });
 
-    const useBackground = body.use_background === true;
+    const useBackground = !parent && body.use_background === true;
     let changeRequest = typeof body.change_request === "string" ? body.change_request.trim() : "";
     if (useBackground) {
       if (role !== "admin") return json(403, { ok: false, error: "FORBIDDEN" });
@@ -347,18 +439,39 @@ serve(async (req) => {
       .eq("question_id", questionId).eq("requested_by", user.id).gte("created_at", since);
     if ((recent ?? 0) >= SUGGESTIONS_PER_HOUR) return json(429, { ok: false, error: "TOO_MANY_SUGGESTIONS" });
 
-    // Revise: with web search first, then without if that fails to parse.
     let revision: Revision | { refused: string } | null = null;
-    for (const webSearch of [true, false]) {
-      const { system, user: usr } = revisionPrompts(q, changeRequest, role, webSearch);
-      const raw = await callClaude(ANTHROPIC_API_KEY, MODEL, webSearch ? "revise" : "revise_nosearch", system, usr, 4096, webSearch);
-      revision = raw ? parseRevision(raw, q) : null;
-      if (revision) break;
+    if (parent) {
+      // Refine: adjust the suggestion the person is looking at. No web search:
+      // this is a wording adjustment, and search is what lets a pass drift.
+      const base: BaseVersion = {
+        question: parent.suggested_question,
+        slider_low_label: parent.suggested_low,
+        slider_high_label: parent.suggested_high,
+        context_summary: parent.suggested_context,
+        supporting_links: parent.suggested_links,
+      };
+      const { system, user: usr } = refinePrompts(base, changeRequest);
+      const raw = await callClaude(ANTHROPIC_API_KEY, MODEL, "refine", system, usr, 4096, false);
+      revision = raw ? parseRevision(raw, base) : null;
+      if (revision && !("refused" in revision) &&
+          revision.question === base.question && revision.slider_low_label === base.slider_low_label &&
+          revision.slider_high_label === base.slider_high_label && revision.context_summary === base.context_summary) {
+        return json(422, { ok: false, error: "NO_CHANGE" });
+      }
+    } else {
+      // Revise: with web search first, then without if that fails to parse.
+      for (const webSearch of [true, false]) {
+        const { system, user: usr } = revisionPrompts(q, changeRequest, role, webSearch);
+        const raw = await callClaude(ANTHROPIC_API_KEY, MODEL, webSearch ? "revise" : "revise_nosearch", system, usr, 4096, webSearch);
+        revision = raw ? parseRevision(raw, q) : null;
+        if (revision) break;
+      }
     }
     if (!revision) return json(502, { ok: false, error: "SUGGEST_FAILED" });
     if ("refused" in revision) {
       return json(422, { ok: false, error: "CANNOT_REVISE", message: revision.refused || undefined });
     }
+    // The live wording has to change for this to be a wording edit.
     if (revision.question === q.question && revision.slider_low_label === q.slider_low_label &&
         revision.slider_high_label === q.slider_high_label) {
       return json(422, { ok: false, error: "NO_CHANGE" });
@@ -378,7 +491,10 @@ serve(async (req) => {
       question_id: q.id,
       requested_by: user.id,
       requester_role: role,
-      change_request: changeRequest,
+      // A refinement keeps the whole request history, so the audit row written
+      // on apply says what was actually asked for.
+      change_request: parent ? `${parent.change_request}\n\nRefined: ${changeRequest}` : changeRequest,
+      refined_from: parent?.id ?? null,
       base_question: q.question,
       suggested_question: revision.question,
       suggested_low: revision.slider_low_label,
@@ -393,6 +509,10 @@ serve(async (req) => {
     if (saveErr || !saved) {
       console.error(JSON.stringify({ tag: "question-edit.save_failed", message: saveErr?.message }));
       return json(500, { ok: false, error: "SUGGEST_FAILED" });
+    }
+    if (parent) {
+      await adminSb.from("question_edit_suggestions")
+        .update({ status: "superseded" }).eq("id", parent.id).eq("status", "pending");
     }
 
     return json(200, {
