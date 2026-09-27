@@ -8,6 +8,7 @@ import PageLayout from "../components/PageLayout";
 import SocialAuthButtons from "../auth/SocialAuthButtons";
 import { useTranslation } from "react-i18next";
 import { useUiLanguage } from "../hooks/useUiLanguage";
+import { authCallbackUrl } from "../lib/webStance";
 
 // ---------- Types ----------
 type Gender =
@@ -1129,7 +1130,9 @@ export default function Signup() {
           // without it loads the app shell fine but never mounts
           // OAuthCallbackPage (HashRouter sees an empty hash and falls back to
           // '/'), leaving the account silently unconfirmed with no visible error.
-          emailRedirectTo: `${window.location.origin}/#/auth/callback`,
+          // Also carries this browser's device id, so stances answered before
+          // sign-up commit even if the email is opened in another browser.
+          emailRedirectTo: authCallbackUrl(),
           // Onboarding metadata travels here (raw_user_meta_data) instead of
           // localStorage's old signup_stash_v1. Supabase persists this
           // server-side from the moment signUp() is called, so

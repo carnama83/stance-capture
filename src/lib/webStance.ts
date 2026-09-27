@@ -27,6 +27,42 @@ export function getDeviceId(): string {
   }
 }
 
+// Sep 2026, FIX: a stance recorded before sign-in is staged against THIS
+// browser's device id. On launch night people answered inside WhatsApp's
+// in-app browser, then opened the email link in Gmail/Chrome: a different
+// browser, a different device id, so nothing was committed. The email link now
+// carries the device id. It goes in the real query string BEFORE the '#':
+// Supabase appends '#access_token=...' after the whole URL, and
+// OAuthCallbackPage's parser expects "#/auth/callback#...", so a query inside
+// the hash route would corrupt the token parse.
+const STAGED_DEVICE_PARAM = "sd";
+
+/** Email-link redirect target that also carries this browser's device id. */
+export function authCallbackUrl(): string {
+  const origin = window.location.origin;
+  const deviceId = getDeviceId();
+  return deviceId
+    ? `${origin}/?${STAGED_DEVICE_PARAM}=${encodeURIComponent(deviceId)}#/auth/callback`
+    : `${origin}/#/auth/callback`;
+}
+
+/**
+ * The device id carried in by an email link (if any), removed from the address
+ * bar once read. Only ids in our own format are accepted.
+ */
+export function takeStagedDeviceFromUrl(): string | null {
+  try {
+    const url = new URL(window.location.href);
+    const raw = url.searchParams.get(STAGED_DEVICE_PARAM);
+    if (raw === null) return null;
+    url.searchParams.delete(STAGED_DEVICE_PARAM);
+    window.history.replaceState(window.history.state, "", url.toString());
+    return /^dev_[A-Za-z0-9]{6,40}$/.test(raw) ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Reads ?ref= out of the HashRouter URL, e.g. "#/q/<id>?ref=abc" -> "abc". */
 export function getRefFromUrl(): string | null {
   const hash = window.location.hash || "";

@@ -24,7 +24,7 @@ import { Loader2 } from "lucide-react";
 import { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_PROJECT_REF, getJwt } from "@/lib/env";
 import { runBootstrap, rpcPost, restGet, restPatch } from "@/hooks/useBootstrapUser";
 import { fetchIPLocation } from "@/lib/ipLocation";
-import { getDeviceId } from "@/lib/webStance";
+import { getDeviceId, takeStagedDeviceFromUrl } from "@/lib/webStance";
 import { useTranslation } from "react-i18next";
 import i18n from "@/lib/i18n";
 
@@ -264,8 +264,13 @@ async function finalize(sb: any, session: any, navigate: any, setStatus: (s: str
   // safe no-op if there's nothing staged, or if WebOptInCard's own
   // attach_user_to_node effect already committed it.
   if (session?.user?.id && session?.access_token) {
-    const deviceId = getDeviceId();
-    if (deviceId) {
+    // Sep 2026: commit for this browser's device AND for the device id the
+    // email link carried (?sd=), which differs when the link was opened in a
+    // different browser from the one the stance was given in (WhatsApp's
+    // in-app browser vs Gmail/Chrome). Both are safe no-ops when nothing is
+    // staged.
+    const deviceIds = [...new Set([takeStagedDeviceFromUrl(), getDeviceId()].filter(Boolean))] as string[];
+    for (const deviceId of deviceIds) {
       const commit = await rpcPost(
         "commit_staged_stances_for_device_by_user",
         { p_device_id: deviceId, p_user_id: session.user.id },
