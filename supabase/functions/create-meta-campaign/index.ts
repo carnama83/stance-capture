@@ -160,6 +160,19 @@ function buildMetaTargeting(t, isPolitical) {
       distance_unit: c.distance_unit || "mile",
     }));
   }
+  // Meta rejects overlapping locations ("Remove a conflicting location to
+  // continue"). The campaign form pre-selects India, so India + Pune + Mumbai
+  // failed on launch night. A country that contains a selected region or city
+  // adds nothing: drop it and keep the narrower targets.
+  const narrowedCountries = new Set(
+    [...(Array.isArray(t.regions) ? t.regions : []), ...(Array.isArray(t.cities) ? t.cities : [])]
+      .map((g) => String(g?.country_code ?? "").toUpperCase())
+      .filter(Boolean),
+  );
+  if (geo.countries && narrowedCountries.size) {
+    geo.countries = geo.countries.filter((c) => !narrowedCountries.has(String(c).toUpperCase()));
+    if (!geo.countries.length) delete geo.countries;
+  }
   // Default to a country only if nothing at all was specified.
   if (!geo.countries && !geo.regions && !geo.cities) geo.countries = ["IN"];
 
