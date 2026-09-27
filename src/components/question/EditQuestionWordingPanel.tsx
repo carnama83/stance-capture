@@ -35,7 +35,7 @@ type Status = { editable: boolean; answer_count: number; reason: string | null }
 const KNOWN_ERRORS = new Set([
   "QUESTION_LOCKED", "QUESTION_CHANGED", "SUGGESTION_EXPIRED", "SUGGESTION_NOT_PENDING", "CHANGE_TOO_SHORT",
   "CHANGE_TOO_LONG", "TOO_MANY_SUGGESTIONS", "NEEDS_CHANGES", "UNSAFE", "CANNOT_REVISE", "NO_CHANGE",
-  "LANGUAGE_NOT_SUPPORTED", "FORBIDDEN", "NO_BACKGROUND",
+  "LANGUAGE_NOT_SUPPORTED", "FORBIDDEN", "NO_BACKGROUND", "SUGGEST_FAILED",
 ]);
 
 async function callEdit(payload: Record<string, unknown>) {
