@@ -72,6 +72,19 @@ async function searchByType(
   if (!sb) throw new Error("Supabase client not available");
   if (!query.trim()) return [];
 
+  // Sep 2026: typo-tolerant server search. A plain ILIKE made "Maharastra",
+  // "MH" or a trailing space return "No matching states found", which a user
+  // reported as "Maharashtra is not a valid state". search_locations() also
+  // trims, matches ISO codes and ranks close spellings.
+  const rpc = await sb.rpc("search_locations", {
+    p_type: type,
+    p_query: query,
+    p_parent_id: (type === "state" || type === "county") && parentId ? parentId : null,
+    p_limit: 25,
+  });
+  if (!rpc.error) return (rpc.data ?? []) as LocationOption[];
+  console.warn(`search_locations failed for ${type}; falling back`, rpc.error);
+
   let q = (sb.from("locations") as any)
     .select("id, iso_code, name, type")
     .eq("type", type)
