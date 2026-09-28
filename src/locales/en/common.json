@@ -2252,6 +2252,17 @@
     "ledgerLink": "The full published ledger:",
     "notAvailable": "This brief is not available."
   },
+  "reasonPrompt": {
+    "title": "Why did you choose this?",
+    "subtitle": "Tap any that apply. Optional.",
+    "textLabel": "Your reason in your own words",
+    "placeholder": "Or say it in a line (optional)",
+    "privacy": "Reasons are shown only as totals. A few short quotes may appear in the question's report, without your name.",
+    "save": "Save reason",
+    "notNow": "Not now",
+    "thanks": "Thanks, your reason is saved.",
+    "error": "Your reason could not be saved. Your answer is still recorded."
+  },
   "report": {
     "title": "Community Insight Report",
     "downloadPdf": "Download PDF",
@@ -2285,7 +2296,18 @@
       "positions": "What each position stands for",
       "trend": "How the responses have moved",
       "who": "Who responded",
-      "method": "Method and limitations"
+      "method": "Method and limitations",
+      "reasons": "Why respondents chose their position"
+    },
+    "reasons": {
+      "none": "No respondent has said why they chose their position yet. Giving a reason is optional and is asked right after answering.",
+      "intro": "{{n}} of {{total}} respondents said why they chose their position. Each could pick several reasons.",
+      "sideToward": "Toward “{{label}}”",
+      "sideNeutral": "Neutral",
+      "respondents_one": "{{formatted}} respondent gave a reason",
+      "respondents_other": "{{formatted}} respondents gave a reason",
+      "countOf": "{{count}} of {{of}}",
+      "note": "Quotes appear only when at least 5 respondents on that side gave a reason. They are shown without names, and only after checks for abuse and personal details."
     },
     "snapshot": {
       "lean": "{{high}} of {{total}} respondents lean toward “{{highLabel}}”, {{low}} lean toward “{{lowLabel}}” and {{neutral}} are neutral.",
@@ -2351,6 +2373,7 @@
       "republish_one": "It was also republished {{count}} time with no change to its wording, scale or background.",
       "republish_other": "It was also republished {{count}} times with no change to its wording, scale or background.",
       "trendGroups": "Each point on the trend chart combines at least 3 responses, so no single person's answer can be read from it.",
+      "reasons": "Reasons are optional, so they describe only the respondents who gave one. The reason options offered were written with AI from the question; the choices and any written reasons are respondents' own.",
       "positionsAi": "The descriptions of each position are AI-generated from the question and its scale.",
       "noAi": "This report contains no AI summary of the responses: every figure is calculated directly from the recorded answers."
     }

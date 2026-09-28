@@ -427,6 +427,69 @@ export default function QuestionReportPage() {
             {pctTotal !== 100 && rs.total > 0 && <p className="mt-1 text-xs text-slate-400">{t("report.distribution.rounding")}</p>}
           </Section>
 
+          {/* Why — respondents' own reasons (R3) */}
+          <Section title={t("report.sections.reasons")}>
+            {!report.reasons || report.reasons.totalWithReasons === 0 ? (
+              <p className="text-sm text-slate-500">{t("report.reasons.none")}</p>
+            ) : (
+              <>
+                <p className="text-sm text-slate-800 leading-relaxed">
+                  {t("report.reasons.intro", { n: n(report.reasons.totalWithReasons), total: n(rs.total) })}
+                </p>
+                <div className="mt-4 space-y-5">
+                  {report.reasons.sides
+                    .filter((sd) => sd.respondents > 0)
+                    .map((sd) => (
+                      <div key={sd.side} className="break-inside-avoid">
+                        <h3 className="text-xs font-semibold text-slate-800">
+                          {sd.side === "neutral"
+                            ? t("report.reasons.sideNeutral")
+                            : t("report.reasons.sideToward", { label: sd.side === "high" ? labels[2] : labels[-2] })}
+                          <span className="font-normal text-slate-500">
+                            {" · "}
+                            {t("report.reasons.respondents", { count: sd.respondents, formatted: n(sd.respondents) })}
+                          </span>
+                        </h3>
+                        <ul className="mt-2 space-y-1.5">
+                          {[...sd.options]
+                            .sort((a, b) => b.count - a.count)
+                            .map((o) => (
+                              <li key={o.key} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 text-sm">
+                                <span className={o.count ? "text-slate-700" : "text-slate-400"}>{o.label}</span>
+                                <span className="text-xs text-slate-600 tabular-nums self-center">
+                                  {t("report.reasons.countOf", { count: n(o.count), of: n(sd.respondents) })}
+                                </span>
+                                <span className="col-span-2 h-1.5 rounded bg-slate-100 overflow-hidden">
+                                  <span
+                                    className="block h-full rounded"
+                                    style={{
+                                      width: `${sd.respondents ? (o.count / sd.respondents) * 100 : 0}%`,
+                                      backgroundColor: getStanceColorHex(sd.side === "high" ? 2 : sd.side === "low" ? -2 : 0),
+                                      printColorAdjust: "exact",
+                                      WebkitPrintColorAdjust: "exact",
+                                    }}
+                                  />
+                                </span>
+                              </li>
+                            ))}
+                        </ul>
+                        {sd.quotes.length > 0 && (
+                          <ul className="mt-3 space-y-1.5">
+                            {sd.quotes.map((q, i) => (
+                              <li key={i} className="border-l-2 border-slate-200 pl-3 text-sm italic text-slate-700">
+                                “{q}”
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    ))}
+                </div>
+                <p className="mt-4 text-xs text-slate-500">{t("report.reasons.note")}</p>
+              </>
+            )}
+          </Section>
+
           {/* What each position stands for */}
           <Section title={t("report.sections.positions")}>
             <p className="text-xs text-slate-500 mb-3">{t("report.positions.intro")}</p>
@@ -574,6 +637,7 @@ export default function QuestionReportPage() {
                 <li>{t("report.method.republish", { count: report.republishesWithoutChange })}</li>
               )}
               <li>{t("report.method.trendGroups")}</li>
+              <li>{t("report.method.reasons")}</li>
               <li>{t("report.method.positionsAi")}</li>
               <li>{t("report.method.noAi")}</li>
             </ul>

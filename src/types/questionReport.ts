@@ -76,5 +76,15 @@ export interface QuestionInsightReport {
   };
   channels: { source: string; count: number }[];
   geography: { region: string; count: number; mean: number | null }[] | null;
-  reasons: null;
+  // Epic Report R3 — respondents' own reasons (optional, so a subset).
+  reasons: {
+    totalWithReasons: number;
+    freeText: number;
+    sides: {
+      side: "high" | "neutral" | "low";
+      respondents: number;
+      options: { key: string; label: string; count: number }[];
+      quotes: string[];
+    }[];
+  } | null;
 }

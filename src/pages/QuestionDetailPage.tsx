@@ -14,6 +14,8 @@ import * as React from "react";
 import i18n from "@/lib/i18n";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useLanguage } from "@/hooks/useLanguage";
+import ReasonPrompt from "@/components/question/ReasonPrompt";
+import { fetchReasonOptions } from "@/lib/stanceReasons";
 import { useTranslation } from "react-i18next";
 import PageLayout from "../components/PageLayout";
 import { QuestionCommentsPanel } from "@/components/question/QuestionCommentsPanel";
@@ -774,6 +776,19 @@ function StanceCard({
   }, [hasAnonStance, dismissSheet]);
   const showOptInSheet = hasAnonStance && !sheetDismissed;
 
+  // Epic Report R3: warm the "why?" options while the reader is still reading,
+  // so the prompt is ready the moment they answer. The first view of a
+  // question generates them once (~5s); every later view reads stored rows.
+  const queryClient = useQueryClient();
+  React.useEffect(() => {
+    if (!questionId || isArchived) return;
+    queryClient.prefetchQuery({
+      queryKey: ["reason-options", questionId, languageCode],
+      queryFn: () => fetchReasonOptions(questionId, languageCode),
+      staleTime: 10 * 60_000,
+    });
+  }, [queryClient, questionId, languageCode, isArchived]);
+
   return (
     <section className="rounded-xl border border-slate-200 bg-slate-50 p-4 md:p-5 shadow-sm">
       <h3 className="text-[11px] font-semibold tracking-wide uppercase text-slate-500 mb-1">
@@ -886,6 +901,20 @@ function StanceCard({
               sliderHighLabel={question.slider_high_label ?? null}
             />
           </div>
+
+          {/* Epic Report R3: "why did you choose this?" — right under the
+              slider, for signed-in and anonymous answers alike. Keyed on the
+              answer so a change of side starts a fresh prompt. */}
+          {myStance != null && !isArchived && !stanceMutation.isPending && (
+            <ReasonPrompt
+              key={`reason-${questionId}-${myStance}`}
+              questionId={questionId}
+              score={myStance}
+              isAuthed={isAuthed}
+              userId={userId}
+              languageCode={languageCode}
+            />
+          )}
 
           {/* Anonymous web visitor → email / WhatsApp opt-in, shown right after
               the slider so the "add your voice" prompt is in view the moment
