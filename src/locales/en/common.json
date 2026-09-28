@@ -7,6 +7,7 @@
     "myStances": "My Stances",
     "insights": "Insights",
     "myProposals": "My Proposals",
+    "reports": "Reports",
     "proposals": "Proposals",
     "searchPlaceholder": "Search questions and topics...",
     "searchGo": "Go",
@@ -2251,6 +2252,33 @@
     "aboutThis": "This brief summarises what respondents in this region said they expect. It was drafted with AI assistance and approved by Stance Capture before it was sent. It reports responses; it does not make demands.",
     "ledgerLink": "The full published ledger:",
     "notAvailable": "This brief is not available."
+  },
+  "reports": {
+    "title": "Community Insight Reports",
+    "intro": "Every question with at least one response has a report: how respondents answered, why, how it is moving, and a printable PDF. Pick a question to open its report.",
+    "viewReport": "View insight report",
+    "searchLabel": "Search questions",
+    "searchPlaceholder": "Search questions",
+    "topicLabel": "Topic",
+    "allTopics": "All topics",
+    "placeLabel": "Place",
+    "allPlaces": "All places",
+    "sortLabel": "Sort by",
+    "sort": {
+      "recent": "Latest response",
+      "responses": "Most responses",
+      "newest": "Newest question",
+      "trending": "Trending"
+    },
+    "count_one": "{{formatted}} report",
+    "count_other": "{{formatted}} reports",
+    "loadError": "Reports could not be loaded. Please try again.",
+    "noMatches": "No report matches these filters.",
+    "none": "No question has a response yet, so there are no reports.",
+    "closed": "Closed",
+    "previous": "Previous",
+    "next": "Next",
+    "pageOf": "Page {{page}} of {{pages}}"
   },
   "reasonPrompt": {
     "title": "Why did you choose this?",

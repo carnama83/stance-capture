@@ -13,6 +13,7 @@
 import * as React from "react";
 import i18n from "@/lib/i18n";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { FileBarChart2 } from "lucide-react";
 import { useLanguage } from "@/hooks/useLanguage";
 import ReasonPrompt from "@/components/question/ReasonPrompt";
 import { fetchReasonOptions } from "@/lib/stanceReasons";
@@ -1797,6 +1798,19 @@ export default function QuestionDetailPage() {
 
               {/* O3: 7-day inline trend */}
               <CommunityTrendSparkline questionId={questionId} />
+
+              {/* Epic Report R5: the full per-question report, once there is
+                  at least one response (the report's own minimum). */}
+              {(communityStats?.responses ?? 0) > 0 && (
+                <div className="mt-3 border-t border-slate-100 pt-3">
+                  <Link
+                    to={`/q/${questionId}/report`}
+                    className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-700 hover:text-slate-900 hover:underline"
+                  >
+                    <FileBarChart2 className="h-4 w-4" /> {t("reports.viewReport")}
+                  </Link>
+                </div>
+              )}
             </section>
 
             {/* S3: Why is this trending? */}

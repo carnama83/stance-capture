@@ -43,6 +43,7 @@ import QuestionDetailPage from "./pages/QuestionDetailPage";
 import PublicLedgerPage from "./pages/PublicLedgerPage";
 import PublicBriefPage from "./pages/PublicBriefPage";
 import QuestionReportPage from "./pages/QuestionReportPage";
+import ReportsPage from "./pages/ReportsPage";
 
 // Topics
 import TopicsIndex from "@/routes/topics/Index";
@@ -251,6 +252,8 @@ const App: React.FC = () => {
                   anyone for the MVP; get_question_insight_report enforces
                   access via can_view_question_report(). */}
               <Route path="/q/:id/report" element={<QuestionReportPage />} />
+              {/* Epic Report R5 — find a question's report. */}
+              <Route path="/reports" element={<ReportsPage />} />
 
               {/* Epic R — M-R04: Public Expectation Ledger. Fully public,
                   no login, no AppTopBar chrome — mirrors /embed's posture. */}
