@@ -16,7 +16,7 @@
 
 import * as React from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Session } from "@supabase/supabase-js";
 import { ArrowLeft, Download, Loader2 } from "lucide-react";
@@ -44,6 +44,53 @@ function useSupabaseSession() {
 }
 
 class ReportNotAvailable extends Error {}
+class PrintNotAvailable extends Error {}
+
+interface ReportPrint {
+  id: string;
+  questionId: string;
+  language: string;
+  createdAt: string;
+  responseCount: number;
+  lastResponseAt: string | null;
+  report: QuestionInsightReport;
+  insights: Record<string, unknown> | null;
+  insightsLanguage: string | null;
+  insightsGeneratedAt: string | null;
+}
+
+async function fetchReportPrint(printId: string): Promise<ReportPrint> {
+  const sb = getSupabase();
+  if (!sb) throw new Error("no client");
+  const { data, error } = await sb.rpc("get_report_print", { p_print_id: printId });
+  if (error) {
+    if (error.code === "42501" || /print_not_available/.test(error.message)) throw new PrintNotAvailable();
+    throw error;
+  }
+  return data as ReportPrint;
+}
+
+// The AI summary as it was stored with the print (snake_case, as generated).
+function frozenInsights(p: ReportPrint): ReportInsightsResponse {
+  const i = p.insights as Record<string, any> | null;
+  if (!i) return { status: "unavailable" };
+  return {
+    status: "ok",
+    language_code: p.insightsLanguage ?? undefined,
+    generated_at: p.insightsGeneratedAt ?? undefined,
+    response_count: p.responseCount,
+    insights: {
+      headline: i.headline,
+      whatPeopleAreVotingFor: i.what_people_are_voting_for,
+      whyTheyMayFeelThisWay: i.why_they_may_feel_this_way,
+      otherPerspectives: i.other_perspectives,
+      trendSummary: i.trend_summary,
+      whatPeopleAppearToWant: i.what_people_appear_to_want,
+      desiredOutcomes: i.desired_outcomes ?? [],
+      caveats: i.caveats ?? [],
+    },
+  };
+}
 
 async function fetchQuestionReport(questionId: string, languageCode: string): Promise<QuestionInsightReport> {
   const sb = getSupabase();
@@ -211,28 +258,33 @@ function AiSummary({
   userId,
   enoughResponses,
   onLoaded,
+  frozen,
 }: {
   questionId: string;
   languageCode: string;
   userId: string | null;
   enoughResponses: boolean;
   onLoaded: (r: ReportInsightsResponse | undefined) => void;
+  // Snapshot mode (R6): the summary stored with the print, never refetched.
+  frozen?: ReportInsightsResponse;
 }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const { data, isLoading } = useQuery({
+  const live = useQuery({
     queryKey: ["report-insights", questionId, languageCode, userId],
-    enabled: enoughResponses,
+    enabled: enoughResponses && !frozen,
     staleTime: 5 * 60_000,
     queryFn: () => fetchReportInsights(questionId, languageCode),
     // Another request is generating it right now: look again shortly.
     refetchInterval: (q) => (q.state.data?.status === "generating" ? 5000 : false),
   });
+  const data = frozen ?? live.data;
+  const isLoading = frozen ? false : live.isLoading;
   React.useEffect(() => onLoaded(data), [data, onLoaded]);
 
   const { data: isAdmin } = useQuery({
     queryKey: ["is-admin-me", userId],
-    enabled: !!userId,
+    enabled: !!userId && !frozen,
     staleTime: 10 * 60_000,
     queryFn: async () => {
       const sb = getSupabase();
@@ -270,7 +322,9 @@ function AiSummary({
         </p>
       ) : null;
     }
-    if (data?.status !== "ok" || !data.insights) return <p className="text-sm text-slate-500">{t("report.ai.unavailable")}</p>;
+    if (data?.status !== "ok" || !data.insights) {
+      return <p className="text-sm text-slate-500">{frozen ? t("report.print.noAi") : t("report.ai.unavailable")}</p>;
+    }
     const ins = data.insights;
     const para = (title: string, text: string) => (
       <div className="break-inside-avoid">
@@ -360,6 +414,13 @@ export default function QuestionReportPage() {
   const queryClient = useQueryClient();
   const { i18n } = useTranslation();
   const [aiInfo, setAiInfo] = React.useState<ReportInsightsResponse | undefined>(undefined);
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  // R6: ?print=<id> shows a frozen snapshot of the report (what a PDF shows).
+  const printId = searchParams.get("print");
+  const autoPrint = searchParams.get("autoprint") === "1";
+  const [preparingPdf, setPreparingPdf] = React.useState(false);
+  const [pdfError, setPdfError] = React.useState(false);
   const { topicLabel } = useTopicLabels(languageCode);
   const { placeLabel } = usePlaceLabels(languageCode);
 
@@ -385,19 +446,70 @@ export default function QuestionReportPage() {
     };
   }, []);
 
-  const { data: report, isLoading, error } = useQuery({
-    enabled: !!questionId && !languageLoading,
+  const printQuery = useQuery({
+    enabled: !!printId,
+    queryKey: ["report-print", printId],
+    queryFn: () => fetchReportPrint(printId as string),
+    staleTime: Infinity,
+    retry: (count, err) => !(err instanceof PrintNotAvailable) && count < 2,
+  });
+  const print = printQuery.data;
+
+  const liveQuery = useQuery({
+    enabled: !!questionId && !languageLoading && !printId,
     queryKey: ["question-insight-report", questionId, languageCode, userId],
     queryFn: () => fetchQuestionReport(questionId, languageCode),
     staleTime: 60_000,
     retry: (count, err) => !(err instanceof ReportNotAvailable) && count < 2,
   });
+  const report = printId ? print?.report : liveQuery.data;
+  const isLoading = printId ? printQuery.isLoading : liveQuery.isLoading;
+  const error = printId ? printQuery.error : liveQuery.error;
+
+  // Opened from "Download PDF": print once the frozen copy has rendered, and
+  // drop the flag so a reload or a shared link does not print again.
+  // No cleanup that cancels the timer: removing the flag re-runs this effect,
+  // and a clearTimeout there cancelled the print before it fired (seen on the
+  // first Dev run). A ref makes it fire exactly once per snapshot.
+  const autoPrinted = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (!printId || !autoPrint || !print || autoPrinted.current === printId) return;
+    autoPrinted.current = printId;
+    const next = new URLSearchParams(searchParams);
+    next.delete("autoprint");
+    setSearchParams(next, { replace: true });
+    window.setTimeout(() => window.print(), 400);
+  }, [printId, autoPrint, print, searchParams, setSearchParams]);
+
+  const downloadPdf = async () => {
+    if (printId) {
+      window.print();
+      return;
+    }
+    setPreparingPdf(true);
+    setPdfError(false);
+    try {
+      const sb = getSupabase();
+      if (!sb) throw new Error("no client");
+      const { data, error: rpcError } = await sb.rpc("create_report_print", {
+        p_question_id: questionId,
+        p_language: languageCode,
+        p_insights_snapshot_id: aiInfo?.status === "ok" ? aiInfo.snapshot_id ?? null : null,
+      });
+      if (rpcError || !data?.id) throw rpcError ?? new Error("no id");
+      navigate(`/q/${questionId}/report?print=${data.id}&autoprint=1`);
+    } catch {
+      setPdfError(true);
+    } finally {
+      setPreparingPdf(false);
+    }
+  };
 
   // Position descriptions are generated on first read of a rendition. If this
   // report is that first read, ask once and refetch; the rest of the report
   // does not wait for it.
   const renditionId = report?.question.currentRenditionId ?? null;
-  const needsDefinitions = !!report && !report.stanceDefinitions && !!renditionId;
+  const needsDefinitions = !printId && !!report && !report.stanceDefinitions && !!renditionId;
   const { isFetching: definitionsLoading } = useQuery({
     enabled: needsDefinitions,
     queryKey: ["stance-definitions-generate", renditionId],
@@ -431,7 +543,11 @@ export default function QuestionReportPage() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-3 bg-slate-50 px-4 text-center">
         <p className="text-sm text-slate-600">
-          {error instanceof ReportNotAvailable ? t("report.notAvailable") : t("report.loadError")}
+          {error instanceof PrintNotAvailable
+            ? t("report.print.notAvailable")
+            : error instanceof ReportNotAvailable
+              ? t("report.notAvailable")
+              : t("report.loadError")}
         </p>
         {questionId && (
           <Link to={`/q/${questionId}`} className="text-sm text-slate-800 underline underline-offset-2">
@@ -465,7 +581,7 @@ export default function QuestionReportPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-8 print:bg-white print:p-0">
-      <style>{`@media print { @page { margin: 16mm; } }`}</style>
+      <style>{`@media print { @page { margin: 16mm; } html, body { background: #fff !important; } }`}</style>
       <div className="max-w-3xl mx-auto">
         <div className="flex items-center justify-between gap-3 mb-4 print:hidden">
           <Link
@@ -475,12 +591,27 @@ export default function QuestionReportPage() {
             <ArrowLeft className="h-4 w-4" /> {t("report.backToQuestion")}
           </Link>
           <button
-            onClick={() => window.print()}
-            className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-800 hover:bg-slate-100"
+            onClick={downloadPdf}
+            disabled={preparingPdf}
+            className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-800 hover:bg-slate-100 disabled:opacity-50"
           >
-            <Download className="h-4 w-4" /> {t("report.downloadPdf")}
+            {preparingPdf ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}{" "}
+            {preparingPdf ? t("report.print.preparing") : t("report.downloadPdf")}
           </button>
         </div>
+        {pdfError && <p className="mb-3 text-xs text-red-600 print:hidden">{t("report.print.failed")}</p>}
+        {print && (
+          <div className="mb-4 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-900 print:mb-3 print:rounded-none print:border-x-0 print:border-t-0 print:bg-white print:px-0 print:text-xs">
+            {t("report.print.banner", {
+              date: formatDate(print.createdAt, uiLang, { dateStyle: "long", timeStyle: "short" }),
+              count: print.responseCount,
+              formatted: formatNumber(print.responseCount, uiLang),
+            })}{" "}
+            <Link to={`/q/${print.questionId}/report`} className="font-medium underline underline-offset-2 print:hidden">
+              {t("report.print.liveLink")}
+            </Link>
+          </div>
+        )}
 
         <article className="rounded-2xl border border-slate-200 bg-white p-5 md:p-10 shadow-sm print:border-0 print:shadow-none print:p-0">
           {/* Header */}
@@ -562,6 +693,7 @@ export default function QuestionReportPage() {
             userId={userId}
             enoughResponses={rs.total >= 5}
             onLoaded={setAiInfo}
+            frozen={print ? frozenInsights(print) : undefined}
           />
 
           {/* Distribution */}
@@ -819,7 +951,12 @@ export default function QuestionReportPage() {
           <div className="border-t border-slate-100 mt-6 pt-4 text-[11px] text-slate-400 flex flex-wrap justify-between gap-2">
             <span>{t("report.footer")}</span>
             <span>{t("report.generatedAt", { date: formatDate(report.generatedAt, uiLang, { dateStyle: "medium", timeStyle: "short" }) })}</span>
-            <span className="hidden print:inline">{`${window.location.origin}/#/q/${report.questionId}/report`}</span>
+            {print && <span>{t("report.print.footer", { id: print.id.slice(0, 8) })}</span>}
+            <span className="hidden print:inline">
+              {print
+                ? `${window.location.origin}/#/q/${report.questionId}/report?print=${print.id}`
+                : `${window.location.origin}/#/q/${report.questionId}/report`}
+            </span>
           </div>
         </article>
       </div>

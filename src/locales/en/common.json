@@ -2317,6 +2317,16 @@
     "fallbackLanguage": "This question is not yet available in your language, so it is shown in {{language}}.",
     "noContext": "No background was published with this question.",
     "footer": "Data collected by Stance Capture",
+    "print": {
+      "preparing": "Preparing PDF…",
+      "failed": "The PDF could not be prepared. Please try again.",
+      "banner_one": "Snapshot of this report taken on {{date}}, with {{formatted}} response. It will not change; the live report may have moved on.",
+      "banner_other": "Snapshot of this report taken on {{date}}, with {{formatted}} responses. It will not change; the live report may have moved on.",
+      "liveLink": "Open the live report",
+      "footer": "Snapshot {{id}}",
+      "noAi": "No AI summary was part of this snapshot.",
+      "notAvailable": "This report snapshot is not available."
+    },
     "sections": {
       "question": "The question",
       "snapshot": "Community snapshot",
