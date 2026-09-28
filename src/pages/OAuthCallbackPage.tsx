@@ -293,6 +293,20 @@ async function finalize(sb: any, session: any, navigate: any, setStatus: (s: str
           "[OAuthCallback][stance-commit-failed] staged stances were not committed for this device:",
           commit.error
         );
+        continue;
+      }
+      // Epic Report R3: reasons given before sign-in follow their answer —
+      // same device, only after the stance commit above succeeded.
+      const reasons = await rpcPost(
+        "commit_staged_reasons_for_device_by_user",
+        { p_device_id: deviceId, p_user_id: session.user.id },
+        session.access_token
+      );
+      if (reasons.error) {
+        console.error(
+          "[OAuthCallback][reason-commit-failed] staged reasons were not committed for this device:",
+          reasons.error
+        );
       }
     }
   }

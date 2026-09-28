@@ -15,7 +15,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { RefreshCw, Edit2, CheckCircle } from "lucide-react";
+import { RefreshCw, Edit2, CheckCircle, FileBarChart2 } from "lucide-react";
 // ✅ existing import (kept)
 import { AdminTrendingDebugPanel } from "@/components/admin/AdminTrendingDebugPanel";
 
@@ -241,6 +241,13 @@ function QuestionRowView({
               {row.question}
             </Link>
           </h3>
+          {/* Epic Report R5 — admins can open any question's report. */}
+          <Link
+            to={`/q/${row.id}/report`}
+            className="inline-flex items-center gap-1 text-xs text-slate-600 hover:underline"
+          >
+            <FileBarChart2 className="h-3 w-3" /> Insight report
+          </Link>
           {row.tags && row.tags.length > 0 && (
             <div className="flex flex-wrap gap-2 mt-1">
               {row.tags.map((t) => (

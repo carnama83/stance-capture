@@ -53,6 +53,85 @@ async function fetchLanguageName(languageCode: string): Promise<string> {
     return languageCode;
   }
 }
+
+// Epic Report R1 (RPT-02) — stored stance definitions come first.
+//
+// Each position's meaning is generated ONCE per rendition by
+// generate-stance-definitions and stored in question_stance_definitions, so
+// the slider tip and the Question Insight Report describe a position with the
+// same words, and moving the slider no longer costs a model call. The first
+// reader of a rendition triggers the generation for everyone after them.
+//
+// The rendition is the reader's-language published rendition of the question
+// (or an explicit rendition_id). When none exists for the requested language
+// this returns null and the live path below runs exactly as before, so a
+// reader who is shown a fallback wording still gets a tip in their language.
+const DEVANAGARI = /[ऀ-ॿ]/;
+const SCRIPT_BY_LANGUAGE: Record<string, RegExp> = { hi: DEVANAGARI, mr: DEVANAGARI };
+
+async function storedTip(body: any, stance: number): Promise<{ tip: string; language_code: string } | null> {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) return null;
+  const headers = {
+    apikey: SUPABASE_SERVICE_ROLE_KEY,
+    Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+    "Content-Type": "application/json",
+  };
+  try {
+    let renditionId: string | null = typeof body?.rendition_id === "string" && body.rendition_id ? body.rendition_id : null;
+    let renditionLanguage: string | null = null;
+    if (!renditionId) {
+      if (typeof body?.question_id !== "string" || !body.question_id) return null;
+      const lang = String(body.language_code ?? "en").trim().toLowerCase().split("-")[0] || "en";
+      const res = await fetch(
+        `${SUPABASE_URL}/rest/v1/question_renditions?question_id=eq.${encodeURIComponent(body.question_id)}` +
+          `&language_code=eq.${encodeURIComponent(lang)}&lifecycle_status=eq.published&select=id,language_code&limit=1`,
+        { headers },
+      );
+      if (!res.ok) return null;
+      const row = (await res.json())[0];
+      if (!row) return null;
+      renditionId = row.id;
+      renditionLanguage = row.language_code;
+    }
+
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/question_stance_definitions?rendition_id=eq.${renditionId}` +
+        `&score=eq.${stance}&select=ai_tip,language_code`,
+      { headers },
+    );
+    if (res.ok) {
+      const row = (await res.json())[0];
+      if (row?.ai_tip) return { tip: row.ai_tip, language_code: row.language_code };
+    }
+
+    const gen = await fetch(`${SUPABASE_URL}/functions/v1/generate-stance-definitions`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ rendition_id: renditionId }),
+      signal: AbortSignal.timeout(50_000),
+    });
+    if (!gen.ok) {
+      console.warn("[ai-stance-tip] generate-stance-definitions failed; using live tip", gen.status, await gen.text());
+      return null;
+    }
+    const data = await gen.json();
+    const def = (data?.definitions ?? []).find((d: any) => Number(d?.score) === stance);
+    if (!def?.ai_tip) return null;
+    return { tip: def.ai_tip, language_code: data.language_code ?? renditionLanguage ?? "en" };
+  } catch (err) {
+    console.warn("[ai-stance-tip] stored tip lookup failed; using live tip", err);
+    return null;
+  }
+}
+
+// The live path only states a language it can confirm — QuestionStanceSlider
+// treats a missing language_code as "not confirmed" for non-English readers.
+function confirmedLanguage(tip: string, requested: string): string | null {
+  if (!requested || requested === "en") return DEVANAGARI.test(tip) ? null : "en";
+  const script = SCRIPT_BY_LANGUAGE[requested];
+  return script && script.test(tip) ? requested : null;
+}
+
 serve(async (req)=>{
   // CORS preflight
   if (req.method === "OPTIONS") {
@@ -98,6 +177,22 @@ serve(async (req)=>{
       error: "stance must be a number between -2 and 2"
     }), {
       status: 400,
+      headers: {
+        ...corsHeaders,
+        "Content-Type": "application/json"
+      }
+    });
+  }
+  const stored = await storedTip(body, stance);
+  if (stored) {
+    return new Response(JSON.stringify({
+      tip: stored.tip,
+      source: "ai",
+      stored: true,
+      reason: null,
+      language_code: stored.language_code
+    }), {
+      status: 200,
       headers: {
         ...corsHeaders,
         "Content-Type": "application/json"
@@ -227,7 +322,8 @@ Now write a 50-80 word, second-person explanation of stance ${stance} for THIS q
     return new Response(JSON.stringify({
       tip,
       source: "ai",
-      reason: null
+      reason: null,
+      language_code: confirmedLanguage(tip, targetLanguageCode)
     }), {
       status: 200,
       headers: {

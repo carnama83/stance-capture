@@ -275,6 +275,18 @@ async function commitStagedWebStances(userId: string, jwt: string) {
     );
     if (r.error) {
       console.error("[bootstrap][stance-commit-failed] staged stances were not committed:", r.error);
+      continue;
+    }
+    // Epic Report R3: reasons given before sign-in follow their answer. Must
+    // run after the stance commit — it only moves a reason whose answer is
+    // now this user's. Idempotent like the stance commit.
+    const reasons = await rpcPost(
+      "commit_staged_reasons_for_device_by_user",
+      { p_device_id: deviceId, p_user_id: userId },
+      jwt
+    );
+    if (reasons.error) {
+      console.error("[bootstrap][reason-commit-failed] staged reasons were not committed:", reasons.error);
     }
   }
 }

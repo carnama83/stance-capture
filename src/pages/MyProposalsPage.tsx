@@ -15,10 +15,10 @@
 // state is never a dead end.
 
 import * as React from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
-import { Lightbulb, Loader2, MessageSquare, Sparkles, ExternalLink } from "lucide-react";
+import { Lightbulb, Loader2, MessageSquare, Sparkles, ExternalLink, FileBarChart2 } from "lucide-react";
 import PageLayout from "@/components/PageLayout";
 import { ProposeQuestionButton } from "@/components/ugq/ProposeQuestionButton";
 import { Badge } from "@/components/ui/badge";
@@ -342,6 +342,16 @@ export default function MyProposalsPage() {
                     <span className="inline-flex items-center gap-1 text-blue-600">
                       <ExternalLink className="h-3 w-3" /> {t("proposals.viewLive")}
                     </span>
+                  )}
+                  {/* Epic Report R5: the proposer's report on their own question. */}
+                  {p.status === "published" && p.reframed_question_id && (
+                    <Link
+                      to={`/q/${p.reframed_question_id}/report`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="inline-flex items-center gap-1 text-slate-700 hover:underline"
+                    >
+                      <FileBarChart2 className="h-3 w-3" /> {t("reports.viewReport")}
+                    </Link>
                   )}
                   <span className="ml-auto">
                     {(() => { try { return formatDistanceToNow(new Date(p.created_at), { addSuffix: true }); } catch { return ""; } })()}
