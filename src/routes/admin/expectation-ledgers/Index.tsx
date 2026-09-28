@@ -21,6 +21,7 @@ import { EXPECTATION_LABEL_KEYS } from "@/components/question/ExpectationPrompt"
 // reads the shared expectation vocabulary (keys, not text) purely so the
 // panel keeps showing labels rather than raw keys — it is not localization.
 import i18n from "@/lib/i18n";
+import type { QuestionInsightReport, ReportInsightsResponse } from "@/types/questionReport";
 import { SUPABASE_URL, getJwt, supabaseHeaders } from "@/lib/env";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -77,6 +78,8 @@ interface BriefRow {
   brief_text: string | null;
   status: "draft" | "approved" | "delivered";
   generated_at: string | null;
+  // Epic Report R7: the Insight Report snapshot frozen when the brief was generated.
+  report_print_id: string | null;
   questions: { question: string } | null;
   authority_registry: { name: string } | null;
 }
@@ -229,7 +232,7 @@ function useAllBriefs() {
       if (!sb) throw new Error("Supabase not available");
       const { data, error } = await sb
         .from("authority_briefs")
-        .select("id, question_id, region_id, authority_id, brief_text, status, generated_at, questions(question), authority_registry(name)")
+        .select("id, question_id, region_id, authority_id, brief_text, status, generated_at, report_print_id, questions(question), authority_registry(name)")
         .order("generated_at", { ascending: false, nullsFirst: false });
       if (error) throw error;
       return (data ?? []) as unknown as BriefRow[];
@@ -433,6 +436,8 @@ function PublishPanel() {
             </button>
           </div>
 
+          <ReportContext questionId={selectedQuestion.id} />
+
           <p className="text-[11px] font-medium text-slate-500 uppercase tracking-wide mb-1.5">
             Region
           </p>
@@ -494,6 +499,113 @@ function PublishPanel() {
               </Button>
             </>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Epic Report R7: Insight Report context for the publish decision ────────
+//
+// The ledger publishes only which expectations respondents selected. Before
+// publishing, the admin sees the question's Insight Report alongside it — how
+// respondents answered, the reasons they gave, and what they appear to want
+// (the report's AI summary, desired outcomes) — as input to the decision.
+// Read-only: nothing here is written to the ledger.
+
+function ReportContext({ questionId }: { questionId: string }) {
+  const { data: report, isLoading } = useQuery({
+    queryKey: ["admin-ledgers-report-context", questionId],
+    staleTime: 60_000,
+    queryFn: async () => {
+      const sb = getSupabase();
+      if (!sb) throw new Error("Supabase not available");
+      const { data, error } = await sb.rpc("get_question_insight_report", {
+        p_question_id: questionId,
+        p_language: "en",
+      });
+      if (error) throw error;
+      return data as QuestionInsightReport;
+    },
+  });
+  const total = report?.responseSummary.total ?? 0;
+  const { data: insights } = useQuery({
+    queryKey: ["admin-ledgers-report-insights", questionId],
+    enabled: total >= 5,
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      const sb = getSupabase();
+      if (!sb) return null;
+      const { data } = await sb.functions.invoke("question-report-insights", {
+        body: { question_id: questionId, language_code: "en" },
+      });
+      return (data ?? null) as ReportInsightsResponse | null;
+    },
+  });
+
+  return (
+    <div className="rounded-lg border border-indigo-100 bg-indigo-50/40 px-3 py-2.5 mb-3">
+      <div className="flex items-center justify-between gap-2 mb-1.5">
+        <p className="text-[11px] font-medium text-indigo-900 uppercase tracking-wide">Insight Report context</p>
+        <Link to={`/q/${questionId}/report`} target="_blank" className="text-[11px] text-indigo-700 hover:underline">
+          Open report ↗
+        </Link>
+      </div>
+      {isLoading ? (
+        <p className="text-xs text-slate-400">Loading…</p>
+      ) : !report || total === 0 ? (
+        <p className="text-xs text-slate-500">No responses yet, so there is no report to draw on.</p>
+      ) : (
+        <div className="space-y-2 text-xs text-slate-700">
+          <p>
+            {report.responseSummary.lean.high} of {total} respondents lean toward “{report.question.highLabel ?? "+2"}”,{" "}
+            {report.responseSummary.lean.low} toward “{report.question.lowLabel ?? "−2"}”, {report.responseSummary.lean.neutral}{" "}
+            neutral · average {report.responseSummary.mean ?? "—"} on −2..+2
+            {report.responseSummary.strength === "early" ? " · early signal (fewer than 30 responses)" : ""}.
+          </p>
+          {report.reasons && report.reasons.totalWithReasons > 0 && (
+            <div>
+              <p className="text-[11px] text-slate-500">
+                Reasons given ({report.reasons.totalWithReasons} respondents):
+              </p>
+              <ul className="list-disc pl-4">
+                {report.reasons.sides
+                  .filter((sd) => sd.respondents > 0)
+                  .flatMap((sd) =>
+                    [...sd.options]
+                      .filter((o) => o.count > 0)
+                      .sort((a, b) => b.count - a.count)
+                      .slice(0, 2)
+                      .map((o) => (
+                        <li key={o.key}>
+                          {o.label} — {o.count} of {sd.respondents}
+                        </li>
+                      )),
+                  )}
+              </ul>
+            </div>
+          )}
+          {insights?.status === "ok" && insights.insights ? (
+            <div>
+              <p className="text-[11px] text-slate-500">What respondents appear to want (AI summary):</p>
+              <p>{insights.insights.whatPeopleAppearToWant}</p>
+              {insights.insights.desiredOutcomes.length > 0 && (
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {insights.insights.desiredOutcomes.map((o) => (
+                    <span key={o} className="rounded-full border border-indigo-200 bg-white px-2 py-0.5 text-[10px] text-indigo-800">
+                      {o}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : total < 5 ? (
+            <p className="text-[11px] text-slate-400">The AI summary appears from 5 responses.</p>
+          ) : null}
+          <p className="text-[10px] text-slate-400">
+            Context only — the ledger publishes the expectation data below. Use this to judge whether it reflects how
+            respondents answered.
+          </p>
         </div>
       )}
     </div>
@@ -736,6 +848,17 @@ function BriefCard({ brief, deliveries }: { brief: BriefRow; deliveries: Deliver
       <p className="text-xs text-slate-600 bg-slate-50 rounded-lg p-2.5 mb-2 leading-relaxed">
         {brief.brief_text}
       </p>
+      {brief.report_print_id ? (
+        <Link
+          to={`/q/${brief.question_id}/report?print=${brief.report_print_id}`}
+          target="_blank"
+          className="mb-2 inline-block text-[11px] text-indigo-700 hover:underline"
+        >
+          Insight Report snapshot cited by this brief ↗
+        </Link>
+      ) : (
+        <p className="mb-2 text-[10px] text-slate-400">No Insight Report snapshot cited (brief generated before R7).</p>
+      )}
 
       {mine.length > 0 && (
         <ul className="mb-2 space-y-1 border-l border-slate-200 pl-2.5">
