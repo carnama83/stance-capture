@@ -1796,6 +1796,8 @@
     "mixed": "mixed"
   },
   "publicLedger": {
+    "reportLink": "How respondents answered this question, and why:",
+    "reportLinkLabel": "Community Insight Report",
     "ledgerNotYetPublished": "Ledger not yet published",
     "thisExpectationLedgerEitherDoesn": "This expectation ledger either doesn't exist yet or hasn't been published.",
     "publicExpectationLedger": "Public Expectation Ledger",
@@ -2243,6 +2245,7 @@
     "associationLine": "{{pct}}% of those expecting “{{action}}” associated {{role}} with it"
   },
   "publicBrief": {
+    "reportLink": "The full Community Insight Report on this question, as it stood when this brief was written:",
     "title": "Brief on public expectations",
     "print": "Print",
     "to": "To",

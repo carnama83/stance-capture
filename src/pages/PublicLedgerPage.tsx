@@ -610,6 +610,17 @@ export default function PublicLedgerPage() {
             </span>
           </div>
 
+          {/* Epic Report R7: the ledger shows which expectations respondents
+              selected; the Insight Report shows how they answered and why. */}
+          {questionId && (
+            <p className="-mt-2 mb-5 text-xs text-slate-500">
+              {t("publicLedger.reportLink")}{" "}
+              <Link to={`/q/${questionId}/report`} className="underline underline-offset-2 text-slate-700 hover:text-slate-900">
+                {t("publicLedger.reportLinkLabel")}
+              </Link>
+            </p>
+          )}
+
           {earlier.length > 0 && (
             <div className="mb-5 -mt-2">
               <p className="text-[11px] font-medium text-slate-500 mb-1">{t("publicLedger.otherVersions")}</p>

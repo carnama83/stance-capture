@@ -188,6 +188,35 @@ serve(async (req) => {
       return jsonResponse({ error: "Model returned empty content" }, 502);
     }
 
+    // 6b) Epic Report R7: freeze the question's Insight Report as it stands
+    // now and cite it on the brief, so the brief (which states only the
+    // ledger's expectations) points to the fuller picture — how respondents
+    // answered and why. Figures are computed server-side by
+    // create_report_print; the current English AI summary, if any, is frozen
+    // with it. Never blocks the brief: on any failure it is saved uncited.
+    let reportPrintId: string | null = null;
+    try {
+      const { data: snap } = await supabaseAdmin
+        .from("question_report_snapshots")
+        .select("id")
+        .eq("question_id", question_id)
+        .eq("language_code", "en")
+        .eq("status", "ok")
+        .eq("hidden", false)
+        .order("generated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const { data: print, error: printErr } = await supabaseAdmin.rpc("create_report_print", {
+        p_question_id: question_id,
+        p_language: "en",
+        p_insights_snapshot_id: snap?.id ?? null,
+      });
+      if (printErr) console.warn("generate-authority-brief: report snapshot not created:", printErr.message);
+      else reportPrintId = print?.id ?? null;
+    } catch (e) {
+      console.warn("generate-authority-brief: report snapshot failed:", e);
+    }
+
     // 7) Persist as a new draft brief — always a fresh row, never overwrites
     // a prior brief for this (question, region, authority) combo, so an
     // admin can regenerate without losing the previous draft for comparison.
@@ -200,6 +229,7 @@ serve(async (req) => {
         brief_text: briefText,
         generated_at: new Date().toISOString(),
         status: "draft",
+        report_print_id: reportPrintId,
       })
       .select()
       .single();
