@@ -24,7 +24,9 @@ import { CSSProperties } from "react";
 export default function Footer() {
   const { t } = useTranslation();
   return (
-    <footer style={styles.footer}>
+    // print:hidden — printable pages (report PDF, authority brief) carry their
+    // own attribution line; site navigation has no place on paper.
+    <footer style={styles.footer} className="print:hidden">
       <div style={styles.inner}>
         <div style={styles.brandCol}>
           <p style={styles.brand}>{t("about.stanceCapture")}</p>

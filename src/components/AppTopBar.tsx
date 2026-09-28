@@ -308,6 +308,9 @@ export default function AppTopBar({
               <NavItem to="/topics" active={isActive("/topics")}>
                 {t("nav.explore")}
               </NavItem>
+              <NavItem to="/reports" active={isActive("/reports")}>
+                {t("nav.reports")}
+              </NavItem>
               <NavItem to="/for-you" active={isActive("/for-you")}>
                 {t("nav.forYou")}
               </NavItem>
@@ -326,6 +329,9 @@ export default function AppTopBar({
               {/* Logged-out Navigation */}
               <NavItem to="/topics" active={isActive("/topics")}>
                 {t("nav.explore")}
+              </NavItem>
+              <NavItem to="/reports" active={isActive("/reports")}>
+                {t("nav.reports")}
               </NavItem>
             </>
           )}
