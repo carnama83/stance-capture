@@ -67,6 +67,31 @@ const changed = buildPayload({ ...report, changes: [{ kind: "wording", responses
 const v1 = validateEnglish(good, changed);
 console.log(`${v1.some((x) => x.includes("mention the change")) ? "PASS" : "FAIL"}  undisclosed wording change  ->  ${v1.join(" | ")}`);
 if (!v1.some((x) => x.includes("mention the change"))) fail++;
+// The first Prod summary for the Pune question (context-only change after
+// response 4, no reasons given). Each flaw must be caught; a corrected version
+// must pass.
+const pune = buildPayload({ ...report, changes: [{ kind: "context", responsesBefore: 4, at: "2026-09-27T02:23:44Z" }] });
+const prodBad = {
+  ...good,
+  why_they_may_feel_this_way: "4 of 9 respondents lean toward meetings. Meanwhile, 2 respondents lean toward the authorities leading repairs, indicating concerns about accountability.",
+  other_perspectives: "One respondent believes authorities must lead repairs, highlighting the need for immediate action.",
+  caveats: ["This is an early signal with only 9 responses. Answers before and after the context change may not be directly comparable."],
+};
+const vp = validateEnglish(prodBad, pune);
+for (const [name, needle] of [["Prod: motive stated as fact", "believes"], ["Prod: unhedged inference", "conditionally"], ["Prod: context change called incomparable", "only the background"]]) {
+  const ok = vp.some((x) => x.includes(needle));
+  if (!ok) fail++;
+  console.log(`${ok ? "PASS" : "FAIL"}  ${name}`);
+}
+const prodFixed = {
+  ...good,
+  why_they_may_feel_this_way: "4 of 9 respondents lean toward meetings. 2 respondents lean toward the authorities leading repairs and may be prioritising clear accountability.",
+  other_perspectives: "2 respondents lean toward authorities leading repairs; they may see official action as the faster route.",
+  caveats: ["This is an early signal with only 9 responses. The background was updated after response 4; the wording and scale did not change."],
+};
+const vf = validateEnglish(prodFixed, pune);
+console.log(`${vf.length === 0 ? "PASS" : "FAIL"}  Prod: corrected summary passes${vf.length ? "  ->  " + vf.join(" | ") : ""}`);
+if (vf.length) fail++;
 // Translation checks.
 const hi = Object.fromEntries(Object.entries(good).map(([k, v]) => [k, Array.isArray(v) ? v.map(() => "सुरक्षित स्कूल") : "6 में से 9 उत्तरदाता"]));
 const tv = validateTranslation({ ...hi, headline: "6 में से 9 respondents lean" }, good, "hi");
