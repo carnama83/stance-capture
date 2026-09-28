@@ -1,0 +1,80 @@
+// src/types/questionReport.ts
+//
+// Epic Report — the payload of get_question_insight_report(p_question_id,
+// p_language). Every number here is computed in SQL; the UI only formats it.
+
+export type StanceScore = -2 | -1 | 0 | 1 | 2;
+
+export interface QuestionInsightReport {
+  questionId: string;
+  language: string;
+  requestedLanguage: string;
+  fallbackLanguage: boolean;
+  generatedAt: string;
+  question: {
+    text: string | null;
+    summary: string | null;
+    context: string | null;
+    lowLabel: string | null;
+    highLabel: string | null;
+    location: string | null;
+    topic: string | null;
+    topicId: string | null;
+    createdByType: "admin" | "community";
+    createdAt: string | null;
+    closedAt: string | null;
+    currentRenditionId: string | null;
+  };
+  responseSummary: {
+    total: number;
+    signedIn: number;
+    anonymous: number;
+    distribution: { score: StanceScore; count: number; percentage: number }[];
+    mean: number | null;
+    median: number | null;
+    lean: { low: number; neutral: number; high: number };
+    strength: "early" | "emerging" | "established";
+    firstResponseAt: string | null;
+    lastResponseAt: string | null;
+  };
+  stanceDefinitions:
+    | { score: StanceScore; label: string | null; aiTip: string; interpretation: string }[]
+    | null;
+  renditions: {
+    renditionId: string | null;
+    language: string | null;
+    type: "original" | "translated" | null;
+    version: number | null;
+    publishedAt: string | null;
+    responses: number;
+  }[];
+  changes: {
+    at: string;
+    kind: "wording" | "scale" | "context";
+    wordingChanged: boolean;
+    scaleChanged: boolean;
+    contextChanged: boolean;
+    fromRenditionId: string;
+    toRenditionId: string;
+    responsesBefore: number;
+  }[];
+  preResponseEdits: number;
+  republishesWithoutChange: number;
+  trend: {
+    bucket: "sequence" | "day" | "week";
+    points: {
+      key: string;
+      responses: number;
+      cumulative: number;
+      fromResponse: number;
+      toResponse: number;
+      from: string;
+      to: string;
+      bucketMean: number | null;
+      cumulativeMean: number | null;
+    }[];
+  };
+  channels: { source: string; count: number }[];
+  geography: { region: string; count: number; mean: number | null }[] | null;
+  reasons: null;
+}

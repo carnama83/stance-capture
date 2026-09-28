@@ -303,6 +303,7 @@ begin
       'highLabel',          v_r.slider_high_label,
       'location',           v_q.location_label,
       'topic',              v_topic,
+      'topicId',            v_q.topic_id,
       'createdByType',      case when v_q.proposed_by is not null or v_q.source = 'community'
                                  then 'community' else 'admin' end,
       'createdAt',          v_q.published_at,

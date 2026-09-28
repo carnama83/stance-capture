@@ -2252,6 +2252,109 @@
     "ledgerLink": "The full published ledger:",
     "notAvailable": "This brief is not available."
   },
+  "report": {
+    "title": "Community Insight Report",
+    "downloadPdf": "Download PDF",
+    "backToQuestion": "Back to question",
+    "notAvailable": "This report is not available. A report opens once a published question has at least one response.",
+    "loadError": "The report could not be loaded. Please try again.",
+    "responses_one": "{{formatted}} response",
+    "responses_other": "{{formatted}} responses",
+    "strength": {
+      "early": "Early signal",
+      "emerging": "Emerging",
+      "established": "Established"
+    },
+    "strengthHint": {
+      "early": "Fewer than 30 responses, so read this as an early signal rather than a settled view.",
+      "emerging": "Between 30 and 99 responses.",
+      "established": "100 or more responses."
+    },
+    "lastResponse": "Last response {{date}}",
+    "generatedAt": "Report generated {{date}}",
+    "closedOn": "This question closed on {{date}}.",
+    "askedByCommunity": "Community question",
+    "askedByEditorial": "Stance Capture question",
+    "fallbackLanguage": "This question is not yet available in your language, so it is shown in {{language}}.",
+    "noContext": "No background was published with this question.",
+    "footer": "Data collected by Stance Capture",
+    "sections": {
+      "question": "The question",
+      "snapshot": "Community snapshot",
+      "distribution": "How respondents answered",
+      "positions": "What each position stands for",
+      "trend": "How the responses have moved",
+      "who": "Who responded",
+      "method": "Method and limitations"
+    },
+    "snapshot": {
+      "lean": "{{high}} of {{total}} respondents lean toward “{{highLabel}}”, {{low}} lean toward “{{lowLabel}}” and {{neutral}} are neutral.",
+      "average": "Average position",
+      "median": "Median position",
+      "scale": "on a scale from −2 to +2"
+    },
+    "distribution": {
+      "signedInAnon": "{{signedIn}} signed in · {{anonymous}} answered without an account",
+      "rounding": "Percentages are rounded, so they may not add up to 100."
+    },
+    "positions": {
+      "intro": "These descriptions were written with AI from the question and its answer scale. They explain each position; they are not respondents' own words.",
+      "pending": "Descriptions of each position are being prepared…",
+      "unavailable": "Descriptions of each position are not available yet."
+    },
+    "trend": {
+      "chartLabel": "Average position of responses over time",
+      "seqRange": "{{from}}–{{to}}",
+      "weekOf": "Week of {{date}}",
+      "tooFew": "Not enough responses yet to show a trend. Each point on the chart needs at least 3 responses.",
+      "summary": "Responses {{from1}}–{{to1}} averaged {{a}}; the most recent group ({{from2}}–{{to2}}) averaged {{b}}.",
+      "towards": "Recent responses sit closer to “{{label}}”.",
+      "steady": "The average has changed little over time.",
+      "earlyCaveat_one": "With only {{formatted}} response, this is an early signal rather than a settled direction.",
+      "earlyCaveat_other": "With only {{formatted}} responses, this is an early signal rather than a settled direction.",
+      "legendRunning": "Running average",
+      "legendGroup": "Group average",
+      "legendVolume": "Responses in the group",
+      "changesTitle": "Changes to the question while responses were coming in",
+      "changeAfter": "after response {{n}}",
+      "scaleCaveat": "Answers given before and after a change to the answer scale are not directly comparable.",
+      "change": {
+        "wording": "Question wording updated",
+        "scale": "Answer scale relabelled",
+        "context": "Background context updated; wording and scale unchanged"
+      }
+    },
+    "who": {
+      "channelsTitle": "How people answered",
+      "channel": {
+        "native": "On the Stance Capture website or app",
+        "web_forward": "Through a shared WhatsApp link",
+        "other": "Other"
+      },
+      "signedIn": "Signed in",
+      "anonymous": "Without an account",
+      "geographyTitle": "Where signed-in respondents are",
+      "geographyOther": "Other places",
+      "geographyNone": "A breakdown by city appears once at least 5 signed-in respondents have set their city. Cities with fewer than 5 respondents are grouped together.",
+      "geoAverage": "average {{value}}"
+    },
+    "method": {
+      "sample": "Respondents chose to answer. They are not a random sample, and the results describe respondents to this question only, not any wider population.",
+      "counts": "{{total}} responses in total: {{signedIn}} from signed-in users and {{anonymous}} from people who answered without an account. Each person is counted once.",
+      "scale": "Positions run from −2 (“{{low}}”) to +2 (“{{high}}”).",
+      "versions_one": "Responses were collected on {{count}} version of the question.",
+      "versions_other": "Responses were collected on {{count}} versions of the question.",
+      "preEdits_one": "The question was edited {{count}} time before the first response.",
+      "preEdits_other": "The question was edited {{count}} times before the first response.",
+      "changes": "Changes made after the first response are numbered on the trend chart.",
+      "noChanges": "The question did not change after the first response.",
+      "republish_one": "It was also republished {{count}} time with no change to its wording, scale or background.",
+      "republish_other": "It was also republished {{count}} times with no change to its wording, scale or background.",
+      "trendGroups": "Each point on the trend chart combines at least 3 responses, so no single person's answer can be read from it.",
+      "positionsAi": "The descriptions of each position are AI-generated from the question and its scale.",
+      "noAi": "This report contains no AI summary of the responses: every figure is calculated directly from the recorded answers."
+    }
+  },
   "questionEdit": {
     "editButton": "Edit question",
     "intro": "Nobody has answered yet, so you can still improve the wording. Say what to add or change, and you'll get a suggested update to approve.",
