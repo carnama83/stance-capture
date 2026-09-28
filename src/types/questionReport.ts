@@ -88,3 +88,24 @@ export interface QuestionInsightReport {
     }[];
   } | null;
 }
+
+// Epic Report R4 — response of the question-report-insights edge function.
+export interface ReportInsightsResponse {
+  status: "ok" | "below_minimum" | "hidden" | "generating" | "unavailable";
+  snapshot_id?: string;
+  generated_at?: string;
+  response_count?: number;
+  language_code?: string;
+  stale?: boolean;
+  minimum?: number;
+  insights?: {
+    headline: string;
+    whatPeopleAreVotingFor: string;
+    whyTheyMayFeelThisWay: string;
+    otherPerspectives: string;
+    trendSummary: string;
+    whatPeopleAppearToWant: string;
+    desiredOutcomes: string[];
+    caveats: string[];
+  } | null;
+}

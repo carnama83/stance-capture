@@ -26,7 +26,7 @@ import { useTopicLabels } from "@/hooks/useTopicLabels";
 import { usePlaceLabels } from "@/hooks/usePlaceLabels";
 import { formatDate, formatNumber, formatPercent, languageDisplayName } from "@/lib/intlFormat";
 import { buildStanceLabels, getStanceColorHex } from "@/lib/stanceColors";
-import type { QuestionInsightReport, StanceScore } from "@/types/questionReport";
+import type { QuestionInsightReport, ReportInsightsResponse, StanceScore } from "@/types/questionReport";
 
 const SCORES: StanceScore[] = [-2, -1, 0, 1, 2];
 
@@ -188,6 +188,166 @@ function TrendChart({ report, lang }: { report: QuestionInsightReport; lang: str
   );
 }
 
+// ---------- AI summary (R4) ----------
+//
+// Kept in ONE clearly labelled block rather than interleaved with the computed
+// sections, so a reader can always tell model-written prose from figures the
+// database calculated. The edge function has already validated it (no
+// invented numbers, no population language, no unsupported attribution).
+
+async function fetchReportInsights(questionId: string, languageCode: string): Promise<ReportInsightsResponse> {
+  const sb = getSupabase();
+  if (!sb) return { status: "unavailable" };
+  const { data, error } = await sb.functions.invoke("question-report-insights", {
+    body: { question_id: questionId, language_code: languageCode },
+  });
+  if (error) return { status: "unavailable" };
+  return data as ReportInsightsResponse;
+}
+
+function AiSummary({
+  questionId,
+  languageCode,
+  userId,
+  enoughResponses,
+  onLoaded,
+}: {
+  questionId: string;
+  languageCode: string;
+  userId: string | null;
+  enoughResponses: boolean;
+  onLoaded: (r: ReportInsightsResponse | undefined) => void;
+}) {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const { data, isLoading } = useQuery({
+    queryKey: ["report-insights", questionId, languageCode, userId],
+    enabled: enoughResponses,
+    staleTime: 5 * 60_000,
+    queryFn: () => fetchReportInsights(questionId, languageCode),
+    // Another request is generating it right now: look again shortly.
+    refetchInterval: (q) => (q.state.data?.status === "generating" ? 5000 : false),
+  });
+  React.useEffect(() => onLoaded(data), [data, onLoaded]);
+
+  const { data: isAdmin } = useQuery({
+    queryKey: ["is-admin-me", userId],
+    enabled: !!userId,
+    staleTime: 10 * 60_000,
+    queryFn: async () => {
+      const sb = getSupabase();
+      if (!sb) return false;
+      const { data: v } = await sb.rpc("is_admin_me");
+      return v === true;
+    },
+  });
+  const [toggling, setToggling] = React.useState(false);
+  const setHidden = async (hidden: boolean) => {
+    if (!data?.snapshot_id) return;
+    setToggling(true);
+    const sb = getSupabase();
+    await sb?.rpc("admin_set_report_snapshot_hidden", { p_snapshot_id: data.snapshot_id, p_hidden: hidden });
+    await queryClient.invalidateQueries({ queryKey: ["report-insights", questionId] });
+    setToggling(false);
+  };
+
+  const body = (() => {
+    if (!enoughResponses) return <p className="text-sm text-slate-500">{t("report.ai.belowMinimum")}</p>;
+    if (isLoading || data?.status === "generating") {
+      return (
+        <p className="text-sm text-slate-500 inline-flex items-center gap-2">
+          <Loader2 className="h-4 w-4 animate-spin" /> {t("report.ai.preparing")}
+        </p>
+      );
+    }
+    if (data?.status === "hidden") {
+      return isAdmin ? (
+        <p className="text-sm text-slate-500">
+          {t("report.ai.hiddenAdmin")}{" "}
+          <button disabled={toggling} onClick={() => setHidden(false)} className="underline underline-offset-2 print:hidden">
+            {t("report.ai.unhide")}
+          </button>
+        </p>
+      ) : null;
+    }
+    if (data?.status !== "ok" || !data.insights) return <p className="text-sm text-slate-500">{t("report.ai.unavailable")}</p>;
+    const ins = data.insights;
+    const para = (title: string, text: string) => (
+      <div className="break-inside-avoid">
+        <h3 className="text-xs font-semibold text-slate-800">{title}</h3>
+        <p className="mt-0.5 text-sm text-slate-700 leading-relaxed">{text}</p>
+      </div>
+    );
+    return (
+      <div className="space-y-3.5" lang={data.language_code}>
+        <p className="text-sm font-medium text-slate-900 leading-relaxed">{ins.headline}</p>
+        {para(t("report.ai.votingTitle"), ins.whatPeopleAreVotingFor)}
+        {para(t("report.ai.whyTitle"), ins.whyTheyMayFeelThisWay)}
+        {para(t("report.ai.othersTitle"), ins.otherPerspectives)}
+        {para(t("report.ai.trendTitle"), ins.trendSummary)}
+        <div className="break-inside-avoid">
+          <h3 className="text-xs font-semibold text-slate-800">{t("report.ai.wantTitle")}</h3>
+          <p className="mt-0.5 text-sm text-slate-700 leading-relaxed">{ins.whatPeopleAppearToWant}</p>
+          {ins.desiredOutcomes.length > 0 && (
+            <ul className="mt-2 flex flex-wrap gap-1.5">
+              {ins.desiredOutcomes.map((o) => (
+                <li key={o} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs text-slate-700">
+                  {o}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        {ins.caveats.length > 0 && (
+          <ul className="list-disc pl-5 space-y-0.5 text-xs text-slate-500">
+            {ins.caveats.map((c) => (
+              <li key={c}>{c}</li>
+            ))}
+          </ul>
+        )}
+      </div>
+    );
+  })();
+
+  if (body === null) return null;
+  const ok = data?.status === "ok";
+  return (
+    <section className="border-t border-slate-100 pt-6 mt-6">
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        <h2 className="text-sm font-semibold text-slate-900">{t("report.sections.ai")}</h2>
+        <span className="rounded-full bg-indigo-50 border border-indigo-200 px-2 py-0.5 text-[10px] font-medium text-indigo-700">
+          {t("report.ai.badge")}
+        </span>
+        {ok && isAdmin && (
+          <button
+            disabled={toggling}
+            onClick={() => setHidden(true)}
+            className="ml-auto text-xs text-slate-500 underline underline-offset-2 print:hidden"
+          >
+            {t("report.ai.hide")}
+          </button>
+        )}
+      </div>
+      {body}
+      {ok && data?.language_code && data.language_code !== languageCode && (
+        <p className="mt-3 text-xs text-slate-500">
+          {t("report.ai.fallbackLanguage", { language: languageDisplayName(languageCode, data.language_code) })}
+        </p>
+      )}
+      {ok && (
+        <p className="mt-3 text-[11px] text-slate-400">
+          {t("report.ai.footer", {
+            date: formatDate(data!.generated_at!, languageCode, { dateStyle: "medium" }),
+            count: data!.response_count ?? 0,
+            formatted: formatNumber(data!.response_count ?? 0, languageCode),
+          })}
+          {data?.stale ? ` ${t("report.ai.stale")}` : ""}
+        </p>
+      )}
+    </section>
+  );
+}
+
 // ---------- Page ----------
 
 export default function QuestionReportPage() {
@@ -199,6 +359,7 @@ export default function QuestionReportPage() {
   const { languageCode, isLoading: languageLoading } = useLanguage(userId);
   const queryClient = useQueryClient();
   const { i18n } = useTranslation();
+  const [aiInfo, setAiInfo] = React.useState<ReportInsightsResponse | undefined>(undefined);
   const { topicLabel } = useTopicLabels(languageCode);
   const { placeLabel } = usePlaceLabels(languageCode);
 
@@ -394,6 +555,14 @@ export default function QuestionReportPage() {
               </div>
             )}
           </Section>
+
+          <AiSummary
+            questionId={report.questionId}
+            languageCode={uiLang}
+            userId={userId}
+            enoughResponses={rs.total >= 5}
+            onLoaded={setAiInfo}
+          />
 
           {/* Distribution */}
           <Section title={t("report.sections.distribution")}>
@@ -639,7 +808,11 @@ export default function QuestionReportPage() {
               <li>{t("report.method.trendGroups")}</li>
               <li>{t("report.method.reasons")}</li>
               <li>{t("report.method.positionsAi")}</li>
-              <li>{t("report.method.noAi")}</li>
+              <li>
+                {aiInfo?.status === "ok"
+                  ? t("report.method.ai", { minimum: 5 })
+                  : t("report.method.noAi")}
+              </li>
             </ul>
           </Section>
 

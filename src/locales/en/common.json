@@ -2297,7 +2297,26 @@
       "trend": "How the responses have moved",
       "who": "Who responded",
       "method": "Method and limitations",
-      "reasons": "Why respondents chose their position"
+      "reasons": "Why respondents chose their position",
+      "ai": "What the responses suggest"
+    },
+    "ai": {
+      "badge": "AI-generated summary",
+      "votingTitle": "What respondents are choosing",
+      "whyTitle": "Why they may be choosing it",
+      "othersTitle": "Other perspectives",
+      "trendTitle": "How it is moving",
+      "wantTitle": "What respondents appear to want",
+      "belowMinimum": "An AI summary appears once the question has at least 5 responses.",
+      "preparing": "Preparing the AI summary…",
+      "unavailable": "The AI summary is not available right now. Every figure in this report is still calculated directly from the responses.",
+      "hiddenAdmin": "This AI summary is hidden by an admin.",
+      "hide": "Hide AI summary",
+      "unhide": "Show it again",
+      "fallbackLanguage": "This summary is not yet available in your language, so it is shown in {{language}}.",
+      "footer_one": "Written by AI on {{date}} from the figures in this report ({{formatted}} response). It is checked automatically for numbers that are not in the data and for claims about people who did not respond.",
+      "footer_other": "Written by AI on {{date}} from the figures in this report ({{formatted}} responses). It is checked automatically for numbers that are not in the data and for claims about people who did not respond.",
+      "stale": "More responses have arrived since; it will be refreshed."
     },
     "reasons": {
       "none": "No respondent has said why they chose their position yet. Giving a reason is optional and is asked right after answering.",
@@ -2375,7 +2394,8 @@
       "trendGroups": "Each point on the trend chart combines at least 3 responses, so no single person's answer can be read from it.",
       "reasons": "Reasons are optional, so they describe only the respondents who gave one. The reason options offered were written with AI from the question; the choices and any written reasons are respondents' own.",
       "positionsAi": "The descriptions of each position are AI-generated from the question and its scale.",
-      "noAi": "This report contains no AI summary of the responses: every figure is calculated directly from the recorded answers."
+      "noAi": "This report contains no AI summary of the responses: every figure is calculated directly from the recorded answers.",
+      "ai": "Every figure is calculated directly from the recorded answers. The labelled AI summary was written by a model from those figures only; it appears from {{minimum}} responses and is refreshed as responses come in."
     }
   },
   "questionEdit": {
