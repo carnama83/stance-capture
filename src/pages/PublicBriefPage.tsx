@@ -29,6 +29,8 @@ interface BriefData {
   brief_text: string;
   approved_at: string | null;
   ledger_published: boolean;
+  // Epic Report R7: the Insight Report as it stood when this brief was generated.
+  report_print_id: string | null;
 }
 
 function useBrief(briefId: string) {
@@ -128,6 +130,17 @@ export default function PublicBriefPage() {
                   className="underline underline-offset-2 text-slate-700 print:no-underline"
                 >
                   {`${window.location.origin}/#/ledger/${brief.question_id}/${brief.region_id}`}
+                </Link>
+              </p>
+            )}
+            {brief.report_print_id && (
+              <p>
+                {t("publicBrief.reportLink")}{" "}
+                <Link
+                  to={`/q/${brief.question_id}/report?print=${brief.report_print_id}`}
+                  className="underline underline-offset-2 text-slate-700 print:no-underline"
+                >
+                  {`${window.location.origin}/#/q/${brief.question_id}/report?print=${brief.report_print_id}`}
                 </Link>
               </p>
             )}
