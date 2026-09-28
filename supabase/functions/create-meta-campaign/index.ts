@@ -142,6 +142,34 @@ async function uploadImageBytes(actId, bytes, token) {
   return { ok: true, hash };
 }
 
+// Fill in region_id for any city saved without it (campaigns created before the
+// form stored it). Looks the city up by name in Meta's geo search and matches on
+// key. Only needed when regions are also selected; a failed lookup leaves the
+// city as-is, and Meta's own error still surfaces.
+async function resolveCityRegions(t, token) {
+  if (!Array.isArray(t?.regions) || !t.regions.length || !Array.isArray(t?.cities)) return t;
+  const cities = await Promise.all(t.cities.map(async (c) => {
+    if (!c || typeof c !== "object" || c.region_id || !c.name) return c;
+    try {
+      const params = new URLSearchParams({
+        type: "adgeolocation",
+        location_types: JSON.stringify(["city"]),
+        q: String(c.name),
+        limit: "25",
+        access_token: token,
+      });
+      const res = await fetchWithRetry(`${GRAPH}/search?${params.toString()}`, { method: "GET" });
+      const data = await res.json().catch(() => ({}));
+      const hit = (data?.data ?? []).find((r) => String(r.key) === String(c.key));
+      return hit?.region_id ? { ...c, region_id: String(hit.region_id) } : c;
+    } catch (err) {
+      log("warn", "city_region_lookup_failed", { key: c.key, err: String(err) });
+      return c;
+    }
+  }));
+  return { ...t, cities };
+}
+
 // Translate our normalized targeting jsonb → Meta targeting spec.
 // Under the political special category, detailed interest targeting is dropped.
 function buildMetaTargeting(t, isPolitical) {
@@ -172,6 +200,16 @@ function buildMetaTargeting(t, isPolitical) {
   if (geo.countries && narrowedCountries.size) {
     geo.countries = geo.countries.filter((c) => !narrowedCountries.has(String(c).toUpperCase()));
     if (!geo.countries.length) delete geo.countries;
+  }
+  // Same rule one level down: a state that contains a selected city conflicts
+  // with it (Maharashtra + Pune failed on Prod, 28 Sep 2026). Drop the state.
+  // Cities carry region_id (saved by the form, or resolved by resolveCityRegions).
+  const narrowedRegions = new Set(
+    (Array.isArray(t.cities) ? t.cities : []).map((c) => String(c?.region_id ?? "")).filter(Boolean),
+  );
+  if (geo.regions && narrowedRegions.size) {
+    geo.regions = geo.regions.filter((r) => !narrowedRegions.has(r.key));
+    if (!geo.regions.length) delete geo.regions;
   }
   // Default to a country only if nothing at all was specified.
   if (!geo.countries && !geo.regions && !geo.cities) geo.countries = ["IN"];
@@ -319,7 +357,7 @@ serve(async (req) => {
     const metaCampaignId = campRes.id;
 
     // ── 2. Ad Set (PAUSED) ────────────────────────────────────────────────────
-    const targeting = buildMetaTargeting(campaign.targeting, isPolitical);
+    const targeting = buildMetaTargeting(await resolveCityRegions(campaign.targeting, token), isPolitical);
     const adsetParams = {
       name: `${campaign.name} — Ad Set`,
       campaign_id: metaCampaignId,
