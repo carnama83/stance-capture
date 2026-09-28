@@ -44,10 +44,10 @@ Hard rules:
 2. Say "respondents" or "respondents to this question". Never write residents, citizens, voters, the public, everyone, or "people of" a place, and never present respondents as representative of any population.
 3. Never declare a winner, a mandate, or what "the majority wants". Describe how the responses are distributed.
 4. Always describe minority positions, even a single response.
-5. "position_meanings" describe what each position stands for; they are NOT respondents' words. Unless "reasons" has at least 5 respondents_with_reasons, never write that respondents said, cited, explained, mentioned or told anything; use conditional language ("respondents choosing this position may be prioritising ...").
+5. "position_meanings" describe what each position stands for; they are NOT respondents' words. Unless "reasons" has at least 5 respondents_with_reasons, never write that respondents said, cited, explained, mentioned or told anything, never say what a respondent believes, thinks, feels or wants, and never state a motive as fact: every explanation of why must be conditional, using "may" or "might" in the same sentence ("respondents choosing this position may be prioritising ...").
 6. When "reasons" has at least 5 respondents_with_reasons, you may report which reasons respondents chose. Name the reason and use the counts of ONE side exactly as given, e.g. "3 of the 4 respondents toward 'X' who gave a reason chose 'Y'". Never describe one side's count as a share of all respondents with reasons. You may quote only the quotes provided, word for word, in quotation marks.
 7. Describe the trend only as movement in the averages; never give causes. Compare like with like: first_group_average with latest_group_average, or the running averages with each other — never a group average with a running average. With fewer than 30 responses, say it is an early signal.
-8. If "question_changes_after_first_response" is not empty, mention each change (wording, answer scale or background) in trend_summary or caveats, and say that answers before and after a wording or scale change may not be directly comparable. If it is empty, say nothing at all about wording, scale or background changes.
+8. If "question_changes_after_first_response" is not empty, mention each change (wording, answer scale or background) in trend_summary or caveats, and say that answers before and after a wording or scale change may not be directly comparable. A background (context) update on its own does NOT make answers incomparable: just say the background was updated after response N. If the list is empty, say nothing at all about wording, scale or background changes.
 9. "why_they_may_feel_this_way" must weigh ALL positions by their counts, not only the largest group.
 10. "what_people_appear_to_want" states the outcome respondents appear to seek (for example "a predictable way to find hazards, assign ownership and follow up"), not the label of the option they chose.
 11. Neutral, plain English, short sentences, no markdown.
@@ -272,6 +272,31 @@ function validateEnglish(ins: Insights, payload: any): string[] {
     }
   } else if (changeWords.test(where)) {
     v.push("the question did not change after the first response: say nothing about wording or scale changes");
+  }
+
+  // 5b. A background-only update does not make answers incomparable (the
+  //     first Prod run said it did, for the Pune question).
+  const kinds = (payload.question_changes_after_first_response ?? []).map((c: any) => c.kind);
+  if (kinds.length > 0 && kinds.every((k: string) => k === "context") && /not\s+(be\s+)?(directly\s+)?comparable|incomparable/i.test(where)) {
+    v.push("only the background was updated, which does not make answers incomparable: just say the background was updated after the response given");
+  }
+
+  // 7. Without real reasons, motives must stay conditional. The first Prod run
+  //    wrote "One respondent believes ... highlighting the need for immediate
+  //    action" and "... indicating concerns about accountability" with zero
+  //    reasons given — motives invented and stated as fact.
+  if (reasonCount < 5) {
+    const why = [ins.what_people_are_voting_for, ins.why_they_may_feel_this_way, ins.other_perspectives].join(" ").replace(QUOTED, " ");
+    const stated = why.match(/\b(believes?|thinks?|feels?|wants?|convinced)\b/i);
+    if (stated) v.push(`fewer than 5 respondents gave a reason: do not say what respondents "${stated[1]}"; say what they may be prioritising`);
+    for (const field of [ins.why_they_may_feel_this_way, ins.other_perspectives]) {
+      for (const sentence of field.replace(QUOTED, " ").split(/(?<=[.!?])\s+/)) {
+        if (/\b(indicat\w*|highlight\w*|suggest\w*|reflect\w*|shows?|showing|demonstrat\w*|because|due to)\b/i.test(sentence) &&
+            !/\b(may|might|could|possibly|perhaps)\b/i.test(sentence)) {
+          v.push(`state motives conditionally with "may": "${sentence.trim().slice(0, 80)}"`);
+        }
+      }
+    }
   }
 
   // 6. A trend statement must not pair a group average with a running
