@@ -450,6 +450,7 @@ interface GeoItem {
   country_code: string | null;
   country_name?: string | null;
   region?: string | null;
+  region_id?: string | number | null;
 }
 
 async function searchGeo(query: string, types: string[], countryCode?: string): Promise<GeoItem[]> {
@@ -582,7 +583,8 @@ function NewCampaignModal({ onClose }: { onClose: () => void }) {
       const targeting: Record<string, unknown> = {
         countries,
         regions: regions.map((r) => ({ key: r.key, name: r.name, country_code: r.country_code })),
-        cities: cities.map((c) => ({ key: c.key, name: c.name, country_code: c.country_code, radius: 25, distance_unit: "mile" })),
+        // region_id lets launch drop a selected state that contains this city (Meta rejects the overlap).
+        cities: cities.map((c) => ({ key: c.key, name: c.name, country_code: c.country_code, region_id: c.region_id != null ? String(c.region_id) : null, radius: 25, distance_unit: "mile" })),
         age_min: Number(ageMin) || 18,
         age_max: Number(ageMax) || 65,
         currency,
