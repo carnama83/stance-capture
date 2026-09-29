@@ -23,6 +23,7 @@ import {
   RefreshCw,
   Facebook,
   Linkedin,
+  KeyRound,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -39,6 +40,11 @@ interface AdAccount {
   last_sync_at: string | null;
   created_at: string;
   updated_at: string;
+  // Token metadata only — the token itself never leaves the server.
+  token_source?: "account" | "system" | null;
+  token_type?: string | null;
+  token_user_name?: string | null;
+  token_expires_at?: string | null;
 }
 
 // ─── Data hooks ───────────────────────────────────────────────────────────────
@@ -125,11 +131,132 @@ function PlatformIcon({ platform }: { platform: Platform }) {
   );
 }
 
+// ─── Token line ───────────────────────────────────────────────────────────────
+// Political/social-issue ads need an ID-confirmed person's token; the server
+// system-user token can't place them. Show which one this account launches with.
+
+const DAY_MS = 86_400_000;
+
+function TokenLine({ acct }: { acct: AdAccount }) {
+  if (acct.platform !== "meta") return null;
+  if (acct.token_source !== "account") {
+    return (
+      <p className="text-xs text-slate-500">
+        Token: server system-user token{" "}
+        <span className="text-slate-400">(can't run social-issue ads — set your own token)</span>
+      </p>
+    );
+  }
+  const who = acct.token_user_name || "account token";
+  const type = acct.token_type === "USER" ? "user" : acct.token_type ? acct.token_type.toLowerCase().replace(/_/g, " ") : null;
+  const exp = acct.token_expires_at ? new Date(acct.token_expires_at) : null;
+  const daysLeft = exp ? Math.floor((exp.getTime() - Date.now()) / DAY_MS) : null;
+  const expText = exp
+    ? daysLeft! < 0
+      ? `expired ${exp.toLocaleDateString(undefined, { dateStyle: "medium" })}`
+      : `expires ${exp.toLocaleDateString(undefined, { dateStyle: "medium" })} (${daysLeft} day${daysLeft === 1 ? "" : "s"})`
+    : "never expires";
+  const warn = daysLeft !== null && daysLeft <= 14;
+  return (
+    <p className={`text-xs flex items-center gap-1 ${warn ? "text-amber-700" : "text-slate-500"}`}>
+      {warn && <AlertTriangle className="h-3 w-3 shrink-0" />}
+      Token: {who}{type ? ` (${type})` : ""} · {expText}
+    </p>
+  );
+}
+
+function SetTokenModal({ acct, onClose }: { acct: AdAccount; onClose: () => void }) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const [token, setToken] = React.useState("");
+
+  const saveMut = useMutation({
+    mutationFn: (clear: boolean) =>
+      callValidate(
+        clear
+          ? { mode: "set_token", connection_id: acct.id, clear: true }
+          : { mode: "set_token", connection_id: acct.id, access_token: token.trim() },
+      ),
+    onSuccess: (data, clear) => {
+      qc.invalidateQueries({ queryKey: ["admin-ad-accounts"] });
+      setToken("");
+      toast({
+        title: clear ? "Using the system-user token" : "Token saved",
+        description: clear
+          ? "This account now launches with META_ADS_ACCESS_TOKEN."
+          : `${acct.account_name || acct.account_id} now launches with your token.`,
+      });
+      onClose();
+    },
+    onError: (e: any) => toast({ title: "Couldn't save token", description: e?.message, variant: "destructive" }),
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div
+        className="w-full max-w-md rounded-2xl bg-white shadow-xl border border-slate-200 max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+          <h2 className="text-sm font-semibold text-slate-900">Access token — {acct.account_name || acct.account_id}</h2>
+          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-700">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          <Field
+            label="Meta user access token"
+            hint="Long-lived token from your own ID-confirmed Facebook account, with ads_management. It is checked with Meta, stored server-side, and never shown again."
+          >
+            <input
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              type="password"
+              autoComplete="off"
+              placeholder="Paste token"
+              className={inputCls}
+            />
+          </Field>
+        </div>
+
+        <div className="flex items-center justify-between gap-2 px-5 py-4 border-t border-slate-100">
+          {acct.token_source === "account" ? (
+            <button
+              type="button"
+              onClick={() => saveMut.mutate(true)}
+              disabled={saveMut.isPending}
+              className="text-xs font-medium text-slate-500 hover:text-red-600 disabled:opacity-50"
+            >
+              Use system token instead
+            </button>
+          ) : <span />}
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 px-4 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors">
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => saveMut.mutate(false)}
+              disabled={!token.trim() || saveMut.isPending}
+              className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
+            >
+              {saveMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <KeyRound className="h-3 w-3" />}
+              Validate & save
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Account card ─────────────────────────────────────────────────────────────
 
 function AccountCard({ acct }: { acct: AdAccount }) {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const [showToken, setShowToken] = React.useState(false);
   const testMut = useMutation({
     mutationFn: () => callValidate({ mode: "test", connection_id: acct.id }),
     onSuccess: (data) => {
@@ -157,17 +284,31 @@ function AccountCard({ acct }: { acct: AdAccount }) {
               <> · Last checked {new Date(acct.last_sync_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}</>
             )}
           </p>
+          <div className="mt-1.5"><TokenLine acct={acct} /></div>
         </div>
-        <button
-          type="button"
-          onClick={() => testMut.mutate()}
-          disabled={testMut.isPending}
-          className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:border-blue-200 hover:text-blue-700 disabled:opacity-50 transition-colors shrink-0"
-        >
-          {testMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-          Test connection
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          {acct.platform === "meta" && (
+            <button
+              type="button"
+              onClick={() => setShowToken(true)}
+              className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:border-blue-200 hover:text-blue-700 transition-colors"
+            >
+              <KeyRound className="h-3 w-3" />
+              Set token
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => testMut.mutate()}
+            disabled={testMut.isPending}
+            className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:border-blue-200 hover:text-blue-700 disabled:opacity-50 transition-colors"
+          >
+            {testMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+            Test connection
+          </button>
+        </div>
       </div>
+      {showToken && <SetTokenModal acct={acct} onClose={() => setShowToken(false)} />}
     </div>
   );
 }
