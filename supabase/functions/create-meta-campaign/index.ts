@@ -489,6 +489,11 @@ serve(async (req) => {
     const creativeRes = await metaPost(`${actId}/adcreatives`, {
       name: `${campaign.name} — Creative`,
       object_story_spec: objectStorySpec,
+      // A creative in a political special-category campaign must say so, or the
+      // ad create fails ("You cannot mark a creative as non-political…", Prod
+      // 29 Sep 2026). The "Paid for by" disclaimer comes from the Page's
+      // authorisation linked to this ad account.
+      ...(isPolitical ? { authorization_category: "POLITICAL" } : {}),
     }, token);
     if (!creativeRes.ok) {
       log("error", "meta_creative_create_failed", { err: creativeRes.error });
