@@ -142,6 +142,14 @@ async function uploadImageBytes(actId, bytes, token) {
   return { ok: true, hash };
 }
 
+function shortenAtWord(text, max) {
+  const t = String(text).replace(/\s+/g, " ").trim();
+  if (t.length <= max) return t;
+  const cut = t.slice(0, max - 1);
+  const sp = cut.lastIndexOf(" ");
+  return (sp > max * 0.5 ? cut.slice(0, sp) : cut).replace(/[\s,;:—–-]+$/, "") + "…";
+}
+
 // The ad account's own token (an ID-confirmed admin's user token) wins over the
 // system-user secret, which can't place political ads.
 async function resolveToken(admin, adAccountId) {
@@ -290,6 +298,7 @@ serve(async (req) => {
   try { body = await req.json(); } catch { body = {}; }
   const campaignId = body?.campaign_id;
   const activate = body?.activate === true; // default false = create PAUSED only
+  const reset = body?.reset === true;       // built → delete on Meta, back to draft
   if (!campaignId) return json(400, { ok: false, error: "campaign_id is required" });
 
   try {
@@ -301,6 +310,27 @@ serve(async (req) => {
       .single();
     if (cErr || !campaign) return json(404, { ok: false, error: "Campaign not found" });
     if (campaign.platform !== "meta") return json(400, { ok: false, error: "Campaign platform is not 'meta'" });
+
+    // Reset: a built campaign has never been submitted or spent, so it can be
+    // thrown away on Meta and edited as a draft (new image/headline), then
+    // built again. Anything past 'built' must be cancelled instead.
+    if (reset) {
+      if (campaign.status !== "built") {
+        return json(400, { ok: false, error: `Only a built (never submitted) campaign can be reset (current: ${campaign.status})` });
+      }
+      const tok = await resolveToken(admin, campaign.ad_account_id);
+      if (campaign.platform_campaign_id && tok) {
+        const del = await metaPost(campaign.platform_campaign_id, { status: "DELETED" }, tok);
+        if (!del.ok && del.error?.code !== 100) {
+          return json(502, { ok: false, error: `Meta delete failed: ${del.error?.error_user_msg || del.error?.message}` });
+        }
+      }
+      const { _platform_ids, ...targeting } = campaign.targeting ?? {};
+      await admin.from("campaigns")
+        .update({ status: "draft", platform_campaign_id: null, targeting })
+        .eq("id", campaign.id);
+      return json(200, { ok: true, status: "draft" });
+    }
 
     // Idempotency guard — never recreate a launched campaign. Two exceptions:
     //  • status 'built' + activate → submit the existing paused objects for review.
@@ -371,7 +401,11 @@ serve(async (req) => {
     ].map((c) => String(c).toUpperCase()))];
     if (targetedCountries.length === 0) targetedCountries.push("IN");
 
-    const headline = (campaign.creative_headline || question.question || "").slice(0, 40);
+    // Admin-written headline wins. The fallback is cut at a word boundary (Meta
+    // shows ~40 characters) — slicing mid-word gave "…infrastructure failu".
+    const headline = campaign.creative_headline?.trim()
+      ? campaign.creative_headline.trim().slice(0, 255)
+      : shortenAtWord(question.question || "", 40);
     const bodyCopy = campaign.creative_body ||
       `${(question.summary || question.question || "").slice(0, 200)} Share your stance.`;
     const imageUrl = campaign.creative_image_url ||
@@ -545,7 +579,11 @@ serve(async (req) => {
       // ad create fails ("You cannot mark a creative as non-political…", Prod
       // 29 Sep 2026). The "Paid for by" disclaimer comes from the Page's
       // authorisation linked to this ad account.
-      ...(isPolitical ? { authorization_category: "POLITICAL" } : {}),
+      // Photorealistic imagery that was AI-generated or digitally altered must
+      // be disclosed on social-issue ads (admin ticks it on the campaign).
+      ...(isPolitical
+        ? { authorization_category: campaign.creative_digitally_created ? "POLITICAL_WITH_DIGITALLY_CREATED_MEDIA" : "POLITICAL" }
+        : {}),
     }, token);
     if (!creativeRes.ok) {
       log("error", "meta_creative_create_failed", { err: creativeRes.error });
