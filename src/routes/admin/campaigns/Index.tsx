@@ -384,7 +384,7 @@ function AdEditor({ campaign, onClose }: { campaign: Campaign; onClose: () => vo
             <input value={headline} onChange={(e) => setHeadline(e.target.value)} maxLength={255} placeholder="e.g. Who should fix Pune's roads?" className={inputCls} />
           </Field>
 
-          <Field label="Primary text" hint="Shown above the image. Blank = question summary + “Share your stance.”">
+          <Field label="Primary text" hint="Shown above the image; about the first 125 characters show before “See more”. Blank = the full question + “Share your stance.”">
             <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={4} maxLength={2000} className={inputCls} />
           </Field>
         </div>

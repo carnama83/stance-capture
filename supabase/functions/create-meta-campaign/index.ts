@@ -406,8 +406,14 @@ serve(async (req) => {
     const headline = campaign.creative_headline?.trim()
       ? campaign.creative_headline.trim().slice(0, 255)
       : shortenAtWord(question.question || "", 40);
-    const bodyCopy = campaign.creative_body ||
-      `${(question.summary || question.question || "").slice(0, 200)} Share your stance.`;
+    // Default primary text is the full question — slicing to 200 characters cut
+    // it mid-sentence and dropped the actual ask. A summary, when there is one,
+    // leads in (shortened at a word). Meta allows far more than this.
+    const q = String(question.question || "").replace(/\s+/g, " ").trim();
+    const summary = String(question.summary || "").replace(/\s+/g, " ").trim();
+    const bodyCopy = campaign.creative_body?.trim() ||
+      [summary && summary !== q ? shortenAtWord(summary, 280) : "", q, "Share your stance."]
+        .filter(Boolean).join("\n\n");
     const imageUrl = campaign.creative_image_url ||
       `${SUPABASE_URL}/functions/v1/og-image?question_id=${question.id}`;
     const destinationUrl = campaign.destination_url ||
