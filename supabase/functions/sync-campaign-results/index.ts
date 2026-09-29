@@ -92,6 +92,23 @@ async function syncMetaCampaign(admin, campaign, token) {
   // Effective status → completion detection.
   const meta = await metaGet(`${pcid}`, { fields: "effective_status,name" }, token);
 
+  // Deleted in Ads Manager (or the id no longer exists). A campaign that never
+  // delivered goes back to draft with its platform ids cleared, so it can be
+  // launched again; one that did deliver keeps its numbers and is cancelled.
+  const gone = meta.ok
+    ? ["DELETED", "ARCHIVED"].includes(String(meta.body.effective_status ?? ""))
+    : meta.error?.code === 100;
+  if (gone && ["built", "pending_review", "active", "paused"].includes(campaign.status)) {
+    const neverDelivered = !Number(campaign.total_spend) && !Number(campaign.total_impressions);
+    const { _platform_ids, ...targeting } = campaign.targeting ?? {};
+    const patch = neverDelivered
+      ? { status: "draft", platform_campaign_id: null, targeting }
+      : { status: "cancelled" };
+    await admin.from("campaigns").update(patch).eq("id", campaign.id);
+    log("info", "meta_campaign_gone", { campaign: campaign.id, to: patch.status });
+    return { campaign_id: campaign.id, ok: true, meta_deleted: true, status: patch.status };
+  }
+
   if (!life.ok && !daily.ok) {
     return { campaign_id: campaign.id, ok: false, error: life.error?.message ?? daily.error?.message };
   }
@@ -209,12 +226,12 @@ serve(async (req) => {
     // Which campaigns to sync: those launched and not terminal.
     let query = admin
       .from("campaigns")
-      .select("id, name, platform, platform_campaign_id, status, budget_type, budget_amount, end_date, total_spend, created_by, ad_account_id")
+      .select("id, name, platform, platform_campaign_id, status, budget_type, budget_amount, end_date, total_spend, total_impressions, targeting, created_by, ad_account_id")
       .not("platform_campaign_id", "is", null)
-      .in("status", ["active", "pending_review", "paused"]);
+      .in("status", ["built", "active", "pending_review", "paused"]);
     if (singleId) query = admin
       .from("campaigns")
-      .select("id, name, platform, platform_campaign_id, status, budget_type, budget_amount, end_date, total_spend, created_by, ad_account_id")
+      .select("id, name, platform, platform_campaign_id, status, budget_type, budget_amount, end_date, total_spend, total_impressions, targeting, created_by, ad_account_id")
       .eq("id", singleId);
 
     const { data: campaigns, error: cErr } = await query;

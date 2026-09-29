@@ -81,7 +81,9 @@ serve(async (req) => {
 
     // Pause on Meta to stop delivery immediately (preserves insights for final sync).
     const res = await metaSetStatus(campaign.platform_campaign_id, "PAUSED", token);
-    if (!res.ok) { log("error", "meta_pause_failed", { err: res.error }); return json(502, { ok: false, error: `Meta cancel failed: ${res.error?.message}`, meta_error: res.error }); }
+    // code 100 = the Meta campaign no longer exists (deleted in Ads Manager):
+    // nothing left to stop, so just record the cancellation.
+    if (!res.ok && res.error?.code !== 100) { log("error", "meta_pause_failed", { err: res.error }); return json(502, { ok: false, error: `Meta cancel failed: ${res.error?.message}`, meta_error: res.error }); }
 
     await admin.from("campaigns").update({ status: "cancelled" }).eq("id", campaign.id);
     return json(200, { ok: true, status: "cancelled" });

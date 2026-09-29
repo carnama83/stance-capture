@@ -14,14 +14,14 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, getJwt } from "@/lib/env";
 import {
   Rocket, Loader2, Plus, X, CheckCircle2, XCircle, Clock, Pause,
   Ban, FileEdit, Facebook, Linkedin, DollarSign, MousePointerClick, Eye, Users2,
-  RefreshCw, Trash2,
+  RefreshCw, Trash2, Hammer, IndianRupee, Send,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Platform = "meta" | "linkedin";
 type CampaignStatus =
-  | "draft" | "pending_review" | "active" | "paused"
+  | "draft" | "built" | "pending_review" | "active" | "paused"
   | "completed" | "cancelled" | "rejected";
 
 interface Campaign {
@@ -41,6 +41,7 @@ interface Campaign {
   total_clicks: number;
   stances_attributed: number;
   rejection_reason: string | null;
+  targeting?: { currency?: string } | null;
   created_at: string;
   questions?: { question: string } | null;
 }
@@ -167,6 +168,7 @@ async function callCampaignFn(fn: string, payload: Record<string, unknown>) {
 function StatusBadge({ status }: { status: CampaignStatus }) {
   const map: Record<CampaignStatus, { icon: React.ReactNode; label: string; cls: string }> = {
     draft: { icon: <FileEdit className="h-3 w-3" />, label: "Draft", cls: "bg-slate-100 text-slate-600 border-slate-200" },
+    built: { icon: <Hammer className="h-3 w-3" />, label: "Built (paused)", cls: "bg-indigo-50 text-indigo-700 border-indigo-200" },
     pending_review: { icon: <Clock className="h-3 w-3" />, label: "Pending review", cls: "bg-amber-50 text-amber-700 border-amber-200" },
     active: { icon: <CheckCircle2 className="h-3 w-3" />, label: "Active", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
     paused: { icon: <Pause className="h-3 w-3" />, label: "Paused", cls: "bg-sky-50 text-sky-700 border-sky-200" },
@@ -202,10 +204,18 @@ function LaunchDialog({ campaign, onClose }: { campaign: Campaign; onClose: () =
     mutationFn: () => callLaunch(campaign.platform, campaign.id, activate),
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["admin-campaigns"] });
-      toast({
-        title: activate ? "Submitted for review" : "Built (paused)",
-        description: `Platform campaign ${data?.platform_campaign_id ?? "created"}.`,
-      });
+      if (data?.activation_error) {
+        toast({
+          title: "Built, but not submitted",
+          description: `Meta refused to activate it: ${data.activation_error}. It stays paused — fix it and use Submit for review.`,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: activate ? "Submitted for review" : "Built (paused)",
+          description: `Platform campaign ${data?.platform_campaign_id ?? "created"}.`,
+        });
+      }
       onClose();
     },
     onError: (e: any) => toast({ title: "Launch failed", description: e?.message, variant: "destructive" }),
@@ -259,7 +269,11 @@ function CampaignCard({ c }: { c: Campaign }) {
   const [showLaunch, setShowLaunch] = React.useState(false);
   const [confirmCancel, setConfirmCancel] = React.useState(false);
   const [confirmDelete, setConfirmDelete] = React.useState(false);
-  const usd = (n: number) => `$${Number(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+  const [confirmSubmit, setConfirmSubmit] = React.useState(false);
+  // Budgets and Meta spend are in the ad account's currency, recorded on the
+  // campaign at creation (targeting.currency). Rows from before that default to USD.
+  const isInr = c.targeting?.currency === "INR";
+  const money = (n: number) => `${isInr ? "₹" : "$"}${Number(n ?? 0).toLocaleString(isInr ? "en-IN" : undefined, { maximumFractionDigits: 2 })}`;
 
   const refresh = () => qc.invalidateQueries({ queryKey: ["admin-campaigns"] });
 
@@ -272,6 +286,13 @@ function CampaignCard({ c }: { c: Campaign }) {
     mutationFn: () => callCampaignFn("cancel-campaign", { campaign_id: c.id }),
     onSuccess: () => { refresh(); setConfirmCancel(false); toast({ title: "Campaign cancelled" }); },
     onError: (e: any) => toast({ title: "Cancel failed", description: e?.message, variant: "destructive" }),
+  });
+  // A built campaign already exists on Meta, all paused; activating it is what
+  // submits it for review. create-meta-campaign reuses the existing objects.
+  const submitMut = useMutation({
+    mutationFn: () => callLaunch(c.platform, c.id, true),
+    onSuccess: () => { refresh(); setConfirmSubmit(false); toast({ title: "Submitted for review", description: "Meta reviews it before delivery starts." }); },
+    onError: (e: any) => toast({ title: "Submit failed", description: e?.message, variant: "destructive" }),
   });
   const syncMut = useMutation({
     mutationFn: () => callCampaignFn("sync-campaign-results", { campaign_id: c.id }),
@@ -292,7 +313,7 @@ function CampaignCard({ c }: { c: Campaign }) {
     onError: (e: any) => toast({ title: "Delete failed", description: e?.message, variant: "destructive" }),
   });
 
-  const busy = pauseMut.isPending || cancelMut.isPending || syncMut.isPending || deleteMut.isPending;
+  const busy = pauseMut.isPending || cancelMut.isPending || syncMut.isPending || deleteMut.isPending || submitMut.isPending;
   const isTerminal = c.status === "cancelled" || c.status === "rejected";
   const canDelete = c.status === "cancelled" || c.status === "rejected" || c.status === "completed";
   const hasStats = c.status === "active" || c.status === "completed" || c.status === "paused";
@@ -310,7 +331,7 @@ function CampaignCard({ c }: { c: Campaign }) {
             <p className="text-xs text-slate-500 mt-1 line-clamp-2">{c.questions.question}</p>
           )}
           <p className="text-[11px] text-slate-400 mt-1">
-            {usd(c.budget_amount)} {c.budget_type === "daily" ? "/ day" : "total"}
+            {money(c.budget_amount)} {c.budget_type === "daily" ? "/ day" : "total"}
             {c.platform_campaign_id && <> · platform id <code className="font-mono">{c.platform_campaign_id}</code></>}
           </p>
         </div>
@@ -330,7 +351,7 @@ function CampaignCard({ c }: { c: Campaign }) {
           <Stat icon={<Eye className="h-3.5 w-3.5" />} label="impressions" value={c.total_impressions.toLocaleString()} />
           <Stat icon={<MousePointerClick className="h-3.5 w-3.5" />} label="clicks" value={c.total_clicks.toLocaleString()} />
           <Stat icon={<Users2 className="h-3.5 w-3.5" />} label="stances" value={c.stances_attributed.toLocaleString()} />
-          <Stat icon={<DollarSign className="h-3.5 w-3.5" />} label="spent" value={usd(c.total_spend)} />
+          <Stat icon={isInr ? <IndianRupee className="h-3.5 w-3.5" /> : <DollarSign className="h-3.5 w-3.5" />} label="spent" value={money(c.total_spend)} />
         </div>
       )}
 
@@ -343,13 +364,29 @@ function CampaignCard({ c }: { c: Campaign }) {
       {/* Lifecycle actions */}
       {!isTerminal && c.status !== "draft" && (
         <div className="flex flex-wrap items-center gap-2 pt-1">
+          {c.status === "built" && (
+            confirmSubmit ? (
+              <span className="inline-flex items-center gap-2">
+                <button type="button" onClick={() => submitMut.mutate()} disabled={busy}
+                  className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
+                  {submitMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />} Confirm — go live after review
+                </button>
+                <button type="button" onClick={() => setConfirmSubmit(false)} className="text-xs text-slate-500 hover:text-slate-700">Not yet</button>
+              </span>
+            ) : (
+              <button type="button" onClick={() => setConfirmSubmit(true)} disabled={busy}
+                className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
+                <Send className="h-3 w-3" /> Submit for review
+              </button>
+            )
+          )}
           {c.status === "active" && (
             <ActionBtn onClick={() => pauseMut.mutate("pause")} disabled={busy} icon={<Pause className="h-3 w-3" />} label="Pause" />
           )}
           {c.status === "paused" && (
             <ActionBtn onClick={() => pauseMut.mutate("resume")} disabled={busy} icon={<Rocket className="h-3 w-3" />} label="Resume" />
           )}
-          {(c.status === "active" || c.status === "paused" || c.status === "completed" || c.status === "pending_review") && (
+          {(c.status === "built" || c.status === "active" || c.status === "paused" || c.status === "completed" || c.status === "pending_review") && (
             <ActionBtn onClick={() => syncMut.mutate()} disabled={busy} icon={syncMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />} label="Sync now" />
           )}
           {c.status !== "completed" && (

@@ -142,6 +142,41 @@ async function uploadImageBytes(actId, bytes, token) {
   return { ok: true, hash };
 }
 
+// The ad account's own token (an ID-confirmed admin's user token) wins over the
+// system-user secret, which can't place political ads.
+async function resolveToken(admin, adAccountId) {
+  let token = Deno.env.get("META_ADS_ACCESS_TOKEN");
+  if (adAccountId) {
+    const { data: acct } = await admin.from("ad_account_connections").select("credentials").eq("id", adAccountId).single();
+    if (acct?.credentials?.access_token) token = acct.credentials.access_token;
+  }
+  return token;
+}
+
+// True only when Meta positively says the campaign is gone (deleted in Ads
+// Manager, or the id no longer exists). Any other failure counts as present,
+// so a network blip can never cause a duplicate build.
+async function metaCampaignGone(id, token) {
+  try {
+    const res = await fetchWithRetry(`${GRAPH}/${id}?fields=effective_status&access_token=${encodeURIComponent(token)}`, { method: "GET" });
+    const body = await res.json().catch(() => ({}));
+    if (body?.error) return body.error.code === 100; // "does not exist / cannot be loaded"
+    return ["DELETED", "ARCHIVED"].includes(String(body?.effective_status ?? ""));
+  } catch {
+    return false;
+  }
+}
+
+// Set campaign, ad set and ad ACTIVE — this is what submits them to Meta
+// review. Returns an error message, or null on success.
+async function activateObjects(ids, token) {
+  for (const id of ids.filter(Boolean)) {
+    const r = await metaPost(id, { status: "ACTIVE" }, token);
+    if (!r.ok) return r.error?.error_user_msg || r.error?.message || "activation failed";
+  }
+  return null;
+}
+
 // Fill in region_id for any city saved without it (campaigns created before the
 // form stored it). Looks the city up by name in Meta's geo search and matches on
 // key. Only needed when regions are also selected; a failed lookup leaves the
@@ -267,9 +302,26 @@ serve(async (req) => {
     if (cErr || !campaign) return json(404, { ok: false, error: "Campaign not found" });
     if (campaign.platform !== "meta") return json(400, { ok: false, error: "Campaign platform is not 'meta'" });
 
-    // Idempotency guard — never recreate a launched campaign.
+    // Idempotency guard — never recreate a launched campaign. Two exceptions:
+    //  • status 'built' + activate → submit the existing paused objects for review.
+    //  • the Meta campaign was deleted in Ads Manager → forget it and rebuild.
     if (campaign.platform_campaign_id) {
-      return json(200, { ok: true, already_launched: true, platform_campaign_id: campaign.platform_campaign_id, status: campaign.status });
+      const tok = await resolveToken(admin, campaign.ad_account_id);
+      const gone = tok ? await metaCampaignGone(campaign.platform_campaign_id, tok) : false;
+      if (!gone) {
+        if (campaign.status === "built" && activate) {
+          const ids = campaign.targeting?._platform_ids ?? {};
+          const err = await activateObjects([ids.campaign ?? campaign.platform_campaign_id, ids.adset, ids.ad], tok);
+          if (err) return json(502, { ok: false, error: `Meta submit failed: ${err}` });
+          await admin.from("campaigns").update({ status: "pending_review" }).eq("id", campaign.id);
+          return json(200, { ok: true, submitted: true, platform_campaign_id: campaign.platform_campaign_id, status: "pending_review" });
+        }
+        return json(200, { ok: true, already_launched: true, platform_campaign_id: campaign.platform_campaign_id, status: campaign.status });
+      }
+      log("info", "meta_campaign_gone_rebuilding", { campaign: campaign.id, old: campaign.platform_campaign_id });
+      const { _platform_ids, ...rest } = campaign.targeting ?? {};
+      campaign.targeting = rest;
+      campaign.platform_campaign_id = null;
     }
 
     const { data: question, error: qErr } = await admin
@@ -517,18 +569,15 @@ serve(async (req) => {
     const metaAdId = adRes.id;
 
     // ── 5. Optionally submit to review (activate) ─────────────────────────────
-    let finalStatus = "pending_review";
+    // 'built' = exists on Meta, all paused, never submitted. Activating the
+    // hierarchy is what submits it to Meta review → 'pending_review'. If that
+    // fails, the objects still exist paused, so stay 'built' and surface it.
+    let finalStatus = "built";
+    let activationError = null;
     if (activate) {
-      // Activating the campaign submits the hierarchy to Meta review.
-      const act1 = await metaPost(metaCampaignId, { status: "ACTIVE" }, token);
-      const act2 = await metaPost(metaAdSetId, { status: "ACTIVE" }, token);
-      const act3 = await metaPost(metaAdId, { status: "ACTIVE" }, token);
-      if (!act1.ok || !act2.ok || !act3.ok) {
-        // Objects exist but activation failed — surface it; leave as pending_review.
-        log("warn", "activation_partial_failure", { act1: act1.error, act2: act2.error, act3: act3.error });
-      } else {
-        finalStatus = "pending_review"; // Meta review begins now; stays pending until approved
-      }
+      activationError = await activateObjects([metaCampaignId, metaAdSetId, metaAdId], token);
+      if (activationError) log("warn", "activation_failed", { err: activationError });
+      else finalStatus = "pending_review";
     }
 
     // ── 6. Persist platform ids on our campaigns row ──────────────────────────
@@ -565,7 +614,8 @@ serve(async (req) => {
       ok: true,
       platform_campaign_id: metaCampaignId,
       status: saved.status,
-      activated: activate,
+      activated: activate && !activationError,
+      activation_error: activationError,
       ids: { campaign: metaCampaignId, adset: metaAdSetId, creative: metaCreativeId, ad: metaAdId },
     });
   } catch (err) {
