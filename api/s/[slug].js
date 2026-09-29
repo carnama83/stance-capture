@@ -43,6 +43,33 @@ function esc(s = "") {
     .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
+// Shorten at a word boundary with an ellipsis. Hard slicing cut the Pune
+// question's card title to "…a City Post Of" (Sep 2026).
+function shorten(text, max) {
+  const t = String(text || "").replace(/\s+/g, " ").trim();
+  if (t.length <= max) return t;
+  const cut = t.slice(0, max - 1);
+  const sp = cut.lastIndexOf(" ");
+  return (sp > max * 0.5 ? cut.slice(0, sp) : cut).replace(/[\s,;:—–-]+$/, "") + "…";
+}
+
+// Long questions are "context; the actual ask?". Split them so the card title
+// is the ask and the description carries the context. Returns null when there
+// is no clear ask to pull out (then the whole text is shortened instead).
+function splitAsk(text) {
+  const t = String(text || "").replace(/\s+/g, " ").trim();
+  if (!t.endsWith("?")) return null;
+  const body = t.slice(0, -1);
+  const cut = Math.max(body.lastIndexOf("; "), body.lastIndexOf(". "), body.lastIndexOf("। "));
+  if (cut < 0) return null;
+  let ask = t.slice(cut + 2)
+    .replace(/,?\s*(do you think|what do you think|in your view|in your opinion)\?$/i, "?")
+    .trim();
+  ask = ask.charAt(0).toUpperCase() + ask.slice(1);
+  if (ask.length < 15 || ask.length > 140) return null;
+  return { ask, context: t.slice(0, cut + 1).trim() };
+}
+
 async function fetchQuestion(base, anon, filter) {
   const url = `${base}/rest/v1/questions?${filter}&select=id,slug,question,share_headline,context_summary,summary,cover_image_url&limit=1`;
   const r = await fetch(url, { headers: { apikey: anon, Authorization: `Bearer ${anon}` } });
@@ -144,15 +171,27 @@ export default async function handler(req, res) {
   // No share_headline rendition exists yet (see file-header note) — the best
   // available Hindi title is the transcreated question text itself, not a
   // crafted headline the way the English path gets via share_headline.
+  // Title: a crafted share_headline wins (English only); otherwise the ask
+  // pulled out of the question text, so the card leads with what is actually
+  // being asked; otherwise the text shortened at a word.
+  const questionText = rendition?.rendered_text || q?.question || "";
+  const split = splitAsk(questionText);
+  const headline = rendition ? "" : (q?.share_headline || "");
   const title = esc(
-    (rendition?.rendered_text || q?.share_headline || q?.question || "Stance Capture — Where do you stand?").slice(0, 110)
+    headline ? shorten(headline, 110)
+      : split ? split.ask
+      : shorten(questionText || "Stance Capture — Where do you stand?", 110)
   );
   // Sep 2026: prefer the resolved rendition's context_summary (a genuine
   // Hindi/etc. translation, not the English fallback) — see file header.
-  // Falls through to the canonical English context_summary/summary exactly
-  // as before whenever no rendition was resolved, or it has none of its own
-  // (e.g. the source question never had a context_summary to translate).
-  const desc = esc((rendition?.context_summary || q?.context_summary || q?.summary || "See where people stand and add your view.").slice(0, 180));
+  // Falls through to the canonical English context_summary/summary, then to
+  // the context part of the question when the title took only the ask.
+  const desc = esc(shorten(
+    rendition?.context_summary || q?.context_summary || q?.summary ||
+      (split && !headline ? split.context : "") ||
+      "See where people stand and add your view.",
+    200,
+  ));
   // BUG FIX: this always used a static generic image, ignoring
   // questions.cover_image_url entirely — the same field the rest of the app
   // (HeroSection, QuestionCard, QuestionDetailPage) reads directly for this
