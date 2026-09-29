@@ -14,7 +14,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, getJwt } from "@/lib/env";
 import {
   Rocket, Loader2, Plus, X, CheckCircle2, XCircle, Clock, Pause,
   Ban, FileEdit, Facebook, Linkedin, DollarSign, MousePointerClick, Eye, Users2,
-  RefreshCw, Trash2, Hammer, IndianRupee, Send,
+  RefreshCw, Trash2, Hammer, IndianRupee, Send, ImagePlus,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -42,6 +42,10 @@ interface Campaign {
   stances_attributed: number;
   rejection_reason: string | null;
   targeting?: { currency?: string } | null;
+  creative_image_url?: string | null;
+  creative_headline?: string | null;
+  creative_body?: string | null;
+  creative_digitally_created?: boolean;
   created_at: string;
   questions?: { question: string } | null;
 }
@@ -261,6 +265,142 @@ function LaunchDialog({ campaign, onClose }: { campaign: Campaign; onClose: () =
   );
 }
 
+// ─── Ad creative editor ───────────────────────────────────────────────────────
+// Draft campaigns only: the image, headline and primary text are baked into the
+// Meta creative at build time. A built campaign goes back to draft first.
+
+const HEADLINE_SHOWN = 40; // Meta shows about this much of a link-ad headline
+
+// Meta's /adimages takes JPG/PNG. Re-encode anything else (WebP, HEIC via the
+// browser) to JPEG, and cap the long edge so uploads stay small.
+async function toJpeg(file: File, maxEdge = 1920): Promise<Blob> {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, maxEdge / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(bitmap.width * scale);
+  canvas.height = Math.round(bitmap.height * scale);
+  const ctx = canvas.getContext("2d")!;
+  ctx.fillStyle = "#ffffff"; // flatten transparency
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  return await new Promise((resolve, reject) =>
+    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("Could not encode image"))), "image/jpeg", 0.9),
+  );
+}
+
+const isOgCard = (url?: string | null) => !url || url.includes("/og-image");
+
+function AdEditor({ campaign, onClose }: { campaign: Campaign; onClose: () => void }) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const [imageUrl, setImageUrl] = React.useState<string | null>(isOgCard(campaign.creative_image_url) ? null : campaign.creative_image_url!);
+  const [headline, setHeadline] = React.useState(campaign.creative_headline ?? "");
+  const [body, setBody] = React.useState(campaign.creative_body ?? "");
+  const [aiMedia, setAiMedia] = React.useState(!!campaign.creative_digitally_created);
+  const [uploading, setUploading] = React.useState(false);
+
+  async function onPick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setUploading(true);
+    try {
+      const jpeg = await toJpeg(file);
+      const path = `${campaign.id}/${Date.now()}.jpg`;
+      const { error } = await supabase.storage.from("campaign-creatives").upload(path, jpeg, { contentType: "image/jpeg", upsert: false });
+      if (error) throw error;
+      setImageUrl(supabase.storage.from("campaign-creatives").getPublicUrl(path).data.publicUrl);
+    } catch (err: any) {
+      toast({ title: "Upload failed", description: err?.message, variant: "destructive" });
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  const saveMut = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.from("campaigns").update({
+        creative_image_url: imageUrl, // null → launch uses the auto share card
+        creative_headline: headline.trim() || null,
+        creative_body: body.trim() || null,
+        creative_digitally_created: imageUrl ? aiMedia : false,
+      }).eq("id", campaign.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-campaigns"] });
+      toast({ title: "Ad saved", description: "Used the next time you build this campaign." });
+      onClose();
+    },
+    onError: (e: any) => toast({ title: "Couldn't save the ad", description: e?.message, variant: "destructive" }),
+  });
+
+  const len = headline.trim().length;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="w-full max-w-lg rounded-2xl bg-white shadow-xl border border-slate-200 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+          <h2 className="text-sm font-semibold text-slate-900">Ad — {campaign.name}</h2>
+          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-700"><X className="h-4 w-4" /></button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          <div className="space-y-2">
+            <span className="text-xs font-medium text-slate-600">Image</span>
+            {imageUrl ? (
+              <img src={imageUrl} alt="Ad image" className="w-full max-h-72 object-contain rounded-lg border border-slate-200 bg-slate-50" />
+            ) : (
+              <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-[11px] text-slate-500">
+                No image chosen — the ad uses the auto-generated share card (question text on a branded card).
+              </div>
+            )}
+            <div className="flex items-center gap-3">
+              <label className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:border-blue-200 hover:text-blue-700 cursor-pointer">
+                {uploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <ImagePlus className="h-3 w-3" />}
+                {imageUrl ? "Replace image" : "Upload image"}
+                <input type="file" accept="image/*" onChange={onPick} disabled={uploading} className="hidden" />
+              </label>
+              {imageUrl && (
+                <button type="button" onClick={() => setImageUrl(null)} className="text-xs text-slate-500 hover:text-red-600">
+                  Use share card instead
+                </button>
+              )}
+            </div>
+            <p className="text-[11px] text-slate-400">Use an image you own or have rights to advertise with. Converted to JPEG; 1200×628 or square works best.</p>
+          </div>
+
+          {imageUrl && (
+            <label className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 cursor-pointer">
+              <input type="checkbox" checked={aiMedia} onChange={(e) => setAiMedia(e.target.checked)} className="mt-0.5" />
+              <span className="text-[11px] text-amber-900">
+                <span className="font-semibold block">This image is AI-generated or digitally altered</span>
+                Meta requires social-issue ads to disclose photorealistic images that were digitally created or altered. Tick this for AI images or composites.
+              </span>
+            </label>
+          )}
+
+          <Field label="Headline" hint={len > HEADLINE_SHOWN ? `${len} characters — Meta may cut it after about ${HEADLINE_SHOWN}.` : `${len}/${HEADLINE_SHOWN} characters shown in most placements. Blank = shortened question.`}>
+            <input value={headline} onChange={(e) => setHeadline(e.target.value)} maxLength={255} placeholder="e.g. Who should fix Pune's roads?" className={inputCls} />
+          </Field>
+
+          <Field label="Primary text" hint="Shown above the image. Blank = question summary + “Share your stance.”">
+            <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={4} maxLength={2000} className={inputCls} />
+          </Field>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-slate-100">
+          <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 px-4 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50">Cancel</button>
+          <button type="button" onClick={() => saveMut.mutate()} disabled={saveMut.isPending || uploading}
+            className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
+            {saveMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />} Save ad
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Campaign card ────────────────────────────────────────────────────────────
 
 function CampaignCard({ c }: { c: Campaign }) {
@@ -270,6 +410,8 @@ function CampaignCard({ c }: { c: Campaign }) {
   const [confirmCancel, setConfirmCancel] = React.useState(false);
   const [confirmDelete, setConfirmDelete] = React.useState(false);
   const [confirmSubmit, setConfirmSubmit] = React.useState(false);
+  const [showEditor, setShowEditor] = React.useState(false);
+  const [confirmReset, setConfirmReset] = React.useState(false);
   // Budgets and Meta spend are in the ad account's currency, recorded on the
   // campaign at creation (targeting.currency). Rows from before that default to USD.
   const isInr = c.targeting?.currency === "INR";
@@ -294,6 +436,13 @@ function CampaignCard({ c }: { c: Campaign }) {
     onSuccess: () => { refresh(); setConfirmSubmit(false); toast({ title: "Submitted for review", description: "Meta reviews it before delivery starts." }); },
     onError: (e: any) => toast({ title: "Submit failed", description: e?.message, variant: "destructive" }),
   });
+  // Built → draft: deletes the paused (never submitted) Meta build so the ad
+  // can be edited and built again.
+  const resetMut = useMutation({
+    mutationFn: () => callCampaignFn("create-meta-campaign", { campaign_id: c.id, reset: true }),
+    onSuccess: () => { refresh(); setConfirmReset(false); setShowEditor(true); toast({ title: "Back to draft", description: "The paused build was removed from Meta. Edit the ad, then build again." }); },
+    onError: (e: any) => toast({ title: "Couldn't go back to draft", description: e?.message, variant: "destructive" }),
+  });
   const syncMut = useMutation({
     mutationFn: () => callCampaignFn("sync-campaign-results", { campaign_id: c.id }),
     onSuccess: () => { refresh(); toast({ title: "Results synced" }); },
@@ -313,7 +462,7 @@ function CampaignCard({ c }: { c: Campaign }) {
     onError: (e: any) => toast({ title: "Delete failed", description: e?.message, variant: "destructive" }),
   });
 
-  const busy = pauseMut.isPending || cancelMut.isPending || syncMut.isPending || deleteMut.isPending || submitMut.isPending;
+  const busy = pauseMut.isPending || cancelMut.isPending || syncMut.isPending || deleteMut.isPending || submitMut.isPending || resetMut.isPending;
   const isTerminal = c.status === "cancelled" || c.status === "rejected";
   const canDelete = c.status === "cancelled" || c.status === "rejected" || c.status === "completed";
   const hasStats = c.status === "active" || c.status === "completed" || c.status === "paused";
@@ -336,13 +485,16 @@ function CampaignCard({ c }: { c: Campaign }) {
           </p>
         </div>
         {c.status === "draft" && (
-          <button
-            type="button"
-            onClick={() => setShowLaunch(true)}
-            className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 shrink-0"
-          >
-            <Rocket className="h-3 w-3" /> Launch
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <ActionBtn onClick={() => setShowEditor(true)} icon={<ImagePlus className="h-3 w-3" />} label="Edit ad" />
+            <button
+              type="button"
+              onClick={() => setShowLaunch(true)}
+              className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+            >
+              <Rocket className="h-3 w-3" /> Launch
+            </button>
+          </div>
         )}
       </div>
 
@@ -378,6 +530,19 @@ function CampaignCard({ c }: { c: Campaign }) {
                 className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
                 <Send className="h-3 w-3" /> Submit for review
               </button>
+            )
+          )}
+          {c.status === "built" && (
+            confirmReset ? (
+              <span className="inline-flex items-center gap-2">
+                <button type="button" onClick={() => resetMut.mutate()} disabled={busy}
+                  className="flex items-center gap-1.5 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-900 disabled:opacity-50">
+                  {resetMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <ImagePlus className="h-3 w-3" />} Remove paused build & edit
+                </button>
+                <button type="button" onClick={() => setConfirmReset(false)} className="text-xs text-slate-500 hover:text-slate-700">Keep</button>
+              </span>
+            ) : (
+              <ActionBtn onClick={() => setConfirmReset(true)} disabled={busy} icon={<ImagePlus className="h-3 w-3" />} label="Edit ad" />
             )
           )}
           {c.status === "active" && (
@@ -441,6 +606,7 @@ function CampaignCard({ c }: { c: Campaign }) {
       )}
 
       {showLaunch && <LaunchDialog campaign={c} onClose={() => setShowLaunch(false)} />}
+      {showEditor && <AdEditor campaign={c} onClose={() => setShowEditor(false)} />}
     </div>
   );
 }
