@@ -181,6 +181,44 @@ async function validateLinkedIn(accountId, token) {
   return { ok: true, status: "active", account_name: body.name ?? null };
 }
 
+// Inspect a Meta token with /debug_token (a token may debug itself) and /me.
+// Returns { ok, type, user_name, expires_at (ISO | null = never), scopes, reason }.
+async function inspectMetaToken(token) {
+  const q = (path) => `https://graph.facebook.com/${GRAPH_VERSION}/${path}`;
+  let dbg = {};
+  try {
+    const res = await fetchWithRetry(
+      q(`debug_token?input_token=${encodeURIComponent(token)}&access_token=${encodeURIComponent(token)}`),
+      { method: "GET" },
+    );
+    dbg = (await res.json().catch(() => ({})))?.data ?? {};
+  } catch (err) {
+    return { ok: false, reason: `Network error contacting Meta: ${String(err)}` };
+  }
+  if (!dbg.is_valid) return { ok: false, reason: "Meta says this token is invalid or expired." };
+  const scopes = Array.isArray(dbg.scopes) ? dbg.scopes : [];
+  if (!scopes.includes("ads_management")) {
+    return { ok: false, reason: "Token is missing the ads_management permission." };
+  }
+  let userName = null;
+  try {
+    const res = await fetchWithRetry(q(`me?fields=name&access_token=${encodeURIComponent(token)}`), { method: "GET" });
+    userName = (await res.json().catch(() => ({})))?.name ?? null;
+  } catch { /* name is display-only */ }
+  const exp = Number(dbg.expires_at);
+  return {
+    ok: true,
+    type: String(dbg.type ?? "").toUpperCase() || null, // USER | SYSTEM_USER | PAGE …
+    user_name: userName,
+    expires_at: exp > 0 ? new Date(exp * 1000).toISOString() : null,
+    scopes,
+  };
+}
+
+// Token metadata kept alongside credentials.access_token (display-only; the
+// safe view exposes these, never the token).
+const TOKEN_META_KEYS = ["access_token", "token_type", "token_user_name", "token_expires_at", "token_set_at", "token_set_by"];
+
 const SAFE_COLUMNS = "id, platform, account_id, account_name, status, last_sync_at, created_at, updated_at, created_by";
 
 serve(async (req) => {
@@ -215,9 +253,63 @@ serve(async (req) => {
 
   let body = {};
   try { body = await req.json(); } catch { body = {}; }
-  const mode = body?.mode === "test" ? "test" : "connect";
+  const mode = body?.mode === "test" ? "test" : body?.mode === "set_token" ? "set_token" : "connect";
 
   try {
+    if (mode === "set_token") {
+      // ── Set or clear a per-account Meta token ───────────────────────────────
+      // Political/social-issue ads must be placed by an ID-confirmed *person*;
+      // a system-user token can't be, so an admin's own user token is stored
+      // on the account. clear:true reverts to META_ADS_ACCESS_TOKEN.
+      const connectionId = body?.connection_id;
+      if (!connectionId) return json(400, { ok: false, error: "connection_id is required for mode=set_token" });
+      const { data: conn, error: connErr } = await admin
+        .from("ad_account_connections")
+        .select("id, platform, account_id, credentials")
+        .eq("id", connectionId)
+        .single();
+      if (connErr || !conn) return json(404, { ok: false, error: "Ad account connection not found" });
+      if (conn.platform !== "meta") return json(400, { ok: false, error: "Only Meta accounts take a per-account token here" });
+
+      const creds = { ...(conn.credentials ?? {}) };
+      for (const k of TOKEN_META_KEYS) delete creds[k];
+      let result;
+
+      if (body?.clear === true) {
+        result = await validateMeta(conn.account_id, Deno.env.get("META_ADS_ACCESS_TOKEN"));
+      } else {
+        const token = typeof body?.access_token === "string" ? body.access_token.trim() : "";
+        if (!token) return json(400, { ok: false, error: "access_token is required (or pass clear:true)" });
+        const info = await inspectMetaToken(token);
+        if (!info.ok) return json(400, { ok: false, error: info.reason });
+        result = await validateMeta(conn.account_id, token);
+        if (!result.ok) return json(400, { ok: false, error: result.reason ?? "Token cannot access this ad account" });
+        Object.assign(creds, {
+          access_token: token,
+          token_type: info.type,
+          token_user_name: info.user_name,
+          token_expires_at: info.expires_at,
+          token_set_at: new Date().toISOString(),
+          token_set_by: adminUid,
+        });
+      }
+
+      const patch = { credentials: creds, status: result.status };
+      if (result.ok) patch.last_sync_at = new Date().toISOString();
+      const { data: updated, error: updErr } = await admin
+        .from("ad_account_connections")
+        .update(patch)
+        .eq("id", connectionId)
+        .select(SAFE_COLUMNS)
+        .single();
+      if (updErr) {
+        log("error", "set_token_failed", { err: updErr.message });
+        return json(500, { ok: false, error: "Failed to save the token" });
+      }
+      log("info", body?.clear === true ? "token_cleared" : "token_set", { connectionId, type: creds.token_type ?? null });
+      return json(200, { ok: result.ok, status: result.status, reason: result.reason ?? null, account: updated });
+    }
+
     if (mode === "test") {
       // ── Y1.3 test connection ────────────────────────────────────────────────
       const connectionId = body?.connection_id;
@@ -269,7 +361,18 @@ serve(async (req) => {
       // Optional per-account token override; else fall back to system-user token.
       const token = body?.access_token || Deno.env.get("META_ADS_ACCESS_TOKEN");
       creds = {};
-      if (body?.access_token) creds.access_token = body.access_token;
+      if (body?.access_token) {
+        const info = await inspectMetaToken(body.access_token);
+        if (!info.ok) return json(400, { ok: false, error: info.reason });
+        Object.assign(creds, {
+          access_token: body.access_token,
+          token_type: info.type,
+          token_user_name: info.user_name,
+          token_expires_at: info.expires_at,
+          token_set_at: new Date().toISOString(),
+          token_set_by: adminUid,
+        });
+      }
       if (body?.business_id) creds.business_id = body.business_id;
       result = await validateMeta(accountId, token);
     } else {
