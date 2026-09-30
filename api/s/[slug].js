@@ -112,6 +112,9 @@ export default async function handler(req, res) {
 
   const slug = String(req.query.slug || "");
   const ref = req.query.ref ? String(req.query.ref) : "";
+  // Only a well-formed share_events id is passed on to the SPA.
+  const sidParam = req.query.sid ? String(req.query.sid) : "";
+  const sid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sidParam) ? sidParam : "";
   // Present only on the /s/:slug/:lang rewrite (see vercel.json) — absent for
   // plain /s/:slug requests, which keep behaving exactly as before.
   const langParam = req.query.lang ? String(req.query.lang) : "";
@@ -219,6 +222,10 @@ export default async function handler(req, res) {
     ? `${SITE}/#/${ledgerRegion ? `ledger/${q.id}/${ledgerRegion}` : `q/${q.id}`}?${[
         resolvedLang ? `lang=${encodeURIComponent(resolvedLang)}` : "",
         ref ? `ref=${encodeURIComponent(ref)}` : "",
+        // sid identifies the share_events row; useShareClickTracker records the
+        // click from it. Dropping it here meant no shared link ever registered a
+        // click (every share of the launch question read 0, Sep 2026).
+        sid ? `sid=${encodeURIComponent(sid)}` : "",
       ].filter(Boolean).join("&")}`.replace(/\?$/, "")
     : `${SITE}/`;
   const htmlLang = resolvedLang || "en";
