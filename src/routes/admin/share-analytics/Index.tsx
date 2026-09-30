@@ -109,10 +109,17 @@ interface LinkRow {
   platform: string;
   created_at: string;
   click_count: number;
+  real_clicks: number;
+  early_clicks: number;
   question_text: string;
   clicks_today: number;
   last_click: string | null;
 }
+
+// A click this soon after the link was created happened while it was being
+// pasted: Facebook's preview/safety fetches run the page and used to count as
+// clicks (117 of 124 on 30 Sep). Shown separately, never in the real count.
+const EARLY_MS = 2 * 60_000;
 
 interface DayCount { day: string; clicks: number }
 
@@ -142,15 +149,24 @@ function useLinkBreakdown() {
         .limit(5000);
       if (cErr) throw cErr;
 
+      const createdAt = new Map<string, number>(
+        (shares ?? []).map((s: any) => [s.id, new Date(s.created_at).getTime()]),
+      );
       const today = localDay(new Date());
-      const perLink = new Map<string, { today: number; last: string | null }>();
+      const perLink = new Map<string, { today: number; last: string | null; real: number; early: number }>();
       const perDay = new Map<string, number>();
       for (const c of clicks ?? []) {
-        const day = localDay(new Date(c.clicked_at));
-        perDay.set(day, (perDay.get(day) ?? 0) + 1);
-        const e = perLink.get(c.share_event_id) ?? { today: 0, last: null };
-        if (day === today) e.today += 1;
-        if (!e.last || c.clicked_at > e.last) e.last = c.clicked_at;
+        const e = perLink.get(c.share_event_id) ?? { today: 0, last: null, real: 0, early: 0 };
+        const born = createdAt.get(c.share_event_id);
+        if (born !== undefined && new Date(c.clicked_at).getTime() - born <= EARLY_MS) {
+          e.early += 1;
+        } else {
+          const day = localDay(new Date(c.clicked_at));
+          perDay.set(day, (perDay.get(day) ?? 0) + 1);
+          e.real += 1;
+          if (day === today) e.today += 1;
+          if (!e.last || c.clicked_at > e.last) e.last = c.clicked_at;
+        }
         perLink.set(c.share_event_id, e);
       }
 
@@ -160,15 +176,22 @@ function useLinkBreakdown() {
         days.push({ day, clicks: perDay.get(day) ?? 0 });
       }
 
-      const links = (shares ?? []).map((s: any) => ({
-        id: s.id,
-        platform: s.platform,
-        created_at: s.created_at,
-        click_count: s.click_count ?? 0,
-        question_text: s.questions?.question ?? "",
-        clicks_today: perLink.get(s.id)?.today ?? 0,
-        last_click: perLink.get(s.id)?.last ?? null,
-      }));
+      const links = (shares ?? []).map((s: any) => {
+        const e = perLink.get(s.id);
+        const early = e?.early ?? 0;
+        return {
+          id: s.id,
+          platform: s.platform,
+          created_at: s.created_at,
+          click_count: s.click_count ?? 0,
+          // Clicks older than the 14-day window can't be split; count them as real.
+          real_clicks: Math.max(0, (s.click_count ?? 0) - early),
+          early_clicks: early,
+          question_text: s.questions?.question ?? "",
+          clicks_today: e?.today ?? 0,
+          last_click: e?.last ?? null,
+        };
+      });
       return { links, days };
     },
   });
@@ -215,7 +238,10 @@ function ClicksByDay({ days }: { days: DayCount[] }) {
           <span key={d.day} className="flex-1 text-center text-[9px] text-slate-400">{Number(d.day.slice(8))}</span>
         ))}
       </div>
-      <p className="text-[11px] text-slate-400 mt-2">Click counting started 30 Sep 2026 — earlier days read 0 because clicks weren't recorded, not because nobody clicked.</p>
+      <p className="text-[11px] text-slate-400 mt-2">
+        Real clicks only — clicks in the first 2 minutes after a link was created (Facebook's preview and safety checks while pasting) are left out.
+        Click counting started 30 Sep 2026; earlier days read 0 because clicks weren't recorded, not because nobody clicked.
+      </p>
     </div>
   );
 }
@@ -244,7 +270,8 @@ function LinkBreakdown({ links }: { links: LinkRow[] }) {
                 <th className="px-4 py-2 text-left font-medium">Question</th>
                 <th className="px-4 py-2 text-left font-medium">Via</th>
                 <th className="px-4 py-2 text-left font-medium">Created</th>
-                <th className="px-4 py-2 text-right font-medium">Clicks</th>
+                <th className="px-4 py-2 text-right font-medium">Real clicks</th>
+                <th className="px-4 py-2 text-right font-medium" title="Clicks within 2 minutes of the link being created — Facebook's preview and safety checks while pasting">Early (auto)</th>
                 <th className="px-4 py-2 text-right font-medium">Today</th>
                 <th className="px-4 py-2 text-left font-medium">Last click</th>
               </tr>
@@ -264,7 +291,8 @@ function LinkBreakdown({ links }: { links: LinkRow[] }) {
                   <td className="px-4 py-2.5 max-w-[16rem]"><p className="text-xs text-slate-500 truncate">{l.question_text}</p></td>
                   <td className="px-4 py-2.5"><PlatformBadge platform={l.platform} /></td>
                   <td className="px-4 py-2.5 text-xs text-slate-400 whitespace-nowrap">{fmt(l.created_at)}</td>
-                  <td className="px-4 py-2.5 text-right font-medium text-slate-900">{l.click_count}</td>
+                  <td className="px-4 py-2.5 text-right font-medium text-slate-900">{l.real_clicks}</td>
+                  <td className="px-4 py-2.5 text-right text-xs text-slate-400">{l.early_clicks || "—"}</td>
                   <td className="px-4 py-2.5 text-right text-xs text-slate-600">{l.clicks_today || "—"}</td>
                   <td className="px-4 py-2.5 text-xs text-slate-400 whitespace-nowrap">{l.last_click ? fmt(l.last_click) : "—"}</td>
                 </tr>
@@ -334,9 +362,12 @@ export default function ShareAnalyticsPage() {
   const { data: totals } = useShareTotals();
   const { data: breakdown } = useLinkBreakdown();
 
+  // Real clicks leave out paste-time scanner hits (see EARLY_MS). Covers the
+  // 100 most recent links, which is everything the breakdown shows.
+  const realClicks = breakdown ? breakdown.links.reduce((s, l) => s + l.real_clicks, 0) : undefined;
   const ctr =
-    totals && totals.totalShares > 0
-      ? ((totals.totalClicks / totals.totalShares) * 100).toFixed(1) + "%"
+    totals && totals.totalShares > 0 && realClicks !== undefined
+      ? ((realClicks / totals.totalShares) * 100).toFixed(1) + "%"
       : "—";
 
   return (
@@ -356,10 +387,10 @@ export default function ShareAnalyticsPage() {
           icon={<Share2 className="h-4 w-4" />}
         />
         <StatCard
-          label="Total clicks"
-          value={totals?.totalClicks ?? "—"}
+          label="Real clicks"
+          value={realClicks ?? "—"}
           icon={<MousePointerClick className="h-4 w-4" />}
-          sub={`CTR: ${ctr}`}
+          sub={`CTR: ${ctr}${totals ? ` · raw ${totals.totalClicks}` : ""}`}
         />
         <StatCard
           label="Top platform"
