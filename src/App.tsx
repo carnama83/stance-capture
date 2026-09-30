@@ -12,6 +12,7 @@ import AdminOnly from "./auth/AdminOnly";
 import ModeratorOnly from "./auth/moderatoronly";
 import { ROUTES } from "@/routes/paths";
 import { useShareClickTracker } from "@/hooks/useShareClickTracker";
+import { Analytics } from "@vercel/analytics/react";
 import AdminTopicsPage from "@/routes/admin/topics/Index";
 
 import TopicDetailPage from "./pages/TopicDetailPage";
@@ -158,6 +159,36 @@ function ShareClickTrackerMount() {
   return null;
 }
 
+// Vercel Web Analytics (cookieless page views + referrers). The app routes by
+// hash (/#/q/<id>), which the script can't see on its own, so each in-app
+// navigation is reported with an explicit path; ids collapse into one route
+// (/q/[id]) for grouping. beforeSend turns "/#/q/<id>?ref=…" into a normal
+// path so the dashboard shows pages and UTM params, and drops the per-link
+// sid (share-link clicks are counted separately in Share Analytics).
+const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+function WebAnalyticsMount() {
+  const { pathname } = useLocation();
+  if (pathname.startsWith("/embed")) return null; // embeds run on publisher sites
+  return (
+    <Analytics
+      path={pathname}
+      route={pathname.replace(UUID_RE, "[id]")}
+      beforeSend={(event) => {
+        try {
+          const u = new URL(event.url);
+          const [hashPath, hashQuery = ""] = u.hash.replace(/^#/, "").split("?");
+          const q = new URLSearchParams(hashQuery);
+          q.delete("sid");
+          const qs = q.toString();
+          return { ...event, url: `${u.origin}${hashPath || "/"}${qs ? `?${qs}` : ""}` };
+        } catch {
+          return event;
+        }
+      }}
+    />
+  );
+}
+
 // Renders the global footer on every page EXCEPT the chrome-free embed and
 // publisher pages, where a footer would break the embedded layout.
 function SiteFooter() {
@@ -191,6 +222,7 @@ const App: React.FC = () => {
         <Sonner />
         <Router>
           <ShareClickTrackerMount />
+          <WebAnalyticsMount />
           <AuthReadyGate>
             <RouteDebug />
             <Routes>

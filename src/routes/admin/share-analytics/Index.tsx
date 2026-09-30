@@ -98,6 +98,185 @@ function useShareTotals() {
   });
 }
 
+// ─── Per-link data ────────────────────────────────────────────────────────────
+// Each share_events row is one copied/shared link; its id is the `sid=` in the
+// URL, so an admin can match a row to the post it was pasted into. Clicks only
+// count from 30 Sep 2026: before that, /s/ dropped sid on redirect and no click
+// was ever recorded.
+
+interface LinkRow {
+  id: string;
+  platform: string;
+  created_at: string;
+  click_count: number;
+  question_text: string;
+  clicks_today: number;
+  last_click: string | null;
+}
+
+interface DayCount { day: string; clicks: number }
+
+const DAY_MS = 86_400_000;
+const localDay = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+function useLinkBreakdown() {
+  return useQuery<{ links: LinkRow[]; days: DayCount[] }>({
+    queryKey: ["admin-share-links"],
+    staleTime: 30_000,
+    queryFn: async () => {
+      const { data: shares, error } = await supabase
+        .from("share_events")
+        .select("id, platform, created_at, click_count, questions!inner(question)")
+        .order("created_at", { ascending: false })
+        .limit(100);
+      if (error) throw error;
+
+      const since = new Date(Date.now() - 13 * DAY_MS);
+      since.setHours(0, 0, 0, 0);
+      const { data: clicks, error: cErr } = await supabase
+        .from("share_click_events")
+        .select("share_event_id, clicked_at")
+        .gte("clicked_at", since.toISOString())
+        .order("clicked_at", { ascending: false })
+        .limit(5000);
+      if (cErr) throw cErr;
+
+      const today = localDay(new Date());
+      const perLink = new Map<string, { today: number; last: string | null }>();
+      const perDay = new Map<string, number>();
+      for (const c of clicks ?? []) {
+        const day = localDay(new Date(c.clicked_at));
+        perDay.set(day, (perDay.get(day) ?? 0) + 1);
+        const e = perLink.get(c.share_event_id) ?? { today: 0, last: null };
+        if (day === today) e.today += 1;
+        if (!e.last || c.clicked_at > e.last) e.last = c.clicked_at;
+        perLink.set(c.share_event_id, e);
+      }
+
+      const days: DayCount[] = [];
+      for (let i = 13; i >= 0; i--) {
+        const day = localDay(new Date(Date.now() - i * DAY_MS));
+        days.push({ day, clicks: perDay.get(day) ?? 0 });
+      }
+
+      const links = (shares ?? []).map((s: any) => ({
+        id: s.id,
+        platform: s.platform,
+        created_at: s.created_at,
+        click_count: s.click_count ?? 0,
+        question_text: s.questions?.question ?? "",
+        clicks_today: perLink.get(s.id)?.today ?? 0,
+        last_click: perLink.get(s.id)?.last ?? null,
+      }));
+      return { links, days };
+    },
+  });
+}
+
+// Labels ("Pune Rising group — Day 7") are a per-admin note, kept in this
+// browser only; nothing about a link changes server-side.
+const LABELS_KEY = "sc_share_link_labels";
+function readLabels(): Record<string, string> {
+  try { return JSON.parse(localStorage.getItem(LABELS_KEY) || "{}"); } catch { return {}; }
+}
+function useLinkLabels() {
+  const [labels, setLabels] = React.useState<Record<string, string>>(readLabels);
+  const setLabel = (id: string, text: string) => {
+    setLabels((prev) => {
+      const next = { ...prev, [id]: text };
+      if (!text.trim()) delete next[id];
+      try { localStorage.setItem(LABELS_KEY, JSON.stringify(next)); } catch { /* private mode */ }
+      return next;
+    });
+  };
+  return { labels, setLabel };
+}
+
+function ClicksByDay({ days }: { days: DayCount[] }) {
+  const max = Math.max(1, ...days.map((d) => d.clicks));
+  const total = days.reduce((s, d) => s + d.clicks, 0);
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-4">
+      <div className="flex items-baseline justify-between mb-3">
+        <h2 className="text-sm font-semibold text-slate-800">Clicks by day</h2>
+        <span className="text-xs text-slate-400">last 14 days · {total} clicks</span>
+      </div>
+      <div className="flex items-end gap-1.5 h-28">
+        {days.map((d) => (
+          <div key={d.day} className="flex-1 flex flex-col items-center justify-end h-full" title={`${d.day}: ${d.clicks} clicks`}>
+            <span className="text-[10px] text-slate-500 mb-0.5">{d.clicks || ""}</span>
+            <div className="w-full rounded-t bg-indigo-500" style={{ height: `${(d.clicks / max) * 100}%`, minHeight: d.clicks ? 3 : 1, opacity: d.clicks ? 1 : 0.15 }} />
+          </div>
+        ))}
+      </div>
+      <div className="flex gap-1.5 mt-1">
+        {days.map((d) => (
+          <span key={d.day} className="flex-1 text-center text-[9px] text-slate-400">{Number(d.day.slice(8))}</span>
+        ))}
+      </div>
+      <p className="text-[11px] text-slate-400 mt-2">Click counting started 30 Sep 2026 — earlier days read 0 because clicks weren't recorded, not because nobody clicked.</p>
+    </div>
+  );
+}
+
+function LinkBreakdown({ links }: { links: LinkRow[] }) {
+  const { labels, setLabel } = useLinkLabels();
+  const fmt = (iso: string) =>
+    new Date(iso).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+      <div className="px-4 py-3 border-b border-slate-100">
+        <h2 className="text-sm font-semibold text-slate-800">Per-link breakdown</h2>
+        <p className="text-[11px] text-slate-400 mt-0.5">
+          Each row is one shared or copied link. Match it to your post by the link ID — the start of <code className="font-mono">sid=</code> in the URL. Labels are saved in this browser only.
+        </p>
+      </div>
+      {links.length === 0 ? (
+        <div className="p-8 text-center text-sm text-slate-400">No links shared yet.</div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 text-xs text-slate-500 uppercase tracking-wide">
+              <tr>
+                <th className="px-4 py-2 text-left font-medium">Link ID</th>
+                <th className="px-4 py-2 text-left font-medium">Label</th>
+                <th className="px-4 py-2 text-left font-medium">Question</th>
+                <th className="px-4 py-2 text-left font-medium">Via</th>
+                <th className="px-4 py-2 text-left font-medium">Created</th>
+                <th className="px-4 py-2 text-right font-medium">Clicks</th>
+                <th className="px-4 py-2 text-right font-medium">Today</th>
+                <th className="px-4 py-2 text-left font-medium">Last click</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {links.map((l) => (
+                <tr key={l.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="px-4 py-2.5"><code className="font-mono text-xs text-slate-700">{l.id.slice(0, 8)}</code></td>
+                  <td className="px-4 py-2.5">
+                    <input
+                      defaultValue={labels[l.id] ?? ""}
+                      onBlur={(e) => setLabel(l.id, e.target.value)}
+                      placeholder="e.g. Pune Rising — Day 7"
+                      className="w-44 rounded border border-transparent bg-transparent px-1.5 py-0.5 text-xs text-slate-700 placeholder:text-slate-300 hover:border-slate-200 focus:border-indigo-300 focus:bg-white focus:outline-none"
+                    />
+                  </td>
+                  <td className="px-4 py-2.5 max-w-[16rem]"><p className="text-xs text-slate-500 truncate">{l.question_text}</p></td>
+                  <td className="px-4 py-2.5"><PlatformBadge platform={l.platform} /></td>
+                  <td className="px-4 py-2.5 text-xs text-slate-400 whitespace-nowrap">{fmt(l.created_at)}</td>
+                  <td className="px-4 py-2.5 text-right font-medium text-slate-900">{l.click_count}</td>
+                  <td className="px-4 py-2.5 text-right text-xs text-slate-600">{l.clicks_today || "—"}</td>
+                  <td className="px-4 py-2.5 text-xs text-slate-400 whitespace-nowrap">{l.last_click ? fmt(l.last_click) : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Stat card ────────────────────────────────────────────────────────────────
 
 function StatCard({
@@ -153,6 +332,7 @@ function PlatformBadge({ platform }: { platform: string }) {
 export default function ShareAnalyticsPage() {
   const { data: summary, isLoading } = useShareSummary();
   const { data: totals } = useShareTotals();
+  const { data: breakdown } = useLinkBreakdown();
 
   const ctr =
     totals && totals.totalShares > 0
@@ -192,6 +372,9 @@ export default function ShareAnalyticsPage() {
           icon={<Users className="h-4 w-4" />}
         />
       </div>
+
+      {breakdown && <ClicksByDay days={breakdown.days} />}
+      {breakdown && <LinkBreakdown links={breakdown.links} />}
 
       {/* Per-question table */}
       <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
