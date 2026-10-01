@@ -232,6 +232,18 @@ function ModerationPanel({ row, topics, onDone }: { row: QueueRow; topics: Topic
   const [newTopicLocation, setNewTopicLocation] = React.useState(row.location_label ?? "");
   const [creatingBusy, setCreatingBusy] = React.useState(false);
 
+  // A freshly-set auto_topic_id (especially a just-created pending topic) may
+  // not be in the 10-min-cached `topics` list yet. Inject it as a synthetic
+  // option so the <select> actually shows it as selected instead of blank.
+  // Kept above the status early-returns below so the hook order never changes
+  // when a row moves from proposed -> in_review while mounted.
+  const pickerTopics = React.useMemo(() => {
+    if (!row.auto_topic_id || !row.auto_topic_title || topics.some((t) => t.id === row.auto_topic_id)) {
+      return topics;
+    }
+    return [...topics, { id: row.auto_topic_id, title: row.auto_topic_title }].sort((a, b) => a.title.localeCompare(b.title));
+  }, [topics, row.auto_topic_id, row.auto_topic_title]);
+
   async function handleCreateTopic() {
     const title = newTopicTitle.trim();
     if (title.length < 8) {
@@ -304,16 +316,6 @@ function ModerationPanel({ row, topics, onDone }: { row: QueueRow; topics: Topic
 
   // Only actionable while awaiting a decision.
   if (!["in_review", "approved"].includes(row.status)) return null;
-
-  // A freshly-set auto_topic_id (especially a just-created pending topic) may
-  // not be in the 10-min-cached `topics` list yet. Inject it as a synthetic
-  // option so the <select> actually shows it as selected instead of blank.
-  const pickerTopics = React.useMemo(() => {
-    if (!row.auto_topic_id || !row.auto_topic_title || topics.some((t) => t.id === row.auto_topic_id)) {
-      return topics;
-    }
-    return [...topics, { id: row.auto_topic_id, title: row.auto_topic_title }].sort((a, b) => a.title.localeCompare(b.title));
-  }, [topics, row.auto_topic_id, row.auto_topic_title]);
 
   return (
     <div className="rounded-md border border-slate-200 p-3 space-y-3">
