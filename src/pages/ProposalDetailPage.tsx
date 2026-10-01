@@ -297,7 +297,6 @@ export default function ProposalDetailPage() {
         )}
 
         {proposal && (() => {
-  const { t } = useTranslation();
           const meta = STATUS_STYLE[proposal.status];
           const style = { label: meta ? t(meta.labelKey) : proposal.status, cls: meta?.cls ?? "bg-slate-400" };
           const readyToPublish = proposal.status === "in_review" && !!proposal.preview_reframe;

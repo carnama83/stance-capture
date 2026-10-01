@@ -762,6 +762,28 @@ export default function Signup() {
   type UStatus = "idle" | "invalid" | "checking" | "available" | "taken";
   const [uStatus, setUStatus] = React.useState<UStatus>("idle");
 
+  // Scroll/focus first error. Must stay above the `if (!sb)` early return so
+  // the hook order is identical on every render.
+  React.useEffect(() => {
+    const keys = Object.keys(errors);
+    if (keys.length === 0) return;
+    const first = keys[0];
+    switch (first) {
+      case "email":
+        refEmail.current?.focus();
+        break;
+      case "password":
+        refPassword.current?.focus();
+        break;
+      case "dob":
+        refDobContainer.current?.scrollIntoView({ behavior: "smooth" });
+        break;
+      case "country":
+        refCountry.current?.focus();
+        break;
+    }
+  }, [errors]);
+
   if (!sb) {
     return (
       <PageLayout>
@@ -841,27 +863,6 @@ export default function Signup() {
 
     return next;
   }
-
-  // Scroll/focus first error
-  React.useEffect(() => {
-    const keys = Object.keys(errors);
-    if (keys.length === 0) return;
-    const first = keys[0];
-    switch (first) {
-      case "email":
-        refEmail.current?.focus();
-        break;
-      case "password":
-        refPassword.current?.focus();
-        break;
-      case "dob":
-        refDobContainer.current?.scrollIntoView({ behavior: "smooth" });
-        break;
-      case "country":
-        refCountry.current?.focus();
-        break;
-    }
-  }, [errors]);
 
   async function resolveLocationForSelection(): Promise<
     { locationId: string; precision: Precision } | null
