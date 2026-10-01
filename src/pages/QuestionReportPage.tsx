@@ -19,8 +19,11 @@ import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Session } from "@supabase/supabase-js";
-import { ArrowLeft, Download, Loader2 } from "lucide-react";
+import {
+  ArrowLeft, Download, Loader2, Languages, MessageCircle, ShieldCheck, SlidersHorizontal, TrendingUp, Newspaper,
+} from "lucide-react";
 import { getSupabase } from "@/lib/supabaseClient";
+import { StanceLogo, stanceLogoDataUri } from "@/components/brand/StanceLogo";
 import { useLanguage } from "@/hooks/useLanguage";
 import { useTopicLabels } from "@/hooks/useTopicLabels";
 import { usePlaceLabels } from "@/hooks/usePlaceLabels";
@@ -402,6 +405,130 @@ function AiSummary({
   );
 }
 
+// ---------- Branding (print) ----------
+//
+// Every printed page carries the Stance Capture header and footer through the
+// @page margin boxes, which Chrome repeats on each page (with real page
+// numbers) without touching the report's own layout. Page 1 is the cover,
+// which is all branding already, so it keeps only the footer.
+
+function cssString(s: string): string {
+  return `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, " ")}"`;
+}
+
+function printPageCss(t: (key: string) => string): string {
+  const font = `font-family: system-ui, "Segoe UI", "Noto Sans Devanagari", "Nirmala UI", sans-serif;`;
+  return `@media print {
+  html, body { background: #fff !important; }
+  @page {
+    margin: 20mm 16mm 18mm;
+    @top-left {
+      content: url("${stanceLogoDataUri(16)}") "  " ${cssString(t("report.brand.name"))};
+      ${font} font-size: 11pt; font-weight: 700; color: #4338ca; vertical-align: bottom; padding-bottom: 4mm;
+    }
+    @top-right {
+      content: ${cssString(t("report.title"))};
+      ${font} font-size: 8.5pt; color: #94a3b8; vertical-align: bottom; padding-bottom: 4.5mm;
+    }
+    @bottom-left {
+      content: ${cssString(`${t("report.brand.name")} · ${t("report.brand.tagline")} · ${t("report.brand.site")}`)};
+      ${font} font-size: 8pt; color: #94a3b8; vertical-align: top; padding-top: 4mm;
+    }
+    @bottom-right {
+      content: counter(page) " / " counter(pages);
+      ${font} font-size: 8pt; color: #94a3b8; vertical-align: top; padding-top: 4mm;
+    }
+  }
+  @page :first {
+    @top-left { content: none; }
+    @top-right { content: none; }
+  }
+}`;
+}
+
+const COVER_FEATURES = [
+  { key: "ask", Icon: Newspaper },
+  { key: "scale", Icon: SlidersHorizontal },
+  { key: "reasons", Icon: MessageCircle },
+  { key: "change", Icon: TrendingUp },
+  { key: "open", Icon: Languages },
+  { key: "privacy", Icon: ShieldCheck },
+] as const;
+
+// Print-only first page: who we are and what we do, in plain words, then the
+// question this report is about.
+function ReportCover({
+  questionText,
+  responsesLabel,
+  meta,
+  preparedOn,
+}: {
+  questionText: string;
+  responsesLabel: string;
+  meta: string[];
+  preparedOn: string;
+}) {
+  const { t } = useTranslation();
+  const exact = { printColorAdjust: "exact", WebkitPrintColorAdjust: "exact" } as const;
+  return (
+    <section className="hidden print:block break-after-page">
+      <div className="flex items-center gap-3">
+        <StanceLogo className="h-12 w-12 shrink-0" />
+        <div>
+          <p className="text-2xl font-bold tracking-tight text-slate-900">{t("report.brand.name")}</p>
+          <p className="text-sm text-slate-500">{t("report.brand.tagline")}</p>
+        </div>
+      </div>
+      <div
+        className="mt-4 h-1.5 w-full rounded-full"
+        style={{ background: "linear-gradient(90deg, #6366F1, #8B5CF6 55%, #EC4899)", ...exact }}
+      />
+
+      <div className="mt-6">
+        <p className="text-xs font-semibold uppercase tracking-wider text-indigo-700">{t("report.title")}</p>
+        <h1 className="mt-2 text-xl font-semibold leading-snug text-slate-900">{questionText}</h1>
+        <p className="mt-3 text-sm text-slate-600">
+          <span className="font-medium text-slate-800">{responsesLabel}</span>
+          {meta.map((m) => (
+            <span key={m}> · {m}</span>
+          ))}
+        </p>
+        <p className="mt-1 text-xs text-slate-500">{preparedOn}</p>
+      </div>
+
+      <div className="mt-6 rounded-xl border border-indigo-100 bg-indigo-50 px-5 py-3.5" style={exact}>
+        <h2 className="text-sm font-semibold text-indigo-900">{t("report.cover.aboutTitle")}</h2>
+        <p className="mt-1.5 text-sm leading-relaxed text-slate-700">{t("report.cover.about")}</p>
+      </div>
+
+      <h2 className="mt-6 text-sm font-semibold text-slate-900">{t("report.cover.whatWeDo")}</h2>
+      <ul className="mt-3 grid grid-cols-2 gap-x-6 gap-y-3.5">
+        {COVER_FEATURES.map(({ key, Icon }) => (
+          <li key={key} className="flex gap-3 break-inside-avoid">
+            <span
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-100 text-violet-700"
+              style={exact}
+            >
+              <Icon className="h-4 w-4" />
+            </span>
+            <div>
+              <p className="text-sm font-semibold text-slate-900">{t(`report.cover.features.${key}Title`)}</p>
+              <p className="mt-0.5 text-xs leading-relaxed text-slate-600">{t(`report.cover.features.${key}`)}</p>
+            </div>
+          </li>
+        ))}
+      </ul>
+
+      <div className="mt-6 break-inside-avoid">
+        <div className="border-t border-slate-200 pt-4">
+          <h2 className="text-xs font-semibold text-slate-800">{t("report.cover.howTitle")}</h2>
+          <p className="mt-1 text-xs leading-relaxed text-slate-600">{t("report.cover.how")}</p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 // ---------- Page ----------
 
 export default function QuestionReportPage() {
@@ -581,7 +708,7 @@ export default function QuestionReportPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-8 print:bg-white print:p-0">
-      <style>{`@media print { @page { margin: 16mm; } html, body { background: #fff !important; } }`}</style>
+      <style>{printPageCss(t)}</style>
       <div className="max-w-3xl mx-auto">
         <div className="flex items-center justify-between gap-3 mb-4 print:hidden">
           <Link
@@ -600,6 +727,17 @@ export default function QuestionReportPage() {
           </button>
         </div>
         {pdfError && <p className="mb-3 text-xs text-red-600 print:hidden">{t("report.print.failed")}</p>}
+
+        <ReportCover
+          questionText={q.text}
+          responsesLabel={t("report.responses", { count: rs.total, formatted: n(rs.total) })}
+          meta={[q.topic ? topicLabel(q.topicId, q.topic) : null, q.location ? placeLabel(q.location) : null].filter(
+            (m): m is string => !!m,
+          )}
+          preparedOn={t("report.cover.prepared", {
+            date: formatDate(print?.createdAt ?? report.generatedAt, uiLang, { dateStyle: "long" }),
+          })}
+        />
         {print && (
           <div className="mb-4 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-900 print:mb-3 print:rounded-none print:border-x-0 print:border-t-0 print:bg-white print:px-0 print:text-xs">
             {t("report.print.banner", {
@@ -614,6 +752,15 @@ export default function QuestionReportPage() {
         )}
 
         <article className="rounded-2xl border border-slate-200 bg-white p-5 md:p-10 shadow-sm print:border-0 print:shadow-none print:p-0">
+          {/* Brand (on screen; in print the page header carries it) */}
+          <div className="mb-6 flex items-center justify-between gap-3 border-b border-slate-100 pb-4 print:hidden">
+            <div className="flex items-center gap-2">
+              <StanceLogo className="h-7 w-7 shrink-0" />
+              <span className="text-base font-bold text-slate-900">{t("report.brand.name")}</span>
+            </div>
+            <span className="text-xs text-slate-400">{t("report.brand.tagline")}</span>
+          </div>
+
           {/* Header */}
           <p className="text-[11px] font-medium tracking-wide uppercase text-slate-400">{t("report.title")}</p>
           <h1 className="mt-2 text-lg md:text-xl font-semibold text-slate-900 leading-snug">{q.text}</h1>
