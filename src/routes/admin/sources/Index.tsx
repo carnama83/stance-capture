@@ -598,6 +598,7 @@ export default function AdminSourcesIndex() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [runningAll, setRunningAll] = useState<boolean>(false);
   const [runProgress, setRunProgress] = useState<string>("");
+  const [bulkToggling, setBulkToggling] = useState<boolean>(false);
 
   useEffect(() => {
     debugLog("mounted", {
@@ -952,6 +953,45 @@ export default function AdminSourcesIndex() {
     }
   }
 
+  // Bulk enable/disable every source currently visible (respects the kind /
+  // enabled / search filters), in a single UPDATE.
+  async function onToggleAllEnabled(checked: boolean) {
+    const requestId = makeRequestId("toggleAll");
+    const targets = filtered.filter((r) => r.is_enabled !== checked);
+    if (targets.length === 0) return;
+
+    if (
+      !confirm(
+        `${checked ? "Enable" : "Disable"} ${targets.length} source(s)?`,
+      )
+    )
+      return;
+
+    debugLog(`[${requestId}] start`, { checked, count: targets.length });
+    setBulkToggling(true);
+    try {
+      const { error } = await withTimeout(
+        supabase
+          .from("topic_sources")
+          .update({ is_enabled: checked })
+          .in(
+            "id",
+            targets.map((r) => r.id),
+          ),
+        15000,
+        `${requestId}: bulk update is_enabled`,
+      );
+      if (error) throw error;
+      void fetchRows();
+    } catch (e: any) {
+      debugError(`[${requestId}] failed`, e);
+      alert(`Bulk toggle failed: ${errorMessage(e)}`);
+    } finally {
+      setBulkToggling(false);
+      debugLog(`[${requestId}] finally`);
+    }
+  }
+
   // J-FR-33: non-destructive endpoint probe. Unlike Run, this writes nothing —
   // no ingestion_queue row, no change to success_count / failure_count / last_status.
   async function onTest(row: SourceRow) {
@@ -1166,6 +1206,10 @@ export default function AdminSourcesIndex() {
   const someChecked =
     selectedIds.size > 0 && selectedIds.size < filtered.length;
 
+  const enabledCount = filtered.filter((r) => r.is_enabled).length;
+  const allEnabled = filtered.length > 0 && enabledCount === filtered.length;
+  const someEnabled = enabledCount > 0 && enabledCount < filtered.length;
+
   return (
     <div style={{ padding: 16 }}>
       <div
@@ -1291,6 +1335,28 @@ export default function AdminSourcesIndex() {
                         onChange={toggleSelectAll}
                         title="Select all"
                       />
+                    ) : h === "Enabled" ? (
+                      <label
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={allEnabled}
+                          ref={(input) => {
+                            if (input) input.indeterminate = someEnabled;
+                          }}
+                          disabled={
+                            bulkToggling || runningAll || filtered.length === 0
+                          }
+                          onChange={(e) => onToggleAllEnabled(e.target.checked)}
+                          title="Enable / disable all visible sources"
+                        />
+                        {h}
+                      </label>
                     ) : (
                       h
                     )}
