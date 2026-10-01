@@ -2437,6 +2437,33 @@
       "positionsAi": "The descriptions of each position are AI-generated from the question and its scale.",
       "noAi": "This report contains no AI summary of the responses: every figure is calculated directly from the recorded answers.",
       "ai": "Every figure is calculated directly from the recorded answers. The labelled AI summary was written by a model from those figures only; it appears from {{minimum}} responses and is refreshed as responses come in."
+    },
+    "brand": {
+      "name": "Stance Capture",
+      "tagline": "Where do you stand?",
+      "site": "stancecapture.com"
+    },
+    "cover": {
+      "prepared": "Prepared {{date}}",
+      "aboutTitle": "About Stance Capture",
+      "about": "Stance Capture is a public platform where people say where they stand on the issues that affect their lives, and see how others feel. We turn many individual answers into a clear picture that anyone can read.",
+      "whatWeDo": "What we do",
+      "features": {
+        "askTitle": "Ask about real issues",
+        "ask": "Each question is about something happening now, written in plain words and published with the background facts.",
+        "scaleTitle": "More than yes or no",
+        "scale": "People pick a point on a scale between two sides, so both mild and strong views are counted.",
+        "reasonsTitle": "Hear the reasons",
+        "reasons": "People can say why they feel the way they do, so the numbers come with reasons.",
+        "changeTitle": "Show how views change",
+        "change": "We track answers over time, so a shift in opinion shows up as it happens.",
+        "openTitle": "Open to everyone",
+        "open": "It works on any phone, in English or Hindi. There is no app to install, and people can answer without signing up.",
+        "privacyTitle": "Private by design",
+        "privacy": "We report totals, not names. Anyone can answer anonymously."
+      },
+      "howTitle": "How to read this report",
+      "how": "Every number in this report is counted directly from the answers. Any part written with the help of AI is clearly labelled. When there are only a few answers, read the results as an early signal, not a final verdict."
     }
   },
   "questionEdit": {
