@@ -619,12 +619,20 @@ const PREVIEW_SCHEMA = {
 };
 
 const STRUCTURE_RULES =
-  "Structure of the question itself: one short concrete context clause, one clause on the underlying tension or " +
-  "accountability question, then ONE question put directly to the reader (e.g. 'do you…?', never a stray 'you' tacked onto the end), answerable on a single -2..+2 oppose/support " +
+  // Owner request (2 Oct 2026): questions were coming out at 34-35 words
+  // because "one SHORT context clause" made the model treat 65 as a ceiling
+  // to stay well under. Now a target range, with the room spent on the
+  // proposer's context, not filler.
+  "Structure of the question itself: one or two context sentences that carry the proposer's FULL context — each " +
+  "named example with the one detail that makes it concrete (what happened, where, when, from the fact sheet " +
+  "when available), the proposer's own concern and any context they added — then the underlying tension or " +
+  "accountability point, then ONE question put directly to the reader (e.g. 'do you…?', never a stray 'you' tacked onto the end), answerable on a single -2..+2 oppose/support " +
   "spectrum (never a menu of options, never 'A, B, or C', never 'Do you support' / 'Do you back' / 'Should the " +
   "government' — ask about the thing itself instead, e.g. 'should traffic police strictly enforce…, in your " +
   "view?' or 'do you think … should …?'). Use " +
-  "up to 65 words — 65 is the hard maximum. Plain everyday language, no jargon. The question is ONE " +
+  "45-60 words (leave headroom under the 65 limit) when there is that much context to carry (several examples, facts, added context); a proposal " +
+  "with little context may be shorter — never pad with filler or repetition. 65 is the hard maximum. Plain " +
+  "everyday language, no jargon. The question is ONE " +
   "proposition the reader agrees or disagrees with — never an either/or ('should X…, or should Y…?', 'is it " +
   "A or B?'): with two options there is no telling which end of the slider is 'yes'. slider_high_label says " +
   "what answering YES to the question exactly as written means, slider_low_label what answering NO means — " +
@@ -657,7 +665,7 @@ function namingRules(more: number): string {
     "them; never drop one, never fold them into a vague summary like 'a string of attacks')." +
     (more > 0
       ? ` The proposer named ${more} more beyond these (examples_covered_by_and_others): do NOT name those — ` +
-        "add 'and others' right after the named ones instead."
+        "add 'and others' right after the named ones instead, and never list them after it ('and others including …')."
       : " Do not add 'and others' — there are no further examples.") +
     " quality_notes must describe each example's research exactly as its research_note says — never call an " +
     "example unverifiable if it was simply not researched. "
@@ -682,9 +690,10 @@ function addedContexts(raw: string): string[] {
 const ADDED_CONTEXT_RULE =
   "PROPOSER'S ADDED CONTEXT — proposer_added_context lists what the proposer added through 'Add more context'. " +
   "Keep every factual or reported part of it in the question, attributed to the proposer or their source " +
-  "('shopkeepers in Pune say…', 'the proposer notes…') — it is the proposer's own report, so it may appear even " +
+  "('shopkeepers in Pune say…'; with no named source, present it as the concern being raised ('…, amid concerns that it has made flying feel unsettling') — never invent a source ('many say', 'reportedly') and never write 'the proposer' in the question) — it is the proposer's own report, so it may appear even " +
   "though it is not in the fact sheet, but never state it as verified fact. Leave out only pure opinion, " +
-  "prediction or rhetoric ('this would hit them hard', 'obviously unfair'). ";
+  "prediction or rhetoric ('this would hit them hard', 'obviously unfair'). An example it mentions that is listed " +
+  "in examples_covered_by_and_others stays covered by 'and others' — the three-example cap still applies. ";
 
 function writerSystem(cfg: PipelineConfig, more: number, refine: boolean, hasAddedContext: boolean): string {
   return (
@@ -859,24 +868,35 @@ const VALIDATOR_SYSTEM =
   "label describes that yes-answer? Put 'high_label', 'low_label' or 'unclear' (e.g. an either/or question) " +
   "in yes_answer_is. Anything other than high_label is a slider_labels issue.\n" +
   "7. If the brief has proposer_added_context: its factual or reported parts must appear in the question, " +
-  "attributed to the proposer or their source ('shopkeepers say…') — missing ones are missing_added_context. Such " +
+  "attributed to their named source ('shopkeepers say…') or, with no named source, presented as a concern being raised ('amid concerns that…') — missing ones are missing_added_context. Such " +
   "attributed reports are the proposer's own and are NOT unsupported_claim or not_neutral; only flag them if they " +
-  "are stated as verified fact or if pure opinion/prediction from them was kept.\n" +
+  "are stated as verified fact or if pure opinion/prediction from them was kept. Inventing a source for the " +
+  "proposer's own observation ('many say', 'reportedly') is unsupported_claim.\n" +
   "8. If question_native is present it says the same thing as question, equally neutral, and Hindi is in " +
   "Devanagari script (native_mismatch).\n" +
   "Set pass=true only if there are no issues. Minor style preferences are NOT issues. For each issue give the " +
   "exact problem and the smallest fix.";
 
-function codeChecks(p: PreviewV2, extracted: ExtractedEvents): Issue[] {
+function codeChecks(p: PreviewV2, extracted: ExtractedEvents, richContext: boolean): Issue[] {
   const issues: Issue[] = [];
   const wc = wordCount(p.question);
   if (wc > 65) issues.push({ type: "form", detail: `Question is ${wc} words; the maximum is 65.`, fix: "Shorten connecting phrases; keep every named example." });
+  // Only when there IS context to carry — a short proposal stays short
+  // rather than being padded to a word count.
+  if (richContext && wc < 40) {
+    issues.push({ type: "form", detail: `Question is only ${wc} words although the proposal has several examples, researched facts or added context.`, fix: "Use 45-60 words: give each named example its one concrete detail and include the proposer's concern and added context. No filler." });
+  }
   if (!p.slider_low_label || !p.slider_high_label) issues.push({ type: "slider_labels", detail: "A slider label is missing.", fix: "Provide both slider labels." });
   if (extracted.more_count > 0 && !/and others/i.test(p.question)) {
     issues.push({ type: "missing_and_others", detail: "The proposer named more examples than are listed, but the question lacks 'and others'.", fix: "Add 'and others' after the named examples." });
   }
   // House style the writer drifts from and the model checker let through in
   // 4 of 9 test cases (2 Oct 2026) — enforced here instead.
+  // Respondents never see "the proposer" — 2 Oct 2026 test: "with the
+  // proposer noting that…" in a published-looking question.
+  if (/\bthe proposer\b/i.test(p.question)) {
+    issues.push({ type: "form", detail: "The question refers to 'the proposer', which respondents will not understand.", fix: "Attribute to the named source ('shopkeepers say…'), or use 'reportedly' / 'many say'." });
+  }
   const banned = p.question.match(/\b(do you support|do you back|should the government)\b/i);
   if (banned) {
     issues.push({ type: "form", detail: `The question uses '${banned[0]}', which house style forbids.`, fix: "Ask about the thing itself, e.g. 'should X …, in your view?' or 'do you think X should …?'." });
@@ -911,7 +931,10 @@ function codeChecks(p: PreviewV2, extracted: ExtractedEvents): Issue[] {
 }
 
 async function validate(cfg: PipelineConfig, raw: string, extracted: ExtractedEvents, sheet: FactSheet, p: PreviewV2, metrics: StageMetric[], stage: string): Promise<{ pass: boolean; issues: Issue[]; ran: boolean }> {
-  const fromCode = codeChecks(p, extracted);
+  const richContext = extracted.kept_event_ids.length >= 2 ||
+    sheet.events.some((e) => e.facts.length > 0) || !!sheet.background?.facts.length ||
+    addedContexts(raw).length > 0;
+  const fromCode = codeChecks(p, extracted, richContext);
   const r = await callClaude(cfg, {
     stage, model: cfg.strongModel, system: VALIDATOR_SYSTEM, effort: "low", schema: VALIDATOR_SCHEMA,
     maxTokens: 3000, timeoutMs: 40_000,
@@ -1093,7 +1116,27 @@ export async function runPipelineV2(cfg: PipelineConfig, raw: string): Promise<P
     console.error(JSON.stringify({ tag: "ugq-screen.v2.extraction_failed" }));
     return null;
   }
-  const { kept, more } = chooseKept(base.events, cfg.maxExamples);
+  // An example the proposer ADDED through "Add more context" gets one of the
+  // three slots, same as the regenerate path does. Without this a fresh run
+  // on a proposal that already carries added context (stuck-retry, re-screen)
+  // put the added example under "and others" while the added-context rule
+  // insisted on naming it — the two rules fought until the question failed
+  // review (2 Oct 2026 test).
+  const addedText = addedContexts(raw).join(" ").toLowerCase();
+  // An entity only counts if it is not just part of ANOTHER example's longer
+  // entity — "India" (Pahalgam's) sits inside "Air India" (the added crash)
+  // and must not pull Pahalgam into a slot (2 Oct 2026 test).
+  const allEntities = base.events.flatMap((e) => e.entities.map((n) => ({ id: e.id, n: n.toLowerCase() })));
+  const distinctive = (id: string, n: string) =>
+    n.length >= 3 && !allEntities.some((o) => o.id !== id && o.n !== n && o.n.includes(n));
+  const wordIn = (text: string, n: string) =>
+    new RegExp(`(^|[^\\p{L}])${n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^\\p{L}]|$)`, "u").test(text);
+  const fromAdded = addedText
+    ? base.events
+      .filter((e) => e.entities.some((n) => distinctive(e.id, n.toLowerCase()) && wordIn(addedText, n.toLowerCase())))
+      .map((e) => e.id)
+    : [];
+  const { kept, more } = chooseKept(base.events, cfg.maxExamples, fromAdded);
   const extracted: ExtractedEvents = { ...base, kept_event_ids: kept, more_count: more };
 
   const tr = Date.now();
