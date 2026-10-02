@@ -1104,7 +1104,16 @@ export async function runRefineV2(cfg: PipelineConfig, args: {
   stages.push(ex.metric);
   metrics.extraction_ms = Date.now() - tx;
   const added = ex.ok ? parseExtraction(extractJson(ex.text), `a${Date.now() % 100000}_`, "added_context") : null;
-  const newEvents = added?.events ?? [];
+  // The prompt already lists the known events, but the model can still repeat
+  // one (2 Oct 2026 test: context about Pune shopkeepers' UPI payments came
+  // back as a "new" UPI MDR event and was researched a second time). Drop
+  // any added event that shares a named entity with an existing one.
+  const known = args.extracted.events.flatMap((e) => [...e.entities, e.user_description]).map((s) => s.toLowerCase());
+  const newEvents = (added?.events ?? []).filter((e) => {
+    const dup = e.entities.some((n) => n.length >= 3 && known.some((k) => k.includes(n.toLowerCase())));
+    if (dup) console.log(JSON.stringify({ tag: "ugq-screen.v2.refine_dropped_duplicate_event", description: e.user_description }));
+    return !dup;
+  });
 
   const allEvents = [...args.extracted.events, ...newEvents];
   // Newly added examples are the proposer's latest emphasis — keep them first.
