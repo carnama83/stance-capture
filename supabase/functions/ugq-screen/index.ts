@@ -124,6 +124,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { runPipelineV2, runRefineV2, type PipelineConfig, type PipelineResult, type ExtractedEvents, type FactSheet } from "./pipeline_v2.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -345,6 +346,14 @@ serve(async (req) => {
   // a redeploy, if that's ever wanted again.
   const AUTOPUBLISH_ENABLED = (Deno.env.get("UGQ_AUTOPUBLISH_ENABLED") ?? "false") === "true";
   const AUTOPUBLISH_MIN_QUALITY = Number(Deno.env.get("UGQ_AUTOPUBLISH_MIN_QUALITY") ?? "0");
+  // Oct 2026, NEW — UGQ pipeline v2 (see pipeline_v2.ts). UGQ_PIPELINE=v2
+  // switches the preview to research-once / write-once / validate; anything
+  // else (or unset) keeps the v1 flow below exactly as it was, so Prod can be
+  // flipped back without a redeploy. v2 needs the Anthropic provider.
+  const PIPELINE_ENV = (Deno.env.get("UGQ_PIPELINE") ?? "v1").toLowerCase().trim();
+  const V2_FAST_MODEL = (Deno.env.get("UGQ_V2_FAST_MODEL") ?? "claude-haiku-4-5").trim();
+  const V2_STRONG_MODEL = (Deno.env.get("UGQ_V2_STRONG_MODEL") ?? "claude-sonnet-5").trim();
+  const V2_MAX_EXAMPLES = Math.max(1, Math.min(5, Number(Deno.env.get("UGQ_V2_MAX_EXAMPLES") ?? "3") | 0));
 
   // ── Internal auth ──────────────────────────────────────────────────────────────
   const incomingCron = req.headers.get("x-cron-secret") ?? "";
@@ -592,7 +601,10 @@ serve(async (req) => {
     "NOT English, ALSO return \"question_native\"/\"slider_low_label_native\"/\"slider_high_label_native\": the " +
     "SAME question and slider labels, but natively phrased the way a fluent speaker of that language would " +
     "actually write it — not a stiff word-for-word back-translation — following the exact same structure/tone " +
-    "rules above. If the detected language IS English, leave all three _native fields null. Separately, if " +
+    "rules above. Hindi _native fields are ALWAYS written in Devanagari script — including when the proposer " +
+    "wrote Hinglish or Hindi in Roman letters (owner decision, Oct 2026; English loanwords may be written in " +
+    "Devanagari as Hindi speakers would). If the detected language IS English, leave all three _native fields " +
+    "null. Separately, if " +
     "\"context_summary\" is non-null AND the detected language is not English, ALSO return " +
     "\"context_summary_native\": the same background text, natively phrased (not a stiff back-translation) — this " +
     "is the only version of the background a non-English proposer's audience will ever see, so it must stand on " +
@@ -652,6 +664,42 @@ serve(async (req) => {
     "search, use it to support the named examples, not to choose between them; context_summary may briefly cover " +
     "more than one of them. ";
 
+  // Oct 2026, NEW — pipeline v2 wiring. Shares the language/audience prompt
+  // fragments above with v1 so both paths stay word-for-word identical there.
+  const v2Config: PipelineConfig = {
+    apiKey: ANTHROPIC_API_KEY,
+    fastModel: V2_FAST_MODEL,
+    strongModel: V2_STRONG_MODEL,
+    maxExamples: V2_MAX_EXAMPLES,
+    languageInstructions: LANGUAGE_HANDLING_INSTRUCTIONS,
+    audienceInstructions: AUDIENCE_INSTRUCTIONS,
+  };
+
+  // One summary line per v2 run, so cost/latency per proposal is a log query
+  // away (the full breakdown is in user_question_proposals.pipeline_metrics).
+  function logV2(result: PipelineResult | null, proposalIdForLog: string, mode: string) {
+    const m = result?.pipeline_metrics;
+    console.log(JSON.stringify({
+      tag: "ugq-screen.v2_result", proposal_id: proposalIdForLog, mode, ok: !!result,
+      verified: result?.preview.verified ?? null,
+      total_ms: m?.total_ms ?? null, research_ms: m?.research_ms ?? null, writer_ms: m?.writer_ms ?? null,
+      validator_ms: m?.validator_ms ?? null, repair_ms: m?.repair_ms ?? null,
+      searches: m?.search_count ?? null, cost_usd: m?.total_cost_usd ?? null,
+      events_detected: m?.events_detected ?? null, events_kept: m?.events_kept ?? null,
+      events_verified: m?.events_verified ?? null, rewrites: m?.rewrite_count ?? null,
+    }));
+  }
+
+  // The four v2 artifact columns, written alongside preview_reframe.
+  function v2Columns(result: PipelineResult) {
+    return {
+      extracted_events: result.extracted_events,
+      fact_sheet: result.fact_sheet,
+      verification_result: result.verification_result,
+      pipeline_metrics: result.pipeline_metrics,
+    };
+  }
+
   async function generatePreviewOnce(raw: string, withWebSearch: boolean): Promise<PreviewReframe | null> {
     if (!SCREEN_API_KEY) return null;
 
@@ -664,7 +712,7 @@ serve(async (req) => {
         "question was taken seriously, not struck down. If search turns up nothing clearly relevant, leave " +
         "context_summary null and supporting_links empty — never invent facts either way. " +
         "Structure of the question itself: one short concrete context clause, one clause on the underlying tension " +
-        "or accountability question, then ONE question ending in 'you', answerable on a single -2..+2 oppose/support " +
+        "or accountability question, then ONE question put directly to the reader (e.g. 'do you…?', never a stray 'you' tacked onto the end), answerable on a single -2..+2 oppose/support " +
         "spectrum (never a menu of options, never 'A, B, or C', never 'Do you support' / 'Should the government'). " +
         "Use up to 65 words — 65 is the hard maximum. Plain everyday language, no jargon. " +
         NAMED_EXAMPLES_INSTRUCTIONS +
@@ -688,7 +736,7 @@ serve(async (req) => {
         "than asserting it outright, and never invent specific facts, numbers, or names the raw text didn't " +
         "mention. Leave context_summary null and supporting_links empty — you have no sources to cite this pass. " +
         "Structure: one short concrete context clause, one clause on the underlying tension or accountability " +
-        "question, then ONE question ending in 'you', answerable on a single -2..+2 oppose/support spectrum (never " +
+        "question, then ONE question put directly to the reader (e.g. 'do you…?', never a stray 'you' tacked onto the end), answerable on a single -2..+2 oppose/support spectrum (never " +
         "a menu of options, never 'A, B, or C', never 'Do you support' / 'Should the government'). Use up to 65 " +
         "words — 65 is the hard maximum. Plain everyday language, no jargon. " +
         NAMED_EXAMPLES_INSTRUCTIONS +
@@ -782,7 +830,7 @@ serve(async (req) => {
         "also work. If fitting both makes the sentence run long, trim connecting words and generic phrasing first " +
         "— not the reference to either the old tension or the new context. " +
         "Structure of the question itself: one short concrete context clause, one clause on the underlying tension " +
-        "or accountability question, then ONE question ending in 'you', answerable on a single -2..+2 oppose/support " +
+        "or accountability question, then ONE question put directly to the reader (e.g. 'do you…?', never a stray 'you' tacked onto the end), answerable on a single -2..+2 oppose/support " +
         "spectrum (never a menu of options, never 'A, B, or C', never 'Do you support' / 'Should the government'). " +
         "Use up to 65 words — 65 is the hard maximum, and doesn't change for a refine pass. Plain everyday " +
         "language, no jargon. " +
@@ -817,7 +865,7 @@ serve(async (req) => {
         "compelling standalone question on its own. Only replace the existing tension if the new context makes " +
         "it factually wrong. " +
         "Structure: one short concrete context clause, one clause on the underlying tension or accountability " +
-        "question, then ONE question ending in 'you', answerable on a single -2..+2 oppose/support spectrum (never " +
+        "question, then ONE question put directly to the reader (e.g. 'do you…?', never a stray 'you' tacked onto the end), answerable on a single -2..+2 oppose/support spectrum (never " +
         "a menu of options, never 'A, B, or C', never 'Do you support' / 'Should the government'). Use up to 65 " +
         "words — 65 is the hard maximum, and doesn't change for a refine pass. Plain everyday language, no jargon. " +
         NAMED_EXAMPLES_INSTRUCTIONS +
@@ -992,7 +1040,7 @@ serve(async (req) => {
   // today's (English-only-safe) behavior rather than blocking screening.
   type LangDetectResult = { language: string; english_query: string };
 
-  async function detectAndTranslateForSearch(rawText: string): Promise<LangDetectResult> {
+  async function detectAndTranslateForSearch(rawText: string, model: string = MODEL): Promise<LangDetectResult> {
     if (!SCREEN_API_KEY) return { language: "en", english_query: rawText };
     const sys =
       "Detect the language of the given text and produce a literal English translation of it — accuracy for " +
@@ -1001,7 +1049,7 @@ serve(async (req) => {
     const usr = `Text:\n"${rawText}"`;
     let rawContent = "";
     try {
-      rawContent = await callLLM("lang_detect", SCREEN_PROVIDER, MODEL, sys, usr, 1024);
+      rawContent = await callLLM("lang_detect", SCREEN_PROVIDER, model, sys, usr, 1024);
     } catch (e) {
       console.error(JSON.stringify({ tag: "ugq-screen.lang_detect_threw", message: (e as Error).message }));
       return { language: "en", english_query: rawText };
@@ -1032,11 +1080,21 @@ serve(async (req) => {
     // generatePreviewOnce's comment for why this happens). Everything else
     // (approved/reframing/reframed/published/rejected) is left alone.
     const { data: proposal } = await adminSb.from("user_question_proposals")
-      .select("id, user_id, raw_question, status, ai_screen_result, preview_reframe, auto_topic_id, source_url, input_mode, video_raw_transcript, video_resubmit_count, video_recording_path, video_duration_seconds, video_publish_choice")
+      .select("id, user_id, raw_question, status, ai_screen_result, preview_reframe, auto_topic_id, source_url, input_mode, video_raw_transcript, video_resubmit_count, video_recording_path, video_duration_seconds, video_publish_choice, extracted_events, fact_sheet")
       .eq("id", proposalId).maybeSingle();
     if (!proposal) return json(404, { ok: false, error: "NOT_FOUND" });
 
     const raw = proposal.raw_question as string;
+
+    // Oct 2026, NEW — pipeline selection. The environment switch decides; an
+    // internal caller (this endpoint is cron-secret/service-role only) may
+    // override per request with body.pipeline, which is how v1 and v2 are run
+    // side by side on the same proposals for comparison.
+    const requestedPipeline = typeof body.pipeline === "string" ? body.pipeline.toLowerCase().trim() : PIPELINE_ENV;
+    const useV2 = requestedPipeline === "v2" && SCREEN_PROVIDER === "anthropic" && !!ANTHROPIC_API_KEY && PREVIEW_ENABLED;
+    // v2 runs the yes/no screening and language detection on the fast model.
+    const screenModel = useV2 ? V2_FAST_MODEL : MODEL;
+    let v2Result: PipelineResult | null = null;
     // Epic X, NEW: only video proposals with a transcript to check get the
     // framing gate — everything else (text, voice, or a video row somehow
     // missing its transcript) behaves exactly as before this change.
@@ -1126,8 +1184,29 @@ serve(async (req) => {
             }
           : null;
 
-      let refined: PreviewReframe | null = null;
-      if (PREVIEW_ENABLED) {
+      // Oct 2026, NEW — v2 regenerate reuses the stored fact sheet and only
+      // researches examples that are new in the added context. A proposal
+      // screened before v2 (no fact sheet) gets a full v2 run on the combined
+      // text instead. Any v2 failure falls through to the v1 path below.
+      if (useV2) {
+        const storedEvents = proposal.extracted_events as ExtractedEvents | null;
+        const storedSheet = proposal.fact_sheet as FactSheet | null;
+        v2Result = existingPreview && storedEvents?.events && storedSheet?.events
+          ? await runRefineV2(v2Config, {
+              raw, additionalContext, extracted: storedEvents, factSheet: storedSheet,
+              currentDraft: {
+                question: existingPreview.question,
+                slider_low_label: existingPreview.slider_low_label,
+                slider_high_label: existingPreview.slider_high_label,
+                context_summary: existingPreview.context_summary,
+              },
+            })
+          : await runPipelineV2(v2Config, newRaw);
+        logV2(v2Result, proposalId, "refine");
+      }
+
+      let refined: PreviewReframe | null = v2Result ? v2Result.preview : null;
+      if (!refined && PREVIEW_ENABLED) {
         refined = existingPreview
           ? await generateRefinedPreview(existingPreview, raw, additionalContext, true)
           : await generatePreviewOnce(newRaw, true);
@@ -1156,7 +1235,12 @@ serve(async (req) => {
         }
       }
       const persisted = refined
-        ? { ...refined, model: PREVIEW_MODEL, generated_at: new Date().toISOString() }
+        ? {
+            ...refined,
+            model: v2Result ? V2_STRONG_MODEL : PREVIEW_MODEL,
+            pipeline: v2Result ? "v2" : "v1",
+            generated_at: new Date().toISOString(),
+          }
         : null;
 
       if (!persisted) {
@@ -1178,6 +1262,7 @@ serve(async (req) => {
           preview_reframe: persisted,
           // Sep 2026, NEW — see the stuck-retry branch above for why this is conditional.
           ...(persisted ? { proposal_language: persisted.detected_language } : {}),
+          ...(v2Result ? v2Columns(v2Result) : {}),
         })
         .eq("id", proposalId);
 
@@ -1199,7 +1284,12 @@ serve(async (req) => {
     // a real refine request always takes the branch above instead, even on
     // a proposal that happens to also be missing its preview.
     if (isStuckPreviewRetry) {
-      let retried: PreviewReframe | null = PREVIEW_ENABLED ? await generatePreviewOnce(raw, true) : null;
+      if (useV2) {
+        v2Result = await runPipelineV2(v2Config, raw);
+        logV2(v2Result, proposalId, "stuck_retry");
+      }
+      let retried: PreviewReframe | null = v2Result ? v2Result.preview : null;
+      if (!retried && PREVIEW_ENABLED) retried = await generatePreviewOnce(raw, true);
       if (!retried && PREVIEW_ENABLED) {
         console.error(JSON.stringify({ tag: "ugq-screen.stuck_retry_websearch_failed_retrying_without_search", proposal_id: proposalId }));
         retried = await generatePreviewOnce(raw, false);
@@ -1208,12 +1298,18 @@ serve(async (req) => {
         retried = await attachCoverImage(retried, proposalSourceUrl);
       }
       const persisted = retried
-        ? { ...retried, model: PREVIEW_MODEL, generated_at: new Date().toISOString() }
+        ? {
+            ...retried,
+            model: v2Result ? V2_STRONG_MODEL : PREVIEW_MODEL,
+            pipeline: v2Result ? "v2" : "v1",
+            generated_at: new Date().toISOString(),
+          }
         : null;
 
       await adminSb.from("user_question_proposals")
         .update({
           preview_reframe: persisted,
+          ...(v2Result ? v2Columns(v2Result) : {}),
           // Sep 2026, NEW: only touch this if the retry actually produced a
           // result — a failed retry shouldn't clear a language already
           // recorded from the original screening pass.
@@ -1242,7 +1338,7 @@ serve(async (req) => {
     // thing still waiting on langDetect specifically is search_questions,
     // since it needs the translated english_query.
     const [langDetect, parentTopicsResult, repResult] = await Promise.all([
-      detectAndTranslateForSearch(raw),
+      detectAndTranslateForSearch(raw, screenModel),
       adminSb.rpc("get_parent_topics_for_classification"),
       adminSb.from("user_proposal_reputation")
         .select("score, tier, total_published, total_rejected")
@@ -1330,8 +1426,17 @@ serve(async (req) => {
       // latency this way instead of doubling the round-trip time. Web search
       // (enabled on the preview call only) adds its own latency on top of
       // that, though — see ugq-submit's timeout comment.
-      const screenPromise = callLLM("screen", SCREEN_PROVIDER, MODEL, sys, usr, 2048);
-      const previewPromise = PREVIEW_ENABLED ? generatePreviewOnce(raw, true) : Promise.resolve(null);
+      const screenPromise = callLLM("screen", SCREEN_PROVIDER, screenModel, sys, usr, 2048);
+      // Oct 2026, NEW: v2 runs its whole research → write → validate pipeline
+      // here, concurrently with screening exactly as the v1 preview did. A v2
+      // failure (null) falls back to the v1 preview just below.
+      const previewPromise: Promise<PreviewReframe | null> = useV2
+        ? runPipelineV2(v2Config, raw).then((r) => {
+            v2Result = r;
+            logV2(r, proposalId, "fresh");
+            return r ? r.preview : null;
+          })
+        : PREVIEW_ENABLED ? generatePreviewOnce(raw, true) : Promise.resolve(null);
       // Epic X, NEW: third concurrent pass, video submissions only. Adds ~0
       // sequential latency for the same reason preview already runs
       // concurrently rather than after — see the file header note.
@@ -1400,6 +1505,11 @@ serve(async (req) => {
       // search rather than leaving the proposal with no preview at all —
       // see generatePreviewOnce's comment for the observed failure pattern
       // this guards against.
+      // Oct 2026: a failed v2 run falls back to the full v1 preview first.
+      if (!previewReframe && useV2) {
+        console.error(JSON.stringify({ tag: "ugq-screen.v2_failed_falling_back_to_v1", proposal_id: proposalId }));
+        previewReframe = await generatePreviewOnce(raw, true);
+      }
       if (!previewReframe && PREVIEW_ENABLED) {
         console.error(JSON.stringify({ tag: "ugq-screen.preview_websearch_failed_retrying_without_search", proposal_id: proposalId }));
         previewReframe = await generatePreviewOnce(raw, false);
@@ -1655,8 +1765,16 @@ serve(async (req) => {
       // Sep 2026, NEW — see detectAndTranslateForSearch above.
       proposal_language: langDetect.language,
       preview_reframe: persistedPreview
-        ? { ...persistedPreview, model: PREVIEW_MODEL, generated_at: new Date().toISOString() }
+        ? {
+            ...persistedPreview,
+            model: v2Result ? V2_STRONG_MODEL : PREVIEW_MODEL,
+            pipeline: v2Result ? "v2" : "v1",
+            generated_at: new Date().toISOString(),
+          }
         : null,
+      // Oct 2026, NEW — v2 research artifacts (kept even when the proposal was
+      // rejected: they explain what was researched and what it cost).
+      ...(v2Result ? v2Columns(v2Result) : {}),
       // Epic X, NEW: framing_flag/framing_flag_reason are set for every
       // video submission (including "clean" ones — useful for the admin
       // queue to see a check actually ran), left untouched (both stay

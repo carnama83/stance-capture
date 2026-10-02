@@ -126,6 +126,21 @@ serve(async (req) => {
     if (proposal.status !== "in_review") {
       return json(200, { ok: true, verified: false, message: `Proposal is '${proposal.status}' — nothing to verify.` });
     }
+
+    // Oct 2026, NEW — UGQ pipeline v2. ugq-screen already researched, wrote
+    // and validated the preview in one pass (see ugq-screen/pipeline_v2.ts),
+    // so running ugq-moderate's Stage A/B/C here would research the same
+    // events a second time — the duplication v2 exists to remove. Report what
+    // the pipeline produced instead. No preview yet → verified:false, and the
+    // client's existing poll picks the preview up when it lands.
+    if ((Deno.env.get("UGQ_PIPELINE") ?? "v1").toLowerCase().trim() === "v2") {
+      const pr = (proposal.preview_reframe ?? null) as Record<string, unknown> | null;
+      const ready = !!pr && typeof pr.question === "string" && pr.question.trim().length > 0;
+      console.log(JSON.stringify({ tag: "ugq-verify-preview.v2_passthrough", proposal_id: proposalId, ready, verified: ready && pr!.verified === true }));
+      return json(200, ready
+        ? { ok: true, verified: pr!.verified === true, preview_reframe: pr }
+        : { ok: true, verified: false, message: "Preview still being prepared." });
+    }
     if (!proposal.auto_topic_id) {
       console.error(JSON.stringify({ tag: "ugq-verify-preview.no_topic", proposal_id: proposalId }));
       return json(200, { ok: true, verified: false, message: "No topic resolved yet — showing the unverified preview." });
