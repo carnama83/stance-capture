@@ -664,7 +664,29 @@ function namingRules(more: number): string {
   );
 }
 
-function writerSystem(cfg: PipelineConfig, more: number, refine: boolean): string {
+// Every "Add more context" the proposer has submitted, oldest first. ugq-screen
+// appends each one to raw_question behind this exact delimiter.
+const ADDED_CONTEXT_DELIMITER = "Additional context from proposer:";
+function addedContexts(raw: string): string[] {
+  return raw.split(ADDED_CONTEXT_DELIMITER).slice(1)
+    .map((s) => s.replace(/\n\n---\n?$/, "").replace(/\s*---\s*$/, "").trim())
+    .filter(Boolean);
+}
+
+// Owner decision (2 Oct 2026): context the proposer adds is KEPT in the
+// question when it is factual or reported ("shopkeepers in Pune say many
+// customers pay above ₹2,000"), attributed to the proposer or their source;
+// only pure opinion or prediction ("this would hit them on many sales") is
+// left out. Before this, the validator's neutrality check stripped reported
+// context too, so "Add more context" could visibly do nothing.
+const ADDED_CONTEXT_RULE =
+  "PROPOSER'S ADDED CONTEXT — proposer_added_context lists what the proposer added through 'Add more context'. " +
+  "Keep every factual or reported part of it in the question, attributed to the proposer or their source " +
+  "('shopkeepers in Pune say…', 'the proposer notes…') — it is the proposer's own report, so it may appear even " +
+  "though it is not in the fact sheet, but never state it as verified fact. Leave out only pure opinion, " +
+  "prediction or rhetoric ('this would hit them hard', 'obviously unfair'). ";
+
+function writerSystem(cfg: PipelineConfig, more: number, refine: boolean, hasAddedContext: boolean): string {
   return (
     "You write the stance question a citizen proposed for a civic stance platform, from a structured brief and a " +
     "fact sheet. " +
@@ -674,6 +696,7 @@ function writerSystem(cfg: PipelineConfig, more: number, refine: boolean): strin
         "tension if the new context makes it factually wrong. "
       : "") +
     STRUCTURE_RULES + EVIDENCE_RULES + FIDELITY_RULES + namingRules(more) +
+    (hasAddedContext ? ADDED_CONTEXT_RULE : "") +
     "BACKGROUND — context_summary: 1-3 neutral sentences built only from the fact sheet (it may cover more than " +
     "one example), or null if the fact sheet has no usable facts. supporting_links: up to 3 URLs chosen ONLY from " +
     "available_sources, backing context_summary ([] if none). quality_notes: one short sentence. " +
@@ -733,6 +756,7 @@ function writerUser(input: {
     available_sources: input.sheet.sources,
     ...(input.currentDraft ? { current_draft: input.currentDraft } : {}),
     ...(input.newContext ? { proposer_new_context: input.newContext } : {}),
+    ...(addedContexts(input.raw).length ? { proposer_added_context: addedContexts(input.raw) } : {}),
     ...(input.feedback?.length ? { a_previous_draft_failed_review_fix_all_of_these: input.feedback } : {}),
   };
   return `Brief:\n${JSON.stringify(brief, null, 1)}\n\nWrite the question now.`;
@@ -781,7 +805,7 @@ function parsePreview(raw: Record<string, unknown> | null, sheet: FactSheet): Pr
 const ISSUE_TYPES = [
   "unsupported_claim", "contradicts_evidence", "states_disputed_as_fact", "missing_example",
   "extraction_missed_example", "missing_and_others", "doubt_cast_on_proposer", "stance_changed",
-  "actor_changed", "not_neutral", "form", "slider_labels", "native_mismatch", "other",
+  "actor_changed", "not_neutral", "form", "slider_labels", "native_mismatch", "missing_added_context", "other",
 ];
 
 const VALIDATOR_SCHEMA = {
@@ -834,7 +858,11 @@ const VALIDATOR_SYSTEM =
   "6. SLIDER DIRECTION — do this literally: read the question exactly as written and answer it 'yes'. Which " +
   "label describes that yes-answer? Put 'high_label', 'low_label' or 'unclear' (e.g. an either/or question) " +
   "in yes_answer_is. Anything other than high_label is a slider_labels issue.\n" +
-  "7. If question_native is present it says the same thing as question, equally neutral, and Hindi is in " +
+  "7. If the brief has proposer_added_context: its factual or reported parts must appear in the question, " +
+  "attributed to the proposer or their source ('shopkeepers say…') — missing ones are missing_added_context. Such " +
+  "attributed reports are the proposer's own and are NOT unsupported_claim or not_neutral; only flag them if they " +
+  "are stated as verified fact or if pure opinion/prediction from them was kept.\n" +
+  "8. If question_native is present it says the same thing as question, equally neutral, and Hindi is in " +
   "Devanagari script (native_mismatch).\n" +
   "Set pass=true only if there are no issues. Minor style preferences are NOT issues. For each issue give the " +
   "exact problem and the smallest fix.";
@@ -889,7 +917,7 @@ async function validate(cfg: PipelineConfig, raw: string, extracted: ExtractedEv
     maxTokens: 3000, timeoutMs: 40_000,
     user:
       `RAW PROPOSAL:\n"${raw}"\n\n` +
-      `BRIEF:\n${JSON.stringify({ intent: extracted.intent, proposer_actor: extracted.proposer_actor, ...compactSheet(sheet, extracted) }, null, 1)}\n\n` +
+      `BRIEF:\n${JSON.stringify({ intent: extracted.intent, proposer_actor: extracted.proposer_actor, ...compactSheet(sheet, extracted), ...(addedContexts(raw).length ? { proposer_added_context: addedContexts(raw) } : {}) }, null, 1)}\n\n` +
       `CANDIDATE:\n${JSON.stringify({ question: p.question, slider_low_label: p.slider_low_label, slider_high_label: p.slider_high_label, context_summary: p.context_summary, question_native: p.question_native, slider_low_label_native: p.slider_low_label_native, slider_high_label_native: p.slider_high_label_native, context_summary_native: p.context_summary_native }, null, 1)}`,
   });
   metrics.push(r.metric);
@@ -985,7 +1013,7 @@ async function writeValidateRepair(cfg: PipelineConfig, args: {
 }): Promise<{ preview: PreviewV2; verification: VerificationResult } | null> {
   const { raw, extracted, sheet, stages, metrics } = args;
   const refine = !!args.newContext;
-  const sys = writerSystem(cfg, extracted.more_count, refine);
+  const sys = writerSystem(cfg, extracted.more_count, refine, addedContexts(raw).length > 0);
   const attempts: VerificationResult["attempts"] = [];
   let rewrites = 0;
 
