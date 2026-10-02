@@ -56,6 +56,10 @@ export type PreviewV2 = {
   context_summary_native: string | null;
   audience_country: string | null;
   verified: boolean;
+  // Added context left out as unrelated to the question, with the reason in
+  // the proposer's language — shown under the preview (owner decision, 2 Oct
+  // 2026: "leave it out and tell them").
+  left_out?: Array<{ text: string; reason: string }>;
 };
 
 export type PipelineConfig = {
@@ -103,6 +107,10 @@ export type ExtractedEvents = {
   events: EventRef[];
   kept_event_ids: string[];
   more_count: number;
+  // What the proposer added through "Add more context", judged against their
+  // original question. Only `relevant` reaches the writer and validator;
+  // `unrelated` is left out and shown to the proposer with the reason.
+  added_context?: { relevant: string[]; unrelated: Array<{ text: string; reason: string }> };
 };
 
 type Fact = { claim: string; source_url: string; source_title: string | null; source_date: string | null };
@@ -681,6 +689,96 @@ function addedContexts(raw: string): string[] {
     .filter(Boolean);
 }
 
+function relevantAdded(extracted: ExtractedEvents): string[] {
+  return extracted.added_context?.relevant ?? [];
+}
+
+function originalProposal(raw: string): string {
+  return raw.split(`\n\n---\n${ADDED_CONTEXT_DELIMITER}`)[0].trim();
+}
+
+// The proposal text the writer and validator see: the original plus only the
+// RELATED additions. Passing the full raw_question let a left-out addition
+// straight back into the question (2 Oct 2026 test).
+function proposalForWriting(raw: string, relevant: string[]): string {
+  return originalProposal(raw) + relevant.map((r) => `\n\n---\n${ADDED_CONTEXT_DELIMITER} ${r}`).join("");
+}
+
+// Owner decision (2 Oct 2026): added context that does not bear on the
+// proposer's question is LEFT OUT and the proposer is TOLD why. Found in a
+// test where "the Air India crash in Ahmedabad made people nervous about
+// flying" was added to a question about hate-driven attacks and trust in
+// Middle East airlines, and the added-context rule forced it into the
+// question, implying a link that does not exist.
+const RELEVANCE_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["items"],
+  properties: {
+    items: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["index", "related", "reason"],
+        properties: { index: { type: "integer" }, related: { type: "boolean" }, reason: { type: "string" } },
+      },
+    },
+  },
+};
+
+async function judgeAddedRelevance(
+  cfg: PipelineConfig, original: string, extracted: { intent: string; proposer_actor: string | null; detected_language: string },
+  items: string[], stages: StageMetric[],
+): Promise<{ relevant: string[]; unrelated: Array<{ text: string; reason: string }> }> {
+  if (items.length === 0) return { relevant: [], unrelated: [] };
+  const r = await callClaude(cfg, {
+    stage: "added_context_relevance", model: cfg.fastModel, schema: RELEVANCE_SCHEMA, maxTokens: 800, timeoutMs: 20_000,
+    system:
+      "A citizen proposed a stance question and then added context to it. For EACH added item decide whether it " +
+      "bears on THIS question: the same subject, the actor they named, or the same kind of incident or issue as " +
+      "their own examples. An item about a different subject or a different kind of event is NOT related — e.g. a " +
+      "technical crash of an unrelated airline added to a question about hate-driven attacks and trust in Middle " +
+      "East airlines. Background that sharpens the same question (local detail, who is affected, numbers) IS " +
+      "related. When in doubt, related=true. reason: for an unrelated item, one short, friendly sentence " +
+      `addressed to the proposer explaining why it was left out, written in the language with ISO code ` +
+      `"${extracted.detected_language}" (Hindi in Devanagari); empty string when related.`,
+    user:
+      `Original proposal:\n"${original.slice(0, 1500)}"\n\nIts intent: ${extracted.intent}\n` +
+      `Actor: ${extracted.proposer_actor ?? "(none)"}\n\nAdded items:\n` +
+      items.map((t, i) => `${i}. "${t}"`).join("\n"),
+  });
+  stages.push(r.metric);
+  const parsed = r.ok ? extractJson(r.text) : null;
+  const verdicts = Array.isArray(parsed?.items) ? parsed!.items as Array<Record<string, unknown>> : [];
+  const relevant: string[] = [];
+  const unrelated: Array<{ text: string; reason: string }> = [];
+  items.forEach((text, i) => {
+    const v = verdicts.find((x) => Number(x.index) === i);
+    // Fail open: a missing or failed verdict keeps the item.
+    if (v && v.related === false) unrelated.push({ text, reason: str(v.reason) ?? "" });
+    else relevant.push(text);
+  });
+  if (unrelated.length) {
+    console.log(JSON.stringify({ tag: "ugq-screen.v2.added_context_left_out", count: unrelated.length }));
+  }
+  return { relevant, unrelated };
+}
+
+// Events that come only from an unrelated added item are dropped entirely —
+// they neither take a slot nor count towards "and others".
+function withoutUnrelatedEvents(events: EventRef[], original: string, unrelated: Array<{ text: string }>): EventRef[] {
+  if (!unrelated.length) return events;
+  const orig = original.toLowerCase();
+  const bad = unrelated.map((u) => u.text.toLowerCase());
+  return events.filter((e) => {
+    const names = e.entities.map((n) => n.toLowerCase()).filter((n) => n.length >= 3);
+    const onlyFromUnrelated = names.length > 0 &&
+      names.some((n) => bad.some((b) => b.includes(n))) && !names.some((n) => orig.includes(n));
+    return !onlyFromUnrelated;
+  });
+}
+
 // Owner decision (2 Oct 2026): context the proposer adds is KEPT in the
 // question when it is factual or reported ("shopkeepers in Pune say many
 // customers pay above ₹2,000"), attributed to the proposer or their source;
@@ -765,7 +863,7 @@ function writerUser(input: {
     available_sources: input.sheet.sources,
     ...(input.currentDraft ? { current_draft: input.currentDraft } : {}),
     ...(input.newContext ? { proposer_new_context: input.newContext } : {}),
-    ...(addedContexts(input.raw).length ? { proposer_added_context: addedContexts(input.raw) } : {}),
+    ...(relevantAdded(input.extracted).length ? { proposer_added_context: relevantAdded(input.extracted) } : {}),
     ...(input.feedback?.length ? { a_previous_draft_failed_review_fix_all_of_these: input.feedback } : {}),
   };
   return `Brief:\n${JSON.stringify(brief, null, 1)}\n\nWrite the question now.`;
@@ -933,14 +1031,14 @@ function codeChecks(p: PreviewV2, extracted: ExtractedEvents, richContext: boole
 async function validate(cfg: PipelineConfig, raw: string, extracted: ExtractedEvents, sheet: FactSheet, p: PreviewV2, metrics: StageMetric[], stage: string): Promise<{ pass: boolean; issues: Issue[]; ran: boolean }> {
   const richContext = extracted.kept_event_ids.length >= 2 ||
     sheet.events.some((e) => e.facts.length > 0) || !!sheet.background?.facts.length ||
-    addedContexts(raw).length > 0;
+    relevantAdded(extracted).length > 0;
   const fromCode = codeChecks(p, extracted, richContext);
   const r = await callClaude(cfg, {
     stage, model: cfg.strongModel, system: VALIDATOR_SYSTEM, effort: "low", schema: VALIDATOR_SCHEMA,
     maxTokens: 3000, timeoutMs: 40_000,
     user:
       `RAW PROPOSAL:\n"${raw}"\n\n` +
-      `BRIEF:\n${JSON.stringify({ intent: extracted.intent, proposer_actor: extracted.proposer_actor, ...compactSheet(sheet, extracted), ...(addedContexts(raw).length ? { proposer_added_context: addedContexts(raw) } : {}) }, null, 1)}\n\n` +
+      `BRIEF:\n${JSON.stringify({ intent: extracted.intent, proposer_actor: extracted.proposer_actor, ...compactSheet(sheet, extracted), ...(relevantAdded(extracted).length ? { proposer_added_context: relevantAdded(extracted) } : {}) }, null, 1)}\n\n` +
       `CANDIDATE:\n${JSON.stringify({ question: p.question, slider_low_label: p.slider_low_label, slider_high_label: p.slider_high_label, context_summary: p.context_summary, question_native: p.question_native, slider_low_label_native: p.slider_low_label_native, slider_high_label_native: p.slider_high_label_native, context_summary_native: p.context_summary_native }, null, 1)}`,
   });
   metrics.push(r.metric);
@@ -1036,7 +1134,7 @@ async function writeValidateRepair(cfg: PipelineConfig, args: {
 }): Promise<{ preview: PreviewV2; verification: VerificationResult } | null> {
   const { raw, extracted, sheet, stages, metrics } = args;
   const refine = !!args.newContext;
-  const sys = writerSystem(cfg, extracted.more_count, refine, addedContexts(raw).length > 0);
+  const sys = writerSystem(cfg, extracted.more_count, refine, relevantAdded(extracted).length > 0);
   const attempts: VerificationResult["attempts"] = [];
   let rewrites = 0;
 
@@ -1094,7 +1192,7 @@ async function writeValidateRepair(cfg: PipelineConfig, args: {
 
   const verified = v.pass && v.ran;
   return {
-    preview: { ...cand, verified },
+    preview: { ...cand, verified, left_out: extracted.added_context?.unrelated ?? [] },
     verification: { pass: verified, attempts, rewrite_count: rewrites },
   };
 }
@@ -1116,13 +1214,18 @@ export async function runPipelineV2(cfg: PipelineConfig, raw: string): Promise<P
     console.error(JSON.stringify({ tag: "ugq-screen.v2.extraction_failed" }));
     return null;
   }
+  // A fresh run on a proposal that already carries added context (stuck-retry,
+  // re-screen): judge each addition first; unrelated ones and any example that
+  // only they mention are dropped before examples are chosen.
+  const original = originalProposal(raw);
+  const addedJudged = await judgeAddedRelevance(cfg, original, base, addedContexts(raw), stages);
+  base.events = withoutUnrelatedEvents(base.events, original, addedJudged.unrelated);
   // An example the proposer ADDED through "Add more context" gets one of the
   // three slots, same as the regenerate path does. Without this a fresh run
-  // on a proposal that already carries added context (stuck-retry, re-screen)
   // put the added example under "and others" while the added-context rule
   // insisted on naming it — the two rules fought until the question failed
   // review (2 Oct 2026 test).
-  const addedText = addedContexts(raw).join(" ").toLowerCase();
+  const addedText = addedJudged.relevant.join(" ").toLowerCase();
   // An entity only counts if it is not just part of ANOTHER example's longer
   // entity — "India" (Pahalgam's) sits inside "Air India" (the added crash)
   // and must not pull Pahalgam into a slot (2 Oct 2026 test).
@@ -1137,7 +1240,7 @@ export async function runPipelineV2(cfg: PipelineConfig, raw: string): Promise<P
       .map((e) => e.id)
     : [];
   const { kept, more } = chooseKept(base.events, cfg.maxExamples, fromAdded);
-  const extracted: ExtractedEvents = { ...base, kept_event_ids: kept, more_count: more };
+  const extracted: ExtractedEvents = { ...base, kept_event_ids: kept, more_count: more, added_context: addedJudged };
 
   const tr = Date.now();
   const keptEvents = base.events.filter((e) => kept.includes(e.id));
@@ -1146,7 +1249,9 @@ export async function runPipelineV2(cfg: PipelineConfig, raw: string): Promise<P
   metrics.research_ms = Date.now() - tr;
   const sheet = buildSheet(researched, background);
 
-  const out = await writeValidateRepair(cfg, { raw, extracted, sheet, stages, metrics });
+  const out = await writeValidateRepair(cfg, {
+    raw: proposalForWriting(raw, addedJudged.relevant), extracted, sheet, stages, metrics,
+  });
   if (!out) {
     console.error(JSON.stringify({ tag: "ugq-screen.v2.writer_failed" }));
     return null;
@@ -1160,20 +1265,63 @@ export async function runPipelineV2(cfg: PipelineConfig, raw: string): Promise<P
 export async function runRefineV2(cfg: PipelineConfig, args: {
   raw: string; additionalContext: string; currentDraft: Record<string, unknown>;
   extracted: ExtractedEvents; factSheet: FactSheet;
+  // The whole current preview_reframe — returned unchanged (plus left_out)
+  // when the new addition turns out to be unrelated.
+  fullPreview: Record<string, unknown>;
 }): Promise<PipelineResult | null> {
   const t0 = Date.now();
   const stages: StageMetric[] = [];
   const metrics = emptyMetrics("refine");
 
+  // Earlier additions were already judged on previous runs; only the new one
+  // is judged now, in parallel with extracting its events.
+  const prior = args.extracted.added_context ?? { relevant: addedContexts(args.raw), unrelated: [] };
   const tx = Date.now();
-  const ex = await callClaude(cfg, {
-    stage: "extraction", model: cfg.fastModel,
-    system: extractionSystem(args.extracted.events.map((e) => e.user_description)), schema: EXTRACTION_SCHEMA,
-    user: `Additional context the proposer just added to their proposal:\n"${args.additionalContext}"\n\nTheir original proposal (for reference):\n"${args.raw.slice(0, 1500)}"`,
-    maxTokens: 1500, timeoutMs: 25_000,
-  });
+  const [ex, judged] = await Promise.all([
+    callClaude(cfg, {
+      stage: "extraction", model: cfg.fastModel,
+      system: extractionSystem(args.extracted.events.map((e) => e.user_description)), schema: EXTRACTION_SCHEMA,
+      user: `Additional context the proposer just added to their proposal:\n"${args.additionalContext}"\n\nTheir original proposal (for reference):\n"${args.raw.slice(0, 1500)}"`,
+      maxTokens: 1500, timeoutMs: 25_000,
+    }),
+    judgeAddedRelevance(cfg, originalProposal(args.raw), args.extracted, [args.additionalContext], stages),
+  ]);
   stages.push(ex.metric);
   metrics.extraction_ms = Date.now() - tx;
+  const addedContext = {
+    relevant: [...prior.relevant, ...judged.relevant],
+    unrelated: [...prior.unrelated, ...judged.unrelated],
+  };
+
+  // Unrelated addition: nothing about the question changes — no research, no
+  // rewrite — the proposer just gets told why it was left out.
+  if (judged.unrelated.length) {
+    const extracted: ExtractedEvents = { ...args.extracted, added_context: addedContext };
+    const fp = args.fullPreview;
+    const preview: PreviewV2 = {
+      question: String(fp.question ?? ""),
+      slider_low_label: str(fp.slider_low_label),
+      slider_high_label: str(fp.slider_high_label),
+      context_summary: str(fp.context_summary),
+      supporting_links: strArr(fp.supporting_links),
+      quality_notes: str(fp.quality_notes) ?? "",
+      cover_image_url: str(fp.cover_image_url),
+      detected_language: str(fp.detected_language) ?? "en",
+      question_native: str(fp.question_native),
+      slider_low_label_native: str(fp.slider_low_label_native),
+      slider_high_label_native: str(fp.slider_high_label_native),
+      context_summary_native: str(fp.context_summary_native),
+      audience_country: str(fp.audience_country),
+      verified: fp.verified === true,
+      left_out: addedContext.unrelated,
+    };
+    finishMetrics(metrics, stages, t0, extracted, args.factSheet, 0);
+    return {
+      preview, extracted_events: extracted, fact_sheet: args.factSheet,
+      verification_result: { pass: preview.verified, attempts: [], rewrite_count: 0 },
+      pipeline_metrics: metrics,
+    };
+  }
   const added = ex.ok ? parseExtraction(extractJson(ex.text), `a${Date.now() % 100000}_`, "added_context") : null;
   // The prompt already lists the known events, but the model can still repeat
   // one (2 Oct 2026 test: context about Pune shopkeepers' UPI payments came
@@ -1189,7 +1337,7 @@ export async function runRefineV2(cfg: PipelineConfig, args: {
   const allEvents = [...args.extracted.events, ...newEvents];
   // Newly added examples are the proposer's latest emphasis — keep them first.
   const { kept, more } = chooseKept(allEvents, cfg.maxExamples, newEvents.map((e) => e.id));
-  const extracted: ExtractedEvents = { ...args.extracted, events: allEvents, kept_event_ids: kept, more_count: more };
+  const extracted: ExtractedEvents = { ...args.extracted, events: allEvents, kept_event_ids: kept, more_count: more, added_context: addedContext };
 
   const tr = Date.now();
   const alreadyResearched = new Set(args.factSheet.events.map((e) => e.event_id));
@@ -1199,7 +1347,7 @@ export async function runRefineV2(cfg: PipelineConfig, args: {
   const sheet = buildSheet([...args.factSheet.events, ...researched], args.factSheet.background);
 
   const out = await writeValidateRepair(cfg, {
-    raw: `${args.raw}\n\n---\nAdditional context from proposer: ${args.additionalContext}`,
+    raw: proposalForWriting(args.raw, addedContext.relevant),
     extracted, sheet, stages, metrics, currentDraft: args.currentDraft, newContext: args.additionalContext,
   });
   if (!out) return null;

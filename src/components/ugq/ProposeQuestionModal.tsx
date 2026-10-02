@@ -98,6 +98,11 @@ type PreviewReframe = {
   question_native?: string | null;
   slider_low_label_native?: string | null;
   slider_high_label_native?: string | null;
+  // Oct 2026, NEW (UGQ pipeline v2): context the proposer added that was left
+  // out because it isn't related to their question, with the reason already
+  // in the proposer's language. Shown under the preview so an addition never
+  // silently disappears.
+  left_out?: Array<{ text: string; reason: string }>;
 };
 
 type Authority = { id: string; name: string; domain: string; jurisdiction_level: string };
@@ -123,6 +128,11 @@ function parsePreviewReframe(raw: unknown): PreviewReframe | null {
     question_native: typeof r.question_native === "string" && r.question_native.trim() ? r.question_native.trim() : null,
     slider_low_label_native: typeof r.slider_low_label_native === "string" ? r.slider_low_label_native : null,
     slider_high_label_native: typeof r.slider_high_label_native === "string" ? r.slider_high_label_native : null,
+    left_out: Array.isArray(r.left_out)
+      ? (r.left_out as Array<Record<string, unknown>>)
+        .filter((x) => x && typeof x.text === "string" && x.text.trim())
+        .map((x) => ({ text: String(x.text).trim(), reason: typeof x.reason === "string" ? x.reason.trim() : "" }))
+      : [],
   };
 }
 
@@ -1314,6 +1324,20 @@ export function ProposeQuestionModal({
                   {preview.verified ? <CheckCircle2 className="h-3 w-3 shrink-0" /> : null}
                   {preview.verified ? t("ugq.factChecked") : t("ugq.notFactCheckedYet")}
                 </p>
+
+                {preview.left_out && preview.left_out.length > 0 ? (
+                  <div className="pt-2 mt-1 border-t border-amber-200/70 space-y-1">
+                    <p className="text-[11px] font-medium text-slate-600">{t("ugq.leftOutOfQuestion")}</p>
+                    <ul className="space-y-1">
+                      {preview.left_out.map((item) => (
+                        <li key={item.text} className="text-[11px] text-slate-600 leading-relaxed">
+                          <span className="italic">“{item.text}”</span>
+                          {item.reason ? <span> — {item.reason}</span> : null}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
               </div>
             ) : !pollExhausted ? (
               <div className="flex flex-col items-center justify-center gap-2 py-8 text-slate-500">

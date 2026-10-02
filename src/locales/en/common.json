@@ -85,6 +85,7 @@
     "background": "Background",
     "notFactCheckedYet": "Not fact-checked yet — our team reviews shortly after this goes live and may refine the wording.",
     "factChecked": "Fact-checked against public records before you publish.",
+    "leftOutOfQuestion": "Left out of your question:",
     "checkingForPreview": "Checking for your preview…",
     "addContextRegenerate": "Add more context and regenerate",
     "whatToAddOrFix": "What should we add or fix?",

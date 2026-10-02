@@ -1194,6 +1194,7 @@ serve(async (req) => {
         v2Result = existingPreview && storedEvents?.events && storedSheet?.events
           ? await runRefineV2(v2Config, {
               raw, additionalContext, extracted: storedEvents, factSheet: storedSheet,
+              fullPreview: existingPreviewRaw as Record<string, unknown>,
               currentDraft: {
                 question: existingPreview.question,
                 slider_low_label: existingPreview.slider_low_label,
