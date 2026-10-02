@@ -624,9 +624,12 @@ const STRUCTURE_RULES =
   "spectrum (never a menu of options, never 'A, B, or C', never 'Do you support' / 'Do you back' / 'Should the " +
   "government' — ask about the thing itself instead, e.g. 'should traffic police strictly enforce…, in your " +
   "view?' or 'do you think … should …?'). Use " +
-  "up to 65 words — 65 is the hard maximum. Plain everyday language, no jargon. slider_low_label is the " +
-  "oppose/disagree end of the question exactly as asked and slider_high_label the support/agree end — each a " +
-  "3-6 word noun phrase, English. ";
+  "up to 65 words — 65 is the hard maximum. Plain everyday language, no jargon. The question is ONE " +
+  "proposition the reader agrees or disagrees with — never an either/or ('should X…, or should Y…?', 'is it " +
+  "A or B?'): with two options there is no telling which end of the slider is 'yes'. slider_high_label says " +
+  "what answering YES to the question exactly as written means, slider_low_label what answering NO means — " +
+  "each a 3-6 word noun phrase, English. Check it by reading the question and answering 'yes': that answer " +
+  "must be the high label. ";
 
 const EVIDENCE_RULES =
   "EVIDENCE RULES — you are given a fact sheet; it is your ONLY source of facts. Never add a fact, number, date, " +
@@ -784,8 +787,12 @@ const ISSUE_TYPES = [
 const VALIDATOR_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["pass", "issues"],
+  required: ["yes_answer_is", "pass", "issues"],
   properties: {
+    // Slider polarity, asked as its own explicit question so it is actually
+    // checked (2 Oct 2026 test: an either/or UPI question shipped with the
+    // labels reversed and the general "slider_labels" item never caught it).
+    yes_answer_is: { type: "string", enum: ["high_label", "low_label", "unclear"] },
     pass: { type: "boolean" },
     issues: {
       type: "array",
@@ -822,11 +829,12 @@ const VALIDATOR_SYSTEM =
   "contradicts the proposer's premise, the QUESTION must still ask what the proposer asked — the fact belongs in " +
   "context_summary only; a question rewritten around such a fact is stance_changed. The proposer's own slant or " +
   "rhetoric carried into the question ('not leave it only to X', 'obviously') is not_neutral.\n" +
-  "5. Form: one question answerable on a single -2..+2 oppose/support scale, no menu of options, grammatical, " +
-  "put directly to the reader (form). " +
-  "slider_low_label is the oppose end and slider_high_label the support end of the question as asked " +
-  "(slider_labels).\n" +
-  "6. If question_native is present it says the same thing as question, equally neutral, and Hindi is in " +
+  "5. Form: one question answerable on a single -2..+2 oppose/support scale, no menu of options, no either/or " +
+  "('…, or should …?'), grammatical, put directly to the reader (form).\n" +
+  "6. SLIDER DIRECTION — do this literally: read the question exactly as written and answer it 'yes'. Which " +
+  "label describes that yes-answer? Put 'high_label', 'low_label' or 'unclear' (e.g. an either/or question) " +
+  "in yes_answer_is. Anything other than high_label is a slider_labels issue.\n" +
+  "7. If question_native is present it says the same thing as question, equally neutral, and Hindi is in " +
   "Devanagari script (native_mismatch).\n" +
   "Set pass=true only if there are no issues. Minor style preferences are NOT issues. For each issue give the " +
   "exact problem and the smallest fix.";
@@ -844,6 +852,12 @@ function codeChecks(p: PreviewV2, extracted: ExtractedEvents): Issue[] {
   const banned = p.question.match(/\b(do you support|do you back|should the government)\b/i);
   if (banned) {
     issues.push({ type: "form", detail: `The question uses '${banned[0]}', which house style forbids.`, fix: "Ask about the thing itself, e.g. 'should X …, in your view?' or 'do you think X should …?'." });
+  }
+  // Either/or questions have no defined "yes" end, which is how a reversed
+  // slider shipped in the 2 Oct 2026 UPI test case.
+  if (/,\s*or\s+(should|do|does|did|is|are|was|were|will|would|can|could|has|have)\b/i.test(p.question) ||
+      /\bor should\b/i.test(p.question)) {
+    issues.push({ type: "form", detail: "The question is an either/or ('…, or should …?'), so the slider has no clear 'yes' end.", fix: "Ask one proposition the reader agrees or disagrees with; drop the 'or …' alternative." });
   }
   // Owner decision (Oct 2026): Hindi native renditions are always Devanagari,
   // including for Hinglish / Romanised Hindi input.
@@ -888,6 +902,18 @@ async function validate(cfg: PipelineConfig, raw: string, extracted: ExtractedEv
   const modelIssues: Issue[] = (Array.isArray(parsed.issues) ? parsed.issues as Array<Record<string, unknown>> : [])
     .map((i) => ({ type: str(i.type) ?? "other", detail: str(i.detail) ?? "", fix: str(i.fix) ?? "" }))
     .filter((i) => i.detail);
+  // Enforced in code from the validator's explicit yes-answer judgement, so a
+  // reversed slider fails even if the validator forgot to list it as an issue.
+  const yesIs = str(parsed.yes_answer_is);
+  if (yesIs !== "high_label" && !modelIssues.some((i) => i.type === "slider_labels")) {
+    modelIssues.push({
+      type: "slider_labels",
+      detail: yesIs === "low_label"
+        ? "Answering 'yes' to the question as written matches slider_low_label — the labels are reversed."
+        : "It is unclear which slider end a 'yes' answer belongs to (often an either/or question).",
+      fix: "Make the question one proposition, and make slider_high_label what answering 'yes' means.",
+    });
+  }
   const issues = [...fromCode, ...modelIssues];
   return { pass: issues.length === 0 && parsed.pass === true, issues, ran: true };
 }
