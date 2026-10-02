@@ -634,6 +634,24 @@ serve(async (req) => {
     "multinational (a treaty, a war between states, a worldwide market). If you honestly cannot tell, return " +
     "null rather than guessing — null is handled safely downstream, a wrong country is not. ";
 
+  // Oct 2026, NEW: keep the proposer's named examples. Reported 2 Oct 2026: a
+  // proposal citing the Flydubai cockpit stabbing, an Australian beach
+  // shooting, stabbings in the UK and Europe, and Pahalgam came back about
+  // Flydubai alone — quality_notes: "several other events too broad to
+  // individually verify". The single-context-clause structure plus the
+  // search-for-grounding instruction made the model keep only the example it
+  // could search up and drop the rest. Owner's rule: keep up to three, then
+  // "and others"; an unverified example stays as the proposer's own reference.
+  const NAMED_EXAMPLES_INSTRUCTIONS =
+    "NAMED EXAMPLES: if the proposer names specific incidents, events or examples, the question must keep them — " +
+    "never collapse them into just the one you could find or verify most easily, and never replace them with a " +
+    "vague summary like 'a string of attacks'. Name up to THREE of them briefly in the context clause (the ones " +
+    "the proposer stressed most, or the most recent if that's unclear); if they named more than three, add 'and " +
+    "others' after the third. An example you could not verify is still the proposer's own reference: keep it, " +
+    "named the way they named it, without adding facts about it and without casting doubt on it. If you have web " +
+    "search, use it to support the named examples, not to choose between them; context_summary may briefly cover " +
+    "more than one of them. ";
+
   async function generatePreviewOnce(raw: string, withWebSearch: boolean): Promise<PreviewReframe | null> {
     if (!SCREEN_API_KEY) return null;
 
@@ -648,7 +666,8 @@ serve(async (req) => {
         "Structure of the question itself: one short concrete context clause, one clause on the underlying tension " +
         "or accountability question, then ONE question ending in 'you', answerable on a single -2..+2 oppose/support " +
         "spectrum (never a menu of options, never 'A, B, or C', never 'Do you support' / 'Should the government'). " +
-        "Target 30–45 words, 65 max. Plain everyday language, no jargon. " +
+        "Use up to 65 words — 65 is the hard maximum. Plain everyday language, no jargon. " +
+        NAMED_EXAMPLES_INSTRUCTIONS +
         LANGUAGE_HANDLING_INSTRUCTIONS +
         AUDIENCE_INSTRUCTIONS +
         "Return ONLY JSON: {\"question\":\"... (English, per the language rule above)\",\"slider_low_label\":\"3-6 " +
@@ -670,8 +689,9 @@ serve(async (req) => {
         "mention. Leave context_summary null and supporting_links empty — you have no sources to cite this pass. " +
         "Structure: one short concrete context clause, one clause on the underlying tension or accountability " +
         "question, then ONE question ending in 'you', answerable on a single -2..+2 oppose/support spectrum (never " +
-        "a menu of options, never 'A, B, or C', never 'Do you support' / 'Should the government'). Target 30–45 " +
-        "words, 65 max. Plain everyday language, no jargon. " +
+        "a menu of options, never 'A, B, or C', never 'Do you support' / 'Should the government'). Use up to 65 " +
+        "words — 65 is the hard maximum. Plain everyday language, no jargon. " +
+        NAMED_EXAMPLES_INSTRUCTIONS +
         LANGUAGE_HANDLING_INSTRUCTIONS +
         AUDIENCE_INSTRUCTIONS +
         "Return ONLY JSON: {\"question\":\"... (English, per the language rule above)\",\"slider_low_label\":\"3-6 " +
@@ -764,8 +784,9 @@ serve(async (req) => {
         "Structure of the question itself: one short concrete context clause, one clause on the underlying tension " +
         "or accountability question, then ONE question ending in 'you', answerable on a single -2..+2 oppose/support " +
         "spectrum (never a menu of options, never 'A, B, or C', never 'Do you support' / 'Should the government'). " +
-        "Target 30–45 words, 65 max — this limit is fixed and doesn't change for a refine pass. Plain everyday " +
+        "Use up to 65 words — 65 is the hard maximum, and doesn't change for a refine pass. Plain everyday " +
         "language, no jargon. " +
+        NAMED_EXAMPLES_INSTRUCTIONS +
         LANGUAGE_HANDLING_INSTRUCTIONS +
         AUDIENCE_INSTRUCTIONS +
         "Return ONLY JSON: {\"question\":\"... (English, per the language rule above)\",\"slider_low_label\":\"3-6 " +
@@ -797,8 +818,9 @@ serve(async (req) => {
         "it factually wrong. " +
         "Structure: one short concrete context clause, one clause on the underlying tension or accountability " +
         "question, then ONE question ending in 'you', answerable on a single -2..+2 oppose/support spectrum (never " +
-        "a menu of options, never 'A, B, or C', never 'Do you support' / 'Should the government'). Target 30–45 " +
-        "words, 65 max — this limit is fixed and doesn't change for a refine pass. Plain everyday language, no jargon. " +
+        "a menu of options, never 'A, B, or C', never 'Do you support' / 'Should the government'). Use up to 65 " +
+        "words — 65 is the hard maximum, and doesn't change for a refine pass. Plain everyday language, no jargon. " +
+        NAMED_EXAMPLES_INSTRUCTIONS +
         LANGUAGE_HANDLING_INSTRUCTIONS +
         AUDIENCE_INSTRUCTIONS +
         "Return ONLY JSON: {\"question\":\"... (English, per the language rule above)\",\"slider_low_label\":\"3-6 " +
