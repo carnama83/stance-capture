@@ -35,27 +35,26 @@
 //     directly accepted by OpenAI's transcription endpoint with no
 //     client-side transcoding needed.
 //
-// Sep 2026, NEW — Devanagari script fix for code-switched Hindi-English
-// speech: Whisper's language auto-detection is kept (a user's spoken
-// language and their UI language setting aren't guaranteed to match, so
-// hardcoding based on a UI toggle would be wrong) — the actual bug is a
-// known Whisper behavior where Hindi speech containing English words/names
-// biases the model toward transliterating the WHOLE utterance into Latin
-// script ("phonetic Hindi") instead of Devanagari. Two independent fixes:
-//   1. WHISPER_SCRIPT_BIAS_PROMPT — a short Devanagari seed string passed as
-//      Whisper's `prompt` param. Whisper conditions on the prompt's script
-//      when the audio itself doesn't unambiguously commit to one script,
-//      which measurably reduces (not eliminates) the phonetic-Hindi failure
-//      mode. Applied unconditionally — harmless for genuinely English audio,
-//      since a few Devanagari conditioning tokens don't bias English speech
-//      toward Hindi.
-//   2. normalizeTranscriptScript() — a Claude pass (temp 0) run AFTER
-//      Whisper, as a backstop for whatever the prompt bias alone doesn't
-//      catch: if the transcript is phonetic Hindi written in Latin
-//      characters, rewrite it in Devanagari, preserving meaning — but
-//      leaving genuine English words/loanwords/brand names as-is in Latin
-//      script inline, since that's how real Hindi text is actually written.
-//      If the transcript is genuinely English, it's returned unchanged.
+// Oct 2026, REPLACES the Sep 2026 Devanagari script fix — language
+// resolution for Hindi, English and Hinglish speech. The Sep fix seeded
+// Whisper with a fixed Devanagari `prompt` on EVERY recording. Whisper
+// conditions on the prompt's language/script, so plain English speech came
+// back transliterated into Devanagari or loosely translated into Hindi (and
+// short clips sometimes came back as the seed sentence itself) — the bug
+// reported 1 Oct 2026. Now:
+//   1. Whisper runs with NO prompt and no `language` param — pure
+//      auto-detect, so nothing biases it toward either language.
+//   2. resolveTranscriptLanguage() — a Claude pass (temp 0) that counts the
+//      words SPOKEN in Hindi vs English (by language, not by the script
+//      Whisper happened to write them in) and renders the utterance in
+//      both languages. The code, not the model, then picks the output:
+//        - English words >= Hindi words → English (Hindi bits translated)
+//        - Hindi words  >  English words → Hindi in Devanagari (English bits
+//          translated, or transliterated when they're everyday loanwords)
+//      Ties go to English, the platform's canonical language. Pure English
+//      or pure Devanagari Hindi input is returned untouched. Product rule
+//      set by the owner (1 Oct 2026): a Hinglish question always comes back
+//      in ONE language — whichever the speaker used more.
 //      Fails open to the raw Whisper output on any error — this is a
 //      quality improvement, never a reason to block a proposer over an
 //      LLM hiccup.
@@ -86,13 +85,6 @@ function json(status: number, payload: unknown) {
 // purely to reject abusive/oversized uploads, not to police normal use.
 const MAX_AUDIO_BYTES = 8 * 1024 * 1024; // 8MB
 
-// Sep 2026, NEW: short, neutral Devanagari seed for Whisper's `prompt`
-// param — biases script selection for code-switched speech without
-// asserting anything about the actual content. Deliberately generic
-// (translates to "This is a question in mixed Hindi and English.") rather
-// than topical, so it can't leak a specific claim/fact into the transcript.
-const WHISPER_SCRIPT_BIAS_PROMPT = "यह हिंदी और अंग्रेज़ी में मिश्रित एक प्रश्न है।";
-
 // Browsers' FileReader.readAsDataURL naturally produces a "data:mime;base64,"
 // prefix — strip it defensively so this works whether the client sends that
 // or raw base64.
@@ -111,24 +103,41 @@ function extensionForMimeType(mimeType: string): string {
   return "webm"; // covers audio/webm and audio/webm;codecs=opus (already stripped above)
 }
 
-// Sep 2026, NEW: backstop script-normalization pass — see file header.
-// Returns the raw transcript unchanged on ANY failure (missing key, API
-// error, empty response) rather than throwing; the caller never needs its
-// own try/catch around this.
-async function normalizeTranscriptScript(rawTranscript: string, anthropicApiKey: string): Promise<string> {
-  if (!anthropicApiKey || !rawTranscript.trim()) return rawTranscript;
+type TranscriptLanguage = "en" | "hi";
+
+const DEVANAGARI_RE = /[ऀ-ॿ]/;
+const LATIN_RE = /[A-Za-z]/;
+
+// Oct 2026, NEW: Hindi / English / Hinglish resolution — see file header.
+// Returns the raw transcript unchanged (language null) on ANY failure
+// (missing key, API error, unparseable response) rather than throwing; the
+// caller never needs its own try/catch around this.
+async function resolveTranscriptLanguage(
+  rawTranscript: string,
+  anthropicApiKey: string,
+): Promise<{ transcript: string; language: TranscriptLanguage | null }> {
+  const failOpen = { transcript: rawTranscript, language: null };
+  if (!anthropicApiKey || !rawTranscript.trim()) return failOpen;
   try {
     const sys =
-      "You fix a specific, known speech-to-text bug: Hindi speech that also contains English words or names " +
-      "sometimes gets transcribed ENTIRELY in Latin/Roman letters (phonetic Hindi, e.g. 'kya aap iske baare mein sochte hain') " +
-      "instead of proper Devanagari script (क्या आप इसके बारे में सोचते हैं). Your job: " +
-      "if the input is phonetic Hindi written in Latin characters, rewrite it in correct Devanagari script, " +
-      "preserving the exact meaning — but keep genuine English words, loanwords, brand names, and technical terms " +
-      "in Latin script inline exactly as spoken, since that is how real written Hindi normally handles them (mixing " +
-      "scripts inline is correct, not an error to fix). If the input is already in Devanagari, or is genuinely " +
-      "English (not transliterated Hindi), return it EXACTLY unchanged — do not translate, rephrase, correct grammar, " +
-      "or fix punctuation beyond the script issue itself. " +
-      "Return ONLY the corrected text, nothing else — no quotes, no explanation, no markdown.";
+      "You receive a speech-to-text transcript of someone asking a question. They may have spoken English, Hindi, " +
+      "or Hinglish (a mix of both). The transcriber may have written Hindi words in Devanagari, in Roman letters " +
+      "(phonetic Hindi, e.g. 'kya aap sochte hain'), or occasionally in Urdu script, and may have written English " +
+      "words in Devanagari. Judge every word by the LANGUAGE it was spoken in, never by the script it is written in.\n\n" +
+      "Do three things:\n" +
+      "1. Count the words spoken in Hindi and the words spoken in English. English loanwords used inside a Hindi " +
+      "sentence (traffic, school, road, police) count as English. Do not count proper nouns (people, places, " +
+      "organisations), acronyms, numbers or brand names for either side.\n" +
+      "2. english_text: the whole question as natural, fluent English. Translate the Hindi parts; keep the English " +
+      "parts exactly as spoken. If the input is already entirely English, copy it exactly.\n" +
+      "3. hindi_text: the whole question as natural Hindi written entirely in Devanagari. Translate the English parts " +
+      "into Hindi, except everyday loanwords Hindi speakers normally use as-is (write those in Devanagari, e.g. " +
+      "ट्रैफिक, स्कूल). Keep proper nouns, acronyms and brand names as they are. If the input is already entirely " +
+      "Hindi in Devanagari, copy it exactly.\n\n" +
+      "Preserve the exact meaning and the speaker's framing. Do not rephrase, soften, answer, or add anything; " +
+      "fix only the language/script. Return ONLY a JSON object, no markdown fences:\n" +
+      "{\"hindi_word_count\": <integer>, \"english_word_count\": <integer>, " +
+      "\"english_text\": \"...\", \"hindi_text\": \"...\"}";
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
@@ -138,23 +147,54 @@ async function normalizeTranscriptScript(rawTranscript: string, anthropicApiKey:
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-6",
-        max_tokens: 1024,
+        max_tokens: 2048,
         temperature: 0,
         system: sys,
         messages: [{ role: "user", content: rawTranscript }],
       }),
     });
     if (!res.ok) {
-      console.error(JSON.stringify({ tag: "ugq-transcribe-voice.normalize_http_error", status: res.status }));
-      return rawTranscript;
+      console.error(JSON.stringify({ tag: "ugq-transcribe-voice.resolve_http_error", status: res.status }));
+      return failOpen;
     }
     const data = await res.json();
     const blocks: Array<{ type?: string; text?: string }> = Array.isArray(data?.content) ? data.content : [];
     const text = blocks.filter((b) => b?.type === "text").map((b) => b?.text ?? "").join("\n").trim();
-    return text || rawTranscript;
+    const jsonStart = text.indexOf("{");
+    const jsonEnd = text.lastIndexOf("}");
+    if (jsonStart === -1 || jsonEnd <= jsonStart) {
+      console.error(JSON.stringify({ tag: "ugq-transcribe-voice.resolve_unparseable" }));
+      return failOpen;
+    }
+    const parsed = JSON.parse(text.slice(jsonStart, jsonEnd + 1));
+    const hindiCount = Number.isFinite(parsed?.hindi_word_count) ? Math.max(0, Math.floor(parsed.hindi_word_count)) : 0;
+    const englishCount = Number.isFinite(parsed?.english_word_count) ? Math.max(0, Math.floor(parsed.english_word_count)) : 0;
+    const englishText = typeof parsed?.english_text === "string" ? parsed.english_text.trim() : "";
+    const hindiText = typeof parsed?.hindi_text === "string" ? parsed.hindi_text.trim() : "";
+
+    // The owner's rule (1 Oct 2026): whichever language was spoken more wins;
+    // a tie goes to English.
+    const language: TranscriptLanguage = hindiCount > englishCount ? "hi" : "en";
+
+    console.log(JSON.stringify({
+      tag: "ugq-transcribe-voice.resolve", hindi_words: hindiCount, english_words: englishCount, language,
+    }));
+
+    // Already clean single-language input: hand back exactly what Whisper
+    // heard rather than a model re-rendering of it.
+    if (language === "en" && hindiCount === 0 && !DEVANAGARI_RE.test(rawTranscript)) {
+      return { transcript: rawTranscript, language };
+    }
+    if (language === "hi" && englishCount === 0 && !LATIN_RE.test(rawTranscript) && DEVANAGARI_RE.test(rawTranscript)) {
+      return { transcript: rawTranscript, language };
+    }
+
+    const chosen = language === "hi" ? hindiText : englishText;
+    if (!chosen) return failOpen;
+    return { transcript: chosen, language };
   } catch (e) {
-    console.error(JSON.stringify({ tag: "ugq-transcribe-voice.normalize_exception", message: (e as Error).message }));
-    return rawTranscript;
+    console.error(JSON.stringify({ tag: "ugq-transcribe-voice.resolve_exception", message: (e as Error).message }));
+    return failOpen;
   }
 }
 
@@ -210,11 +250,11 @@ serve(async (req) => {
       const openaiForm = new FormData();
       openaiForm.append("file", new Blob([audioBytes as BlobPart], { type: mimeType }), `recording.${ext}`);
       openaiForm.append("model", TRANSCRIBE_MODEL);
-      // Sep 2026, NEW: script-bias seed — see WHISPER_SCRIPT_BIAS_PROMPT's
-      // comment. Still no `language` param — auto-detect stays on, since a
-      // user's spoken language and their UI language setting aren't
-      // guaranteed to match.
-      openaiForm.append("prompt", WHISPER_SCRIPT_BIAS_PROMPT);
+      // No `prompt` and no `language` param — deliberately. A prompt biases
+      // Whisper toward its own language/script (that was the Oct 2026 bug),
+      // and a user's spoken language and UI language setting aren't
+      // guaranteed to match. Language is resolved afterwards instead — see
+      // resolveTranscriptLanguage.
 
       const whisperRes = await fetch("https://api.openai.com/v1/audio/transcriptions", {
         method: "POST",
@@ -250,11 +290,13 @@ serve(async (req) => {
       });
     }
 
-    // Sep 2026, NEW: Devanagari backstop pass — see normalizeTranscriptScript's
-    // comment. Runs before the transcript is shown in the editable "Here's
-    // what we heard" box, so any script fix is what the proposer reviews/
-    // edits, not something applied invisibly after the fact.
-    transcript = await normalizeTranscriptScript(transcript, ANTHROPIC_API_KEY);
+    // Oct 2026: Hindi/English/Hinglish resolution — see
+    // resolveTranscriptLanguage's comment. Runs before the transcript is
+    // shown in the editable "Here's what we heard" box, so whatever it
+    // produces is what the proposer reviews/edits, not something applied
+    // invisibly after the fact.
+    const resolved = await resolveTranscriptLanguage(transcript, ANTHROPIC_API_KEY);
+    transcript = resolved.transcript;
 
     // ── Store the original audio (best-effort — trust-signal only, never
     //    blocks the proposer from proceeding with their transcript) ───────
@@ -282,9 +324,12 @@ serve(async (req) => {
       transcript_length: transcript.length,
       audio_bytes: audioBytes.length,
       stored: !!voiceRecordingPath,
+      language: resolved.language,
     }));
 
-    return json(200, { ok: true, transcript, voice_recording_path: voiceRecordingPath });
+    return json(200, {
+      ok: true, transcript, transcript_language: resolved.language, voice_recording_path: voiceRecordingPath,
+    });
   } catch (err) {
     return json(500, { ok: false, error: "INTERNAL_ERROR", message: (err as Error).message });
   }
