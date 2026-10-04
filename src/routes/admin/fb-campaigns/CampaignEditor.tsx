@@ -16,6 +16,7 @@ import {
   ArrowLeft, Sparkles, Plus, Check, X, Archive, Eye, Rocket, Pause, Play, Ban, RefreshCw, AlertTriangle, Save,
 } from "lucide-react";
 import { useIdentities } from "./Identities";
+import { LocationPicker } from "./Groups";
 import CampaignResults from "./Results";
 import {
   Campaign, CaptionVariant, PlanResult, Pill, Field, Loading, ErrorBox, FbNav, campaignTone,
@@ -56,7 +57,7 @@ function useCampaign(id: string) {
     queryKey: ["fb-campaign", id],
     queryFn: async () => {
       const { data, error } = await (supabase as any)
-        .from("social_campaigns").select("*, questions(question)").eq("id", id).single();
+        .from("social_campaigns").select("*, questions(question), locations(name, type)").eq("id", id).single();
       if (error) throw error;
       return data as Campaign;
     },
@@ -78,18 +79,21 @@ function SettingsSection({ c, editable }: { c: Campaign; editable: boolean }) {
   const [pageIdentity, setPageIdentity] = React.useState(c.page_identity_id ?? "");
   const [pagePerDay, setPagePerDay] = React.useState(String(c.page_posts_per_day));
   const [perGroup, setPerGroup] = React.useState(String(c.group_posts_per_group));
+  const [cityId, setCityId] = React.useState<string | null>(c.location_id);
+  const [cityLabel, setCityLabel] = React.useState<string | null>(c.locations ? `${c.locations.name} (${c.locations.type})` : null);
 
   const slotList = slots.split(/[,\s]+/).filter(Boolean);
   const slotsOk = slotList.length >= 1 && slotList.length <= 6 && slotList.every((s) => /^([01]\d|2[0-3]):[0-5]\d$/.test(s));
 
   const save = useMutation({
     mutationFn: () => updateRows("social_campaigns", `id=eq.${c.id}`, {
-      name: name.trim(), start_date: start, duration_days: Number(days), daily_slots: slotList, language_codes: langs,
+      name: name.trim(), location_id: cityId, start_date: start, duration_days: Number(days), daily_slots: slotList, language_codes: langs,
       include_page: includePage, page_identity_id: includePage && pageIdentity ? pageIdentity : null,
       page_posts_per_day: Number(pagePerDay), group_posts_per_group: Number(perGroup),
     }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["fb-campaign", c.id] });
+      qc.invalidateQueries({ queryKey: ["fb-match"] });
       toast({ title: "Settings saved", description: c.status === "draft" ? "Preview the schedule to see the effect." : "Re-plan to apply them to future tasks." });
     },
     onError: (e) => toast({ title: "Could not save", description: errMsg(e), variant: "destructive" }),
@@ -100,6 +104,9 @@ function SettingsSection({ c, editable }: { c: Campaign; editable: boolean }) {
       <h2 className="text-sm font-semibold text-slate-900">Settings</h2>
       <fieldset disabled={!editable} className="space-y-4">
         <Field label="Name"><input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} /></Field>
+        <Field label="Target city" hint="Groups are matched to this city.">
+          <LocationPicker value={cityId} label={cityLabel} onChange={(id, l) => { setCityId(id); setCityLabel(l); }} />
+        </Field>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <Field label="Start date"><input type="date" className={inputCls} value={start} onChange={(e) => setStart(e.target.value)} /></Field>
           <Field label="Days"><input type="number" min={1} max={30} className={inputCls} value={days} onChange={(e) => setDays(e.target.value)} /></Field>
@@ -153,8 +160,8 @@ function GroupsSection({ c, editable }: { c: Campaign; editable: boolean }) {
   const { toast } = useToast();
   const [ask, dialog] = useAsk();
   const matches = useQuery<MatchRow[]>({
-    queryKey: ["fb-match", c.question_id],
-    queryFn: () => rpc<MatchRow[]>("admin_match_social_groups", { p_question_id: c.question_id }),
+    queryKey: ["fb-match", c.question_id, c.location_id],
+    queryFn: () => rpc<MatchRow[]>("admin_match_social_groups", { p_question_id: c.question_id, p_location_id: c.location_id }),
   });
   const selected = useQuery<SelectedGroup[]>({
     queryKey: ["fb-campaign-groups", c.id],
@@ -237,7 +244,7 @@ function GroupsSection({ c, editable }: { c: Campaign; editable: boolean }) {
           );
         })}
         {!matches.isLoading && rows.length === 0 && (
-          <div className="px-3 py-6 text-center text-xs text-slate-400">No registered groups in or near this question's city.</div>
+          <div className="px-3 py-6 text-center text-xs text-slate-400">{c.location_id ? `No registered groups in or near ${c.locations?.name ?? "this city"}.` : "Set the campaign's target city in Settings to see matching groups."}</div>
         )}
       </div>
       {dialog}

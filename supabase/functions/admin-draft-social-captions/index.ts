@@ -113,7 +113,7 @@ serve(async (req) => {
   if (!/^[0-9a-f-]{36}$/i.test(campaignId)) return json(400, { ok: false, error: "campaign_id required" });
 
   const { data: campaign } = await admin.from("social_campaigns")
-    .select("id, question_id, language_codes, status").eq("id", campaignId).maybeSingle();
+    .select("id, question_id, language_codes, status, location_id").eq("id", campaignId).maybeSingle();
   if (!campaign) return json(404, { ok: false, error: "Campaign not found" });
   if (["cancelled", "completed"].includes(campaign.status)) return json(400, { ok: false, error: `Campaign is ${campaign.status}` });
 
@@ -121,9 +121,11 @@ serve(async (req) => {
     ? payload.languages : campaign.language_codes).filter((l: string) => campaign.language_codes.includes(l));
 
   const { data: q } = await admin.from("questions").select("id, location_id").eq("id", campaign.question_id).single();
+  // The campaign's target city wins; the question's own location is often a country.
   let cityName: string | null = null;
-  if (q?.location_id) {
-    const { data: loc } = await admin.from("locations").select("name").eq("id", q.location_id).maybeSingle();
+  const cityId = campaign.location_id ?? q?.location_id;
+  if (cityId) {
+    const { data: loc } = await admin.from("locations").select("name").eq("id", cityId).maybeSingle();
     cityName = loc?.name ?? null;
   }
 
