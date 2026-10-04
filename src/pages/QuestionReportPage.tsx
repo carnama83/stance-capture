@@ -875,6 +875,21 @@ export default function QuestionReportPage() {
     },
   });
 
+  // "Save as PDF" names the file after the page title, so make the title
+  // "Stance Capture - <question>": shortened at a word boundary, without
+  // characters that are not allowed in file names.
+  const questionTextForTitle = report?.question.text ?? null;
+  React.useEffect(() => {
+    if (!questionTextForTitle) return;
+    const previous = document.title;
+    let text = questionTextForTitle.replace(/[\\/:*?"<>|\r\n]+/g, " ").replace(/\s+/g, " ").trim();
+    if (text.length > 90) text = `${text.slice(0, 90).replace(/\s+\S*$/, "")}…`;
+    document.title = `${t("report.brand.name")} - ${text}`;
+    return () => {
+      document.title = previous;
+    };
+  }, [questionTextForTitle, t]);
+
   const lang = report?.language ?? languageCode;
   const uiLang = languageCode;
 
