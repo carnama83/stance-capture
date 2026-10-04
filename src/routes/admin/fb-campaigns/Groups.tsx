@@ -222,12 +222,12 @@ function GroupModal({ group, onClose }: { group: Group | null; onClose: () => vo
         </Field>
       </div>
 
-      <Field label="Who may post here" hint="None ticked = any active personal profile.">
+      <Field label="Which Page may post here" hint="None ticked = any active Page identity. Register only groups that accept Pages, and join them as the Page.">
         <div className="flex flex-wrap gap-3">
           {(identities ?? []).map((i) => (
             <label key={i.id} className="flex items-center gap-1.5 text-xs text-slate-600">
               <input type="checkbox" checked={allowed.includes(i.id)} onChange={() => setAllowed(toggle(allowed, i.id))} />
-              {i.label} <span className="text-slate-400">({i.kind})</span>
+              {i.label}
             </label>
           ))}
         </div>
