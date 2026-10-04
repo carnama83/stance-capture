@@ -254,7 +254,7 @@ function GroupsSection({ c, editable }: { c: Campaign; editable: boolean }) {
 
 // ─── Captions ─────────────────────────────────────────────────────────────────
 
-function VariantCard({ v, editable }: { v: CaptionVariant; editable: boolean }) {
+function VariantCard({ v, editable, stale }: { v: CaptionVariant; editable: boolean; stale?: boolean }) {
   const qc = useQueryClient();
   const { toast } = useToast();
   const [ask, dialog] = useAsk();
@@ -290,6 +290,7 @@ function VariantCard({ v, editable }: { v: CaptionVariant; editable: boolean }) 
         <span className="text-xs font-semibold text-slate-700">{v.label}</span>
         <Pill>{PURPOSE_LABEL[v.purpose]}</Pill>
         {v.status === "approved" && <Pill tone="green">Neutral · approved</Pill>}
+        {stale && <Pill tone="amber">Re-check: wording changed since approval</Pill>}
         {v.neutrality_result === "fail" && <Pill tone="red">Not neutral</Pill>}
         {v.status === "draft" && !v.neutrality_checked_at && <Pill tone="amber">Neutrality not checked</Pill>}
         {v.ai_model && <span className="text-[10px] text-slate-400">AI draft ({v.ai_model})</span>}
@@ -361,6 +362,19 @@ function CaptionsSection({ c, editable }: { c: Campaign; editable: boolean }) {
     onError: (e) => toast({ title: "Could not add", description: errMsg(e), variant: "destructive" }),
   });
 
+  // Current published wording per language: a caption approved before it needs a fresh check.
+  const wording = useQuery<Record<string, string>>({
+    queryKey: ["fb-wording", c.question_id],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any).from("question_renditions")
+        .select("language_code, published_at").eq("question_id", c.question_id).eq("lifecycle_status", "published");
+      if (error) throw error;
+      return Object.fromEntries((data ?? []).map((r: any) => [r.language_code, r.published_at]));
+    },
+  });
+  const isStale = (v: CaptionVariant) => v.status === "approved" && !!v.neutrality_checked_at
+    && !!wording.data?.[v.language_code] && v.neutrality_checked_at < wording.data[v.language_code];
+
   const list = (variants.data ?? []).filter((v) => showRetired || v.status !== "retired");
 
   return (
@@ -389,7 +403,7 @@ function CaptionsSection({ c, editable }: { c: Campaign; editable: boolean }) {
             )}
           </div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-            {list.filter((v) => v.language_code === lang).map((v) => <VariantCard key={v.id} v={v} editable={editable && v.status !== "retired"} />)}
+            {list.filter((v) => v.language_code === lang).map((v) => <VariantCard key={v.id} v={v} stale={isStale(v)} editable={editable && v.status !== "retired"} />)}
           </div>
         </div>
       ))}
@@ -434,6 +448,19 @@ function ScheduleSection({ c }: { c: Campaign }) {
     onError: (e) => toast({ title: "Activation failed", description: errMsg(e), variant: "destructive" }),
   });
 
+  // Tasks withdrawn from the current plan because the question's wording changed.
+  const withdrawn = useQuery<number>({
+    queryKey: ["fb-withdrawn", c.id, c.plan_version],
+    enabled: c.plan_version > 0,
+    queryFn: async () => {
+      const { count, error } = await (supabase as any).from("social_campaign_jobs")
+        .select("id", { count: "exact", head: true })
+        .eq("campaign_id", c.id).eq("plan_version", c.plan_version).eq("status", "cancelled").like("skip_reason", "Wording%");
+      if (error) throw error;
+      return count ?? 0;
+    },
+  });
+
   const needsAck = plan?.warnings.some((w) => w.code === "balance_skew" && w.blocking);
   // The balance warning is the one blocker the admin clears here (by acknowledging).
   const onlyAckBlocks = !!plan && plan.warnings.filter((w) => w.blocking).every((w) => w.code === "balance_skew");
@@ -454,6 +481,12 @@ function ScheduleSection({ c }: { c: Campaign }) {
           </div>
         )}
       </div>
+      {!!withdrawn.data && (
+        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          {withdrawn.data} task{withdrawn.data === 1 ? " was" : "s were"} withdrawn because the question's wording changed. Review the captions, then preview and re-plan to schedule them with the current wording.
+        </div>
+      )}
       {!plan && <p className="text-xs text-slate-500">Preview shows the exact Page posts and group tasks activation would create, and any conflicts.</p>}
       {plan && (
         <div className="space-y-3">
