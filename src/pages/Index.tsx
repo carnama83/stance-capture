@@ -64,6 +64,7 @@ import { ProposeQuestionButton } from "@/components/ugq/ProposeQuestionButton";
 import { useOnboardingTips } from "@/hooks/useOnboardingTips";
 import { CoachMark } from "@/components/onboarding/CoachMark";
 import { getEntryCountry } from "@/lib/entryCountry";
+import { getCampaignVisit } from "@/lib/campaignVisit";
 
 // ─────────────────────────── Colour system (single source) ───────────────────
 // Four roles, no overlap. Stance is a teal→grey→ochre diverging scale rather
@@ -3537,6 +3538,8 @@ export default function IndexPage() {
             // failure is correct here, since the alternative is a fabricated
             // measurement.
             p_rendition_id: renditionByQuestionId.get(questionId) ?? null,
+            // Campaign link visit, if any; the server credits it only on a first stance.
+            p_campaign_visit_id: getCampaignVisit(questionId),
           }),
         });
       } finally {

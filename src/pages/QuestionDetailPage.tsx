@@ -38,6 +38,7 @@ import { ExpectationPrompt, type ExpectationType } from "@/components/question/E
 import { AuthorityBlock } from "@/components/question/AuthorityBlock";
 import { IncidentSummaryCard } from "@/components/question/IncidentSummaryCard";
 import { QuestionContextCard } from "@/components/question/QuestionContextCard";
+import { getCampaignVisit } from "@/lib/campaignVisit";
 import { RawVideoReveal } from "@/components/question/RawVideoReveal";
 import { ExpectationSignalBlock } from "@/components/question/ExpectationSignalBlock";
 import { AuthorityResponseStatusBlock } from "@/components/question/AuthorityResponseStatusBlock";
@@ -282,6 +283,8 @@ async function setMyStance(
       p_question_id: questionId,
       p_score: score,
       p_rendition_id: renditionId,
+      // Campaign link visit, if any; the server credits it only on a first stance.
+      p_campaign_visit_id: score === null ? null : getCampaignVisit(questionId),
     }),
   }).then(async (res) => {
     const elapsed = Math.round(performance.now() - t0);
