@@ -2442,7 +2442,9 @@
     "brand": {
       "name": "Stance Capture",
       "tagline": "Where do you stand?",
-      "site": "stancecapture.com"
+      "site": "stancecapture.com",
+      "url": "www.stancecapture.com",
+      "visit": "Answer more questions and read live reports at"
     },
     "cover": {
       "prepared": "Prepared {{date}}",
@@ -2465,6 +2467,23 @@
       },
       "howTitle": "How to read this report",
       "how": "Every number in this report is counted directly from the answers. Any part written with the help of AI is clearly labelled. When there are only a few answers, read the results as an early signal, not a final verdict."
+    },
+    "kpi": {
+      "leanTitle": "Lean",
+      "responses": "Responses",
+      "lean": "lean toward “{{label}}”",
+      "average": "Average position",
+      "averageHint": "from −2 to +2",
+      "trend": "Trend",
+      "trendToward": "Moving toward “{{label}}”",
+      "trendSteady": "Holding steady",
+      "trendTooFew": "Too few responses to show a trend yet"
+    },
+    "pdfTip": {
+      "title": "Save the report as a PDF",
+      "body": "A print window opens next. To keep the report's colours, set Destination to “Save as PDF” and Colour to “Colour”.",
+      "continue": "Continue",
+      "dontShow": "Don't show this again"
     }
   },
   "questionEdit": {

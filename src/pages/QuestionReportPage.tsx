@@ -23,6 +23,7 @@ import {
   ArrowLeft, Download, Loader2, Languages, MessageCircle, ShieldCheck, SlidersHorizontal, TrendingUp, Newspaper,
 } from "lucide-react";
 import { getSupabase } from "@/lib/supabaseClient";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { StanceLogo, stanceLogoDataUri } from "@/components/brand/StanceLogo";
 import { useLanguage } from "@/hooks/useLanguage";
 import { useTopicLabels } from "@/hooks/useTopicLabels";
@@ -32,6 +33,15 @@ import { buildStanceLabels, getStanceColorHex } from "@/lib/stanceColors";
 import type { QuestionInsightReport, ReportInsightsResponse, StanceScore } from "@/types/questionReport";
 
 const SCORES: StanceScore[] = [-2, -1, 0, 1, 2];
+
+// The logo's colours (StanceLogo / favicon.svg), used for the report's accents.
+const BRAND = { indigo: "#6366F1", violet: "#8B5CF6", pink: "#EC4899", ink: "#312E81" } as const;
+const BRAND_GRADIENT = `linear-gradient(90deg, ${BRAND.indigo}, ${BRAND.violet} 55%, ${BRAND.pink})`;
+const SECTION_ACCENTS = [BRAND.indigo, BRAND.violet, BRAND.pink];
+const SITE_URL = "https://www.stancecapture.com";
+// Keep colours when the print dialog's "Background graphics" is off.
+const EXACT = { printColorAdjust: "exact", WebkitPrintColorAdjust: "exact" } as const;
+const PDF_TIP_KEY = "sc.report.pdfTipDismissed";
 
 function useSupabaseSession() {
   const sb = React.useMemo(getSupabase, []);
@@ -115,12 +125,141 @@ function formatScore(value: number | null | undefined, lang: string): string {
   return formatNumber(value, lang, { signDisplay: "exceptZero", maximumFractionDigits: 2 });
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function SectionTitle({ title, accent }: { title: string; accent: string }) {
   return (
-    <section className="border-t border-slate-100 pt-6 mt-6 break-inside-avoid">
-      <h2 className="text-sm font-semibold text-slate-900 mb-3">{title}</h2>
+    <h2 className="flex items-center gap-2 text-sm font-semibold mb-3 break-after-avoid" style={{ color: BRAND.ink }}>
+      <span className="inline-block h-4 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: accent, ...EXACT }} />
+      {title}
+    </h2>
+  );
+}
+
+function Section({ title, accent = 0, children }: { title: string; accent?: number; children: React.ReactNode }) {
+  return (
+    <section className="border-t border-slate-100 pt-6 mt-6">
+      <SectionTitle title={title} accent={SECTION_ACCENTS[accent % SECTION_ACCENTS.length]} />
       {children}
     </section>
+  );
+}
+
+// ---------- Key figures + sparkline ----------
+
+type TrendPoint = QuestionInsightReport["trend"]["points"][number];
+
+// Group averages as a small line, for the key-figure tile and every printed
+// page's header. Points are the SQL group means; nothing is recomputed.
+function sparklineSvg(points: TrendPoint[], w: number, h: number, gradientId: string): string {
+  const pts = points.filter((p) => p.bucketMean != null);
+  if (pts.length < 2) return "";
+  const pad = 3;
+  const x = (i: number) => pad + (i / (pts.length - 1)) * (w - pad * 2);
+  const y = (v: number) => pad + ((2 - v) / 4) * (h - pad * 2);
+  const line = pts.map((p, i) => `${x(i).toFixed(1)},${y(p.bucketMean as number).toFixed(1)}`).join(" ");
+  const last = pts[pts.length - 1];
+  return `<defs><linearGradient id="${gradientId}" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="${BRAND.indigo}"/><stop offset=".55" stop-color="${BRAND.violet}"/><stop offset="1" stop-color="${BRAND.pink}"/></linearGradient></defs>
+<line x1="${pad}" x2="${w - pad}" y1="${y(0)}" y2="${y(0)}" stroke="#e2e8f0" stroke-width="1"/>
+<polyline points="${line}" fill="none" stroke="url(#${gradientId})" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="${x(pts.length - 1)}" cy="${y(last.bucketMean as number)}" r="3" fill="${getStanceColorHex(Math.round(last.bucketMean as number))}" stroke="#fff" stroke-width="1"/>`;
+}
+
+function sparklineDataUri(points: TrendPoint[], w: number, h: number): string | null {
+  const body = sparklineSvg(points, w, h, "s");
+  if (!body) return null;
+  return `data:image/svg+xml,${encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${body}</svg>`,
+  )}`;
+}
+
+function Sparkline({ points, className }: { points: TrendPoint[]; className?: string }) {
+  const id = `scSpark${React.useId().replace(/:/g, "")}`;
+  const body = sparklineSvg(points, 120, 36, id);
+  if (!body) return null;
+  return (
+    <svg className={className} viewBox="0 0 120 36" aria-hidden="true" dangerouslySetInnerHTML={{ __html: body }} />
+  );
+}
+
+function KeyFigures({
+  report,
+  labels,
+  lang,
+  trendText,
+}: {
+  report: QuestionInsightReport;
+  labels: Record<number, string>;
+  lang: string;
+  trendText: string;
+}) {
+  const { t } = useTranslation();
+  const rs = report.responseSummary;
+  const n = (v: number) => formatNumber(v, lang);
+  const tile = (accent: string, tint: string, label: string, children: React.ReactNode) => (
+    <div
+      className="rounded-xl border px-3.5 py-3 break-inside-avoid"
+      style={{ borderColor: `${accent}55`, backgroundColor: tint, ...EXACT }}
+    >
+      <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: accent }}>
+        {label}
+      </p>
+      {children}
+    </div>
+  );
+  const meanColor = rs.mean == null ? "#64748b" : getStanceColorHex(Math.round(rs.mean));
+  return (
+    <div className="mt-5 grid grid-cols-2 gap-2.5 md:grid-cols-4 print:grid-cols-4">
+      {tile(
+        BRAND.indigo,
+        "#EEF2FF",
+        t("report.kpi.responses"),
+        <>
+          <p className="mt-1 text-2xl font-bold tabular-nums" style={{ color: BRAND.ink }}>
+            {n(rs.total)}
+          </p>
+          <p className="text-[11px] text-slate-600">{t(`report.strength.${rs.strength}`)}</p>
+        </>,
+      )}
+      {tile(
+        "#16A34A",
+        "#F0FDF4",
+        t("report.kpi.leanTitle"),
+        <>
+          <p className="mt-1 text-2xl font-bold tabular-nums text-green-700">
+            {n(rs.lean.high)}
+            <span className="text-sm font-medium text-slate-500"> / {n(rs.total)}</span>
+          </p>
+          <p className="text-[11px] leading-snug text-slate-600 line-clamp-3">{t("report.kpi.lean", { label: labels[2] })}</p>
+        </>,
+      )}
+      {tile(
+        BRAND.violet,
+        "#F5F3FF",
+        t("report.kpi.average"),
+        <>
+          <p className="mt-1 text-2xl font-bold tabular-nums" style={{ color: meanColor }}>
+            {formatScore(rs.mean, lang)}
+          </p>
+          {rs.mean != null && (
+            <div className="relative mt-1 h-1.5 rounded-full" style={{ background: "linear-gradient(90deg, #ef4444, #eab308 50%, #22c55e)", ...EXACT }}>
+              <div
+                className="absolute -top-1 h-3.5 w-1 -ml-0.5 rounded"
+                style={{ left: `${((rs.mean + 2) / 4) * 100}%`, backgroundColor: BRAND.ink, ...EXACT }}
+              />
+            </div>
+          )}
+          <p className="mt-1 text-[11px] text-slate-600">{t("report.kpi.averageHint")}</p>
+        </>,
+      )}
+      {tile(
+        BRAND.pink,
+        "#FDF2F8",
+        t("report.kpi.trend"),
+        <>
+          <Sparkline points={report.trend.points} className="mt-1 h-9 w-full" />
+          <p className="text-[11px] leading-snug text-slate-600 line-clamp-3">{trendText}</p>
+        </>,
+      )}
+    </div>
   );
 }
 
@@ -156,10 +295,16 @@ function TrendChart({ report, lang }: { report: QuestionInsightReport; lang: str
     return left + (i + frac) * colW;
   };
 
-  const running = points
-    .map((p, i) => (p.cumulativeMean == null ? null : `${x(i)},${y(p.cumulativeMean)}`))
-    .filter(Boolean)
-    .join(" ");
+  const runningPts = points
+    .map((p, i) => (p.cumulativeMean == null ? null : ([x(i), y(p.cumulativeMean)] as const)))
+    .filter((v): v is readonly [number, number] => v != null);
+  const running = runningPts.map(([px, py]) => `${px},${py}`).join(" ");
+  // Area between the running average and the neutral line.
+  const runningArea =
+    runningPts.length >= 2
+      ? `${runningPts[0][0]},${y(0)} ${running} ${runningPts[runningPts.length - 1][0]},${y(0)}`
+      : "";
+  const gid = `scTrend${React.useId().replace(/:/g, "")}`;
 
   const pointLabel = (p: (typeof points)[number]) => {
     if (report.trend.bucket === "sequence") return t("report.trend.seqRange", { from: p.fromResponse, to: p.toResponse });
@@ -174,6 +319,20 @@ function TrendChart({ report, lang }: { report: QuestionInsightReport; lang: str
       role="img"
       aria-label={t("report.trend.chartLabel")}
     >
+      <defs>
+        <linearGradient id={`${gid}line`} x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stopColor={BRAND.indigo} />
+          <stop offset="0.55" stopColor={BRAND.violet} />
+          <stop offset="1" stopColor={BRAND.pink} />
+        </linearGradient>
+        <linearGradient id={`${gid}vol`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor={BRAND.violet} />
+          <stop offset="1" stopColor="#C4B5FD" />
+        </linearGradient>
+      </defs>
+      {/* Toward +2 tinted green, toward −2 tinted red, as on the stance scale */}
+      <rect x={left} y={y(2)} width={W - left - right} height={y(0) - y(2)} fill="#22c55e" opacity={0.07} />
+      <rect x={left} y={y(0)} width={W - left - right} height={y(-2) - y(0)} fill="#ef4444" opacity={0.07} />
       {SCORES.map((s) => (
         <g key={s}>
           <line
@@ -181,7 +340,7 @@ function TrendChart({ report, lang }: { report: QuestionInsightReport; lang: str
             x2={W - right}
             y1={y(s)}
             y2={y(s)}
-            stroke={s === 0 ? "#94a3b8" : "#e2e8f0"}
+            stroke={s === 0 ? "#94a3b8" : "#e9e5f5"}
             strokeWidth={1}
           />
           <text x={left - 6} y={y(s) + 4} fontSize={12} textAnchor="end" fill="#64748b">
@@ -194,8 +353,8 @@ function TrendChart({ report, lang }: { report: QuestionInsightReport; lang: str
         const mx = markerX(c.responsesBefore);
         return (
           <g key={c.toRenditionId}>
-            <line x1={mx} x2={mx} y1={top} y2={top + plotH} stroke="#6366f1" strokeDasharray="4 3" strokeWidth={1.25} />
-            <circle cx={mx} cy={top + 9} r={9} fill="#6366f1" />
+            <line x1={mx} x2={mx} y1={top} y2={top + plotH} stroke={BRAND.pink} strokeDasharray="4 3" strokeWidth={1.25} />
+            <circle cx={mx} cy={top + 9} r={9} fill={BRAND.pink} />
             <text x={mx} y={top + 13} fontSize={11} fontWeight={700} textAnchor="middle" fill="#fff">
               {i + 1}
             </text>
@@ -203,7 +362,10 @@ function TrendChart({ report, lang }: { report: QuestionInsightReport; lang: str
         );
       })}
 
-      {running && <polyline points={running} fill="none" stroke="#334155" strokeWidth={2} />}
+      {runningArea && <polygon points={runningArea} fill={BRAND.violet} opacity={0.14} />}
+      {running && (
+        <polyline points={running} fill="none" stroke={`url(#${gid}line)`} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
+      )}
 
       {points.map((p, i) => (
         <g key={p.key}>
@@ -224,7 +386,8 @@ function TrendChart({ report, lang }: { report: QuestionInsightReport; lang: str
             y={volTop + volH - (p.responses / maxVol) * volH}
             width={Math.min(28, colW * 0.6)}
             height={(p.responses / maxVol) * volH}
-            fill="#cbd5e1"
+            fill={`url(#${gid}vol)`}
+            rx={3}
           >
             <title>{t("report.responses", { count: p.responses, formatted: formatNumber(p.responses, lang) })}</title>
           </rect>
@@ -331,7 +494,7 @@ function AiSummary({
     const ins = data.insights;
     const para = (title: string, text: string) => (
       <div className="break-inside-avoid">
-        <h3 className="text-xs font-semibold text-slate-800">{title}</h3>
+        <h3 className="text-xs font-semibold" style={{ color: BRAND.violet }}>{title}</h3>
         <p className="mt-0.5 text-sm text-slate-700 leading-relaxed">{text}</p>
       </div>
     );
@@ -343,12 +506,12 @@ function AiSummary({
         {para(t("report.ai.othersTitle"), ins.otherPerspectives)}
         {para(t("report.ai.trendTitle"), ins.trendSummary)}
         <div className="break-inside-avoid">
-          <h3 className="text-xs font-semibold text-slate-800">{t("report.ai.wantTitle")}</h3>
+          <h3 className="text-xs font-semibold" style={{ color: BRAND.pink }}>{t("report.ai.wantTitle")}</h3>
           <p className="mt-0.5 text-sm text-slate-700 leading-relaxed">{ins.whatPeopleAppearToWant}</p>
           {ins.desiredOutcomes.length > 0 && (
             <ul className="mt-2 flex flex-wrap gap-1.5">
               {ins.desiredOutcomes.map((o) => (
-                <li key={o} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs text-slate-700">
+                <li key={o} className="rounded-full border border-pink-200 bg-white px-2.5 py-0.5 text-xs text-pink-800">
                   {o}
                 </li>
               ))}
@@ -369,10 +532,16 @@ function AiSummary({
   if (body === null) return null;
   const ok = data?.status === "ok";
   return (
-    <section className="border-t border-slate-100 pt-6 mt-6">
+    <section
+      className="mt-6 rounded-2xl border border-violet-200 px-4 py-4 md:px-5"
+      style={{ background: "linear-gradient(135deg, #EEF2FF, #F5F3FF 55%, #FDF2F8)", ...EXACT }}
+    >
       <div className="flex flex-wrap items-center gap-2 mb-3">
-        <h2 className="text-sm font-semibold text-slate-900">{t("report.sections.ai")}</h2>
-        <span className="rounded-full bg-indigo-50 border border-indigo-200 px-2 py-0.5 text-[10px] font-medium text-indigo-700">
+        <h2 className="flex items-center gap-2 text-sm font-semibold" style={{ color: BRAND.ink }}>
+          <span className="inline-block h-4 w-1.5 rounded-full" style={{ background: BRAND_GRADIENT, ...EXACT }} />
+          {t("report.sections.ai")}
+        </h2>
+        <span className="rounded-full bg-white border border-violet-200 px-2 py-0.5 text-[10px] font-medium text-violet-700">
           {t("report.ai.badge")}
         </span>
         {ok && isAdmin && (
@@ -416,32 +585,49 @@ function cssString(s: string): string {
   return `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, " ")}"`;
 }
 
-function printPageCss(t: (key: string) => string): string {
+// The header carries the logo, the group-average sparkline and the title over
+// a three-colour brand rule; the footer carries the site address, which PDF
+// viewers turn into a link (margin boxes cannot hold a real <a>). Colours are
+// kept even with "Background graphics" off; a dialog set to black and white
+// still greys everything, hence the tip before printing.
+function printPageCss(t: (key: string) => string, sparkUri: string | null): string {
   const font = `font-family: system-ui, "Segoe UI", "Noto Sans Devanagari", "Nirmala UI", sans-serif;`;
+  const rule = (color: string) => `border-bottom: 2px solid ${color};`;
+  const foot = `${font} font-size: 8pt; vertical-align: top; padding-top: 3mm; border-top: 1px solid #DDD6FE;`;
   return `@media print {
   html, body { background: #fff !important; }
+  *, *::before, *::after { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
   @page {
     margin: 20mm 16mm 18mm;
     @top-left {
       content: url("${stanceLogoDataUri(16)}") "  " ${cssString(t("report.brand.name"))};
-      ${font} font-size: 11pt; font-weight: 700; color: #4338ca; vertical-align: bottom; padding-bottom: 4mm;
+      ${font} font-size: 11pt; font-weight: 700; color: ${BRAND.indigo}; vertical-align: bottom; padding-bottom: 3mm; ${rule(BRAND.indigo)}
+    }
+    @top-center {
+      content: ${sparkUri ? `url("${sparkUri}")` : '""'};
+      vertical-align: bottom; padding-bottom: 2.5mm; ${rule(BRAND.violet)}
     }
     @top-right {
       content: ${cssString(t("report.title"))};
-      ${font} font-size: 8.5pt; color: #94a3b8; vertical-align: bottom; padding-bottom: 4.5mm;
+      ${font} font-size: 8.5pt; font-weight: 600; color: ${BRAND.pink}; vertical-align: bottom; padding-bottom: 3.5mm; ${rule(BRAND.pink)}
     }
     @bottom-left {
-      content: ${cssString(`${t("report.brand.name")} · ${t("report.brand.tagline")} · ${t("report.brand.site")}`)};
-      ${font} font-size: 8pt; color: #94a3b8; vertical-align: top; padding-top: 4mm;
+      content: ${cssString(`${t("report.brand.name")} · ${t("report.brand.tagline")}`)};
+      ${foot} color: #94a3b8;
+    }
+    @bottom-center {
+      content: ${cssString(SITE_URL)};
+      ${foot} color: ${BRAND.indigo}; font-weight: 600;
     }
     @bottom-right {
       content: counter(page) " / " counter(pages);
-      ${font} font-size: 8pt; color: #94a3b8; vertical-align: top; padding-top: 4mm;
+      ${foot} color: ${BRAND.violet};
     }
   }
   @page :first {
-    @top-left { content: none; }
-    @top-right { content: none; }
+    @top-left { content: none; border: 0; }
+    @top-center { content: none; border: 0; }
+    @top-right { content: none; border: 0; }
   }
 }`;
 }
@@ -462,31 +648,30 @@ function ReportCover({
   responsesLabel,
   meta,
   preparedOn,
+  keyFigures,
 }: {
   questionText: string;
   responsesLabel: string;
   meta: string[];
   preparedOn: string;
+  keyFigures: React.ReactNode;
 }) {
   const { t } = useTranslation();
-  const exact = { printColorAdjust: "exact", WebkitPrintColorAdjust: "exact" } as const;
+  const exact = EXACT;
   return (
     <section className="hidden print:block break-after-page">
       <div className="flex items-center gap-3">
         <StanceLogo className="h-12 w-12 shrink-0" />
         <div>
-          <p className="text-2xl font-bold tracking-tight text-slate-900">{t("report.brand.name")}</p>
+          <p className="text-2xl font-bold tracking-tight" style={{ color: BRAND.ink }}>{t("report.brand.name")}</p>
           <p className="text-sm text-slate-500">{t("report.brand.tagline")}</p>
         </div>
       </div>
-      <div
-        className="mt-4 h-1.5 w-full rounded-full"
-        style={{ background: "linear-gradient(90deg, #6366F1, #8B5CF6 55%, #EC4899)", ...exact }}
-      />
+      <div className="mt-4 h-1.5 w-full rounded-full" style={{ background: BRAND_GRADIENT, ...exact }} />
 
-      <div className="mt-6">
-        <p className="text-xs font-semibold uppercase tracking-wider text-indigo-700">{t("report.title")}</p>
-        <h1 className="mt-2 text-xl font-semibold leading-snug text-slate-900">{questionText}</h1>
+      <div className="mt-5">
+        <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: BRAND.pink }}>{t("report.title")}</p>
+        <h1 className="mt-1.5 text-lg font-semibold leading-snug text-slate-900">{questionText}</h1>
         <p className="mt-3 text-sm text-slate-600">
           <span className="font-medium text-slate-800">{responsesLabel}</span>
           {meta.map((m) => (
@@ -494,20 +679,24 @@ function ReportCover({
           ))}
         </p>
         <p className="mt-1 text-xs text-slate-500">{preparedOn}</p>
+        {keyFigures}
       </div>
 
-      <div className="mt-6 rounded-xl border border-indigo-100 bg-indigo-50 px-5 py-3.5" style={exact}>
+      <div
+        className="mt-4 rounded-xl border border-violet-200 px-5 py-3"
+        style={{ background: "linear-gradient(120deg, #EEF2FF, #F5F3FF 55%, #FDF2F8)", ...exact }}
+      >
         <h2 className="text-sm font-semibold text-indigo-900">{t("report.cover.aboutTitle")}</h2>
         <p className="mt-1.5 text-sm leading-relaxed text-slate-700">{t("report.cover.about")}</p>
       </div>
 
-      <h2 className="mt-6 text-sm font-semibold text-slate-900">{t("report.cover.whatWeDo")}</h2>
-      <ul className="mt-3 grid grid-cols-2 gap-x-6 gap-y-3.5">
-        {COVER_FEATURES.map(({ key, Icon }) => (
+      <h2 className="mt-4 text-sm font-semibold" style={{ color: BRAND.ink }}>{t("report.cover.whatWeDo")}</h2>
+      <ul className="mt-2.5 grid grid-cols-3 gap-x-5 gap-y-3">
+        {COVER_FEATURES.map(({ key, Icon }, i) => (
           <li key={key} className="flex gap-3 break-inside-avoid">
             <span
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-100 text-violet-700"
-              style={exact}
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white"
+              style={{ backgroundColor: SECTION_ACCENTS[i % SECTION_ACCENTS.length], ...exact }}
             >
               <Icon className="h-4 w-4" />
             </span>
@@ -519,10 +708,14 @@ function ReportCover({
         ))}
       </ul>
 
-      <div className="mt-6 break-inside-avoid">
-        <div className="border-t border-slate-200 pt-4">
-          <h2 className="text-xs font-semibold text-slate-800">{t("report.cover.howTitle")}</h2>
-          <p className="mt-1 text-xs leading-relaxed text-slate-600">{t("report.cover.how")}</p>
+      <div className="mt-4 break-inside-avoid">
+        <div className="border-t border-slate-200 pt-3">
+          <p className="text-xs text-slate-600">
+            {t("report.brand.visit")}{" "}
+            <a href={SITE_URL} className="font-semibold underline underline-offset-2" style={{ color: BRAND.indigo }}>
+              {t("report.brand.url")}
+            </a>
+          </p>
         </div>
       </div>
     </section>
@@ -548,6 +741,10 @@ export default function QuestionReportPage() {
   const autoPrint = searchParams.get("autoprint") === "1";
   const [preparingPdf, setPreparingPdf] = React.useState(false);
   const [pdfError, setPdfError] = React.useState(false);
+  // Shown before the print dialog: the dialog's colour setting is the one
+  // thing the page cannot control, and black and white greys the whole PDF.
+  const [pdfTipOpen, setPdfTipOpen] = React.useState(false);
+  const [pdfTipDontShow, setPdfTipDontShow] = React.useState(false);
   const { topicLabel } = useTopicLabels(languageCode);
   const { placeLabel } = usePlaceLabels(languageCode);
 
@@ -607,6 +804,29 @@ export default function QuestionReportPage() {
     setSearchParams(next, { replace: true });
     window.setTimeout(() => window.print(), 400);
   }, [printId, autoPrint, print, searchParams, setSearchParams]);
+
+  const requestPdf = () => {
+    let dismissed = false;
+    try {
+      dismissed = window.localStorage.getItem(PDF_TIP_KEY) === "1";
+    } catch {
+      // storage blocked: just show the tip
+    }
+    if (dismissed) void downloadPdf();
+    else setPdfTipOpen(true);
+  };
+  const confirmPdfTip = () => {
+    if (pdfTipDontShow) {
+      try {
+        window.localStorage.setItem(PDF_TIP_KEY, "1");
+      } catch {
+        // ignore
+      }
+    }
+    setPdfTipOpen(false);
+    // Let the dialog close before the print window opens over it.
+    window.setTimeout(() => void downloadPdf(), 150);
+  };
 
   const downloadPdf = async () => {
     if (printId) {
@@ -703,12 +923,42 @@ export default function QuestionReportPage() {
   const trendDelta =
     firstPoint && lastPoint && firstPoint !== lastPoint ? (lastPoint.bucketMean ?? 0) - (firstPoint.bucketMean ?? 0) : null;
   const renditionsWithResponses = report.renditions.filter((r) => r.renditionId).length;
+  const trendText =
+    trendPoints.length < 2
+      ? t("report.kpi.trendTooFew")
+      : trendDelta != null && trendDelta >= 0.5
+        ? t("report.kpi.trendToward", { label: labels[2] })
+        : trendDelta != null && trendDelta <= -0.5
+          ? t("report.kpi.trendToward", { label: labels[-2] })
+          : t("report.kpi.trendSteady");
+  const keyFigures = <KeyFigures report={report} labels={labels} lang={uiLang} trendText={trendText} />;
   const channelLabel = (source: string) =>
     source === "native" || source === "web_forward" ? t(`report.who.channel.${source}`) : t("report.who.channel.other");
 
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-8 print:bg-white print:p-0">
-      <style>{printPageCss(t)}</style>
+      <style>{printPageCss(t, sparklineDataUri(report.trend.points, 84, 20))}</style>
+      <Dialog open={pdfTipOpen} onOpenChange={setPdfTipOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("report.pdfTip.title")}</DialogTitle>
+            <DialogDescription>{t("report.pdfTip.body")}</DialogDescription>
+          </DialogHeader>
+          <label className="flex items-center gap-2 text-sm text-slate-600">
+            <input type="checkbox" checked={pdfTipDontShow} onChange={(e) => setPdfTipDontShow(e.target.checked)} />
+            {t("report.pdfTip.dontShow")}
+          </label>
+          <DialogFooter>
+            <button
+              onClick={confirmPdfTip}
+              className="inline-flex items-center justify-center gap-1.5 rounded-md px-4 py-2 text-sm font-medium text-white"
+              style={{ background: BRAND_GRADIENT }}
+            >
+              <Download className="h-4 w-4" /> {t("report.pdfTip.continue")}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <div className="max-w-3xl mx-auto">
         <div className="flex items-center justify-between gap-3 mb-4 print:hidden">
           <Link
@@ -718,9 +968,10 @@ export default function QuestionReportPage() {
             <ArrowLeft className="h-4 w-4" /> {t("report.backToQuestion")}
           </Link>
           <button
-            onClick={downloadPdf}
+            onClick={requestPdf}
             disabled={preparingPdf}
-            className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-800 hover:bg-slate-100 disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-white shadow-sm hover:opacity-90 disabled:opacity-50"
+            style={{ background: BRAND_GRADIENT }}
           >
             {preparingPdf ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}{" "}
             {preparingPdf ? t("report.print.preparing") : t("report.downloadPdf")}
@@ -737,6 +988,7 @@ export default function QuestionReportPage() {
           preparedOn={t("report.cover.prepared", {
             date: formatDate(print?.createdAt ?? report.generatedAt, uiLang, { dateStyle: "long" }),
           })}
+          keyFigures={keyFigures}
         />
         {print && (
           <div className="mb-4 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-900 print:mb-3 print:rounded-none print:border-x-0 print:border-t-0 print:bg-white print:px-0 print:text-xs">
@@ -756,13 +1008,14 @@ export default function QuestionReportPage() {
           <div className="mb-6 flex items-center justify-between gap-3 border-b border-slate-100 pb-4 print:hidden">
             <div className="flex items-center gap-2">
               <StanceLogo className="h-7 w-7 shrink-0" />
-              <span className="text-base font-bold text-slate-900">{t("report.brand.name")}</span>
+              <span className="text-base font-bold" style={{ color: BRAND.ink }}>{t("report.brand.name")}</span>
             </div>
             <span className="text-xs text-slate-400">{t("report.brand.tagline")}</span>
           </div>
+          <div className="-mt-6 mb-6 h-1 rounded-full print:hidden" style={{ background: BRAND_GRADIENT }} />
 
           {/* Header */}
-          <p className="text-[11px] font-medium tracking-wide uppercase text-slate-400">{t("report.title")}</p>
+          <p className="text-[11px] font-semibold tracking-wide uppercase" style={{ color: BRAND.pink }}>{t("report.title")}</p>
           <h1 className="mt-2 text-lg md:text-xl font-semibold text-slate-900 leading-snug">{q.text}</h1>
           <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
             <span className="font-medium text-slate-800">{t("report.responses", { count: rs.total, formatted: n(rs.total) })}</span>
@@ -782,9 +1035,11 @@ export default function QuestionReportPage() {
             </p>
           )}
           <p className="mt-2 text-xs text-slate-500">{t(`report.strengthHint.${rs.strength}`)}</p>
+          {/* In print the cover already shows these */}
+          <div className="print:hidden">{keyFigures}</div>
 
           {/* Question & context */}
-          <Section title={t("report.sections.question")}>
+          <Section title={t("report.sections.question")} accent={1}>
             {report.fallbackLanguage && report.language !== uiLang && (
               <p className="mb-3 text-xs text-slate-500">
                 {t("report.fallbackLanguage", { language: languageDisplayName(uiLang, report.language) })}
@@ -799,7 +1054,7 @@ export default function QuestionReportPage() {
           </Section>
 
           {/* Snapshot */}
-          <Section title={t("report.sections.snapshot")}>
+          <Section title={t("report.sections.snapshot")} accent={2}>
             <p className="text-sm text-slate-800 leading-relaxed">
               {t("report.snapshot.lean", {
                 high: n(rs.lean.high),
@@ -810,12 +1065,34 @@ export default function QuestionReportPage() {
                 lowLabel: labels[-2],
               })}
             </p>
+            {rs.total > 0 && (
+              <div className="mt-3 flex h-6 overflow-hidden rounded-lg text-[11px] font-semibold text-white break-inside-avoid" style={EXACT}>
+                {[
+                  { v: rs.lean.low, c: getStanceColorHex(-2) },
+                  { v: rs.lean.neutral, c: getStanceColorHex(0) },
+                  { v: rs.lean.high, c: getStanceColorHex(2) },
+                ]
+                  .filter((seg) => seg.v > 0)
+                  .map((seg, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center justify-center"
+                      style={{ width: `${(seg.v / rs.total) * 100}%`, backgroundColor: seg.c, ...EXACT }}
+                    >
+                      {n(seg.v)}
+                    </div>
+                  ))}
+              </div>
+            )}
             {rs.mean != null && (
               <div className="mt-4 break-inside-avoid">
-                <div className="relative h-2 rounded-full bg-gradient-to-r from-red-400 via-amber-300 to-emerald-400">
+                <div
+                  className="relative h-2 rounded-full"
+                  style={{ background: "linear-gradient(90deg, #f87171, #fcd34d 50%, #34d399)", ...EXACT }}
+                >
                   <div
-                    className="absolute -top-1.5 h-5 w-1.5 -ml-[3px] rounded bg-slate-900"
-                    style={{ left: `${((rs.mean + 2) / 4) * 100}%` }}
+                    className="absolute -top-1.5 h-5 w-1.5 -ml-[3px] rounded"
+                    style={{ left: `${((rs.mean + 2) / 4) * 100}%`, backgroundColor: BRAND.ink, ...EXACT }}
                     aria-hidden
                   />
                 </div>
@@ -844,7 +1121,7 @@ export default function QuestionReportPage() {
           />
 
           {/* Distribution */}
-          <Section title={t("report.sections.distribution")}>
+          <Section title={t("report.sections.distribution")} accent={3}>
             <div className="space-y-2.5">
               {[...rs.distribution].reverse().map((d) => (
                 <div key={d.score} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 break-inside-avoid">
@@ -876,7 +1153,7 @@ export default function QuestionReportPage() {
           </Section>
 
           {/* Why — respondents' own reasons (R3) */}
-          <Section title={t("report.sections.reasons")}>
+          <Section title={t("report.sections.reasons")} accent={4}>
             {!report.reasons || report.reasons.totalWithReasons === 0 ? (
               <p className="text-sm text-slate-500">{t("report.reasons.none")}</p>
             ) : (
@@ -924,7 +1201,7 @@ export default function QuestionReportPage() {
                         {sd.quotes.length > 0 && (
                           <ul className="mt-3 space-y-1.5">
                             {sd.quotes.map((q, i) => (
-                              <li key={i} className="border-l-2 border-slate-200 pl-3 text-sm italic text-slate-700">
+                              <li key={i} className="border-l-2 border-violet-300 pl-3 text-sm italic text-slate-700">
                                 “{q}”
                               </li>
                             ))}
@@ -939,7 +1216,7 @@ export default function QuestionReportPage() {
           </Section>
 
           {/* What each position stands for */}
-          <Section title={t("report.sections.positions")}>
+          <Section title={t("report.sections.positions")} accent={5}>
             <p className="text-xs text-slate-500 mb-3">{t("report.positions.intro")}</p>
             {report.stanceDefinitions ? (
               <dl className="space-y-3">
@@ -964,19 +1241,19 @@ export default function QuestionReportPage() {
           </Section>
 
           {/* Trend */}
-          <Section title={t("report.sections.trend")}>
+          <Section title={t("report.sections.trend")} accent={6}>
             {trendPoints.length >= 2 ? (
               <>
                 <TrendChart report={report} lang={uiLang} />
                 <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500">
                   <span className="inline-flex items-center gap-1.5">
-                    <span className="inline-block h-0.5 w-4 bg-slate-700" /> {t("report.trend.legendRunning")}
+                    <span className="inline-block h-1 w-4 rounded" style={{ background: BRAND_GRADIENT, ...EXACT }} /> {t("report.trend.legendRunning")}
                   </span>
                   <span className="inline-flex items-center gap-1.5">
-                    <span className="inline-block h-2 w-2 rounded-full bg-slate-500" /> {t("report.trend.legendGroup")}
+                    <span className="inline-block h-2 w-2 rounded-full" style={{ background: "linear-gradient(90deg, #ef4444, #eab308, #22c55e)", ...EXACT }} /> {t("report.trend.legendGroup")}
                   </span>
                   <span className="inline-flex items-center gap-1.5">
-                    <span className="inline-block h-2 w-3 bg-slate-300" /> {t("report.trend.legendVolume")}
+                    <span className="inline-block h-2 w-3 rounded-sm" style={{ backgroundColor: BRAND.violet, ...EXACT }} /> {t("report.trend.legendVolume")}
                   </span>
                   <span>
                     {formatScore(2, uiLang)} = {labels[2]} · {formatScore(-2, uiLang)} = {labels[-2]}
@@ -1010,7 +1287,7 @@ export default function QuestionReportPage() {
                 <ol className="space-y-1 text-xs text-slate-700">
                   {report.changes.map((c, i) => (
                     <li key={c.toRenditionId} className="flex gap-2">
-                      <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-indigo-500 text-[9px] font-bold text-white print:[print-color-adjust:exact]">
+                      <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white" style={{ backgroundColor: BRAND.pink, ...EXACT }}>
                         {i + 1}
                       </span>
                       <span>
@@ -1028,15 +1305,23 @@ export default function QuestionReportPage() {
           </Section>
 
           {/* Who responded */}
-          <Section title={t("report.sections.who")}>
+          <Section title={t("report.sections.who")} accent={7}>
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <h3 className="text-xs font-semibold text-slate-800 mb-1.5">{t("report.who.channelsTitle")}</h3>
                 <ul className="space-y-1 text-sm text-slate-700">
                   {report.channels.map((c) => (
-                    <li key={c.source} className="flex justify-between gap-3">
-                      <span>{channelLabel(c.source)}</span>
-                      <span className="tabular-nums">{n(c.count)}</span>
+                    <li key={c.source}>
+                      <div className="flex justify-between gap-3">
+                        <span>{channelLabel(c.source)}</span>
+                        <span className="tabular-nums">{n(c.count)}</span>
+                      </div>
+                      <div className="mt-1 h-1.5 rounded bg-slate-100 overflow-hidden">
+                        <div
+                          className="h-full rounded"
+                          style={{ width: `${rs.total ? (c.count / rs.total) * 100 : 0}%`, background: BRAND_GRADIENT, ...EXACT }}
+                        />
+                      </div>
                     </li>
                   ))}
                   <li className="flex justify-between gap-3 text-slate-500">
@@ -1073,8 +1358,15 @@ export default function QuestionReportPage() {
           </Section>
 
           {/* Methodology */}
-          <Section title={t("report.sections.method")}>
-            <ul className="list-disc pl-5 space-y-1.5 text-xs text-slate-600 leading-relaxed">
+          <Section title={t("report.sections.method")} accent={8}>
+            <div className="mb-3">
+              <h3 className="text-xs font-semibold text-slate-800">{t("report.cover.howTitle")}</h3>
+              <p className="mt-1 text-xs leading-relaxed text-slate-600">{t("report.cover.how")}</p>
+            </div>
+            <ul
+              className="list-disc pl-8 pr-4 py-3 space-y-1.5 rounded-xl bg-violet-50/70 border border-violet-100 text-xs text-slate-600 leading-relaxed marker:text-violet-400"
+              style={EXACT}
+            >
               <li>{t("report.method.sample")}</li>
               <li>{t("report.method.counts", { total: n(rs.total), signedIn: n(rs.signedIn), anonymous: n(rs.anonymous) })}</li>
               <li>{t("report.method.scale", { low: labels[-2], high: labels[2] })}</li>
@@ -1095,8 +1387,14 @@ export default function QuestionReportPage() {
             </ul>
           </Section>
 
-          <div className="border-t border-slate-100 mt-6 pt-4 text-[11px] text-slate-400 flex flex-wrap justify-between gap-2">
-            <span>{t("report.footer")}</span>
+          <div className="mt-6 h-1 rounded-full" style={{ background: BRAND_GRADIENT, ...EXACT }} />
+          <div className="pt-4 text-[11px] text-slate-400 flex flex-wrap justify-between gap-2">
+            <span>
+              {t("report.footer")} ·{" "}
+              <a href={SITE_URL} className="font-semibold underline underline-offset-2" style={{ color: BRAND.indigo }}>
+                {t("report.brand.url")}
+              </a>
+            </span>
             <span>{t("report.generatedAt", { date: formatDate(report.generatedAt, uiLang, { dateStyle: "medium", timeStyle: "short" }) })}</span>
             {print && <span>{t("report.print.footer", { id: print.id.slice(0, 8) })}</span>}
             <span className="hidden print:inline">

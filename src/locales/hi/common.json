@@ -2442,7 +2442,9 @@
     "brand": {
       "name": "Stance Capture",
       "tagline": "आप किस ओर खड़े हैं?",
-      "site": "stancecapture.com"
+      "site": "stancecapture.com",
+      "url": "www.stancecapture.com",
+      "visit": "और प्रश्नों के जवाब दें और लाइव रिपोर्ट पढ़ें:"
     },
     "cover": {
       "prepared": "{{date}} को तैयार की गई",
@@ -2465,6 +2467,23 @@
       },
       "howTitle": "इस रिपोर्ट को कैसे पढ़ें",
       "how": "इस रिपोर्ट का हर आँकड़ा सीधे जवाबों से गिना गया है। AI की मदद से लिखा गया हर हिस्सा साफ़ तौर पर चिह्नित है। जब जवाब कम हों, तो नतीजों को अंतिम फ़ैसला नहीं, बल्कि शुरुआती संकेत मानें।"
+    },
+    "kpi": {
+      "leanTitle": "झुकाव",
+      "responses": "जवाब",
+      "lean": "“{{label}}” की ओर झुकते हैं",
+      "average": "औसत रुख़",
+      "averageHint": "−2 से +2 तक",
+      "trend": "रुझान",
+      "trendToward": "“{{label}}” की ओर बढ़ रहा है",
+      "trendSteady": "स्थिर बना हुआ है",
+      "trendTooFew": "रुझान दिखाने के लिए अभी जवाब कम हैं"
+    },
+    "pdfTip": {
+      "title": "रिपोर्ट को PDF के रूप में सहेजें",
+      "body": "अब एक प्रिंट विंडो खुलेगी। रिपोर्ट के रंग बनाए रखने के लिए Destination में “Save as PDF” और Colour में “Colour” चुनें।",
+      "continue": "आगे बढ़ें",
+      "dontShow": "यह दोबारा न दिखाएँ"
     }
   },
   "questionEdit": {
