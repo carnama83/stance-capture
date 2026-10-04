@@ -6,6 +6,7 @@
 // distribution. Built for the WhatsApp/Facebook in-app browser: no auth, no cookies
 // required (localStorage is best-effort).
 import { supabase } from "@/integrations/supabase/client";
+import { getCampaignVisit } from "@/lib/campaignVisit";
 
 const DEVICE_KEY = "sc_device_id";
 const FWD_PREFIX = "sc_fwd_"; // sc_fwd_<questionId> -> this visitor's own forward ref
@@ -123,6 +124,8 @@ export async function recordWebStance(
     p_state_name: geo?.region ?? null,
     p_city_name: geo?.city ?? null,
     p_rendition_id: renditionId ?? null,
+    // Campaign link visit, if any; the server credits it only on this device's first answer.
+    p_campaign_visit_id: getCampaignVisit(questionId),
   });
   if (error) throw error;
   const result = data as WebStanceResult;

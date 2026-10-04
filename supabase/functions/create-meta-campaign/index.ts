@@ -51,6 +51,23 @@ function json(status, payload) {
     status, headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 }
+// The paid campaign's tracked link code (social_campaign_links, destination 'paid_ad').
+async function paidLinkCode(admin, campaignId, questionId) {
+  const existing = await admin.from("social_campaign_links").select("code")
+    .eq("paid_campaign_id", campaignId).eq("language_code", "en").maybeSingle();
+  if (existing.data?.code) return existing.data.code;
+  const code = Array.from(crypto.getRandomValues(new Uint8Array(10)), (b) => "abcdefghijklmnopqrstuvwxyz0123456789"[b % 36]).join("");
+  const ins = await admin.from("social_campaign_links").insert({
+    code, paid_campaign_id: campaignId, destination_kind: "paid_ad", question_id: questionId, language_code: "en",
+  }).select("code").single();
+  if (ins.data?.code) return ins.data.code;
+  // Lost a race with a concurrent launch: read the winner.
+  const again = await admin.from("social_campaign_links").select("code")
+    .eq("paid_campaign_id", campaignId).eq("language_code", "en").single();
+  if (again.data?.code) return again.data.code;
+  throw new Error(`Could not create tracked link: ${ins.error?.message ?? again.error?.message}`);
+}
+
 function isAdminResult(v) {
   if (v === true) return true;
   if (v?.is_admin === true) return true;
@@ -416,9 +433,13 @@ serve(async (req) => {
         .filter(Boolean).join("\n\n");
     const imageUrl = campaign.creative_image_url ||
       `${SUPABASE_URL}/functions/v1/og-image?question_id=${question.id}`;
+    // Tracked /c/<code> link (shared with the Facebook Campaign Manager): the
+    // landing page gives the ad a proper preview and the SPA records the visit
+    // so first stances are attributed (signed-in and anonymous). Legacy
+    // ?ref=campaign&campaign_id= URLs on ads already running are still captured.
     const destinationUrl = campaign.destination_url ||
-      `${(Deno.env.get("PUBLIC_SITE_URL") ?? "https://www.stancecapture.com")}/#/q/${question.id}` +
-      `?ref=campaign&campaign_id=${campaign.id}&utm_source=meta&utm_medium=paid&utm_campaign=${campaign.id}`;
+      `${(Deno.env.get("PUBLIC_SITE_URL") ?? "https://www.stancecapture.com")}/c/${await paidLinkCode(admin, campaign.id, question.id)}` +
+      `?utm_source=meta&utm_medium=paid&utm_campaign=${campaign.id}`;
 
     // Budget → minor units (account currency assumed USD; cents).
     const budgetMinor = Math.round(Number(campaign.budget_amount) * 100);
