@@ -9,6 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Plus } from "lucide-react";
 import { useIdentities } from "./Identities";
+import { LocationPicker } from "./Groups";
 import {
   Campaign, PageHeader, Modal, Field, Pill, Loading, ErrorBox, campaignTone,
   inputCls, btnPrimary, btnSecondary, insertRow, errMsg, fmtDate, LANGS,
@@ -18,6 +19,7 @@ interface QuestionOption {
   id: string;
   question: string;
   location_label: string | null;
+  location: { id: string; name: string; type: string } | null;
   langs: string[];
 }
 
@@ -27,7 +29,7 @@ function useCampaigns() {
     staleTime: 15_000,
     queryFn: async () => {
       const { data, error } = await (supabase as any)
-        .from("social_campaigns").select("*, questions(question)").order("created_at", { ascending: false });
+        .from("social_campaigns").select("*, questions(question), locations(name, type)").order("created_at", { ascending: false });
       if (error) throw error;
       return (data ?? []) as Campaign[];
     },
@@ -41,7 +43,7 @@ function usePublishedQuestions() {
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from("questions")
-        .select("id, question, location_label, question_renditions(language_code, lifecycle_status)")
+        .select("id, question, location_label, locations(id, name, type), question_renditions(language_code, lifecycle_status)")
         .eq("status", "active")
         .not("published_at", "is", null)
         .order("published_at", { ascending: false })
@@ -51,11 +53,27 @@ function usePublishedQuestions() {
         id: q.id,
         question: q.question,
         location_label: q.location_label,
+        location: q.locations ?? null,
         langs: Array.from(new Set((q.question_renditions ?? [])
           .filter((r: any) => r.lifecycle_status === "published").map((r: any) => r.language_code))) as string[],
       }));
     },
   });
+}
+
+// Best guess at the campaign city: the question's own location when it is a city
+// or district, else a city named by the first part of its label ("Pune, India").
+// Questions are often tagged with the whole country, so the admin confirms it.
+async function guessCity(q: QuestionOption): Promise<{ id: string; label: string } | null> {
+  if (q.location && (q.location.type === "city" || q.location.type === "county")) {
+    return { id: q.location.id, label: `${q.location.name} (${q.location.type})` };
+  }
+  const first = (q.location_label ?? "").split(",")[0].trim();
+  if (!first) return null;
+  const { data } = await (supabase as any).from("locations").select("id, name, type")
+    .eq("type", "city").ilike("name", first).limit(1);
+  const hit = data?.[0];
+  return hit ? { id: hit.id, label: `${hit.name} (${hit.type})` } : null;
 }
 
 function tomorrow(): string {
@@ -79,12 +97,16 @@ function NewCampaignModal({ onClose }: { onClose: () => void }) {
   const [pageIdentity, setPageIdentity] = React.useState("");
   const [pagePerDay, setPagePerDay] = React.useState("1");
   const [perGroup, setPerGroup] = React.useState("1");
+  const [cityId, setCityId] = React.useState<string | null>(null);
+  const [cityLabel, setCityLabel] = React.useState<string | null>(null);
 
   const q = questions?.find((x) => x.id === questionId);
   React.useEffect(() => {
     if (!q) return;
     setLangs((prev) => prev.filter((l) => q.langs.includes(l)).length ? prev.filter((l) => q.langs.includes(l)) : q.langs.slice(0, 1));
     if (!name) setName(`${q.location_label ?? "City"} · ${q.question.slice(0, 40)}`);
+    setCityId(null); setCityLabel(null);
+    void guessCity(q).then((c) => { if (c) { setCityId(c.id); setCityLabel(c.label); } });
   }, [questionId]); // eslint-disable-line react-hooks/exhaustive-deps
   React.useEffect(() => {
     if (!pageIdentity) {
@@ -100,7 +122,7 @@ function NewCampaignModal({ onClose }: { onClose: () => void }) {
 
   const create = useMutation({
     mutationFn: async () => insertRow<Campaign>("social_campaigns", {
-      question_id: questionId, name: name.trim(), start_date: start, duration_days: Number(days),
+      question_id: questionId, location_id: cityId, name: name.trim(), start_date: start, duration_days: Number(days),
       timezone: "Asia/Kolkata", daily_slots: slotList, language_codes: langs,
       include_page: includePage, page_identity_id: includePage && pageIdentity ? pageIdentity : null,
       page_posts_per_day: Number(pagePerDay), group_posts_per_group: Number(perGroup),
@@ -117,7 +139,7 @@ function NewCampaignModal({ onClose }: { onClose: () => void }) {
       footer={<>
         <button type="button" className={btnSecondary} onClick={onClose}>Cancel</button>
         <button type="button" className={btnPrimary}
-          disabled={!questionId || !name.trim() || !slotsOk || langs.length === 0 || create.isPending}
+          disabled={!questionId || !cityId || !name.trim() || !slotsOk || langs.length === 0 || create.isPending}
           onClick={() => create.mutate()}>Create draft</button>
       </>}>
       <Field label="Published question" hint="Multi-city questions get one campaign per city, so captions and groups stay local.">
@@ -128,6 +150,11 @@ function NewCampaignModal({ onClose }: { onClose: () => void }) {
           ))}
         </select>
       </Field>
+      {questionId && (
+        <Field label="Target city" hint="Groups are matched to this city. Questions are often tagged with a whole country, so confirm it.">
+          <LocationPicker value={cityId} label={cityLabel} onChange={(id, l) => { setCityId(id); setCityLabel(l); }} />
+        </Field>
+      )}
       <Field label="Campaign name"><input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} /></Field>
       <div className="grid grid-cols-3 gap-3">
         <Field label="Start date (Asia/Kolkata)"><input type="date" className={inputCls} value={start} onChange={(e) => setStart(e.target.value)} /></Field>
@@ -198,7 +225,7 @@ export default function FbCampaignsPage() {
             </div>
             <p className="text-xs text-slate-500 mt-1 line-clamp-1">{c.questions?.question}</p>
             <p className="text-[11px] text-slate-400 mt-1">
-              Starts {fmtDate(c.start_date)} · {c.duration_days} days · slots {c.daily_slots.map((s) => s.slice(0, 5)).join(", ")}
+              {c.locations?.name ?? "No city set"} · starts {fmtDate(c.start_date)} · {c.duration_days} days · slots {c.daily_slots.map((s) => s.slice(0, 5)).join(", ")}
             </p>
           </Link>
         ))}

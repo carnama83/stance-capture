@@ -47,7 +47,7 @@ function useTopics(ids: string[]) {
   });
 }
 
-function LocationPicker({ value, label, onChange }: {
+export function LocationPicker({ value, label, onChange }: {
   value: string | null; label: string | null; onChange: (id: string, label: string) => void;
 }) {
   const [q, setQ] = React.useState("");

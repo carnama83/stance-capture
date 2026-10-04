@@ -57,6 +57,7 @@ export interface Group {
 export interface Campaign {
   id: string;
   question_id: string;
+  location_id: string | null;
   name: string;
   status: CampaignStatus;
   timezone: string;
@@ -74,6 +75,7 @@ export interface Campaign {
   cancel_reason: string | null;
   created_at: string;
   questions?: { question: string } | null;
+  locations?: { name: string; type: string } | null;
 }
 
 export interface CaptionVariant {
