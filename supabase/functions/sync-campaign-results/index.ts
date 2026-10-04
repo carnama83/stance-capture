@@ -113,9 +113,11 @@ async function syncMetaCampaign(admin, campaign, token) {
     return { campaign_id: campaign.id, ok: false, error: life.error?.message ?? daily.error?.message };
   }
 
-  // Stance attribution from our own tables (source of truth).
+  // Stance attribution from our own tables (source of truth). The view holds
+  // first stances that arrived through the campaign's tracked link within 7
+  // days: committed stances and still-pending anonymous ones.
   const [{ data: qs }, { data: es }] = await Promise.all([
-    admin.from("question_stances").select("created_at").eq("campaign_id", campaign.id),
+    admin.from("social_campaign_attribution").select("created_at:first_at").eq("paid_campaign_id", campaign.id),
     admin.from("embedded_stances").select("created_at").eq("campaign_id", campaign.id),
   ]);
   const qsRows = qs ?? [];

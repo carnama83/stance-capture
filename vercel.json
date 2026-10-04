@@ -2,6 +2,7 @@
   "rewrites": [
     { "source": "/s/:slug/:lang", "destination": "/api/s/:slug?lang=:lang" },
     { "source": "/s/:slug", "destination": "/api/s/:slug" },
+    { "source": "/c/:code", "destination": "/api/c/:code" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
 }

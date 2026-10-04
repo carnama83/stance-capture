@@ -12,6 +12,7 @@ import AdminOnly from "./auth/AdminOnly";
 import ModeratorOnly from "./auth/moderatoronly";
 import { ROUTES } from "@/routes/paths";
 import { useShareClickTracker } from "@/hooks/useShareClickTracker";
+import { useCampaignVisitCapture } from "@/hooks/useCampaignVisitCapture";
 import { Analytics } from "@vercel/analytics/react";
 import AdminTopicsPage from "@/routes/admin/topics/Index";
 
@@ -81,6 +82,11 @@ import AdminAuthoritiesPage from "@/routes/admin/authorities/Index";
 import AdminExpectationLedgersPage from "@/routes/admin/expectation-ledgers/Index";
 import AdminAdAccountsPage from "@/routes/admin/ad-accounts/Index"; // Epic Y — Ad Accounts
 import AdminCampaignsPage from "@/routes/admin/campaigns/Index"; // Epic Y — Campaigns
+import FbCampaignsPage from "@/routes/admin/fb-campaigns/Index"; // Facebook Campaign Manager (PDD v1.2)
+import FbCampaignEditorPage from "@/routes/admin/fb-campaigns/CampaignEditor";
+import FbQueuePage from "@/routes/admin/fb-campaigns/Queue";
+import FbGroupsPage from "@/routes/admin/fb-campaigns/Groups";
+import FbIdentitiesPage from "@/routes/admin/fb-campaigns/Identities";
 
 // Cognitive State Pages
 import AdminCognitiveStatesPage from '@/routes/admin/cognitive-states';
@@ -156,6 +162,7 @@ const queryClient = new QueryClient();
 
 function ShareClickTrackerMount() {
   useShareClickTracker();
+  useCampaignVisitCapture();
   return null;
 }
 
@@ -451,6 +458,11 @@ const App: React.FC = () => {
                 {/* Epic Y — Ad Campaigns */}
                 <Route path="ad-accounts" element={<AdminAdAccountsPage />} />
                 <Route path="campaigns" element={<AdminCampaignsPage />} />
+                <Route path="fb-campaigns" element={<FbCampaignsPage />} />
+                <Route path="fb-campaigns/queue" element={<FbQueuePage />} />
+                <Route path="fb-campaigns/groups" element={<FbGroupsPage />} />
+                <Route path="fb-campaigns/identities" element={<FbIdentitiesPage />} />
+                <Route path="fb-campaigns/:id" element={<FbCampaignEditorPage />} />
               </Route>
 
               {/* Moderation — accessible to admins AND moderators */}

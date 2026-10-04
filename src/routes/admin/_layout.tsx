@@ -27,6 +27,7 @@ import {
   ListFilter,    // Epic EL — Question Review nav
   MessageSquareDot, // Epic AA — WhatsApp nav
   Megaphone,     // Epic Y — Ad Accounts nav
+  ListChecks,    // Facebook Campaign Manager — posting queue
   Rocket,        // Epic Y — Campaigns nav
   Landmark,      // Epic R — Authorities nav
   ScrollText,    // Epic R — Expectation Ledgers nav
@@ -207,6 +208,23 @@ export default function AdminLayout() {
             to="/admin/campaigns"
             icon={<Rocket className="h-4 w-4" />}
             label="Campaigns"
+          />
+
+          <Separator className="my-2" />
+
+          {/* Facebook Campaign Manager (PDD v1.2) — organic, manual posting */}
+          <div className="px-2 text-[10px] font-medium tracking-wide text-muted-foreground uppercase mb-1">
+            Facebook Organic
+          </div>
+          <AdminLink
+            to="/admin/fb-campaigns"
+            icon={<Megaphone className="h-4 w-4" />}
+            label="FB Campaigns"
+          />
+          <AdminLink
+            to="/admin/fb-campaigns/queue"
+            icon={<ListChecks className="h-4 w-4" />}
+            label="Posting Queue"
           />
 
           <Separator className="my-2" />
