@@ -22,7 +22,7 @@ export type JobStatus = "scheduled" | "claimed" | "submitted" | "posted" | "skip
 export interface Identity {
   id: string;
   label: string;
-  kind: "page" | "profile";
+  kind: "page"; // Page-only: never a personal profile
   profile_url: string | null;
   active: boolean;
   daily_group_post_cap: number;

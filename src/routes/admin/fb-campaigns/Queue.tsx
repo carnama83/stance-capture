@@ -112,6 +112,12 @@ function JobCard({ j }: { j: Job }) {
         </p>
       )}
       {j.link_mode === "none" && <p className="text-xs text-amber-700">Text-only: this group does not allow links. Visits from it will not be tracked.</p>}
+      {j.destination_kind === "group" && (
+        <p className="text-xs text-slate-600">
+          Before posting, switch Facebook to the <span className="font-medium">{j.social_posting_identities?.label ?? "Stance Capture"}</span> Page profile
+          and check the post box shows the Page, not your own name.
+        </p>
+      )}
 
       <div className="flex flex-wrap gap-2">
         <button type="button" className={btnSecondary} onClick={() => doCopy(j.caption_snapshot, "Caption")}><Copy className="h-3.5 w-3.5" /> Copy content</button>
