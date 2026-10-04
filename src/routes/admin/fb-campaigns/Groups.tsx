@@ -264,6 +264,10 @@ function FindGroupsModal({ onClose }: { onClose: () => void }) {
       <p className="text-xs text-slate-500">
         Opens Facebook's own group search in a new tab. Join and review each group on Facebook, then register the ones that fit.
       </p>
+      <p className="text-xs text-amber-700 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
+        Sign in to Facebook in this browser first, with the account that will join the groups. Facebook shows a blank
+        "Not Found" page for searches when you are signed out.
+      </p>
       <div className="grid grid-cols-2 gap-3">
         <Field label="City"><input className={inputCls} value={city} onChange={(e) => setCity(e.target.value)} /></Field>
         <Field label="Topic (optional)"><input className={inputCls} value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="e.g. traffic" /></Field>
