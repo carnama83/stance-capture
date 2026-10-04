@@ -30,7 +30,6 @@ function IdentityModal({ identity, onClose }: { identity: Identity | null; onClo
   const qc = useQueryClient();
   const { toast } = useToast();
   const [label, setLabel] = React.useState(identity?.label ?? "");
-  const [kind, setKind] = React.useState<Identity["kind"]>(identity?.kind ?? "profile");
   const [url, setUrl] = React.useState(identity?.profile_url ?? "");
   const [cap, setCap] = React.useState(String(identity?.daily_group_post_cap ?? 5));
   const [gap, setGap] = React.useState(String(identity?.min_gap_minutes ?? 30));
@@ -40,7 +39,7 @@ function IdentityModal({ identity, onClose }: { identity: Identity | null; onClo
   const save = useMutation({
     mutationFn: async () => {
       const row = {
-        label: label.trim(), kind, profile_url: url.trim() || null,
+        label: label.trim(), kind: "page", profile_url: url.trim() || null,
         daily_group_post_cap: Number(cap), min_gap_minutes: Number(gap), active, notes: notes.trim() || null,
       };
       if (identity) await updateRows("social_posting_identities", `id=eq.${identity.id}`, row);
@@ -52,23 +51,20 @@ function IdentityModal({ identity, onClose }: { identity: Identity | null; onClo
 
   return (
     <Modal
-      title={identity ? "Edit identity" : "New posting identity"}
+      title={identity ? "Edit Page identity" : "New Page identity"}
       onClose={onClose}
       footer={<>
         <button type="button" className={btnSecondary} onClick={onClose}>Cancel</button>
         <button type="button" className={btnPrimary} disabled={!label.trim() || save.isPending} onClick={() => save.mutate()}>Save</button>
       </>}
     >
-      <Field label="Label" hint="e.g. 'Stance Capture Page' or the person's first name.">
+      <Field label="Label" hint="e.g. 'Stance Capture Page'.">
         <input className={inputCls} value={label} onChange={(e) => setLabel(e.target.value)} />
       </Field>
-      <Field label="Kind">
-        <select className={inputCls} value={kind} onChange={(e) => setKind(e.target.value as Identity["kind"])}>
-          <option value="page">Facebook Page</option>
-          <option value="profile">Personal profile</option>
-        </select>
-      </Field>
-      <Field label="Profile or Page URL (optional)">
+      <p className="text-xs text-slate-600 rounded-lg bg-slate-50 px-3 py-2">
+        Stance Capture posts in groups only as its Facebook Page, never under a person's own name.
+      </p>
+      <Field label="Page URL (optional)">
         <input className={inputCls} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://www.facebook.com/…" />
       </Field>
       <div className="grid grid-cols-2 gap-3">
@@ -117,8 +113,8 @@ export default function FbIdentitiesPage() {
     <div className="space-y-6">
       <PageHeader
         title="Posting identities"
-        sub="The Page and the people who post in groups. Limits apply across every campaign. No Facebook passwords or tokens are stored here."
-        action={<button type="button" className={btnPrimary} onClick={() => setEditing("new")}><Plus className="h-3.5 w-3.5" /> New identity</button>}
+        sub="Posts in Facebook groups are made only as the Stance Capture Page, never from a personal profile. Limits apply across every campaign. No Facebook passwords or tokens are stored here."
+        action={<button type="button" className={btnPrimary} onClick={() => setEditing("new")}><Plus className="h-3.5 w-3.5" /> New Page identity</button>}
       />
       {isLoading && <Loading />}
       {isError && <ErrorBox>Failed to load identities.</ErrorBox>}
@@ -128,7 +124,7 @@ export default function FbIdentitiesPage() {
             <div className="space-y-1">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-sm font-medium text-slate-900">{i.label}</span>
-                <Pill>{i.kind === "page" ? "Page" : "Profile"}</Pill>
+                <Pill>Facebook Page</Pill>
                 {!i.active && <Pill tone="amber">Inactive</Pill>}
                 {i.restricted_at && <Pill tone="red">Restricted since {fmtDate(i.restricted_at)}</Pill>}
               </div>
@@ -153,7 +149,7 @@ export default function FbIdentitiesPage() {
         ))}
         {data && data.length === 0 && (
           <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center text-sm text-slate-400">
-            No identities yet. Add the Page and at least one person who will post in groups.
+            No identities yet. Add the Stance Capture Page.
           </div>
         )}
       </div>
