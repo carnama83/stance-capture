@@ -595,7 +595,9 @@ function printPageCss(t: (key: string) => string, sparkUri: string | null): stri
   const rule = (color: string) => `border-bottom: 2px solid ${color};`;
   const foot = `${font} font-size: 8pt; vertical-align: top; padding-top: 3mm; border-top: 1px solid #DDD6FE;`;
   return `@media print {
-  html, body { background: #fff !important; }
+  /* Only html is white: a white body would be painted over the watermark. */
+  html { background: #fff !important; }
+  body { background: transparent !important; }
   *, *::before, *::after { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
   @page {
     margin: 20mm 16mm 18mm;
@@ -719,6 +721,28 @@ function ReportCover({
         </div>
       </div>
     </section>
+  );
+}
+
+// Print-only watermark: Chrome repeats a position: fixed element on every
+// printed page. It sits behind the content (z-index -1), so the page wrapper
+// and the article are transparent in print; tinted blocks such as the key
+// figures and the AI panel cover it, as they would on paper.
+function ReportWatermark() {
+  const { t } = useTranslation();
+  return (
+    <div
+      aria-hidden="true"
+      className="pointer-events-none fixed inset-0 -z-10 hidden items-center justify-center print:flex"
+      style={EXACT}
+    >
+      <div className="flex -rotate-[30deg] flex-col items-center gap-4 opacity-[0.07]">
+        <StanceLogo className="h-40 w-40" />
+        <span className="whitespace-nowrap text-6xl font-bold tracking-tight" style={{ color: BRAND.violet }}>
+          {t("report.brand.name")}
+        </span>
+      </div>
+    </div>
   );
 }
 
@@ -951,7 +975,8 @@ export default function QuestionReportPage() {
     source === "native" || source === "web_forward" ? t(`report.who.channel.${source}`) : t("report.who.channel.other");
 
   return (
-    <div className="min-h-screen bg-slate-50 px-4 py-8 print:bg-white print:p-0">
+    <div className="min-h-screen bg-slate-50 px-4 py-8 print:bg-transparent print:p-0">
+      <ReportWatermark />
       <style>{printPageCss(t, sparklineDataUri(report.trend.points, 84, 20))}</style>
       <Dialog open={pdfTipOpen} onOpenChange={setPdfTipOpen}>
         <DialogContent className="max-w-md">
@@ -1018,7 +1043,7 @@ export default function QuestionReportPage() {
           </div>
         )}
 
-        <article className="rounded-2xl border border-slate-200 bg-white p-5 md:p-10 shadow-sm print:border-0 print:shadow-none print:p-0">
+        <article className="rounded-2xl border border-slate-200 bg-white p-5 md:p-10 shadow-sm print:border-0 print:bg-transparent print:shadow-none print:p-0">
           {/* Brand (on screen; in print the page header carries it) */}
           <div className="mb-6 flex items-center justify-between gap-3 border-b border-slate-100 pb-4 print:hidden">
             <div className="flex items-center gap-2">
