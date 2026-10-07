@@ -9,8 +9,13 @@ import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Pencil, ExternalLink, Search, BadgeCheck } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { Plus, Pencil, ExternalLink, Search, BadgeCheck, BookmarkPlus, ListPlus } from "lucide-react";
 import { useIdentities } from "./Identities";
+import {
+  BulkAddModal, BulkEditModal, BookmarkModal, QuickAddModal, GroupStatus, STATUS_LABEL, canonicalGroupUrl, groupStatus,
+  insertGroups, isStale, missingFor, nameFromTitle, readQuickAddPrefs, writeQuickAddPrefs,
+} from "./GroupsBulk";
 import {
   Group, Lean, LinkPolicy, Membership, PageHeader, Modal, Field, Pill, Loading, ErrorBox,
   inputCls, btnPrimary, btnSecondary, insertRow, updateRows, errMsg, fmtDate, currentUserId,
@@ -148,7 +153,7 @@ function GroupModal({ group, onClose }: { group: Group | null; onClose: () => vo
   const save = useMutation({
     mutationFn: async () => {
       const row: Record<string, unknown> = {
-        name: name.trim(), url: url.trim(), location_id: locationId, language_codes: langs, topic_ids: topics,
+        name: name.trim(), url: canonicalGroupUrl(url) ?? url.trim(), location_id: locationId, language_codes: langs, topic_ids: topics,
         lean, link_policy: linkPolicy, membership_status: membership, requires_post_approval: approval,
         allowed_identity_ids: allowed, rules_reviewed: rulesReviewed, rules_notes: rules.trim() || null,
         posting_cap_per_campaign: Number(cap), member_count_approx: members ? Number(members) : null,
@@ -286,11 +291,25 @@ function FindGroupsModal({ onClose }: { onClose: () => void }) {
 
 export default function FbGroupsPage() {
   const { data, isLoading, isError } = useGroups();
+  const { data: identities } = useIdentities();
   const qc = useQueryClient();
   const { toast } = useToast();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [editing, setEditing] = React.useState<Group | null | "new">(null);
   const [finding, setFinding] = React.useState(false);
-  const [filter, setFilter] = React.useState("");
+  const [bulkAdd, setBulkAdd] = React.useState(false);
+  const [bookmark, setBookmark] = React.useState(false);
+  const [bulkEdit, setBulkEdit] = React.useState(false);
+  const [quickAdd, setQuickAdd] = React.useState<{ url: string; name: string } | null>(null);
+  const [search, setSearch] = React.useState("");
+  const [city, setCity] = React.useState("");
+  const [status, setStatus] = React.useState<"" | GroupStatus | "stale">("");
+  const [lean, setLean] = React.useState<"" | Lean>("");
+  const [lang, setLang] = React.useState("");
+  const [selected, setSelected] = React.useState<Set<string>>(new Set());
+  const groups = data ?? [];
+  const refresh = () => qc.invalidateQueries({ queryKey: ["fb-groups"] });
 
   const verify = useMutation({
     mutationFn: async (g: Group) => {
@@ -298,46 +317,160 @@ export default function FbGroupsPage() {
         last_verified_at: new Date().toISOString(), last_verified_by: currentUserId(),
       });
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["fb-groups"] }),
+    onSuccess: refresh,
     onError: (e) => toast({ title: "Could not update", description: errMsg(e), variant: "destructive" }),
   });
 
-  const rows = (data ?? []).filter((g) =>
-    !filter.trim() || `${g.name} ${g.locations?.name ?? ""}`.toLowerCase().includes(filter.trim().toLowerCase()));
+  // One-click bookmark hand-off: /#/admin/fb-campaigns/groups?add=<url>&name=<title>
+  const handled = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const raw = params.get("add");
+    if (!raw || handled.current === raw || !identities) return;
+    handled.current = raw;
+    navigate({ pathname: location.pathname, search: "" }, { replace: true });
+    const url = canonicalGroupUrl(raw);
+    if (!url) {
+      toast({ title: "Not a Facebook group link", description: raw, variant: "destructive" });
+      return;
+    }
+    const name = nameFromTitle(params.get("name") ?? "") || url.split("/").pop() || "Facebook group";
+    const prefs = readQuickAddPrefs();
+    if (!prefs?.locationId) { setQuickAdd({ url, name }); return; }
+    insertGroups([{ name, url }], prefs.locationId, prefs.identityId)
+      .then((n) => {
+        refresh();
+        toast(n
+          ? { title: `Added ${name}`, description: `${prefs.locationLabel || "Saved city"} · awaiting approval` }
+          : { title: "Already in the directory", description: name });
+      })
+      .catch((e) => toast({ title: "Could not add group", description: errMsg(e), variant: "destructive" }));
+  }, [location.search, identities]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Filters
+  const cities = React.useMemo(() => {
+    const m = new Map<string, string>();
+    groups.forEach((g) => m.set(g.location_id, g.locations?.name ?? "Unknown"));
+    return [...m.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  }, [groups]);
+  const inCity = groups.filter((g) => !city || g.location_id === city);
+  const countOf = (s: GroupStatus) => inCity.filter((g) => groupStatus(g) === s).length;
+  const q = search.trim().toLowerCase();
+  const rows = inCity.filter((g) =>
+    (!q || `${g.name} ${g.url}`.toLowerCase().includes(q))
+    && (!status || (status === "stale" ? isStale(g) : groupStatus(g) === status))
+    && (!lean || g.lean === lean)
+    && (!lang || g.language_codes.includes(lang)));
+
+  // Selection follows the filters: anything filtered out is deselected.
+  React.useEffect(() => {
+    setSelected((prev) => {
+      const visible = new Set(rows.map((g) => g.id));
+      const next = new Set([...prev].filter((id) => visible.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [search, city, status, lean, lang, data]); // eslint-disable-line react-hooks/exhaustive-deps
+  const allSelected = rows.length > 0 && rows.every((g) => selected.has(g.id));
+  const toggle = (id: string) => setSelected((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+
+  const tile = (key: "" | GroupStatus | "stale", label: string, n: number, tone: string) => (
+    <button type="button" key={label} onClick={() => setStatus(status === key ? "" : key)}
+      className={`rounded-lg px-3 py-2 text-left ${status === key ? "ring-2 ring-blue-400 bg-blue-50" : "bg-slate-50 hover:bg-slate-100"}`}>
+      <div className="text-[11px] text-slate-500">{label}</div>
+      <div className={`text-lg font-semibold ${tone}`}>{n}</div>
+    </button>
+  );
+  const cityName = cities.find(([id]) => id === city)?.[1];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <PageHeader
         title="City groups"
-        sub="Groups you have joined and reviewed on Facebook. A group is eligible for campaigns only when you are a member, its rules are reviewed, its link policy is known, and it is not partisan (unless overridden per campaign)."
-        action={<div className="flex gap-2 shrink-0">
+        sub="Groups the Stance Capture Page has joined. A group receives campaign tasks only when it is Ready: the Page is a member, its rules are reviewed and its link policy is known (partisan groups also need a per-campaign override)."
+        action={<div className="flex flex-wrap gap-2 shrink-0">
           <button type="button" className={btnSecondary} onClick={() => setFinding(true)}><Search className="h-3.5 w-3.5" /> Find groups</button>
+          <button type="button" className={btnSecondary} onClick={() => setBookmark(true)}><BookmarkPlus className="h-3.5 w-3.5" /> One-click button</button>
+          <button type="button" className={btnSecondary} onClick={() => setBulkAdd(true)}><ListPlus className="h-3.5 w-3.5" /> Add many groups</button>
           <button type="button" className={btnPrimary} onClick={() => setEditing("new")}><Plus className="h-3.5 w-3.5" /> Register group</button>
         </div>}
       />
-      <input className={`${inputCls} max-w-xs`} value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter by name or city" />
+
+      <div className="grid grid-cols-3 md:grid-cols-7 gap-2">
+        {tile("", cityName ? `${cityName} groups` : "All groups", inCity.length, "text-slate-900")}
+        {tile("ready", "Ready", countOf("ready"), "text-emerald-700")}
+        {tile("needs_review", "Needs review", countOf("needs_review"), "text-amber-700")}
+        {tile("awaiting", "Awaiting approval", countOf("awaiting"), "text-slate-900")}
+        {tile("not_joined", "Not joined", countOf("not_joined"), "text-slate-900")}
+        {tile("disabled", "Disabled", countOf("disabled"), "text-slate-500")}
+        {tile("stale", "Stale (30+ days)", inCity.filter(isStale).length, "text-slate-900")}
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <input className={`${inputCls} max-w-xs`} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name or link" />
+        <select className={`${inputCls} w-auto`} value={city} onChange={(e) => setCity(e.target.value)} aria-label="City">
+          <option value="">All cities</option>
+          {cities.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+        </select>
+        <select className={`${inputCls} w-auto`} value={status} onChange={(e) => setStatus(e.target.value as typeof status)} aria-label="Status">
+          <option value="">Any status</option>
+          {(Object.keys(STATUS_LABEL) as GroupStatus[]).map((k) => <option key={k} value={k}>{STATUS_LABEL[k]}</option>)}
+          <option value="stale">Stale (30+ days)</option>
+        </select>
+        <select className={`${inputCls} w-auto`} value={lean} onChange={(e) => setLean(e.target.value as "" | Lean)} aria-label="Lean">
+          <option value="">Any lean</option>
+          {(Object.keys(LEAN_LABEL) as Lean[]).map((k) => <option key={k} value={k}>{LEAN_LABEL[k]}</option>)}
+        </select>
+        <select className={`${inputCls} w-auto`} value={lang} onChange={(e) => setLang(e.target.value)} aria-label="Language">
+          <option value="">Any language</option>
+          {LANGS.map((l) => <option key={l.code} value={l.code}>{l.label}</option>)}
+        </select>
+      </div>
+
+      {selected.size > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+          <span className="font-semibold">{selected.size} selected</span>
+          <span className="flex-1" />
+          <button type="button" className={btnSecondary} onClick={() => setSelected(new Set())}>Clear</button>
+          <button type="button" className={btnPrimary} onClick={() => setBulkEdit(true)}><Pencil className="h-3.5 w-3.5" /> Edit selected</button>
+        </div>
+      )}
+
       {isLoading && <Loading />}
       {isError && <ErrorBox>Failed to load groups.</ErrorBox>}
+      {rows.length > 0 && (
+        <label className="flex items-center gap-2 text-xs text-slate-600 px-1">
+          <input type="checkbox" checked={allSelected}
+            onChange={() => setSelected(allSelected ? new Set() : new Set(rows.map((g) => g.id)))} />
+          Select all {rows.length} shown
+        </label>
+      )}
       <div className="space-y-2">
         {rows.map((g) => {
-          const stale = !g.last_verified_at || Date.now() - new Date(g.last_verified_at).getTime() > 30 * 86400_000;
+          const st = groupStatus(g);
+          const missing = missingFor(g);
+          const stale = isStale(g);
           return (
-            <div key={g.id} className="rounded-xl border border-slate-200 bg-white p-4 flex items-start justify-between gap-4">
-              <div className="space-y-1.5 min-w-0">
+            <div key={g.id} className={`rounded-xl border bg-white p-4 flex items-start gap-3 ${selected.has(g.id) ? "border-blue-300" : "border-slate-200"}`}>
+              <input type="checkbox" className="mt-1" checked={selected.has(g.id)} onChange={() => toggle(g.id)} aria-label={`Select ${g.name}`} />
+              <div className="space-y-1.5 min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <a href={g.url} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-slate-900 hover:underline">{g.name}</a>
+                  <a href={g.url} target="_blank" rel="noopener noreferrer" className="text-slate-400 hover:text-slate-700" aria-label="Open on Facebook"><ExternalLink className="h-3.5 w-3.5" /></a>
                   <span className="text-xs text-slate-400">{g.locations?.name}</span>
-                  {!g.enabled && <Pill tone="amber">Disabled</Pill>}
+                  <Pill tone={st === "ready" ? "green" : st === "disabled" ? "slate" : "amber"}>{STATUS_LABEL[st]}</Pill>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   <Pill tone={g.lean === "general" ? "slate" : g.lean === "interest" ? "amber" : "red"}>{LEAN_LABEL[g.lean]}</Pill>
-                  <Pill tone={g.membership_status === "member" ? "green" : "amber"}>{MEMBERSHIP_LABEL[g.membership_status]}</Pill>
                   <Pill tone={g.link_policy === "unknown" ? "amber" : "slate"}>{LINK_POLICY_LABEL[g.link_policy]}</Pill>
-                  {!g.rules_reviewed && <Pill tone="amber">Rules not reviewed</Pill>}
                   {g.requires_post_approval && <Pill>Posts need approval</Pill>}
                   <Pill>{g.language_codes.join(", ")}</Pill>
                   <Pill>Cap {g.posting_cap_per_campaign}/campaign</Pill>
                 </div>
+                {missing.length > 0 && <p className="text-[11px] text-amber-700">Still missing: {missing.join(" · ")}</p>}
                 <p className={`text-[11px] ${stale ? "text-amber-600" : "text-slate-400"}`}>Last verified {fmtDate(g.last_verified_at)}</p>
               </div>
               <div className="flex gap-2 shrink-0">
@@ -350,11 +483,38 @@ export default function FbGroupsPage() {
           );
         })}
         {data && rows.length === 0 && (
-          <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center text-sm text-slate-400">No groups yet.</div>
+          <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center text-sm text-slate-400">
+            {groups.length === 0
+              ? "No groups yet. Use Add many groups or the one-click button to add the groups the Page has joined."
+              : "No groups match these filters."}
+          </div>
         )}
       </div>
+
       {editing && <GroupModal group={editing === "new" ? null : editing} onClose={() => setEditing(null)} />}
       {finding && <FindGroupsModal onClose={() => setFinding(false)} />}
+      {bulkAdd && (
+        <BulkAddModal groups={groups} identities={identities ?? []} onClose={() => setBulkAdd(false)}
+          onAdded={(n, skipped) => {
+            refresh();
+            toast({ title: `Added ${n} group${n === 1 ? "" : "s"}`,
+              description: skipped ? `${skipped} skipped as duplicates. Mark them Member and review them to make them Ready.` : "Mark them Member and review them to make them Ready." });
+          }} />
+      )}
+      {bulkEdit && (
+        <BulkEditModal ids={[...selected]} identities={identities ?? []} onClose={() => setBulkEdit(false)}
+          onDone={(n) => { refresh(); setSelected(new Set()); toast({ title: `Updated ${n} group${n === 1 ? "" : "s"}` }); }} />
+      )}
+      {bookmark && <BookmarkModal identities={identities ?? []} onClose={() => setBookmark(false)} />}
+      {quickAdd && (
+        <QuickAddModal url={quickAdd.url} name={quickAdd.name} identities={identities ?? []} onClose={() => setQuickAdd(null)}
+          onAdd={async (name, prefs) => {
+            const n = await insertGroups([{ name, url: quickAdd.url }], prefs.locationId, prefs.identityId);
+            writeQuickAddPrefs(prefs);
+            refresh();
+            toast(n ? { title: `Added ${name}`, description: `${prefs.locationLabel} · awaiting approval` } : { title: "Already in the directory", description: name });
+          }} />
+      )}
     </div>
   );
 }
