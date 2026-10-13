@@ -15,12 +15,15 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/use-toast";
-import { ExternalLink, Edit2, RefreshCw, Loader2 } from "lucide-react";
+import { ExternalLink, Edit2, RefreshCw, Loader2, Sparkles, Undo2 } from "lucide-react";
 
 type QuestionStatus = "draft" | "approved" | "rejected" | "reframing" | "reframed" | "reframe_failed";
 
 type ContentType = "incident" | "policy" | "election" | "general";
 const CONTENT_TYPES: ContentType[] = ["general", "incident", "policy", "election"];
+
+// Mirrors MAX_WORDS in supabase/functions/admin-create-question-draft.
+const MAX_QUESTION_WORDS = 65;
 
 type QuestionDraftRow = {
   id: string;
@@ -779,7 +782,10 @@ function QuestionDraftRowView({
         </div>
 
         <div className="flex flex-col gap-2 items-end">
-          <EditQuestionDialog row={row} onSaved={onChanged} />
+          <div className="flex gap-2 flex-wrap justify-end">
+            <ImproveButton row={row} onImproved={onChanged} isPublished={isPublished} />
+            <EditQuestionDialog row={row} onSaved={onChanged} />
+          </div>
           <div className="flex gap-2 flex-wrap justify-end">
             <PublishButton
               row={row}
@@ -799,7 +805,7 @@ function QuestionDraftRowView({
           </div>
           {isRejected && (
             <div className="text-[11px] text-muted-foreground">
-              Rejected → Approve/Publish disabled
+              Rejected → Unreject to approve or publish
             </div>
           )}
         </div>
@@ -884,6 +890,7 @@ function EditQuestionDialog({
   const [contentType, setContentType] = React.useState<ContentType>(row.content_type ?? "general");
   const [loadingFresh, setLoadingFresh] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
+  const guardrailFlags = React.useRef<string[]>(row.guardrail_flags ?? []);
   // The values the form was last filled with, so Save sends only what the admin changed.
   const baseline = React.useRef({ question: "", summary: "", tags: "", location: "", contentType: "general" as ContentType });
 
@@ -914,10 +921,13 @@ function EditQuestionDialog({
     setLoadingFresh(true);
     const { data, error } = await supabase
       .from("question_drafts")
-      .select("question, summary, tags, location_label, content_type")
+      .select("question, summary, tags, location_label, content_type, guardrail_flags")
       .eq("id", row.id)
       .maybeSingle();
-    if (!error && data) fill(data as QuestionDraftRow);
+    if (!error && data) {
+      fill(data as QuestionDraftRow);
+      guardrailFlags.current = (data as QuestionDraftRow).guardrail_flags ?? [];
+    }
     setLoadingFresh(false);
   };
 
@@ -938,6 +948,21 @@ function EditQuestionDialog({
     if (tags !== b.tags) patch.tags = tagsArray;
     if (location !== b.location) patch.location_label = location || null;
     if (contentType !== b.contentType) patch.content_type = contentType;
+
+    // A hand edit makes the AI score and the word-count/phrase flags stale: they rated
+    // the old wording. Re-check what can be checked deterministically and clear the rest.
+    if (patch.question !== undefined) {
+      const lower = question.toLowerCase();
+      const flags = guardrailFlags.current.filter(
+        (f) => f !== "low_quality" && f !== "too_long" && !(f.startsWith("forbidden:") && !lower.includes(f.slice("forbidden:".length))),
+      );
+      const words = question.trim().split(/\s+/).filter(Boolean).length;
+      if (words > MAX_QUESTION_WORDS) flags.push("too_long");
+      patch.guardrail_flags = flags;
+      patch.qa_passed = flags.length === 0;
+      patch.question_quality_score = null;
+      patch.quality_notes = "Edited by admin — AI score cleared (it rated the previous wording).";
+    }
 
     if (Object.keys(patch).length === 0) {
       setOpen(false);
@@ -1034,6 +1059,68 @@ function EditQuestionDialog({
   );
 }
 
+const IMPROVABLE_STATUSES: QuestionStatus[] = ["draft", "reframed", "reframe_failed"];
+
+function ImproveButton({
+  row,
+  onImproved,
+  isPublished,
+}: {
+  row: QuestionDraftRow;
+  onImproved: () => void;
+  isPublished: boolean;
+}) {
+  const supabase = getSupabase()!;
+  const { toast } = useToast();
+  const [loading, setLoading] = React.useState(false);
+
+  if (isPublished || !IMPROVABLE_STATUSES.includes(row.status)) return null;
+
+  const improve = async () => {
+    if (loading) return;
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-create-question-draft", {
+        body: { mode: "improve", question_draft_id: row.id },
+      });
+      if (error) throw error;
+      const res: any = data ?? {};
+      if (!res.ok) throw new Error(res.error ?? "The function did not return ok=true");
+      if (res.improved) {
+        toast({
+          title: res.qa_passed ? "Improved ✅" : "Improved, still flagged",
+          description: res.qa_passed
+            ? `Quality ${res.quality_score}/10 — guardrails passed.`
+            : `Quality ${res.quality_score}/10 — still flagged: ${(res.guardrail_flags ?? []).join(", ")}.`,
+        });
+        onImproved();
+      } else {
+        toast({
+          title: "No better version found",
+          description: `The best rewrite scored ${res.quality_score ?? "?"}/10, so the draft was left as it is. ${res.quality_notes ?? ""}`.trim(),
+        });
+      }
+    } catch (e: any) {
+      toast({ title: "Improve failed", description: e?.message ?? String(e), variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Button
+      size="sm"
+      variant={row.qa_passed === false ? "default" : "outline"}
+      onClick={improve}
+      disabled={loading}
+      title="Rewrite this draft with AI, using its quality notes as the critique. The draft is replaced only if the rewrite scores better."
+    >
+      {loading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Sparkles className="h-4 w-4 mr-1" />}
+      {loading ? "Improving…" : "Improve"}
+    </Button>
+  );
+}
+
 function StatusButtons({
   row,
   onChanged,
@@ -1057,6 +1144,9 @@ function StatusButtons({
       patch.rejected_at = now;
       // ✅ improvement: keep timestamps consistent
       patch.approved_at = null;
+    } else if (status === "draft") {
+      patch.rejected_at = null;
+      patch.approved_at = null;
     }
 
     const { error } = await supabase
@@ -1075,7 +1165,7 @@ function StatusButtons({
 
     toast({
       title: "Status updated",
-      description: `Marked as ${status}.`,
+      description: status === "draft" ? "Moved back to Draft." : `Marked as ${status}.`,
     });
 
     onChanged();
@@ -1087,6 +1177,20 @@ function StatusButtons({
   const approveDisabled = isPublished || row.status === "rejected" || row.status === "approved";
   const rejectDisabled = isPublished || row.status === "rejected";
 
+  if (row.status === "rejected") {
+    return (
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={() => updateStatus("draft")}
+        disabled={isPublished}
+        title="Move back to Draft so it can be edited, improved, approved or published"
+      >
+        <Undo2 className="h-4 w-4 mr-1" /> Unreject
+      </Button>
+    );
+  }
+
   return (
     <div className="flex gap-2">
       <Button
@@ -1094,13 +1198,7 @@ function StatusButtons({
         variant="outline"
         onClick={() => updateStatus("approved")}
         disabled={approveDisabled}
-        title={
-          isPublished
-            ? "Already published"
-            : row.status === "rejected"
-              ? "Rejected cannot be approved"
-              : ""
-        }
+        title={isPublished ? "Already published" : ""}
       >
         Approve
       </Button>

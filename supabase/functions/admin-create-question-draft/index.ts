@@ -1,5 +1,11 @@
 // supabase/functions/admin-create-question-draft/index.ts
 //
+// v12.1 — Improve mode (Oct 2026)
+//   • body { mode: "improve", question_draft_id } revises an existing unapproved draft:
+//     the draft + its quality_notes go back to the model as a critique, the gates re-run,
+//     and the better of up to two attempts replaces the draft only if it beats the current
+//     one. The previous version is kept in reframe_ai_output.previous.
+//
 // v12 — Epic R M-R07: content-type classification + incident template
 //   • A classifier call picks content_type (incident/policy/election/general) unless the
 //     admin passes content_type. Incident drafts are authored with the ai_prompts
@@ -178,6 +184,17 @@ function checkForbidden(question) {
 }
 function countWords(text) {
   return text.trim().split(/\s+/).filter(Boolean).length;
+}
+// Deterministic gates shared by authoring and improve: they flag, never hard-reject.
+function runGates(question, sliderLow, sliderHigh, qualityScore) {
+  const flags = [], notes = [];
+  const forbidden = checkForbidden(question);
+  if (forbidden) { flags.push(`forbidden:${forbidden}`); notes.push(`forbidden phrase "${forbidden}"`); }
+  const wc = countWords(question);
+  if (wc > MAX_WORDS) { flags.push("too_long"); notes.push(`${wc} words (max ${MAX_WORDS})`); }
+  if (!sliderLow || !sliderHigh) { flags.push("missing_slider_labels"); notes.push("missing slider labels"); }
+  if ((qualityScore ?? 0) < QUALITY_THRESHOLD) { flags.push("low_quality"); notes.push(`quality ${qualityScore} < ${QUALITY_THRESHOLD}`); }
+  return { flags, notes, wc, qaPassed: flags.length === 0 };
 }
 // ── Audience fit parsing (unchanged from v9.2) ──────────────────────────
 const VALID_SEGMENT_KEYS = new Set([
@@ -472,6 +489,127 @@ async function callLLM(provider, modelName, systemPrompt, userPrompt, apiKey, te
 function jsonResponse(body, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 }
+// ── v12.1 Improve: revise an existing draft using its own quality notes ─────
+// The authoring call scores its own question but never acts on the critique, so a draft
+// can fail rules the prompt already states (an "or"-joined close, an imported pole, too
+// many words). Improve sends the draft and that critique back for a rewrite, re-runs the
+// gates, and keeps the better of up to two attempts. The draft is overwritten only when
+// the rewrite beats the current version; the previous version is kept in reframe_ai_output.
+const IMPROVE_ADDENDUM = `
+
+────────────────────────────────────────
+MODE: REVISING AN EXISTING DRAFT
+You are given a draft stance question and a reviewer's critique of it. Rewrite the question so that it fixes EVERY issue in the critique while keeping every fact traceable to the news context. Do not add names, numbers, values, risks or counterarguments that are not in the context. Run the FINAL CHECK before answering.
+If the story genuinely carries no civic or policy stake, still write the best question you can, but score it honestly — never inflate quality_score.
+Return ONLY a JSON object with keys: question, framing_style, core_tension, primary_value, secondary_value, slider_low_label, slider_high_label, share_headline, quality_score, quality_notes. No markdown, no backticks.`;
+async function improveDraft(supabaseAdmin, draftId, provider, modelName, apiKey) {
+  if (!apiKey) return jsonResponse({ error: `Missing API key for provider '${provider}'` }, 500);
+  const { data: draft, error } = await supabaseAdmin.from("question_drafts").select(`
+      id, status, question, content_type, location_label, quality_notes, question_quality_score,
+      guardrail_flags, qa_passed, framing_style, core_tension, primary_value, secondary_value,
+      slider_low_label, slider_high_label, share_headline,
+      topic_drafts ( title, summary, tags, news_items ( title ) )
+    `).eq("id", draftId).maybeSingle();
+  if (error) return jsonResponse({ error: "Failed to load question draft", details: error.message }, 500);
+  if (!draft) return jsonResponse({ error: "Question draft not found" }, 404);
+  if (!["draft", "reframed", "reframe_failed"].includes(draft.status)) {
+    return jsonResponse({ error: `Only unapproved drafts can be improved (status is '${draft.status}')` }, 409);
+  }
+
+  const isIncident = draft.content_type === "incident";
+  const promptKey = isIncident ? "incident_accountability" : "question_reframing";
+  let systemPrompt = isIncident ? HARDCODED_INCIDENT_PROMPT : HARDCODED_QF_PROMPT;
+  let promptId = null;
+  const { data: promptRow } = await supabaseAdmin.from("ai_prompts")
+    .select("id, system_prompt").eq("prompt_key", promptKey).eq("is_active", true).maybeSingle();
+  if (promptRow?.system_prompt) { systemPrompt = promptRow.system_prompt; promptId = promptRow.id ?? null; }
+  systemPrompt += IMPROVE_ADDENDUM;
+
+  const topic = draft.topic_drafts ?? {};
+  const context =
+    `Topic label: ${topic.title ?? "(none)"}\n` +
+    `News headline (the specific event): ${topic.news_items?.title ?? "(none)"}\n` +
+    `Context (synthesised from all cluster articles): ${topic.summary ?? "(none)"}\n` +
+    `Tags: ${JSON.stringify(topic.tags ?? [])}\n` +
+    `Location: ${draft.location_label ?? "(none)"}\n` +
+    `Content type: ${draft.content_type ?? "general"}\n`;
+  const buildPrompt = (question, low, high, critique) =>
+    `Revise this draft stance question.\n\n${context}\n` +
+    `Current draft:\n"${question}"\n` +
+    `Slider: "${low ?? "(missing)"}" → "${high ?? "(missing)"}"\n\n` +
+    `Reviewer critique (fix every point):\n${critique || "(none given — check it against every rule)"}\n\n` +
+    `Target 30–45 words. Return ONLY the JSON object.`;
+
+  const original = {
+    question: draft.question, slider_low_label: draft.slider_low_label, slider_high_label: draft.slider_high_label,
+    framing_style: draft.framing_style, core_tension: draft.core_tension, share_headline: draft.share_headline,
+    quality_score: draft.question_quality_score, quality_notes: draft.quality_notes,
+    guardrail_flags: draft.guardrail_flags, qa_passed: draft.qa_passed
+  };
+  const rank = (c) => (c.gates.qaPassed ? 100 : 0) + (c.result.quality_score ?? 0) - c.gates.flags.length * 0.1;
+
+  let best = null;
+  const attempts = [];
+  let current = { question: draft.question, low: draft.slider_low_label, high: draft.slider_high_label, critique: draft.quality_notes ?? "" };
+  for (let i = 0; i < 2; i++) {
+    let rawText;
+    try {
+      rawText = await callLLM(provider, modelName, systemPrompt, buildPrompt(current.question, current.low, current.high, current.critique), apiKey, 0.5);
+    } catch (e) {
+      attempts.push({ error: String(e?.message ?? e) });
+      break;
+    }
+    const result = parseQfResult(rawText);
+    if (!result) { attempts.push({ parse_failed: true, rawText: String(rawText).slice(0, 2000) }); continue; }
+    if (!result.question.endsWith("?")) result.question = `${result.question}?`;
+    const gates = runGates(result.question, result.slider_low_label, result.slider_high_label, result.quality_score);
+    const cand = { result, gates };
+    attempts.push({ question: result.question, quality_score: result.quality_score, flags: gates.flags });
+    if (!best || rank(cand) > rank(best)) best = cand;
+    if (gates.qaPassed) break;
+    current = {
+      question: result.question, low: result.slider_low_label, high: result.slider_high_label,
+      critique: [result.quality_notes, ...gates.notes].filter(Boolean).join(" | ")
+    };
+  }
+
+  if (!best) return jsonResponse({ ok: false, improved: false, error: "The model returned no usable rewrite", attempts }, 502);
+  const originalScore = draft.question_quality_score == null ? -1 : Number(draft.question_quality_score);
+  const originalRank = (draft.qa_passed ? 100 : 0) + originalScore - (draft.guardrail_flags?.length ?? 0) * 0.1;
+  if (rank(best) <= originalRank) {
+    return jsonResponse({
+      ok: true, improved: false, quality_score: best.result.quality_score, guardrail_flags: best.gates.flags,
+      quality_notes: best.result.quality_notes, attempts
+    }, 200);
+  }
+
+  const r = best.result;
+  const notes = `${r.quality_notes ?? ""}${best.gates.notes.length ? ` | gate: ${best.gates.notes.join("; ")}` : ""}`.trim();
+  const { error: updErr } = await supabaseAdmin.from("question_drafts").update({
+    question: r.question,
+    summary: (r.core_tension || draft.core_tension || "").slice(0, 500) || undefined,
+    framing_style: VALID_FRAMING_STYLES.has(r.framing_style) ? r.framing_style : (draft.framing_style ?? "value_tradeoff"),
+    core_tension: r.core_tension || null,
+    primary_value: r.primary_value || null,
+    secondary_value: r.secondary_value || null,
+    slider_low_label: r.slider_low_label,
+    slider_high_label: r.slider_high_label,
+    share_headline: r.share_headline || draft.share_headline || null,
+    question_quality_score: r.quality_score,
+    quality_notes: notes || null,
+    guardrail_flags: best.gates.flags,
+    qa_passed: best.gates.qaPassed,
+    reframed_at: new Date().toISOString(),
+    reframe_prompt_id: promptId,
+    reframe_ai_output: { mode: "improve", previous: original, attempts, provider, model: modelName, prompt_key: promptKey }
+  }).eq("id", draft.id);
+  if (updErr) return jsonResponse({ error: "Failed to save improved draft", details: updErr.message }, 500);
+
+  return jsonResponse({
+    ok: true, improved: true, question: r.question, quality_score: r.quality_score,
+    qa_passed: best.gates.qaPassed, guardrail_flags: best.gates.flags, attempts
+  }, 200);
+}
 serve(async (req)=>{
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   let pipelineJobId = null;
@@ -507,6 +645,10 @@ serve(async (req)=>{
     // 2) Parse body
     let body = {};
     try { body = await req.json(); } catch { body = {}; }
+    if (body?.mode === "improve") {
+      if (!body?.question_draft_id) return jsonResponse({ error: "question_draft_id is required" }, 400);
+      return await improveDraft(supabaseAdmin, String(body.question_draft_id), provider, modelName, apiKey);
+    }
     if (!body?.topic_draft_id) return jsonResponse({ error: "topic_draft_id is required" }, 400);
     const topicDraftId = String(body.topic_draft_id);
     // Epic R M-R07: optional admin override of the content type (skips the classifier).
@@ -688,13 +830,10 @@ serve(async (req)=>{
           ) || null;
 
           // ── Deterministic gates (flag, do not hard-reject — drafts stay 'draft' for review) ──
-          const notes = [];
-          const forbidden = checkForbidden(question);
-          if (forbidden) { guardrailFlags.push(`forbidden:${forbidden}`); notes.push(`forbidden phrase "${forbidden}"`); qaPassed = false; }
-          const wc = countWords(question);
-          if (wc > MAX_WORDS) { guardrailFlags.push("too_long"); notes.push(`${wc} words (max ${MAX_WORDS})`); qaPassed = false; }
-          if (!sliderLow || !sliderHigh) { guardrailFlags.push("missing_slider_labels"); notes.push("missing slider labels"); qaPassed = false; }
-          if ((qualityScore ?? 0) < QUALITY_THRESHOLD) { guardrailFlags.push("low_quality"); notes.push(`quality ${qualityScore} < ${QUALITY_THRESHOLD}`); qaPassed = false; }
+          const gates = runGates(question, sliderLow, sliderHigh, qualityScore);
+          const notes = gates.notes, wc = gates.wc;
+          guardrailFlags.push(...gates.flags);
+          if (!gates.qaPassed) qaPassed = false;
           if (notes.length) qualityNotes = `${qualityNotes ? qualityNotes + " | " : ""}gate: ${notes.join("; ")}`;
 
           summary = clampText(result.core_tension || baseSummary, 500) || baseSummary;
