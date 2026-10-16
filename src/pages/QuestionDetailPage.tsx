@@ -180,6 +180,14 @@ function useSupabaseSession() {
   return session;
 }
 
+// Covers made by Stance Capture itself are stored under og-images/question-covers/;
+// news covers come from og-images/news-covers/ or the publisher's own URL. Only the
+// latter get the "Image source: news article" caption.
+const AUTHORED_COVER_PATH = "/og-images/question-covers/";
+function isNewsCover(url: string): boolean {
+  return !url.includes(AUTHORED_COVER_PATH);
+}
+
 // ---------- Data fetchers ----------
 async function fetchQuestionById(id: string, languageCode: string): Promise<LiveQuestion | null> {
   const sb = getSupabase();
@@ -1681,9 +1689,11 @@ export default function QuestionDetailPage() {
                   alt={question.question}
                   height={420}
                 />
-                <p className="mt-2 text-xs text-slate-500 leading-snug">
-                  {t("stance.imageSourceCaption")}
-                </p>
+                {isNewsCover(question.cover_image_url) && (
+                  <p className="mt-2 text-xs text-slate-500 leading-snug">
+                    {t("stance.imageSourceCaption")}
+                  </p>
+                )}
               </div>
             )
           )}
